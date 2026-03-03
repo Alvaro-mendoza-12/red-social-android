@@ -1,0 +1,124 @@
+name: Android Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+
+concurrency:
+  group: android-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare local Android config
+        shell: bash
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Prepare CI secrets file
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}" > secrets.properties
+          echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}" >> secrets.properties
+
+      - name: Run quality gate
+        run: ./gradlew --no-daemon --stacktrace :app:qualityGateDebug
+
+      - name: Run SQL security audit
+        run: python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+
+      - name: Upload lint and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-quality-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.xml
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+            build/reports/security/sql_security_audit.md
+            build/reports/security/sql_security_audit.json
+          if-no-files-found: warn
+
+  release-smoke:
+    if: github.event_name == 'push'
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare local Android config
+        shell: bash
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Prepare CI secrets file
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}" > secrets.properties
+          echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}" >> secrets.properties
+
+      - name: Build release smoke artifact
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Check performance budgets
+        run: python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+
+      - name: Upload release performance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-performance-reports
+          path: |
+            build/reports/perf/performance_budget_report.md
+            build/reports/perf/performance_budget_report.json
+          if-no-files-found: warn

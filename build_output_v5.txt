@@ -1,0 +1,204 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/gamer/.gradle/wrapper/dists/gradle-8.11-bin/c4te04g51qsyw1bxcb929u7br/gradle-8.11/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:240:41 Name shadowed: fragment
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:279:44 'getParcelableExtra(String!): T?' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:281:44 'getParcelableArrayListExtra(String!): ArrayList<T!>?' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:294:25 Variable 'isInitializing' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:333:37 Name shadowed: currentIntent
+w: file:///D:/red%20social/app/src/main/java/conectate/com/MainActivity.kt:642:29 Parameter 'backStackEntry' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/local/entity/ChatEntity.kt:58:13 Variable 'participantsList' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/local/entity/ChatWithUserProfile.kt:15:13 Variable 'participantsList' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/AuthRepository.kt:135:34 Parameter 'phone' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/AuthRepository.kt:139:33 Parameter 'phone' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/AuthRepository.kt:139:48 Parameter 'otp' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/AuthRepository.kt:139:61 Parameter 'name' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/AuthRepository.kt:139:75 Parameter 'avatarUrl' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/ChallengeRepository.kt:124:28 Parameter 'activeChallengeId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/ChallengeRepository.kt:400:25 Variable 'record' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/CommunityRepository.kt:318:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/CommunityRepository.kt:341:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/CommunityRepository.kt:507:17 Variable 'community' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/CommunityRepository.kt:582:17 Variable 'member' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/CommunityRepository.kt:775:35 Elvis operator (?:) always returns the left operand of non-nullable type Boolean
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/FollowRepository.kt:62:17 Variable 'incrementFollowingResponse' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/FollowRepository.kt:72:17 Variable 'incrementFollowersResponse' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/FollowRepository.kt:118:17 Variable 'decrementFollowingResponse' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/FollowRepository.kt:128:17 Variable 'decrementFollowersResponse' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/GroupRepository.kt:670:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/GroupRepository.kt:694:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:560:111 There is more than one label with such a name in this scope
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:607:113 There is more than one label with such a name in this scope
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:608:99 There is more than one label with such a name in this scope
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:847:25 Name shadowed: cleanUserId
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:914:76 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1240:59 Parameter 'isPrivate' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1240:79 Parameter 'currentUserId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1255:38 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1320:29 Variable 'participants' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1390:47 Right operand of elvis operator (?:) is useless if it is null
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1667:47 Parameter 'targetUserId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1688:70 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1810:80 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:1984:15 Variable 'userId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2009:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2055:17 Variable 'token' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2110:26 Parameter 'chatId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2110:42 Parameter 'isMuted' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2111:25 Parameter 'chatId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2111:41 Parameter 'isPinned' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2132:31 Parameter 'chatId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2132:47 Parameter 'reason' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2173:17 Variable 'jsonConfig' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/MessageRepository.kt:2174:17 Variable 'explicitJson' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:179:106 Parameter 'signalingRoomId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:214:54 Parameter 'focusChange' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:222:20 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:525:34 Parameter 'roomId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:682:25 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:765:35 Parameter 'change' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:958:13 Variable 'userId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:998:13 Variable 'userId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt:1016:13 Variable 'userId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/supabase/AuthService.kt:114:9 Parameter 'metadata' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt:219:12 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt:223:48 Parameter 'remoteSocketId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt:501:42 The corresponding parameter in the supertype 'SdpObserverAdapter' is named 'd'. This may cause problems when calling this function with named arguments.
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt:523:42 The corresponding parameter in the supertype 'SdpObserverAdapter' is named 'd'. This may cause problems when calling this function with named arguments.
+w: file:///D:/red%20social/app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt:732:93 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/di/DatabaseModule.kt:28:30 The corresponding parameter in the supertype 'Migration' is named 'db'. This may cause problems when calling this function with named arguments.
+w: file:///D:/red%20social/app/src/main/java/conectate/com/di/DatabaseModule.kt:57:30 The corresponding parameter in the supertype 'Migration' is named 'db'. This may cause problems when calling this function with named arguments.
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/admin/AdminPanelScreen.kt:250:47 Elvis operator (?:) always returns the left operand of non-nullable type String?
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/admin/AdminPanelScreen.kt:270:48 Unnecessary safe call on a non-null receiver of type String?
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/admin/BadgesTabScreen.kt:35:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt:117:67 Parameter 'country' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt:117:84 Parameter 'city' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/auth/RegisterScreen.kt:54:9 Variable 'isLoggedIn' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/BatteryOptimizationDialog.kt:20:9 Variable 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/CommentAudioPlayer.kt:29:9 Variable 'scope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/CommentsSheet.kt:161:48 'outlinedTextFieldColors(Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., TextSelectionColors = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ..., Color = ...): TextFieldColors' is deprecated. Renamed to `OutlinedTextFieldDefaults.colors` with additional parameters tocontrol container color based on state.
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/MessageBubble.kt:684:9 Variable 'now' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/VideoThumbnail.kt:28:5 Parameter 'videoRepository' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/components/VideoThumbnail.kt:39:42 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/home/HomeScreen.kt:228:17 Parameter 'backStackEntry' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt:85:9 Variable 'storageDisabledMessage' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt:102:9 Variable 'audioDuration' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt:431:33 Name shadowed: otherUser
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt:479:49 Parameter 'url' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:139:41 Variable 'targetUserId' initializer is redundant
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:154:21 Condition 'targetUserId == null' is always 'false'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:203:25 Variable 'currentIdFlow' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:288:45 Unchecked cast: Any? to List<Message>
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:291:43 Unchecked cast: Any? to List<Badge>
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:313:21 Check for instance is always 'true'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:320:21 Check for instance is always 'true'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:331:13 Variable 'cid' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:354:21 Name shadowed: cid
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:369:14 Variable 'cid' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:388:22 Name shadowed: cid
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt:692:20 Parameter 'reason' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CommunitiesTab.kt:25:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt:195:29 Name shadowed: currentUserId
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ConversationComponents.kt:28:5 Parameter 'onMute' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ConversationComponents.kt:29:5 Parameter 'onPin' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ConversationComponents.kt:30:5 Parameter 'onBlock' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ConversationsScreen.kt:48:9 Variable 'showMenu' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/ConversationsScreen.kt:49:9 Variable 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CreateGroupScreen.kt:105:100 Parameter 'chatId' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CreateGroupScreen.kt:186:72 Unnecessary safe call on a non-null receiver of type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CreateGroupScreen.kt:338:41 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/CreateGroupScreen.kt:344:35 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt:195:29 Name shadowed: currentUserId
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/GroupComponents.kt:23:9 Variable 'lastMessage' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/GroupDetailScreen.kt:369:55 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/GroupsTab.kt:26:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/PrivateChatsTab.kt:31:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/VoiceMessageManager.kt:48:18 Parameter 'coroutineScope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/messages/VoiceRoomsTab.kt:35:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/FollowListScreen.kt:23:5 Parameter 'userId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/FriendRequestsScreen.kt:76:41 Variable 'color' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt:52:5 Parameter 'onLogout' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt:440:57 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/SettingsViewModel.kt:132:23 Parameter 'isPrivate' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/profile/SettingsViewModel.kt:148:26 Parameter 'visibility' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/CreateMomentScreen.kt:311:9 Variable 'rangePercentage' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/CreateMomentViewModel.kt:153:21 Variable 'outputUri' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/MomentViewModel.kt:175:19 Parameter 'momentId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/MomentViewerScreen.kt:78:17 Condition 'currentMoment.userId != null' is always 'true'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:168:9 Variable 'imageLauncher' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:512:49 Condition 'challenge.description != null' is always 'true'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:824:77 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:1170:21 Condition 'targetStr == null' is always 'false'
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:1308:60 Unnecessary safe call on a non-null receiver of type ActiveChallenge?
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:1350:64 Unnecessary safe call on a non-null receiver of type ActiveChallenge?
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialScreen.kt:2141:21 'when' is exhaustive so 'else' is redundant here
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialViewModel.kt:368:48 Unnecessary safe call on a non-null receiver of type ActiveChallenge?
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/SocialViewModel.kt:391:17 Variable 'targetTimeStr' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/components/ChallengeTimer.kt:31:64 'VIBRATOR_SERVICE: String' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/social/components/ChallengeTimer.kt:44:30 'vibrate(Long): Unit' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/theme/Theme.kt:62:20 'setter for statusBarColor: Int' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt:97:5 Parameter 'navController' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt:154:9 Variable 'coroutineScope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/CommentSheet.kt:80:9 Variable 'haptic' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/CommentSheet.kt:512:5 Parameter 'comment' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorScreen.kt:500:5 Parameter 'currentTimeMs' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:1:1 Annotation 'androidx.media3.common.util.UnstableApi' is not an opt-in requirement marker, therefore its usage in @OptIn is ignored
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:60:40 Parameter 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:69:13 Variable 'editedMediaItems' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:304:27 Parameter 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:397:21 'constructor EditedMediaItemSequence((Mutable)List<EditedMediaItem>)' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoEditorViewModel.kt:504:23 Parameter 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoPlayerScreen.kt:418:9 Variable 'scope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoPlayerScreen.kt:420:9 Variable 'haptic' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideoUploadScreen.kt:197:9 Variable 'coroutineScope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/videos/VideosScreen.kt:48:9 Variable 'scope' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/CinemaCatalog.kt:66:56 Unnecessary safe call on a non-null receiver of type String!
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/CinemaPlayer.kt:131:26 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/CinemaPlayer.kt:248:42 This declaration overrides deprecated member but not marked as deprecated itself. Please add @Deprecated annotation or suppress. See https://youtrack.jetbrains.com/issue/KT-47902 for details
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/CinemaPlayer.kt:340:34 'setter for databaseEnabled: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/RoomDetailScreen.kt:117:17 Variable 'currentUserId' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt:91:44 'getter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt:95:22 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt:99:26 'setter for isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt:665:20 Parameter 'view' is never used, could be renamed to _
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt:821:9 Variable 'context' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveViewModel.kt:87:24 Parameter 'password' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveViewModel.kt:207:21 Variable 'userResult' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomsScreen.kt:30:9 Variable 'isCreatingRoom' is never used
+w: file:///D:/red%20social/app/src/main/java/conectate/com/services/VoiceForegroundService.kt:71:21 'stopForeground(Boolean): Unit' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/services/VoiceForegroundService.kt:156:13 'stopForeground(Boolean): Unit' is deprecated. Deprecated in Java
+w: file:///D:/red%20social/app/src/main/java/conectate/com/util/LocalNotificationHelper.kt:27:9 Parameter 'senderAvatar' is never used
+[Incubating] Problems report is available at: file:///D:/red%20social/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.11/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 6m 36s
+18 actionable tasks: 3 executed, 15 up-to-date

@@ -1,0 +1,291 @@
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-ui:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-common:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-transformer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-effect:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-container:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-datasource:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-decoder:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-extractor:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-database:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (c)
+|    |    +--- androidx.media3:media3-database:1.5.1 (c)
+|    |    +--- androidx.media3:media3-datasource:1.5.1 (c)
+|    |    +--- androidx.media3:media3-decoder:1.5.1 (c)
+|    |    +--- androidx.media3:media3-effect:1.5.1 (c)
+|    |    +--- androidx.media3:media3-exoplayer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-extractor:1.5.1 (c)
+|    |    +--- androidx.media3:media3-transformer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-ui:1.5.1 (c)
+|    |    \--- androidx.media3:media3-muxer:1.5.1 (c)
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-database:1.5.1
+|    |    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-decoder:1.5.1 (*)
+|    \--- androidx.media3:media3-database:1.5.1 (*)
++--- androidx.media3:media3-ui:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-datasource:1.5.1 (*)
+|    +--- androidx.media3:media3-container:1.5.1 (*)
+|    +--- androidx.media3:media3-muxer:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         +--- androidx.media3:media3-datasource:1.5.1 (*)
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-common:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-effect:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-transformer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-ui:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-container:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-datasource:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-decoder:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-extractor:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-database:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (c)
+|    |    +--- androidx.media3:media3-database:1.5.1 (c)
+|    |    +--- androidx.media3:media3-datasource:1.5.1 (c)
+|    |    +--- androidx.media3:media3-decoder:1.5.1 (c)
+|    |    +--- androidx.media3:media3-effect:1.5.1 (c)
+|    |    +--- androidx.media3:media3-exoplayer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-extractor:1.5.1 (c)
+|    |    +--- androidx.media3:media3-transformer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-ui:1.5.1 (c)
+|    |    \--- androidx.media3:media3-muxer:1.5.1 (c)
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-database:1.5.1
+|    |    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-decoder:1.5.1 (*)
+|    \--- androidx.media3:media3-database:1.5.1 (*)
++--- androidx.media3:media3-ui:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-datasource:1.5.1 (*)
+|    +--- androidx.media3:media3-container:1.5.1 (*)
+|    +--- androidx.media3:media3-muxer:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         +--- androidx.media3:media3-datasource:1.5.1 (*)
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:1.5.1 (n)
++--- androidx.media3:media3-ui:1.5.1 (n)
++--- androidx.media3:media3-common:1.5.1 (n)
++--- androidx.media3:media3-transformer:1.5.1 (n)
++--- androidx.media3:media3-effect:1.5.1 (n)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-common:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-effect:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-transformer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-ui:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-container:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-datasource:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-decoder:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-extractor:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-database:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (c)
+|    |    +--- androidx.media3:media3-database:1.5.1 (c)
+|    |    +--- androidx.media3:media3-datasource:1.5.1 (c)
+|    |    +--- androidx.media3:media3-decoder:1.5.1 (c)
+|    |    +--- androidx.media3:media3-effect:1.5.1 (c)
+|    |    +--- androidx.media3:media3-exoplayer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-extractor:1.5.1 (c)
+|    |    +--- androidx.media3:media3-transformer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-ui:1.5.1 (c)
+|    |    \--- androidx.media3:media3-muxer:1.5.1 (c)
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-database:1.5.1
+|    |    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-decoder:1.5.1 (*)
+|    \--- androidx.media3:media3-database:1.5.1 (*)
++--- androidx.media3:media3-ui:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-datasource:1.5.1 (*)
+|    +--- androidx.media3:media3-container:1.5.1 (*)
+|    +--- androidx.media3:media3-muxer:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         +--- androidx.media3:media3-datasource:1.5.1 (*)
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    \--- androidx.media3:media3-database:1.5.1
++--- androidx.media3:media3-ui:1.5.1
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)
++--- androidx.media3:media3-exoplayer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-common:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-effect:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-transformer:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-ui:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-container:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-datasource:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-decoder:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-extractor:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-database:{strictly 1.5.1} -> 1.5.1 (c)
++--- androidx.media3:media3-exoplayer:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (c)
+|    |    +--- androidx.media3:media3-database:1.5.1 (c)
+|    |    +--- androidx.media3:media3-datasource:1.5.1 (c)
+|    |    +--- androidx.media3:media3-decoder:1.5.1 (c)
+|    |    +--- androidx.media3:media3-effect:1.5.1 (c)
+|    |    +--- androidx.media3:media3-exoplayer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-extractor:1.5.1 (c)
+|    |    +--- androidx.media3:media3-transformer:1.5.1 (c)
+|    |    +--- androidx.media3:media3-ui:1.5.1 (c)
+|    |    \--- androidx.media3:media3-muxer:1.5.1 (c)
+|    +--- androidx.media3:media3-container:1.5.1
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-datasource:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-database:1.5.1
+|    |    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-decoder:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-extractor:1.5.1
+|    |    +--- androidx.media3:media3-common:1.5.1 (*)
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-decoder:1.5.1 (*)
+|    \--- androidx.media3:media3-database:1.5.1 (*)
++--- androidx.media3:media3-ui:1.5.1
+|    +--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-transformer:1.5.1
+|    +--- androidx.media3:media3-datasource:1.5.1 (*)
+|    +--- androidx.media3:media3-container:1.5.1 (*)
+|    +--- androidx.media3:media3-muxer:1.5.1
+|    |    +--- androidx.media3:media3-container:1.5.1 (*)
+|    |    \--- androidx.media3:media3-common:1.5.1 (*)
+|    +--- androidx.media3:media3-exoplayer:1.5.1 (*)
+|    \--- androidx.media3:media3-effect:1.5.1
+|         +--- androidx.media3:media3-datasource:1.5.1 (*)
+|         \--- androidx.media3:media3-common:1.5.1 (*)
++--- androidx.media3:media3-effect:1.5.1 (*)

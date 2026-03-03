@@ -1,0 +1,21 @@
+{
+  "name": "webrtc-signaling-server",
+  "version": "1.0.0",
+  "description": "Signaling server for Conectate Voice Rooms",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "axios": "^1.13.5",
+    "dotenv": "^16.3.1",
+    "query-string": "^9.3.1",
+    "socket.io": "^4.7.2",
+    "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

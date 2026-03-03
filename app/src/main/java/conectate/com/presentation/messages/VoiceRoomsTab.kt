@@ -1,0 +1,268 @@
+package conectate.com.presentation.messages
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import conectate.com.presentation.voicerooms.VoiceRoomsViewModel
+import conectate.com.presentation.voicerooms.VoiceRoomsUiState
+import conectate.com.presentation.voicerooms.RestrictedAccessScreen
+
+/**
+ * Tab de Salas de Voz (NUEVO - Fase 4)
+ */
+@Composable
+fun VoiceRoomsTab(
+    navController: NavController,
+    viewModel: VoiceRoomsViewModel = hiltViewModel(),
+    onNavigateToCreateRoom: () -> Unit,
+    onNavigateToRoomDetail: (String) -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val hasAccess by viewModel.hasAccess.collectAsState()
+    val requestStatus by viewModel.accessRequestStatus.collectAsState()
+    val context = LocalContext.current
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.errorEvents.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchId by remember { mutableStateOf("") }
+    var searchPassword by remember { mutableStateOf("") }
+    var searchError by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (!hasAccess) {
+            RestrictedAccessScreen(
+                requestStatus = requestStatus,
+                onRequestAccess = { viewModel.requestAccess() },
+                onRefresh = { viewModel.refreshStatus() }
+            )
+        } else {
+            // Header Card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.medium)
+                    .padding(16.dp)
+            ) {
+                // ... (el contenido original del Row que estaba en las líneas 53-102)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "Salas de Voz en Vivo",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                "Únete a conversaciones en tiempo real",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                    
+                    Row {
+                        IconButton(onClick = { 
+                            viewModel.refreshRooms()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refrescar",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        
+                        IconButton(onClick = { 
+                            showSearchDialog = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Buscar por ID",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (showSearchDialog) {
+                AlertDialog(
+                    onDismissRequest = { 
+                        showSearchDialog = false
+                        searchError = null
+                        searchPassword = ""
+                    },
+                    title = { Text("Unirse por ID") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = searchId,
+                                onValueChange = { searchId = it },
+                                label = { Text("ID de la Sala") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = searchPassword,
+                                onValueChange = { searchPassword = it },
+                                label = { Text("Contraseña (si es privada)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            searchError?.let {
+                                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            if (searchId.isNotBlank()) {
+                                viewModel.searchRoomById(searchId)
+                            }
+                        }) {
+                            Text("Buscar y Unirse")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSearchDialog = false }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+
+            // Handle Search result within the UI
+            LaunchedEffect(uiState) {
+                if (uiState is VoiceRoomsUiState.SearchResult) {
+                    val room = (uiState as VoiceRoomsUiState.SearchResult).room
+                    if (room != null) {
+                        // Check password if private
+                        if (room.isPublic || room.password == searchPassword) {
+                            onNavigateToRoomDetail(room.id)
+                            showSearchDialog = false
+                            viewModel.resetSearch()
+                        } else {
+                            searchError = "Contraseña incorrecta"
+                        }
+                    } else {
+                        searchError = "Sala no encontrada"
+                    }
+                }
+            }
+
+            when (val state = uiState) {
+                is VoiceRoomsUiState.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                is VoiceRoomsUiState.Success -> {
+                    if (state.rooms.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.padding(32.dp)
+                            ) {
+                                Text(
+                                    "No hay salas activas ahora mismo",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    "Sé el primero en crear una sala y empezar a hablar",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                                Button(onClick = {
+                                    onNavigateToCreateRoom()
+                                }) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Crear Sala")
+                                }
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 80.dp) // Space for FAB
+                        ) {
+                            items(state.rooms) { room ->
+                                val isCreator = room.creatorId == viewModel.getCurrentUserId()
+                                VoiceRoomItem(
+                                    room = room,
+                                    onClick = {
+                                        onNavigateToRoomDetail(room.id)
+                                    },
+                                    onDelete = if (isCreator) { { viewModel.deleteRoom(room.id) } } else null
+                                )
+                            }
+                        }
+                    }
+                }
+                is VoiceRoomsUiState.SearchResult -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                is VoiceRoomsUiState.Error -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+    }
+}

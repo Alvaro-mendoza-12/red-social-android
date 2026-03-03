@@ -1,0 +1,52 @@
+# Secrets
+secrets.properties
+secrets.properties.*
+!secrets.properties.example
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.env
+*.env.*
+
+# Android/IntelliJ
+/.idea/
+*.iml
+.gradle/
+.gradle-user/
+/.qodo/
+/.backup/
+
+# Build outputs
+/build/
+/app/build/
+app/release/
+*.apk
+*.aab
+
+# Local env
+local.properties
+app/local.properties
+
+# Generated
+**/build/
+**/captures/
+**/outputs/
+*.log
+*.tmp
+hs_err_pid*.log
+replay_pid*.log
+
+# Google services
+google-services.json
+app/google-services.json
+nueva-red-social-c9d04-firebase-adminsdk-*.json
+supabase/*firebase-adminsdk*.json
+
+# Node
+**/node_modules/
+
+# Runtime binaries and tools
+ngrok.exe
+ChromeSetup.exe

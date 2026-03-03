@@ -1,0 +1,20 @@
+﻿                )
+             } else {
+                 val successState = chatState as? ChatUiState.Success
+                 val chat = successState?.chat
+                 val otherUser = successState?.otherUser
+                 
+                 val chatName = if (chat?.is_group == true) chat.group_name ?: "Grupo" 
+                               else otherUser?.displayName ?: otherUser?.username ?: "Usuario"
+                 
+                 val chatImage = if (chat?.is_group == true) chat.group_image 
+                                else otherUser?.avatar_url
+
+                TopAppBar(
+                    title = { 
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (chatImage != null) {
+                                 Box(modifier = Modifier.clickable {
+                                    // Navigate to full screen image

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Conectate</string>
+    
+    <!-- Auth Strings -->
+    <string name="sign_in_email">Iniciar sesión con Email</string>
+    <string name="sign_in_phone">Iniciar sesión con Teléfono</string>
+    <string name="email">Email</string>
+    <string name="password">Contraseña</string>
+    <string name="login">Iniciar Sesión</string>
+    <string name="dont_have_account">¿No tienes cuenta?</string>
+    <string name="register">Registrarse</string>
+    <string name="name">Nombre</string>
+    <string name="country">País</string>
+    <string name="city">Ciudad</string>
+    <string name="already_have_account">¿Ya tienes cuenta?</string>
+    
+    <!-- Storage Disabled Messages -->
+    <string name="storage_disabled_title">Función no disponible</string>
+    <string name="storage_disabled_message">Esta función requiere Firebase Storage (Plan Blaze). Por favor contacta al administrador para habilitar esta funcionalidad.</string>
+    <string name="storage_disabled_images">No se pueden enviar imágenes sin Storage configurado</string>
+    <string name="storage_disabled_videos">No se pueden enviar videos sin Storage configurado</string>
+    <string name="storage_disabled_audio">No se pueden enviar audios sin Storage configurado</string>
+    <string name="storage_disabled_profile">No se pueden cambiar fotos de perfil sin Storage configurado</string>
+    <string name="storage_disabled_upload">No se pueden subir videos sin Storage configurado</string>
+    
+    <!-- Notifications -->
+    <string name="default_notification_channel_id" translatable="false">fcm_default_channel</string>
+    <string name="chat_notification_channel_id" translatable="false">chat_channel</string>
+    <string name="group_notification_channel_id" translatable="false">group_channel</string>
+    <string name="social_notification_channel_id" translatable="false">social_channel</string>
+    <string name="system_notification_channel_id" translatable="false">system_channel</string>
+</resources>

@@ -1,0 +1,62 @@
+name: Android Instrumented Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+concurrency:
+  group: android-instrumented-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  connected-debug-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare local Android config
+        shell: bash
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Prepare CI secrets file
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}" > secrets.properties
+          echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}" >> secrets.properties
+
+      - name: Run instrumented smoke tests on emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          disable-animations: true
+          script: ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
+
+      - name: Upload connected test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connected-debug-test-reports
+          path: |
+            app/build/reports/androidTests/connected
+            app/build/outputs/androidTest-results/connected
+          if-no-files-found: warn

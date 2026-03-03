@@ -1,0 +1,206 @@
+/* eslint-disable react-refresh/only-export-components */
+import type { Session, User } from '@supabase/supabase-js'
+import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react'
+import { Navigate } from 'react-router-dom'
+import { StatusView } from '../../components/StatusView'
+import { isSupabaseConfigured, supabase } from '../../core/supabase'
+import { textOf, type GenericRow } from '../../core/utils'
+
+type SuspensionState = {
+  isSuspended: boolean
+  suspendedUntil: string
+  reason: string
+}
+
+type AuthContextValue = {
+  configured: boolean
+  loading: boolean
+  user: User | null
+  session: Session | null
+  suspension: SuspensionState | null
+  suspensionLoading: boolean
+  signOut: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function AuthProvider({ children }: PropsWithChildren) {
+  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [suspension, setSuspension] = useState<SuspensionState | null>(null)
+  const [suspensionLoading, setSuspensionLoading] = useState(false)
+
+  useEffect(() => {
+    if (!supabase) return
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setSession(data.session ?? null)
+        setUser(data.session?.user ?? null)
+      })
+      .finally(() => setLoading(false))
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null)
+      setUser(nextSession?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setSuspension(null)
+      setSuspensionLoading(false)
+      return
+    }
+    const client = supabase as NonNullable<typeof supabase>
+    const currentUser = user
+
+    async function loadSuspensionState() {
+      setSuspensionLoading(true)
+      try {
+        const rpcResult = await client.rpc('secure_get_my_suspension_state')
+        if (!rpcResult.error) {
+          const row = (Array.isArray(rpcResult.data) ? rpcResult.data[0] : rpcResult.data) as
+            | GenericRow
+            | undefined
+          if (!row) {
+            setSuspension(null)
+          } else {
+            const isSuspended = Boolean(row.is_suspended)
+            setSuspension(
+              isSuspended
+                ? {
+                    isSuspended: true,
+                    suspendedUntil: textOf(row, ['suspension_end_date', 'suspended_until'], ''),
+                    reason: textOf(row, ['suspension_reason'], ''),
+                  }
+                : null,
+            )
+          }
+          return
+        }
+
+        const message = String(rpcResult.error.message ?? '').toLowerCase()
+        const canFallback =
+          message.includes('could not find') ||
+          message.includes('function') ||
+          message.includes('does not exist') ||
+          message.includes('42883')
+        if (!canFallback) {
+          setSuspension(null)
+          return
+        }
+
+        const { data: profileRows, error: profileError } = await client
+          .from('profiles')
+          .select('is_suspended,suspended_until,suspension_end_date,suspension_reason')
+          .eq('id', currentUser.id)
+          .limit(1)
+        if (profileError) {
+          setSuspension(null)
+          return
+        }
+        const profile = ((profileRows ?? []) as GenericRow[])[0] ?? {}
+        if (!profile.is_suspended) {
+          setSuspension(null)
+          return
+        }
+        setSuspension({
+          isSuspended: true,
+          suspendedUntil: textOf(profile, ['suspension_end_date', 'suspended_until'], ''),
+          reason: textOf(profile, ['suspension_reason'], ''),
+        })
+      } finally {
+        setSuspensionLoading(false)
+      }
+    }
+
+    void loadSuspensionState()
+  }, [user])
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      configured: isSupabaseConfigured,
+      loading,
+      session,
+      user,
+      suspension,
+      suspensionLoading,
+      signOut: async () => {
+        if (!supabase) return
+        await supabase.auth.signOut()
+      },
+    }),
+    [loading, session, suspension, suspensionLoading, user],
+  )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth debe usarse dentro de AuthProvider')
+  }
+  return context
+}
+
+export function RequireAuth({ children }: PropsWithChildren) {
+  const { configured, loading, user, suspension, suspensionLoading, signOut } = useAuth()
+  if (!configured) {
+    return (
+      <StatusView
+        title="Falta conectar Supabase"
+        description="Configura las variables VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en el archivo .env."
+      />
+    )
+  }
+  if (loading) {
+    return <StatusView title="Cargando sesión" description="Espera un momento..." />
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+  if (suspensionLoading) {
+    return <StatusView title="Verificando estado de cuenta" description="Espera un momento..." />
+  }
+  if (suspension?.isSuspended) {
+    const untilLabel = suspension.suspendedUntil
+      ? new Date(suspension.suspendedUntil).toLocaleString()
+      : 'Permanente'
+    return (
+      <section className="section-stack">
+        <StatusView
+          title="Cuenta suspendida"
+          description={`Tu cuenta está suspendida hasta ${untilLabel}.${suspension.reason ? ` Motivo: ${suspension.reason}.` : ''}`}
+        />
+        <div className="status-action">
+          <button className="ghost-btn" type="button" onClick={() => void signOut()}>
+            Cerrar sesión
+          </button>
+        </div>
+      </section>
+    )
+  }
+  return <>{children}</>
+}
+
+export function GuestOnlyRoute({ children }: PropsWithChildren) {
+  const { loading, user, configured } = useAuth()
+  if (!configured) return <>{children}</>
+  if (loading) {
+    return <StatusView title="Cargando sesión" description="Espera un momento..." />
+  }
+  if (user) {
+    return <Navigate to="/app/feed" replace />
+  }
+  return <>{children}</>
+}
