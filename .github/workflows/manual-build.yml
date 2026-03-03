@@ -45,6 +45,9 @@ jobs:
           echo "SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}" > secrets.properties
           echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}" >> secrets.properties
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
       - name: Build Debug APK
         if: github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both'
         run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
