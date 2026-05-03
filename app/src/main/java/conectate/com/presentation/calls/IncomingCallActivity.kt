@@ -59,11 +59,14 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-
+@AndroidEntryPoint
 class IncomingCallActivity : ComponentActivity() {
 
-     lateinit var callRepository: CallRepository
-     lateinit var themePreferences: ThemePreferences
+    @Inject
+    lateinit var callRepository: CallRepository
+
+    @Inject
+    lateinit var themePreferences: ThemePreferences
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -189,7 +192,7 @@ private fun Intent.toAvatarBitmapOrNull(): Bitmap? {
     return runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
 }
 
-
+@Composable
 private fun IncomingCallScreen(
     invite: CallInvite,
     callerAvatarBitmap: Bitmap?,

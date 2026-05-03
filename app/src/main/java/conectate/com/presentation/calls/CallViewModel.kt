@@ -16,8 +16,8 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-
-class CallViewModel  constructor(
+@HiltViewModel
+class CallViewModel @Inject constructor(
     private val callRepository: CallRepository,
     private val authService: AuthService
 ) : ViewModel() {

@@ -148,8 +148,6 @@ class CallRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun ensureSubscribedToCallUserChannel(userId: String) = withContext(Dispatchers.IO) {
         if (callUserChannel != null) return@withContext
 
@@ -396,8 +394,6 @@ class CallRepository @Inject constructor(
         Result.success(Unit)
     }
 
-@Composable
-@Composable
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
@@ -462,8 +458,6 @@ class CallRepository @Inject constructor(
         Result.success(Unit)
     }
 
-@Composable
-@Composable
     suspend fun declineIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
@@ -486,8 +480,6 @@ class CallRepository @Inject constructor(
         Result.success(Unit)
     }
 
-@Composable
-@Composable
     suspend fun hangup(): Result<Unit> = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         var call = _activeCall.value ?: return@withContext Result.success(Unit)

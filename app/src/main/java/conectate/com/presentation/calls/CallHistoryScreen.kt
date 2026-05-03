@@ -69,8 +69,8 @@ enum class CallHistoryFilter(val label: String) {
     COMMUNITY("Comunidades")
 }
 
-
-class CallHistoryViewModel  constructor(
+@HiltViewModel
+class CallHistoryViewModel @Inject constructor(
     repository: CallHistoryRepository
 ) : ViewModel() {
     private val _filter = MutableStateFlow(CallHistoryFilter.ALL)
@@ -93,7 +93,7 @@ class CallHistoryViewModel  constructor(
 }
 
 
-
+@Composable
 fun CallHistoryScreen(
     navController: NavController,
     viewModel: CallHistoryViewModel = hiltViewModel()
@@ -178,7 +178,7 @@ fun CallHistoryScreen(
     }
 }
 
-
+@Composable
 private fun CallHistoryRow(
     entry: CallHistoryEntry,
     onClick: () -> Unit

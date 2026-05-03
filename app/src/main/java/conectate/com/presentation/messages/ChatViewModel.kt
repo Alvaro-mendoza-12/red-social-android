@@ -10,6 +10,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.ChatSummary
 import conectate.com.data.model.Message
+import conectate.com.data.model.TypingConversationScope
+import conectate.com.data.model.TypingParticipant
 import conectate.com.data.model.User
 import conectate.com.core.messaging.UnreadPolicy
 import conectate.com.data.repository.AdvancedMessagingRepository
@@ -17,6 +19,7 @@ import conectate.com.data.repository.BlockRelationship
 import conectate.com.data.repository.ChatBackgroundSettings
 import conectate.com.data.repository.ChatSettingsRepository
 import conectate.com.data.repository.MessageRepository
+import conectate.com.data.repository.TypingRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.util.ChatContactPayload
@@ -57,6 +60,7 @@ class ChatViewModel @Inject constructor(
     private val advancedMessagingRepository: AdvancedMessagingRepository,
     private val chatSettingsRepository: ChatSettingsRepository,
     private val userRepository: UserRepository,
+    private val typingRepository: TypingRepository,
     private val badgeRepository: conectate.com.data.repository.BadgeRepository,
     private val authService: AuthService,
     private val groupRepository: conectate.com.data.repository.GroupRepository,
@@ -78,6 +82,8 @@ class ChatViewModel @Inject constructor(
     private val _visibleMessageIds = MutableStateFlow<Set<String>>(emptySet())
     private val _chatBackgroundSettings = MutableStateFlow(ChatBackgroundSettings())
     val chatBackgroundSettings: StateFlow<ChatBackgroundSettings> = _chatBackgroundSettings.asStateFlow()
+    private val _typingParticipants = MutableStateFlow<List<TypingParticipant>>(emptyList())
+    val typingParticipants: StateFlow<List<TypingParticipant>> = _typingParticipants.asStateFlow()
 
     private val _messageText = MutableStateFlow("")
     val messageText: StateFlow<String> = _messageText.asStateFlow()
@@ -194,6 +200,9 @@ class ChatViewModel @Inject constructor(
     private var presenceJob: Job? = null
     private var chatSettingsJob: Job? = null
     private var blockRelationshipJob: Job? = null
+    private var typingObserverJob: Job? = null
+    private var typingStopJob: Job? = null
+    private var typingActive = false
 
     init {
         // Initialize Voice Manager
@@ -361,6 +370,7 @@ class ChatViewModel @Inject constructor(
     private fun startObservingMessages(id: String, initialChat: conectate.com.data.model.Chat) {
         val cleanId = id.trim().lowercase()
         observeChatBackgroundSettings(cleanId)
+        observeTypingForChat(initialChat)
         messageCollectionJob?.cancel()
         messageCollectionJob = viewModelScope.launch {
             
@@ -426,6 +436,75 @@ class ChatViewModel @Inject constructor(
                 _currentNickname.value = successState.chat?.nickname
             }
         }
+    }
+
+    private fun observeTypingForChat(chat: conectate.com.data.model.Chat) {
+        typingObserverJob?.cancel()
+        _typingParticipants.value = emptyList()
+
+        val cleanChatId = chat.id.trim().lowercase()
+        if (cleanChatId.isBlank() || chat.is_group) return
+
+        typingObserverJob = viewModelScope.launch {
+            typingRepository.observeTyping(
+                scopeType = TypingConversationScope.DIRECT_MESSAGE,
+                conversationId = cleanChatId
+            ).collectLatest { participants ->
+                _typingParticipants.value = participants
+            }
+        }
+    }
+
+    private fun syncTypingPresence(text: String) {
+        val activeChatId = chatId?.trim()?.lowercase() ?: return
+        val state = chatState.value as? ChatUiState.Success ?: return
+        if (state.chat.is_group) return
+
+        val trimmed = text.trim()
+        typingStopJob?.cancel()
+
+        if (trimmed.isEmpty()) {
+            stopTypingPresence()
+            return
+        }
+
+        if (!typingActive) {
+            sendTypingPresence(isTyping = true)
+        }
+
+        typingStopJob = viewModelScope.launch {
+            delay(2800)
+            if (_messageText.value.trim().isNotEmpty() && activeChatId == chatId?.trim()?.lowercase()) {
+                stopTypingPresence()
+            }
+        }
+    }
+
+    private fun sendTypingPresence(isTyping: Boolean) {
+        val activeChatId = chatId?.trim()?.lowercase() ?: return
+        val state = chatState.value as? ChatUiState.Success ?: return
+        if (state.chat.is_group) return
+
+        val displayName = currentUserMetadata.value?.displayName
+            ?: currentUserMetadata.value?.username
+            ?: authService.getCurrentUserEmail()?.substringBefore("@")
+            ?: "Usuario"
+
+        typingActive = isTyping
+        viewModelScope.launch {
+            typingRepository.sendTyping(
+                scopeType = TypingConversationScope.DIRECT_MESSAGE,
+                conversationId = activeChatId,
+                isTyping = isTyping,
+                displayName = displayName
+            )
+        }
+    }
+
+    private fun stopTypingPresence() {
+        typingStopJob?.cancel()
+        if (!typingActive) return
+        sendTypingPresence(isTyping = false)
     }
 
     private fun observeChatBackgroundSettings(chatId: String) {
@@ -564,7 +643,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun updateMessageText(text: String) { _messageText.value = text }
+    fun updateMessageText(text: String) {
+        _messageText.value = text
+        syncTypingPresence(text)
+    }
 
     fun sendTextMessage(forcedContent: String? = null) {
         if (!ensureNotBlockedForSending()) return
@@ -596,6 +678,7 @@ class ChatViewModel @Inject constructor(
                 val cid = chatId ?: return@launch
                 val outboundText = advancedMessagingRepository.applyAutoTranslation(cid, text)
                 _messageText.value = "" // Clear input
+                stopTypingPresence()
                 val replyTo = _replyToMessage.value
                 _replyToMessage.value = null
 
@@ -943,6 +1026,7 @@ class ChatViewModel @Inject constructor(
 
             if (scheduled.isSuccess) {
                 _messageText.value = ""
+                stopTypingPresence()
                 val scheduledAt = runCatching {
                     Instant.ofEpochMilli(scheduledMs)
                         .atZone(ZoneId.systemDefault())
@@ -1222,10 +1306,13 @@ class ChatViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         stopAudio()
+        stopTypingPresence()
         voiceMessageManager.reset()
         presenceJob?.cancel()
         chatSettingsJob?.cancel()
         blockRelationshipJob?.cancel()
+        typingObserverJob?.cancel()
+        typingStopJob?.cancel()
         updateMyOnlineStatus(false)
         messageRepository.setActiveChatSession(null, false)
     }
@@ -1393,6 +1480,7 @@ class ChatViewModel @Inject constructor(
     fun cancelEdit() {
         _editingMessage.value = null
         _messageText.value = ""
+        stopTypingPresence()
     }
 
     fun confirmEditMessage() {
@@ -1632,6 +1720,7 @@ class ChatViewModel @Inject constructor(
 
             if (scheduled.isSuccess) {
                 _messageText.value = ""
+                stopTypingPresence()
                 val scheduledAt = runCatching {
                     Instant.ofEpochMilli(whenMs)
                         .atZone(ZoneId.systemDefault())

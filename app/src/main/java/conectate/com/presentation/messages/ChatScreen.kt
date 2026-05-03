@@ -41,6 +41,7 @@ import androidx.navigation.NavController
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
+import conectate.com.presentation.components.TypingIndicatorMinimal
 import conectate.com.presentation.components.isUserAdmin
 import conectate.com.presentation.components.MessageBubble
 import conectate.com.presentation.components.ImageMessageBubble
@@ -115,6 +116,7 @@ fun ChatScreen(
     val forwardUserSearchQuery by viewModel.forwardUserSearchQuery.collectAsState()
     val forwardUserTargets by viewModel.forwardUserTargets.collectAsState()
     val isForwarding by viewModel.isForwarding.collectAsState()
+    val typingParticipants by viewModel.typingParticipants.collectAsState()
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     

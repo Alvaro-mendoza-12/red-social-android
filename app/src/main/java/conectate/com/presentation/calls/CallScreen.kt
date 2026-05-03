@@ -73,7 +73,7 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.delay
 
-
+@Composable
 fun CallScreen(
     navController: NavController,
     callId: String,
@@ -392,7 +392,7 @@ fun CallScreen(
     }
 }
 
-
+@Composable
 private fun CallParticipantStrip(
     participants: List<CallParticipant>,
     currentUserId: String?
@@ -427,7 +427,7 @@ private fun CallParticipantStrip(
     }
 }
 
-
+@Composable
 private fun CallParticipantGrid(
     participants: List<CallParticipant>,
     modifier: Modifier = Modifier
@@ -494,7 +494,7 @@ private fun CallParticipantGrid(
     }
 }
 
-
+@Composable
 private fun EndedCallSummaryScreen(
     summary: CallEndedSummary,
     onSendMessage: () -> Unit,
@@ -553,7 +553,6 @@ private fun EndedCallSummaryScreen(
 
 
 @Composable
-@Composable
 private fun ReactionRow(onSelect: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         val emojis = listOf("👍", "😂", "🔥", "❤️", "👏")
@@ -571,7 +570,7 @@ private fun ReactionRow(onSelect: (String) -> Unit) {
     }
 }
 
-
+@Composable
 private fun FloatingCallReaction(
     reaction: CallReactionEvent,
     modifier: Modifier = Modifier
