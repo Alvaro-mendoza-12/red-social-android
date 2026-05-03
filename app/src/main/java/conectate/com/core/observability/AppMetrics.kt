@@ -1,12 +1,11 @@
 package conectate.com.core.observability
 
 import conectate.com.core.concurrency.DispatcherProvider
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.telemetry.AppTelemetry
 import conectate.com.core.telemetry.TelemetryEvent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -44,7 +43,7 @@ class InMemoryAppMetrics @Inject constructor(
     private val crashReporter: CrashReporter
 ) : AppMetrics {
 
-    private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
+    private val scope = newSafeScope("InMemoryAppMetrics", dispatchers.io)
     private val counterMap = ConcurrentHashMap<String, AtomicLong>()
     private val failureWindows = ConcurrentHashMap<String, ArrayDeque<Long>>()
     private val counterAlertWindows = ConcurrentHashMap<String, ArrayDeque<Long>>()
@@ -86,8 +85,8 @@ class InMemoryAppMetrics @Inject constructor(
     }
 
     override fun recordFailure(metric: String, throwable: Throwable?, attributes: Map<String, String>) {
-        val now = System.currentTimeMillis()
-        val windowCount = appendAndCountInWindow(
+        var now = System.currentTimeMillis()
+        var windowCount = appendAndCountInWindow(
             windows = failureWindows,
             key = metric,
             now = now,
@@ -106,7 +105,7 @@ class InMemoryAppMetrics @Inject constructor(
             )
         }
 
-        val lowerMetric = metric.lowercase()
+        var lowerMetric = metric.lowercase()
         val warningThreshold = if (lowerMetric.contains("realtime")) {
             REALTIME_FAILURE_WARNING_THRESHOLD
         } else {
@@ -117,7 +116,7 @@ class InMemoryAppMetrics @Inject constructor(
         } else {
             FAILURE_CRITICAL_THRESHOLD
         }
-        val severity = if (windowCount >= criticalThreshold) {
+        var severity = if (windowCount >= criticalThreshold) {
             MetricAlertSeverity.CRITICAL
         } else {
             MetricAlertSeverity.WARNING
@@ -137,17 +136,17 @@ class InMemoryAppMetrics @Inject constructor(
     }
 
     private fun evaluateCounterAlertPressure(metric: String, attributes: Map<String, String>) {
-        val lowerMetric = metric.lowercase()
-        val now = System.currentTimeMillis()
+        var lowerMetric = metric.lowercase()
+        var now = System.currentTimeMillis()
 
         if (lowerMetric.contains("reconnect")) {
-            val windowCount = appendAndCountInWindow(
+            var windowCount = appendAndCountInWindow(
                 windows = counterAlertWindows,
                 key = "reconnect:$metric",
                 now = now,
                 windowMs = RECONNECT_WINDOW_MS
             )
-            val severity = when {
+            var severity = when {
                 windowCount >= RECONNECT_CRITICAL_THRESHOLD -> MetricAlertSeverity.CRITICAL
                 windowCount >= RECONNECT_WARNING_THRESHOLD -> MetricAlertSeverity.WARNING
                 else -> null
@@ -166,13 +165,13 @@ class InMemoryAppMetrics @Inject constructor(
         }
 
         if (lowerMetric.startsWith("memory_pressure")) {
-            val windowCount = appendAndCountInWindow(
+            var windowCount = appendAndCountInWindow(
                 windows = counterAlertWindows,
                 key = "memory:$metric",
                 now = now,
                 windowMs = MEMORY_PRESSURE_WINDOW_MS
             )
-            val severity = when {
+            var severity = when {
                 windowCount >= MEMORY_PRESSURE_CRITICAL_THRESHOLD -> MetricAlertSeverity.CRITICAL
                 windowCount >= MEMORY_PRESSURE_WARNING_THRESHOLD -> MetricAlertSeverity.WARNING
                 else -> null
@@ -207,7 +206,7 @@ class InMemoryAppMetrics @Inject constructor(
     }
 
     private fun maybeEmitAlert(key: String, alert: MetricAlert) {
-        val now = System.currentTimeMillis()
+        var now = System.currentTimeMillis()
         val last = lastAlertAt.getOrPut(key) { AtomicLong(0) }.get()
         if (now - last < alertCooldownMs) return
         lastAlertAt[key]?.set(now)
@@ -251,3 +250,7 @@ class InMemoryAppMetrics @Inject constructor(
         private const val MEMORY_PRESSURE_CRITICAL_THRESHOLD = 4
     }
 }
+
+
+
+

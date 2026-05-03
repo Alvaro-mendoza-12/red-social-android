@@ -25,6 +25,7 @@ fun CommentItem(
     comment: Comment, 
     isPostOwner: Boolean = false,
     level: Int = 0,
+    replyingToUserName: String? = null,
     onReplyClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
     onProfileClick: () -> Unit = {}

@@ -83,3 +83,27 @@ data class StoredAccountSession(
     val avatar_url: String? = null,
     val last_used_at: Long = System.currentTimeMillis()
 )
+
+@Serializable
+data class MultiAccountPendingDestination(
+    val targetType: String,
+    val conversationId: String,
+    val userId: String? = null,
+    val conversationTitle: String? = null,
+    val senderName: String? = null,
+    val preview: String? = null,
+    val focusMessageId: String? = null,
+    val receivedAt: Long = System.currentTimeMillis()
+) {
+    val normalizedTargetType: String
+        get() = targetType.trim().lowercase().ifBlank { "chat" }
+
+    val normalizedConversationId: String
+        get() = conversationId.trim().lowercase()
+
+    val normalizedUserId: String?
+        get() = userId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
+    val conversationKey: String
+        get() = "${normalizedTargetType}:${normalizedConversationId}"
+}

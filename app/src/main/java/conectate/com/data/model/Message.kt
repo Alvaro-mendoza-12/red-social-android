@@ -102,3 +102,5 @@ data class Message(
     val isDocument: Boolean
         get() = content_type == "document"
 }
+
+

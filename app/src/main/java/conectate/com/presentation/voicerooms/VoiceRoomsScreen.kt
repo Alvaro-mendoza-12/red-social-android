@@ -65,7 +65,7 @@ fun VoiceRoomsScreen(
         if (!hasAccess) {
             Box(modifier = Modifier.padding(padding)) {
                 RestrictedAccessScreen(
-                    requestStatus = requestStatus,
+                    requestStatus = requestStatus ?: "none",
                     onRequestAccess = { viewModel.requestAccess() }
                 )
             }
@@ -117,14 +117,15 @@ fun VoiceRoomsScreen(
                         }
                     } else {
                         val isAdmin by viewModel.isAdmin.collectAsState()
+                        val currentUserId = viewModel.getCurrentUserId()
+                        val activeRoomId = viewModel.getActiveRoomId()
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(state.rooms) { room ->
-                                val isCreator = room.creatorId == viewModel.getCurrentUserId()
-                                val activeRoomId = viewModel.getActiveRoomId()
+                                val isCreator = room.creatorId == currentUserId
                                 RoomCard(
                                     room = room,
                                     isActive = room.id == activeRoomId,

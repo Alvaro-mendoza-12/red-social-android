@@ -1,9 +1,6 @@
 package conectate.com.util
 
-import android.app.ActivityManager
 import android.content.Context
-import android.os.Build
-import kotlin.math.max
 
 enum class VideoDeviceTier {
     LOW,
@@ -30,35 +27,8 @@ data class VideoPerformanceProfile(
 
 object VideoPerformanceProfiles {
     fun detect(context: Context): VideoPerformanceProfile {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val memoryInfo = ActivityManager.MemoryInfo().also { activityManager.getMemoryInfo(it) }
-        val totalRamGb = memoryInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
-        val memoryClassMb = max(activityManager.memoryClass, 0)
-        val cores = max(Runtime.getRuntime().availableProcessors(), 1)
-
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
-        val model = Build.MODEL.lowercase()
-        val device = Build.DEVICE.lowercase()
-
-        val isInfinix = manufacturer.contains("infinix") || brand.contains("infinix")
-        val isInfinixG30Family = isInfinix && (
-            model.contains("g30") || model.contains("x663") || device.contains("x663")
-        )
-
-        val lowTier = isInfinixG30Family ||
-            totalRamGb <= 4.0 ||
-            memoryClassMb <= 192 ||
-            cores <= 4
-
-        val highTier = !lowTier &&
-            totalRamGb >= 8.0 &&
-            memoryClassMb >= 256 &&
-            cores >= 8 &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-        return when {
-            lowTier -> VideoPerformanceProfile(
+        return when (AppPerformanceProfiles.detect(context).tier) {
+            AppDeviceTier.LOW -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.LOW,
                 minBufferMs = 1_000,
                 maxBufferMs = 10_000,
@@ -75,7 +45,7 @@ object VideoPerformanceProfiles {
                 label = "Rendimiento"
             )
 
-            highTier -> VideoPerformanceProfile(
+            AppDeviceTier.HIGH -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.HIGH,
                 minBufferMs = 500,
                 maxBufferMs = 20_000,
@@ -92,7 +62,7 @@ object VideoPerformanceProfiles {
                 label = "Alta calidad"
             )
 
-            else -> VideoPerformanceProfile(
+            AppDeviceTier.BALANCED -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.BALANCED,
                 minBufferMs = 800,
                 maxBufferMs = 15_000,

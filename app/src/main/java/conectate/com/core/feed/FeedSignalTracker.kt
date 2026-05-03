@@ -38,9 +38,9 @@ interface FeedSignalTracker {
 class InMemoryFeedSignalTracker @Inject constructor() : FeedSignalTracker {
 
     private val lock = Any()
-    private val authorAffinity = mutableMapOf<String, Double>()
-    private val mediaAffinity = mutableMapOf<String, Double>()
-    private val seenPostIds = LinkedHashSet<String>()
+    private var authorAffinity = mutableMapOf<String, Double>()
+    private var mediaAffinity = mutableMapOf<String, Double>()
+    private var seenPostIds = LinkedHashSet<String>()
 
     override fun snapshot(): FeedSignalSnapshot {
         synchronized(lock) {
@@ -66,7 +66,7 @@ class InMemoryFeedSignalTracker @Inject constructor() : FeedSignalTracker {
     }
 
     override fun recordInteraction(post: Post, action: FeedInteractionAction) {
-        val delta = when (action) {
+        var delta = when (action) {
             FeedInteractionAction.IMPRESSION -> IMPRESSION_AUTHOR_DELTA
             FeedInteractionAction.OPEN -> 0.45
             FeedInteractionAction.LIKE -> 1.40
@@ -157,3 +157,6 @@ class InMemoryFeedSignalTracker @Inject constructor() : FeedSignalTracker {
         private const val MAX_SIGNAL_VALUE = 8.0
     }
 }
+
+
+

@@ -1,0 +1,376 @@
+name: 🚀 Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, staging, production ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+env:
+  NODE_VERSION: '20'
+  CACHE_VERSION: 'v2'
+
+jobs:
+  # 🔥 LINTING & CODE QUALITY
+  lint:
+    name: 🔍 Lint & Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔍 ESLint
+        run: npm run lint
+
+      - name: 📏 Prettier check
+        run: npx prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,md}"
+
+      - name: 🔍 TypeScript check
+        run: npx tsc --noEmit
+
+  # 🔥 TESTING
+  test:
+    name: 🧪 Testing Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Unit Tests
+        run: npm run test:coverage
+
+      - name: 📊 Coverage Report
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: 🧪 E2E Tests (Cypress)
+        uses: cypress-io/github-action@v6
+        with:
+          start: npm run dev
+          wait-on: 'http://localhost:5173'
+          wait-on-timeout: 120
+          browser: chrome
+          record: true
+        env:
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 🔥 SECURITY AUDIT
+  security:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔍 npm audit
+        run: npm audit --audit-level=moderate
+
+      - name: 🔍 Snyk Security Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  # 🔥 BUILD & PERFORMANCE
+  build:
+    name: 🏗️ Build & Performance
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build application
+        run: npm run build
+
+      - name: 📊 Bundle analysis
+        run: npm run analyze
+
+      - name: 🚀 Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          configPath: '.lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  # 🔥 DEPLOY TO STAGING
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging'
+    environment:
+      name: staging
+      url: https://staging.conectate.com
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build application
+        run: npm run build
+
+      - name: 🔐 Setup Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.FIREBASE_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          projectId: conectate-staging
+          target: staging
+
+      - name: 📧 Notify deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        if: always()
+
+  # 🔥 DEPLOY TO PRODUCTION
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/production' || github.event_name == 'release'
+    environment:
+      name: production
+      url: https://conectate.com
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build application
+        run: npm run build
+
+      - name: 🔐 Setup Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.FIREBASE_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          projectId: conectate-production
+          target: production
+
+      - name: 📊 Performance monitoring
+        run: |
+          curl -X POST "https://api.newrelic.com/v2/applications/${{ secrets.NEW_RELIC_APP_ID }}/deployments.json" \
+            -H "X-Api-Key: ${{ secrets.NEW_RELIC_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "deployment": {
+                "revision": "${{ github.sha }}",
+                "description": "Deploy from GitHub Actions",
+                "user": "${{ github.actor }}",
+                "changelog": "${{ github.event.head_commit.message }}"
+              }
+            }'
+
+      - name: 📧 Notify deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: "🚀 Production deployment completed successfully!"
+        if: always()
+
+  # 🔥 DOCKER BUILD & DEPLOY
+  docker:
+    name: 🐳 Docker Build & Deploy
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'release'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: conectate/web
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: 🐳 Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 🔥 LOAD TESTING
+  load-test:
+    name: ⚡ Load Testing
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📥 Install Artillery
+        run: npm install -g artillery@latest
+
+      - name: ⚡ Run load tests
+        run: |
+          artillery run --target https://staging.conectate.com artillery-config.yml
+
+      - name: 📊 Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: load-test-results
+          path: artillery-report.html
+
+  # 🔥 MONITORING & HEALTH CHECKS
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/production'
+    steps:
+      - name: 🏥 Health check
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Check if the site is responsive
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://conectate.com)
+          if [ $response -ne 200 ]; then
+            echo "❌ Health check failed with status code: $response"
+            exit 1
+          fi
+          
+          echo "✅ Health check passed"
+
+      - name: 📊 Performance check
+        run: |
+          # Run Lighthouse performance check
+          npx lighthouse https://conectate.com --output=json --output-path=./lighthouse-results.json --quiet
+          
+          # Check if performance score is above threshold
+          performance_score=$(cat lighthouse-results.json | jq '.categories.performance.score * 100')
+          if (( $(echo "$performance_score < 90" | bc -l) )); then
+            echo "❌ Performance score too low: $performance_score"
+            exit 1
+          fi
+          
+          echo "✅ Performance check passed with score: $performance_score"
+
+  # 🔥 NOTIFICATIONS
+  notify:
+    name: 📧 Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy-production, health-check]
+    if: always()
+    steps:
+      - name: 📧 Send notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            🚀 **Deployment Summary**
+            * **Repository**: ${{ github.repository }}
+            * **Branch**: ${{ github.ref_name }}
+            * **Commit**: ${{ github.sha }}
+            * **Actor**: ${{ github.actor }}
+            * **Status**: ${{ job.status }}
+            * **Workflow**: ${{ github.workflow }}
+            
+            🔗 [View on GitHub](${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }})
+        if: always()

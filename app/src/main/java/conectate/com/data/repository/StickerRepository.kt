@@ -67,6 +67,8 @@ class StickerRepository @Inject constructor(
     private val _recentStickerIds = MutableStateFlow<List<String>>(emptyList())
     val recentStickerIds: StateFlow<List<String>> = _recentStickerIds.asStateFlow()
 
+@Composable
+@Composable
     suspend fun bootstrap() = withContext(Dispatchers.IO) {
         val localCatalog = loadLocalItems().ifEmpty { defaultCatalog() }
         val localPacks = loadLocalPacks().ifEmpty { defaultPacks() }
@@ -86,6 +88,8 @@ class StickerRepository @Inject constructor(
         runCatching { refreshRemotePacks() }
     }
 
+@Composable
+@Composable
     suspend fun search(query: String): List<StickerItem> = withContext(Dispatchers.Default) {
         val q = query.trim().lowercase()
         val tokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -100,9 +104,9 @@ class StickerRepository @Inject constructor(
 
         val scored = mutableListOf<Pair<StickerItem, Int>>()
         base.forEach { item ->
-            val haystackTitle = item.title.lowercase()
+            var haystackTitle = item.title.lowercase()
             val haystackTags = item.tags.map { it.lowercase() }
-            var score = 0
+            val score = 0
             tokens.forEach { token ->
                 score += when {
                     haystackTitle == token -> 50
@@ -124,11 +128,13 @@ class StickerRepository @Inject constructor(
             .map { pair -> pair.first }
     }
 
+@Composable
+@Composable
     suspend fun toggleFavorite(stickerId: String): Boolean = withContext(Dispatchers.IO) {
-        val clean = stickerId.trim()
+        var clean = stickerId.trim()
         if (clean.isBlank()) return@withContext false
 
-        val updated = _favorites.value.toMutableSet().apply {
+        var updated = _favorites.value.toMutableSet().apply {
             if (contains(clean)) remove(clean) else add(clean)
         }
         _favorites.value = updated
@@ -136,8 +142,8 @@ class StickerRepository @Inject constructor(
 
         // Best effort remote sync. If RPC is missing we keep local behavior.
         runCatching {
-            val token = authService.getAccessToken() ?: return@runCatching
-            val payload = buildJsonObject { put("p_sticker_id", JsonPrimitive(clean)) }
+            var token = authService.getAccessToken() ?: return@runCatching
+            var payload = buildJsonObject { put("p_sticker_id", JsonPrimitive(clean)) }
             supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_sticker_favorite") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -149,13 +155,32 @@ class StickerRepository @Inject constructor(
         updated.contains(clean)
     }
 
+    fun isFavoriteMediaUrl(mediaUrl: String?): Boolean {
+        var cleanUrl = mediaUrl?.trim().orEmpty()
+        if (cleanUrl.isBlank()) return false
+        val stickerId = _catalog.value.firstOrNull {
+            it.media_url?.trim()?.equals(cleanUrl, ignoreCase = true) == true
+        }?.id ?: return false
+        return _favorites.value.contains(stickerId)
+    }
+
+@Composable
+@Composable
+    suspend fun toggleFavoriteByMedia(mediaUrl: String, title: String = "Sticker"): Boolean = withContext(Dispatchers.IO) {
+        var sticker = ensureStickerForMedia(mediaUrl, title) ?: return@withContext false
+        registerRecentSticker(sticker.id)
+        toggleFavorite(sticker.id)
+    }
+
+@Composable
+@Composable
     suspend fun createPack(name: String, description: String? = null, isPublic: Boolean = false): Result<StickerPack> = withContext(Dispatchers.IO) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) {
             return@withContext Result.failure(Exception("El nombre del paquete es obligatorio"))
         }
 
-        val local = StickerPack(
+        var local = StickerPack(
             name = trimmedName,
             description = description?.trim()?.ifBlank { null },
             is_public = isPublic
@@ -166,13 +191,13 @@ class StickerRepository @Inject constructor(
         persistPacks(updatedLocal)
 
         val remote = runCatching {
-            val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-            val payload = buildJsonObject {
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            var payload = buildJsonObject {
                 put("p_name", JsonPrimitive(trimmedName))
                 put("p_description", JsonPrimitive(description?.trim()))
                 put("p_is_public", JsonPrimitive(isPublic))
             }
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_sticker_pack") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_sticker_pack") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -184,7 +209,7 @@ class StickerRepository @Inject constructor(
         }.getOrNull()
 
         if (remote != null) {
-            val merged = (_packs.value.filterNot { it.name.equals(trimmedName, ignoreCase = true) } + remote).distinctBy { it.id }
+            var merged = (_packs.value.filterNot { it.name.equals(trimmedName, ignoreCase = true) } + remote).distinctBy { it.id }
             _packs.value = merged
             persistPacks(merged)
             Result.success(remote)
@@ -203,8 +228,8 @@ class StickerRepository @Inject constructor(
         persistItems(mergedItems)
 
         runCatching {
-            val token = authService.getAccessToken() ?: return@runCatching
-            val payload = buildJsonObject {
+            var token = authService.getAccessToken() ?: return@runCatching
+            var payload = buildJsonObject {
                 put("p_pack_id", JsonPrimitive(packId))
                 put("p_sticker_id", JsonPrimitive(sticker.id))
                 put("p_media_url", JsonPrimitive(sticker.media_url))
@@ -228,11 +253,11 @@ class StickerRepository @Inject constructor(
         title: String? = null,
         tags: List<String> = emptyList()
     ): Result<StickerItem> = withContext(Dispatchers.IO) {
-        val bytes = readUriBytes(imageUri, maxBytes = 8 * 1024 * 1024)
+        var bytes = readUriBytes(imageUri, maxBytes = 8 * 1024 * 1024)
             ?: return@withContext Result.failure(Exception("No se pudo leer la imagen"))
         if (bytes.isEmpty()) return@withContext Result.failure(Exception("Imagen vacía"))
 
-        val mimeType = resolveStickerMimeType(imageUri)
+        var mimeType = resolveStickerMimeType(imageUri)
         createStickerFromBytes(
             imageBytes = bytes,
             packId = packId,
@@ -249,7 +274,7 @@ class StickerRepository @Inject constructor(
         tags: List<String> = emptyList(),
         mimeType: String = "image/png"
     ): Result<StickerItem> = withContext(Dispatchers.IO) {
-        val uid = authService.getCurrentUserId()?.trim()?.lowercase()
+        var uid = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return@withContext Result.failure(Exception("No hay sesión activa"))
         if (imageBytes.isEmpty()) return@withContext Result.failure(Exception("Imagen vacía"))
 
@@ -279,7 +304,7 @@ class StickerRepository @Inject constructor(
         val cleanTitle = title?.trim()?.ifBlank { null } ?: "Sticker personalizado"
         val cleanTags = tags.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct().take(12)
         val selectedPack = packId?.trim()?.ifBlank { null } ?: _packs.value.firstOrNull()?.id
-        val sticker = StickerItem(
+        var sticker = StickerItem(
             id = "custom_${UUID.randomUUID().toString().replace("-", "")}",
             title = cleanTitle,
             media_url = mediaUrl,
@@ -290,7 +315,7 @@ class StickerRepository @Inject constructor(
             pack_id = selectedPack
         )
 
-        val merged = (_catalog.value + sticker).distinctBy { it.id }
+        var merged = (_catalog.value + sticker).distinctBy { it.id }
         _catalog.value = merged
         persistItems(merged)
         registerRecentSticker(sticker.id)
@@ -306,11 +331,11 @@ class StickerRepository @Inject constructor(
         sticker: StickerItem,
         targetPackId: String
     ): Result<StickerItem> = withContext(Dispatchers.IO) {
-        val cleanPack = targetPackId.trim()
+        var cleanPack = targetPackId.trim()
         if (cleanPack.isBlank()) {
             return@withContext Result.failure(Exception("Selecciona un pack de destino"))
         }
-        val pack = _packs.value.firstOrNull { it.id == cleanPack }
+        var pack = _packs.value.firstOrNull { it.id == cleanPack }
             ?: return@withContext Result.failure(Exception("Pack inválido"))
 
         val copied = sticker.copy(
@@ -325,7 +350,7 @@ class StickerRepository @Inject constructor(
             is_favorite = false
         )
 
-        val merged = (_catalog.value + copied).distinctBy { it.id }
+        var merged = (_catalog.value + copied).distinctBy { it.id }
         _catalog.value = merged
         persistItems(merged)
 
@@ -333,15 +358,17 @@ class StickerRepository @Inject constructor(
         Result.success(copied)
     }
 
+@Composable
+@Composable
     suspend fun removeStickerFromPack(packId: String, stickerId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanPack = packId.trim()
-        val cleanSticker = stickerId.trim()
+        var cleanPack = packId.trim()
+        var cleanSticker = stickerId.trim()
         if (cleanPack.isBlank() || cleanSticker.isBlank()) {
             return@withContext Result.failure(Exception("Datos inválidos"))
         }
 
         var removed = false
-        val updated = _catalog.value.map { item ->
+        var updated = _catalog.value.map { item ->
             if (item.id == cleanSticker && item.pack_id == cleanPack) {
                 removed = true
                 item.copy(pack_id = null, pack_name = null)
@@ -358,7 +385,7 @@ class StickerRepository @Inject constructor(
         persistItems(updated)
 
         runCatching {
-            val token = authService.getAccessToken() ?: return@runCatching
+            var token = authService.getAccessToken() ?: return@runCatching
             supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/sticker_pack_items") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -370,8 +397,10 @@ class StickerRepository @Inject constructor(
         Result.success(Unit)
     }
 
+@Composable
+@Composable
     suspend fun deleteSticker(stickerId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanSticker = stickerId.trim()
+        var cleanSticker = stickerId.trim()
         if (cleanSticker.isBlank()) {
             return@withContext Result.failure(Exception("stickerId inválido"))
         }
@@ -388,8 +417,8 @@ class StickerRepository @Inject constructor(
         persistFavorites(updatedFavs)
 
         runCatching {
-            val token = authService.getAccessToken() ?: return@runCatching
-            val uid = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@runCatching
+            var uid = authService.getCurrentUserId()?.trim()?.lowercase()
 
             supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/sticker_pack_items") {
                 header("Authorization", "Bearer $token")
@@ -420,18 +449,20 @@ class StickerRepository @Inject constructor(
         Result.success(Unit)
     }
 
+@Composable
+@Composable
     suspend fun downloadPack(packId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val clean = packId.trim()
+        var clean = packId.trim()
         if (clean.isBlank()) return@withContext Result.failure(Exception("packId inválido"))
 
-        val updated = _downloadedPacks.value.toMutableSet().apply { add(clean) }
+        var updated = _downloadedPacks.value.toMutableSet().apply { add(clean) }
         _downloadedPacks.value = updated
         persistDownloadedPacks(updated)
 
         // Prefetch lightweight remote catalog for selected pack (best effort).
         runCatching {
-            val token = authService.getAccessToken() ?: return@runCatching
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_search_stickers") {
+            var token = authService.getAccessToken() ?: return@runCatching
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_search_stickers") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -441,8 +472,8 @@ class StickerRepository @Inject constructor(
                 })
             }
             if (response.status.isSuccess()) {
-                val parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrDefault(emptyList())
-                val merged = (parsed + _catalog.value).distinctBy { it.id }
+                var parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrDefault(emptyList())
+                var merged = (parsed + _catalog.value).distinctBy { it.id }
                 _catalog.value = merged
                 persistItems(merged)
             }
@@ -469,7 +500,7 @@ class StickerRepository @Inject constructor(
     fun registerRecentSticker(stickerId: String) {
         val cleanId = stickerId.trim()
         if (cleanId.isBlank()) return
-        val updated = listOf(cleanId) + _recentStickerIds.value.filterNot { it == cleanId }
+        var updated = listOf(cleanId) + _recentStickerIds.value.filterNot { it == cleanId }
         val capped = updated.take(80)
         _recentStickerIds.value = capped
         persistRecentStickerIds(capped)
@@ -479,9 +510,34 @@ class StickerRepository @Inject constructor(
         return _downloadedPacks.value.contains(packId.trim())
     }
 
+    private fun ensureStickerForMedia(mediaUrl: String, title: String): StickerItem? {
+        var cleanUrl = mediaUrl.trim()
+        if (cleanUrl.isBlank()) return null
+
+        _catalog.value.firstOrNull {
+            it.media_url?.trim()?.equals(cleanUrl, ignoreCase = true) == true
+        }?.let { return it }
+
+        val generated = StickerItem(
+            id = "message_${UUID.nameUUIDFromBytes(cleanUrl.toByteArray()).toString()}",
+            title = title.trim().ifBlank { "Sticker" }.take(60),
+            media_url = cleanUrl,
+            thumbnail_url = cleanUrl,
+            is_animated = cleanUrl.contains(".gif", ignoreCase = true),
+            source = "message",
+            pack_id = "local-default",
+            pack_name = "Mis stickers"
+        )
+
+        var updated = (listOf(generated) + _catalog.value).distinctBy { it.id }
+        _catalog.value = updated
+        persistItems(updated)
+        return generated
+    }
+
     private suspend fun refreshRemoteCatalog() {
-        val token = authService.getAccessToken() ?: return
-        val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_search_stickers") {
+        var token = authService.getAccessToken() ?: return
+        var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_search_stickers") {
             header("Authorization", "Bearer $token")
             header("apikey", supabaseConfig.supabaseAnonKey)
             header("Content-Type", "application/json")
@@ -492,10 +548,10 @@ class StickerRepository @Inject constructor(
         }
         if (!response.status.isSuccess()) return
 
-        val parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrNull() ?: return
+        var parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrNull() ?: return
         if (parsed.isEmpty()) return
 
-        val merged = (parsed + _catalog.value).distinctBy { it.id }
+        var merged = (parsed + _catalog.value).distinctBy { it.id }
         _catalog.value = merged
         persistItems(merged)
     }
@@ -507,7 +563,7 @@ class StickerRepository @Inject constructor(
             }.decodeList<StickerPack>()
 
             if (rows.isNotEmpty()) {
-                val merged = (rows + _packs.value).distinctBy { it.id }
+                var merged = (rows + _packs.value).distinctBy { it.id }
                 _packs.value = merged
                 persistPacks(merged)
             }
@@ -567,27 +623,27 @@ class StickerRepository @Inject constructor(
     }
 
     private fun loadLocalItems(): List<StickerItem> {
-        val raw = prefs.getString(KEY_LOCAL_ITEMS, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_LOCAL_ITEMS, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<StickerItem>>(raw) }.getOrDefault(emptyList())
     }
 
     private fun loadLocalPacks(): List<StickerPack> {
-        val raw = prefs.getString(KEY_LOCAL_PACKS, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_LOCAL_PACKS, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<StickerPack>>(raw) }.getOrDefault(emptyList())
     }
 
     private fun loadLocalFavorites(): Set<String> {
-        val raw = prefs.getString(KEY_FAVORITES, null) ?: return emptySet()
+        var raw = prefs.getString(KEY_FAVORITES, null) ?: return emptySet()
         return runCatching { json.decodeFromString<List<String>>(raw).toSet() }.getOrDefault(emptySet())
     }
 
     private fun loadDownloadedPacks(): Set<String> {
-        val raw = prefs.getString(KEY_DOWNLOADED_PACKS, null) ?: return emptySet()
+        var raw = prefs.getString(KEY_DOWNLOADED_PACKS, null) ?: return emptySet()
         return runCatching { json.decodeFromString<List<String>>(raw).toSet() }.getOrDefault(emptySet())
     }
 
     private fun loadRecentStickerIds(): List<String> {
-        val raw = prefs.getString(KEY_RECENT_STICKERS, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_RECENT_STICKERS, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<String>>(raw) }.getOrDefault(emptyList())
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -595,7 +651,7 @@ class StickerRepository @Inject constructor(
     }
 
     private fun resolveStickerMimeType(uri: Uri): String {
-        val fromResolver = context.contentResolver.getType(uri)?.trim()?.lowercase()
+        var fromResolver = context.contentResolver.getType(uri)?.trim()?.lowercase()
         return when {
             fromResolver == null -> "image/png"
             fromResolver.startsWith("image/") -> fromResolver
@@ -615,7 +671,7 @@ class StickerRepository @Inject constructor(
     private fun readUriBytes(uri: Uri, maxBytes: Int): ByteArray? {
         return runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
-                val bytes = input.readBytes()
+                var bytes = input.readBytes()
                 if (bytes.size > maxBytes) {
                     null
                 } else {
@@ -626,7 +682,7 @@ class StickerRepository @Inject constructor(
     }
 
     private fun extractStorageObjectPathFromPublicUrl(urlOrPath: String?, bucket: String): String? {
-        val raw = urlOrPath?.trim().orEmpty()
+        var raw = urlOrPath?.trim().orEmpty()
         if (raw.isBlank()) return null
 
         if (!raw.startsWith("http", ignoreCase = true)) {
@@ -648,3 +704,8 @@ class StickerRepository @Inject constructor(
         return runCatching { URLDecoder.decode(candidate, "UTF-8") }.getOrDefault(candidate)
     }
 }
+
+
+
+
+

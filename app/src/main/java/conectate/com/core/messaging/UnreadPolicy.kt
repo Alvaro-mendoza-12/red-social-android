@@ -19,3 +19,5 @@ object UnreadPolicy {
         return MessageStatusNormalizer.isEligibleForReadTransition(status)
     }
 }
+
+

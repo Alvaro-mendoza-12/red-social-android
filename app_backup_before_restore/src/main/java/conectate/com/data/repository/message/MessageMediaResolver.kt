@@ -1,0 +1,276 @@
+package conectate.com.data.repository.message
+
+import android.net.Uri
+import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.StorageService
+import conectate.com.data.supabase.SupabaseConfig
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.net.URLDecoder
+
+internal class MessageMediaResolver(
+    private val storageService: StorageService,
+    private val authService: AuthService,
+    private val supabaseConfig: SupabaseConfig,
+    private val sessionStateStore: MessageSessionStateStore
+) {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        isLenient = true
+    }
+
+    suspend fun getPlayableUrl(path: String): Result<String> {
+        var trimmed = path.trim()
+        if (trimmed.contains("/storage/v1/object/public/")) {
+            return Result.success(trimmed)
+        }
+
+        var location = resolveStorageLocation(trimmed)
+            ?: return Result.failure(Exception("Ruta multimedia invalida"))
+
+        android.util.Log.d(
+            "MessageMediaResolver",
+            "getPlayableUrl RAW: $path -> BUCKET: ${location.bucket}, PATH: ${location.objectPath}"
+        )
+
+        val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
+        if (signed.isSuccess) {
+            android.util.Log.d("MessageMediaResolver", "getPlayableUrl SIGNED OK")
+            return signed
+        }
+
+        android.util.Log.w(
+            "MessageMediaResolver",
+            "getPlayableUrl SIGNED FAILED: ${signed.exceptionOrNull()?.message}. Returning fallback."
+        )
+
+        return if (trimmed.startsWith("http", ignoreCase = true)) {
+            Result.success(trimmed)
+        } else {
+            Result.success(storageService.getPublicUrl(location.bucket, location.objectPath))
+        }
+    }
+
+    fun getShareableUrl(path: String): Result<String> {
+        var trimmed = path.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(Exception("Ruta multimedia invalida"))
+        }
+        if (trimmed.startsWith("http", ignoreCase = true)) {
+            return Result.success(trimmed)
+        }
+
+        var location = resolveStorageLocation(trimmed)
+            ?: return Result.failure(Exception("Ruta multimedia invalida"))
+
+        return Result.success(storageService.getPublicUrl(location.bucket, location.objectPath))
+    }
+
+    suspend fun consumeViewOnceMedia(
+        scopeType: String,
+        messageId: String,
+        mediaPath: String,
+        deviceId: String = android.os.Build.MODEL ?: "android"
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val cleanScope = scopeType.trim().lowercase()
+        val cleanMessageId = messageId.trim().lowercase()
+        val cleanMediaPath = mediaPath.trim()
+        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return@withContext Result.failure(Exception("No user"))
+
+        if (cleanScope.isBlank() || cleanMessageId.isBlank() || cleanMediaPath.isBlank()) {
+            return@withContext Result.failure(Exception("Datos incompletos para view-once"))
+        }
+
+        val consumptionKey = "$cleanScope:$cleanMessageId:$userId"
+        if (sessionStateStore.isViewOnceConsumed(consumptionKey)) {
+            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
+        }
+
+        val playable = getPlayableUrl(cleanMediaPath)
+        if (playable.isFailure) {
+            return@withContext Result.failure(playable.exceptionOrNull() ?: Exception("No se pudo abrir contenido"))
+        }
+        val playableUrl = playable.getOrThrow()
+
+        val token = authService.getAccessToken()
+            ?: return@withContext Result.failure(Exception("No token"))
+
+        var allowedByServer = false
+        var rpcChecked = false
+        runCatching {
+            val payload = buildJsonObject {
+                put("p_scope_type", cleanScope)
+                put("p_message_id", cleanMessageId)
+                put("p_device_id", deviceId.take(120))
+            }
+            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_consume_view_once_message") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                setBody(payload)
+            }
+            val rpcBody = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+            if (rpcResponse.status.isSuccess()) {
+                rpcChecked = true
+                allowedByServer = parseViewOnceAllowed(rpcBody)
+            } else if (!isMissingRpcFunction(rpcResponse.status.value, rpcBody, "secure_consume_view_once_message")) {
+                android.util.Log.w(
+                    "MessageMediaResolver",
+                    "secure_consume_view_once_message failed (${rpcResponse.status.value}). Falling back to local guard. Body=$rpcBody"
+                )
+            }
+        }
+
+        val allowed = if (rpcChecked) {
+            allowedByServer || !sessionStateStore.isViewOnceConsumed(consumptionKey)
+        } else {
+            !sessionStateStore.isViewOnceConsumed(consumptionKey)
+        }
+
+        if (!allowed) {
+            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
+        }
+
+        sessionStateStore.markViewOnceConsumed(consumptionKey)
+        Result.success(playableUrl)
+    }
+
+    private fun parseViewOnceAllowed(rawBody: String): Boolean {
+        if (rawBody.isBlank()) return false
+        return runCatching {
+            val element = json.parseToJsonElement(rawBody)
+            when (element) {
+                is JsonObject -> {
+                    parseFlexibleBoolean(element["allowed"]) == true &&
+                        parseFlexibleBoolean(element["already_consumed"]) != true
+                }
+                is JsonArray -> {
+                    val first = element.firstOrNull() as? JsonObject
+                    parseFlexibleBoolean(first?.get("allowed")) == true &&
+                        parseFlexibleBoolean(first?.get("already_consumed")) != true
+                }
+                else -> false
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun parseFlexibleBoolean(raw: JsonElement?): Boolean? {
+        val primitive = raw?.jsonPrimitive ?: return null
+        primitive.booleanOrNull?.let { return it }
+        val text = primitive.contentOrNull?.trim()?.lowercase() ?: return null
+        return when (text) {
+            "true", "t", "1", "yes", "y" -> true
+            "false", "f", "0", "no", "n" -> false
+            else -> null
+        }
+    }
+
+    private fun isMissingRpcFunction(statusCode: Int, body: String, functionName: String): Boolean {
+        if (statusCode != 400 && statusCode != 404) return false
+        val cleanBody = body.lowercase()
+        return cleanBody.contains(functionName.lowercase()) &&
+            (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
+    }
+
+    private data class StorageLocation(
+        val bucket: String,
+        val objectPath: String
+    )
+
+    private fun resolveStorageLocation(rawPath: String): StorageLocation? {
+        val knownBuckets = listOf(
+            "chat-media",
+            "group-media",
+            "community-media",
+            "groups",
+            "communities",
+            "group-audio",
+            "community-audio",
+            "videos",
+            "thumbnails",
+            "avatars",
+            "posts"
+        )
+
+        val input = rawPath.trim()
+        if (input.isBlank()) return null
+        val withoutQuery = input.substringBefore("?").trim()
+
+        fun decode(value: String): String =
+            runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
+        fun cleanObjectPath(value: String): String = decode(value).trim().removePrefix("/").substringBefore("?")
+
+        val nonHttp = withoutQuery.removePrefix("/")
+        val directBucket = nonHttp.substringBefore("/", "")
+        if (directBucket in knownBuckets) {
+            var objectPath = cleanObjectPath(nonHttp.substringAfter("/", ""))
+            if (objectPath.isNotBlank()) {
+                return StorageLocation(directBucket, objectPath)
+            }
+        }
+
+        val uri = runCatching { Uri.parse(withoutQuery) }.getOrNull()
+        val segments = uri?.pathSegments
+            ?.map { decode(it) }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+        if (segments.isNotEmpty()) {
+            val publicIdx = segments.indexOf("public")
+            if (publicIdx >= 0 && publicIdx + 2 < segments.size) {
+                var bucket = segments[publicIdx + 1]
+                var objectPath = cleanObjectPath(segments.subList(publicIdx + 2, segments.size).joinToString("/"))
+                if (bucket in knownBuckets && objectPath.isNotBlank()) {
+                    return StorageLocation(bucket, objectPath)
+                }
+            }
+
+            val signIdx = segments.indexOf("sign")
+            if (signIdx >= 0 && signIdx + 2 < segments.size) {
+                var bucket = segments[signIdx + 1]
+                var objectPath = cleanObjectPath(segments.subList(signIdx + 2, segments.size).joinToString("/"))
+                if (bucket in knownBuckets && objectPath.isNotBlank()) {
+                    return StorageLocation(bucket, objectPath)
+                }
+            }
+
+            val storageObjectIdx = segments.indexOf("object")
+            if (storageObjectIdx >= 0 && storageObjectIdx + 2 < segments.size) {
+                var bucket = segments[storageObjectIdx + 1]
+                var objectPath = cleanObjectPath(segments.subList(storageObjectIdx + 2, segments.size).joinToString("/"))
+                if (bucket in knownBuckets && objectPath.isNotBlank()) {
+                    return StorageLocation(bucket, objectPath)
+                }
+            }
+        }
+
+        knownBuckets.firstOrNull { withoutQuery.contains("$it/") }?.let { bucket ->
+            var objectPath = cleanObjectPath(withoutQuery.substringAfter("$bucket/", ""))
+            if (objectPath.isNotBlank()) {
+                return StorageLocation(bucket, objectPath)
+            }
+        }
+
+        return null
+    }
+}
+
+
+

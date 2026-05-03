@@ -2,11 +2,12 @@ package conectate.com.presentation.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-// Phone auth now uses Supabase OTP flow (no Firebase PhoneAuthCredential)
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
+import conectate.com.presentation.common.looksLikeStoredAccountSessionIssue
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,8 +26,8 @@ sealed class AuthState {
     data class Error(val message: String) : AuthState()
 }
 
-@HiltViewModel
-class AuthViewModel @Inject constructor(
+
+class AuthViewModel  constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
@@ -37,6 +38,8 @@ class AuthViewModel @Inject constructor(
         authRepository.getCurrentUserId() != null
     )
     val isUserLoggedIn: StateFlow<Boolean> = _isUserLoggedIn.asStateFlow()
+    private val _currentUserId = MutableStateFlow(authRepository.getCurrentUserId())
+    val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
 
     private val _storedAccounts = MutableStateFlow<List<StoredAccountSession>>(emptyList())
     val storedAccounts: StateFlow<List<StoredAccountSession>> = _storedAccounts.asStateFlow()
@@ -53,7 +56,9 @@ class AuthViewModel @Inject constructor(
     private fun checkAuthState() {
         viewModelScope.launch {
             authRepository.getAuthStateFlow().collect { user ->
-                val hasValidUser = authRepository.getCurrentUserId() != null
+                val resolvedUserId = authRepository.getCurrentUserId()
+                val hasValidUser = resolvedUserId != null
+                _currentUserId.value = resolvedUserId
                 _isUserLoggedIn.value = hasValidUser || user != null
             }
         }
@@ -69,7 +74,7 @@ class AuthViewModel @Inject constructor(
 
     private fun validateSessionHealth() {
         viewModelScope.launch {
-            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) return@launch
+            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) return
             authRepository.enforceCurrentSessionIsActive()
                 .onFailure { throwable ->
                     _authState.value = when (throwable) {
@@ -94,17 +99,19 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             _authState.value = AuthState.Loading
 
-            val result = authRepository.signUpWithEmail(
+            var result = authRepository.signUpWithEmail(
                 email, password, name, country, imageUri, acceptedPrivacyPolicy
             )
 
             _authState.value = result.fold(
                 onSuccess = { 
-                    // Don't auto-login, just show success and redirect to login
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    // Successful sign-up keeps the session active so the nav graph can open Home directly.
                     AuthState.Success(it) 
                 },
                 onFailure = { 
-                    val message = mapAuthError(it)
+                    var message = mapAuthError(it)
                     AuthState.Error(message) 
                 }
             )
@@ -116,9 +123,11 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             
-            val result = authRepository.signInWithEmail(email, password)
+            var result = authRepository.signInWithEmail(email, password)
             _authState.value = result.fold(
                 onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
                     AuthState.Success(it)
                 },
                 onFailure = {
@@ -128,7 +137,7 @@ class AuthViewModel @Inject constructor(
                             reason = it.reason
                         )
                         else -> {
-                            val message = mapAuthError(it)
+                            var message = mapAuthError(it)
                             AuthState.Error(message)
                         }
                     }
@@ -138,62 +147,43 @@ class AuthViewModel @Inject constructor(
     }
 
     private fun mapAuthError(throwable: Throwable): String {
-        if (throwable is AccountSuspendedException) {
-            return throwable.message
-        }
-        val message = throwable.message ?: ""
-        return when {
-            message.contains(AccountSuspendedException.ERROR_CODE, ignoreCase = true) ->
-                "Tu cuenta está suspendida temporalmente."
-            message.contains("suspendida", ignoreCase = true) ||
-                message.contains("inhabilitada", ignoreCase = true) -> message
-            message.contains("Invalid login credentials", ignoreCase = true) -> "Correo o contraseña incorrectos"
-            message.contains("User not found", ignoreCase = true) -> "El usuario no existe"
-            message.contains("Email not confirmed", ignoreCase = true) -> "Por favor confirma tu correo electrónico"
-            message.contains("Signup requires a valid password", ignoreCase = true) -> "La contraseña no es válida"
-            message.contains("User already registered", ignoreCase = true) -> "Este correo ya está registrado"
-            message.contains("Network error", ignoreCase = true) -> "Error de conexión. Revisa tu internet"
-            else -> "Ocurrió un error: ${throwable.localizedMessage ?: "Inténtalo de nuevo"}"
-        }
+        return throwable.toUserFacingMessage()
     }
 
-    // Start phone sign-in (requests OTP)
-    fun requestPhoneOtp(phone: String) {
-        viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            val result = authRepository.startPhoneSignIn(phone)
-            _authState.value = result.fold(
-                onSuccess = { AuthState.Idle },
-                onFailure = { AuthState.Error(mapAuthError(it)) }
-            )
-        }
-    }
-
-    // Confirm phone OTP and complete sign-in/registration
-    fun confirmPhoneOtp(phone: String, otp: String, name: String, country: String, city: String) {
-        viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            val result = authRepository.confirmPhoneOtp(phone, otp, name, null)
-            _authState.value = result.fold(
-                onSuccess = { AuthState.Success(it) },
-                onFailure = { AuthState.Error(mapAuthError(it)) }
-            )
+    private fun mapAccountSwitchError(throwable: Throwable): String {
+        return if (looksLikeStoredAccountSessionIssue(throwable.message)) {
+            "Esta cuenta guardada venció o dejó de ser válida. Inicia sesión manualmente con esa cuenta una vez para volver a activarla."
+        } else {
+            mapAuthError(throwable)
         }
     }
 
     suspend fun signOut() {
         authRepository.signOut()
         _isUserLoggedIn.value = false
+        _currentUserId.value = null
+        _authState.value = AuthState.Idle
+    }
+
+    /**
+     * Immediate (non-suspending) logout for UI buttons.
+     * Ensures we flip the app to "logged out" state before any navigation happens.
+     */
+    fun forceLocalLogout() {
+        runCatching { authRepository.forceLocalLogout() }
+            .onFailure { android.util.Log.e("AuthViewModel", "forceLocalLogout failed", it) }
+        _isUserLoggedIn.value = false
+        _currentUserId.value = null
         _authState.value = AuthState.Idle
     }
 
     fun saveCurrentAccount() {
         viewModelScope.launch {
-            val result = authRepository.rememberCurrentAccount()
+            var result = authRepository.rememberCurrentAccount()
             _accountSwitchMessage.value = if (result.isSuccess) {
-                "Cuenta guardada para cambio rápido."
+                "Cuenta guardada y actualizada para cambio rápido."
             } else {
-                "No se pudo guardar la cuenta."
+                result.exceptionOrNull().toUserFacingMessage("No se pudo guardar la cuenta actual.")
             }
         }
     }
@@ -201,15 +191,32 @@ class AuthViewModel @Inject constructor(
     fun switchAccount(accountId: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.switchAccount(accountId)
+            var result = authRepository.switchAccount(accountId)
             _authState.value = result.fold(
                 onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
                     _accountSwitchMessage.value = "Cuenta cambiada correctamente."
                     AuthState.Success(it)
                 },
                 onFailure = {
-                    _accountSwitchMessage.value = "No se pudo cambiar de cuenta."
-                    AuthState.Error(mapAuthError(it))
+                    val invalidStoredSession = looksLikeStoredAccountSessionIssue(it.message)
+                    if (invalidStoredSession) {
+                        authRepository.removeStoredAccount(accountId)
+                    }
+                    val friendlyMessage = if (invalidStoredSession) {
+                        "Esta cuenta guardada venció o dejó de ser válida. La quitamos de la lista para evitar errores. Inicia sesión manualmente con esa cuenta para volver a guardarla."
+                    } else {
+                        mapAccountSwitchError(it)
+                    }
+                    _accountSwitchMessage.value = friendlyMessage
+                    when (it) {
+                        is AccountSuspendedException -> AuthState.Suspended(
+                            suspensionEndDate = it.suspensionEndDate,
+                            reason = it.reason
+                        )
+                        else -> AuthState.Idle
+                    }
                 }
             )
         }
@@ -234,11 +241,11 @@ class AuthViewModel @Inject constructor(
     fun resetPassword(email: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.resetPassword(email)
+            var result = authRepository.resetPassword(email)
             _authState.value = result.fold(
                 onSuccess = { AuthState.PasswordResetSent },
                 onFailure = { 
-                    val message = mapAuthError(it)
+                    var message = mapAuthError(it)
                     AuthState.Error(message) 
                 }
             )
@@ -248,14 +255,21 @@ class AuthViewModel @Inject constructor(
     fun updatePassword(newPassword: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.updatePassword(newPassword)
+            var result = authRepository.updatePassword(newPassword)
             _authState.value = result.fold(
                 onSuccess = { AuthState.PasswordChanged },
                 onFailure = { 
-                    val message = mapAuthError(it)
+                    var message = mapAuthError(it)
                     AuthState.Error(message) 
                 }
             )
         }
     }
 }
+
+
+
+
+
+
+

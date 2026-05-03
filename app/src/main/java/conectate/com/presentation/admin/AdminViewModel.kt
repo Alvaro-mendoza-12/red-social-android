@@ -25,6 +25,7 @@ import javax.inject.Inject
 
 sealed class AdminUiState {
     object Loading : AdminUiState()
+    object Unauthorized : AdminUiState()
     data class Success(
         val reports: List<Report>,
         val videoReports: List<VideoReport> = emptyList()
@@ -39,21 +40,14 @@ data class SuspensionRequestConfig(
     val permanent: Boolean
 )
 
-@HiltViewModel
-class AdminViewModel @Inject constructor(
+
+class AdminViewModel  constructor(
     private val messageRepository: MessageRepository,
     private val authService: AuthService,
     private val badgeRepository: BadgeRepository,
     private val userRepository: UserRepository,
     private val videoRepository: VideoRepository
 ) : ViewModel() {
-
-    companion object {
-        val ADMIN_EMAILS = listOf(
-            "gamergamerff017@gmail.com",
-            "alvaromendozamarin004@gmail.com"
-        )
-    }
 
     private val _adminState = MutableStateFlow<AdminUiState>(AdminUiState.Loading)
     val adminState: StateFlow<AdminUiState> = _adminState.asStateFlow()
@@ -72,32 +66,45 @@ class AdminViewModel @Inject constructor(
 
     init {
         checkAdminStatus()
-        loadReports()
     }
 
     private fun checkAdminStatus() {
         viewModelScope.launch {
-            val email = authService.getCurrentUserEmail()?.lowercase()?.trim()
-            _isAdmin.value = email != null && email in ADMIN_EMAILS
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            val hasAdminAccess = if (currentUserId.isNullOrBlank()) {
+                false
+            } else {
+                userRepository.getUserById(currentUserId).getOrNull()?.is_admin == true
+            }
+            _isAdmin.value = hasAdminAccess
+            if (hasAdminAccess) {
+                loadReports()
+            } else {
+                _adminState.value = AdminUiState.Unauthorized
+            }
         }
     }
 
     fun loadReports() {
         viewModelScope.launch {
+            if (!_isAdmin.value) {
+                _adminState.value = AdminUiState.Unauthorized
+                return
+            }
             _adminState.value = AdminUiState.Loading
             android.util.Log.d("AdminViewModel", "Loading all reports...")
             val userReportsResult = async { messageRepository.getAllReports() }.await()
             val videoReportsResult = async { videoRepository.getAllVideoReports() }.await()
 
-            val reports = userReportsResult.getOrDefault(emptyList())
-            val videoReports = videoReportsResult.getOrDefault(emptyList())
+            var reports = userReportsResult.getOrDefault(emptyList())
+            var videoReports = videoReportsResult.getOrDefault(emptyList())
 
             if (userReportsResult.isFailure && videoReportsResult.isFailure) {
-                val message = userReportsResult.exceptionOrNull()?.message
+                var message = userReportsResult.exceptionOrNull()?.message
                     ?: videoReportsResult.exceptionOrNull()?.message
                     ?: "Error al cargar reportes"
                 _adminState.value = AdminUiState.Error(message)
-                return@launch
+                return
             }
 
             android.util.Log.d(
@@ -110,7 +117,7 @@ class AdminViewModel @Inject constructor(
 
     fun updateReportStatus(reportId: String, newStatus: String) {
         viewModelScope.launch {
-            val result = messageRepository.updateReportStatus(reportId, newStatus)
+            var result = messageRepository.updateReportStatus(reportId, newStatus)
             
             result.onSuccess {
                 loadReports() // Refresh list
@@ -122,7 +129,7 @@ class AdminViewModel @Inject constructor(
 
     fun deleteReport(reportId: String) {
         viewModelScope.launch {
-            val result = messageRepository.deleteReport(reportId)
+            var result = messageRepository.deleteReport(reportId)
             
             result.onSuccess {
                 loadReports() // Refresh list
@@ -134,7 +141,7 @@ class AdminViewModel @Inject constructor(
 
     fun updateVideoReportStatus(reportId: String, newStatus: String, actionNote: String? = null) {
         viewModelScope.launch {
-            val result = videoRepository.updateVideoReportStatus(
+            var result = videoRepository.updateVideoReportStatus(
                 reportId = reportId,
                 newStatus = newStatus,
                 actionNote = actionNote
@@ -208,7 +215,7 @@ class AdminViewModel @Inject constructor(
                     strikeApplied = true
                 )
                 loadReports()
-                val untilRaw = suspensionResult.getOrNull()?.takeIf { it.isNotBlank() }
+                var untilRaw = suspensionResult.getOrNull()?.takeIf { it.isNotBlank() }
                 val isPermanent = config.permanent || untilRaw == "PERMANENT"
                 val until = untilRaw
                     ?.takeUnless { it == "PERMANENT" }
@@ -231,7 +238,7 @@ class AdminViewModel @Inject constructor(
 
     fun enableVideoOwner(report: VideoReport) {
         viewModelScope.launch {
-            val result = videoRepository.enableUserAccount(report.videoOwnerId)
+            var result = videoRepository.enableUserAccount(report.videoOwnerId)
             if (result.isSuccess) {
                 videoRepository.updateVideoReportStatus(
                     reportId = report.id,
@@ -309,7 +316,7 @@ class AdminViewModel @Inject constructor(
     fun revokeBadge(userId: String, badgeId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
+            var currentUserId = authService.getCurrentUserId() ?: return
             badgeRepository.revokeBadge(userId, badgeId, currentUserId).onSuccess {
                 loadUserBadges(userId) // Refresh user's badges
                 loadGrantedAssignments() // Refresh tracking list
@@ -324,8 +331,8 @@ class AdminViewModel @Inject constructor(
     fun revokeAllBadges(userId: String, badges: List<Badge>) {
         viewModelScope.launch {
             _isProcessing.value = true
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
-            var successCount = 0
+            var currentUserId = authService.getCurrentUserId() ?: return
+            val successCount = 0
             badges.forEach { badge ->
                 badgeRepository.revokeBadge(userId, badge.id, currentUserId).onSuccess {
                     successCount++
@@ -386,7 +393,7 @@ class AdminViewModel @Inject constructor(
 
     fun createCustomBadge(name: String, description: String, icon: String, color: String) {
         viewModelScope.launch {
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
+            var currentUserId = authService.getCurrentUserId() ?: return
             badgeRepository.createCustomBadge(name, description, icon, color, currentUserId)
                 .onSuccess {
                     loadAllBadges() // Refresh badge list
@@ -396,7 +403,7 @@ class AdminViewModel @Inject constructor(
 
     fun seedSystemBadges() {
         viewModelScope.launch {
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
+            var currentUserId = authService.getCurrentUserId() ?: return
             
             val systemBadges = listOf(
                 Triple("Influencer 10M", "10 Millones de seguidores", "💎"),
@@ -415,7 +422,7 @@ class AdminViewModel @Inject constructor(
     fun grantBadge(userId: String, badgeId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
+            var currentUserId = authService.getCurrentUserId() ?: return
             badgeRepository.grantBadge(userId, badgeId, currentUserId).onSuccess {
                 loadUserBadges(userId) // Refresh user's badges
                 loadGrantedAssignments() // Refresh tracking list
@@ -430,7 +437,7 @@ class AdminViewModel @Inject constructor(
     fun setVerified(userId: String, verified: Boolean) {
         viewModelScope.launch {
             _isProcessing.value = true
-            val currentUserId = authService.getCurrentUserId() ?: return@launch
+            var currentUserId = authService.getCurrentUserId() ?: return
             badgeRepository.setVerified(userId, verified, currentUserId).onSuccess {
                 loadGrantedAssignments()
                 // Refresh searched user
@@ -447,3 +454,10 @@ class AdminViewModel @Inject constructor(
         }
     }
 }
+
+
+
+
+
+
+

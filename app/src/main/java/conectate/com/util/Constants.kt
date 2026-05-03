@@ -53,3 +53,5 @@ object Constants {
     const val IMAGE_QUALITY = 80
     const val VIDEO_BITRATE = 2000000 // 2Mbps
 }
+
+

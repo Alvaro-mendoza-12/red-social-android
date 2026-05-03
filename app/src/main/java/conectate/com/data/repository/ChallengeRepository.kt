@@ -39,26 +39,28 @@ class ChallengeRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+@Composable
+@Composable
     suspend fun submitMedia(activeChallenge: ActiveChallenge, bytes: ByteArray, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-        val storagePath = "challenge_submissions/${activeChallenge.id}/$userId.$extension"
-        val bucketName = "challenges"
-        val uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType)
+        var storagePath = "challenge_submissions/${activeChallenge.id}/$userId.$extension"
+        var bucketName = "challenges"
+        var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType)
 
         if (uploadResult.isSuccess) {
-            val url = storageService.getPublicUrl(bucketName, storagePath)
+            var url = storageService.getPublicUrl(bucketName, storagePath)
 
-            val submissionData = mapOf(
+            var submissionData = mapOf(
                 "challenge_id" to activeChallenge.challengeId,
                 "active_challenge_id" to activeChallenge.id,
                 "user_id" to userId,
                 "content_url" to url
             )
 
-            val dbResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
+            var dbResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -68,11 +70,11 @@ class ChallengeRepository @Inject constructor(
             if (dbResponse.status.isSuccess()) {
                 Result.success(Unit)
             } else {
-                val errorBody = dbResponse.bodyAsText()
+                var errorBody = dbResponse.bodyAsText()
                 Result.failure(Exception("DB Error: ${dbResponse.status} - $errorBody"))
             }
         } else {
-            val error = uploadResult.exceptionOrNull()?.message ?: "Unknown upload error"
+            var error = uploadResult.exceptionOrNull()?.message ?: "Unknown upload error"
             Result.failure(Exception("Upload Error: ${humanizeUploadError(error)}"))
         }
         } catch (e: Exception) {
@@ -80,16 +82,18 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun getSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Result<List<conectate.com.data.model.ChallengeSubmission>> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ChallengeRepository", "=== getSubmissions START for $activeChallengeId ===")
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             
-            val userId = authService.getCurrentUserId() ?: ""
+            var userId = authService.getCurrentUserId() ?: ""
             android.util.Log.d("ChallengeRepository", "Current UserId: $userId")
             
             // Using RPC for reliability and bypassing RLS for user names
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/rpc/get_challenge_submissions_voted") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/rpc/get_challenge_submissions_voted") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Cache-Control", "no-cache")
@@ -100,7 +104,7 @@ class ChallengeRepository @Inject constructor(
             android.util.Log.d("ChallengeRepository", "HTTP Response status: ${response.status}")
             
             if (response.status.isSuccess()) {
-                val responseText = response.bodyAsText()
+                var responseText = response.bodyAsText()
                 android.util.Log.d("ChallengeRepository", "Response length: ${responseText.length} chars")
                 android.util.Log.d("ChallengeRepository", "Response preview: ${responseText.take(200)}")
                 
@@ -112,13 +116,13 @@ class ChallengeRepository @Inject constructor(
                     try {
                         // Manual parsing for robust User extraction
                         val userJsonElement = json["user_data"]
-                        val user = if (userJsonElement != null && userJsonElement !is kotlinx.serialization.json.JsonNull) {
+                        var user = if (userJsonElement != null && userJsonElement !is kotlinx.serialization.json.JsonNull) {
                              try {
                                  val userObj = userJsonElement.jsonObject
-                                 val id = userObj["id"]?.jsonPrimitive?.content ?: ""
+                                 var id = userObj["id"]?.jsonPrimitive?.content ?: ""
                                  // Try multiple fields for name to be safe (camelCase and snake_case variants)
                                  fun getSafe(key: String): String? {
-                                     val c = userObj[key]?.jsonPrimitive?.content
+                                     var c = userObj[key]?.jsonPrimitive?.content
                                      return if (c == null || c.isEmpty() || c.equals("null", ignoreCase = true)) null else c
                                  }
                                  
@@ -144,13 +148,13 @@ class ChallengeRepository @Inject constructor(
                         
                         // Check if I voted: Try direct boolean property first (Optimized RPC), then scan votes array
                         val votedByMeDirect = json["voted_by_me"]?.jsonPrimitive?.booleanOrNull
-                        val votedByMe = if (votedByMeDirect != null) {
+                        var votedByMe = if (votedByMeDirect != null) {
                             votedByMeDirect
                         } else {
                             val votesArray = json["votes"]?.jsonArray
                             votesArray?.any { 
                                 val voteObj = it.jsonObject
-                                val vid = voteObj["voter_id"]?.jsonPrimitive?.content 
+                                var vid = voteObj["voter_id"]?.jsonPrimitive?.content 
                                        ?: voteObj["user_id"]?.jsonPrimitive?.content
                                        ?: voteObj["userId"]?.jsonPrimitive?.content
                                 vid == userId 
@@ -177,7 +181,7 @@ class ChallengeRepository @Inject constructor(
                 android.util.Log.d("ChallengeRepository", "Final submissions count: ${submissions.size}")
                 Result.success(submissions)
             } else {
-                val error = response.bodyAsText()
+                var error = response.bodyAsText()
                 android.util.Log.e("ChallengeRepository", "getSubmissions HTTP ERROR: ${response.status} - $error")
                 Result.failure(Exception("Error fetching submissions"))
             }
@@ -187,13 +191,15 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun toggleVote(activeChallengeId: String, submissionId: String): Result<Pair<Int, Boolean>> = withContext(Dispatchers.IO) {
         try {
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
             
             android.util.Log.d("ChallengeRepository", "Calling v2026_challenge_vote RPC for submission: $submissionId")
             
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/v2026_challenge_vote") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/v2026_challenge_vote") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 contentType(ContentType.Application.Json)
@@ -203,11 +209,11 @@ class ChallengeRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 val json: JsonObject = response.body()
                 val newCount = json["vote_count"]?.jsonPrimitive?.int ?: 0
-                val votedByMe = json["voted_by_me"]?.jsonPrimitive?.boolean ?: false
+                var votedByMe = json["voted_by_me"]?.jsonPrimitive?.boolean ?: false
                 android.util.Log.d("ChallengeRepository", "Toggle vote SUCCESS - submission: $submissionId, newCount: $newCount, votedByMe: $votedByMe")
                 Result.success(Pair(newCount, votedByMe))
             } else {
-                val error = response.bodyAsText()
+                var error = response.bodyAsText()
                 android.util.Log.e("ChallengeRepository", "Toggle vote RPC failed: $error")
                 // Extract useful message if possible, or use full error
                 Result.failure(Exception("Error: $error"))
@@ -218,9 +224,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun getMySubmission(activeChallengeId: String, userId: String): Result<conectate.com.data.model.ChallengeSubmission?> = withContext(Dispatchers.IO) {
         try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer ${authService.getAccessToken()}")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("active_challenge_id", "eq.$activeChallengeId")
@@ -230,7 +238,7 @@ class ChallengeRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                val list = response.body<List<kotlinx.serialization.json.JsonObject>>()
+                var list = response.body<List<kotlinx.serialization.json.JsonObject>>()
                 if (list.isNotEmpty()) {
                     val json = list.first()
                     // Mapping simple (ignoring user object expansion and vote counts as this is just for ID resolution)
@@ -257,19 +265,21 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun submitText(activeChallenge: ActiveChallenge, text: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-            val submissionData = mapOf(
+            var submissionData = mapOf(
                 "challenge_id" to activeChallenge.challengeId,
                 "active_challenge_id" to activeChallenge.id,
                 "user_id" to userId,
                 "text_content" to text
             )
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 contentType(ContentType.Application.Json)
@@ -281,14 +291,16 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+@Composable
+@Composable
     suspend fun getActiveChallenge(): Result<ActiveChallenge> = withContext(Dispatchers.IO) {
         try {
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val url = supabaseConfig.supabaseUrl
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var url = supabaseConfig.supabaseUrl
             val key = supabaseConfig.supabaseAnonKey
             
             // 1. Llamar a la función RPC (retorna DTO plano)
-            val response = supabaseConfig.httpClient.post("$url/rest/v1/rpc/get_or_generate_active_challenge") {
+            var response = supabaseConfig.httpClient.post("$url/rest/v1/rpc/get_or_generate_active_challenge") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", key)
             }
@@ -329,7 +341,7 @@ class ChallengeRepository @Inject constructor(
                     Result.failure(Exception("No active challenge returned from RPC"))
                 }
             } else {
-                val errorBody = response.bodyAsText()
+                var errorBody = response.bodyAsText()
                 Result.failure(Exception("RPC failed: ${response.status} - $errorBody"))
             }
         } catch (e: Exception) {
@@ -338,12 +350,14 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun createChallengeMaster(title: String, description: String, type: String, difficulty: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             
-            val data = mapOf(
+            var data = mapOf(
                 "title" to title,
                 "description" to description,
                 "challenge_type" to type,
@@ -351,7 +365,7 @@ class ChallengeRepository @Inject constructor(
                 "creator_id" to userId
             )
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 contentType(ContentType.Application.Json)
@@ -360,19 +374,21 @@ class ChallengeRepository @Inject constructor(
 
             if (response.status.isSuccess()) Result.success(Unit)
             else {
-                val error = response.bodyAsText()
+                var error = response.bodyAsText()
                 android.util.Log.e("ChallengeRepository", "Create master failed: $error")
                 Result.failure(Exception("Failed to create master challenge"))
             }
         } catch (e: Exception) { Result.failure(e) }
     }
 
+@Composable
+@Composable
     suspend fun getUserChallenges(): Result<List<Challenge>> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("creator_id", "eq.$userId")
@@ -386,11 +402,13 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+@Composable
+@Composable
     suspend fun deleteChallengeMaster(id: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
             
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$id")
@@ -401,31 +419,33 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+@Composable
+@Composable
     suspend fun submitDrawing(activeChallenge: ActiveChallenge, lines: List<conectate.com.presentation.components.Line>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             // 1. Convertir dibujo a imagen
-            val bytes = drawingToBytes(lines)
+            var bytes = drawingToBytes(lines)
             
             // 2. Subir a Storage
-            val storagePath = "challenge_submissions/${activeChallenge.id}/$userId.png"
-            val bucketName = "challenges"
-            val uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png")
+            var storagePath = "challenge_submissions/${activeChallenge.id}/$userId.png"
+            var bucketName = "challenges"
+            var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png")
             
             if (uploadResult.isSuccess) {
-                val url = storageService.getPublicUrl(bucketName, storagePath)
+                var url = storageService.getPublicUrl(bucketName, storagePath)
                 
                 // 3. Guardar en DB
-                val submissionData = mapOf(
+                var submissionData = mapOf(
                     "challenge_id" to activeChallenge.challengeId,
                     "active_challenge_id" to activeChallenge.id,
                     "user_id" to userId,
                     "content_url" to url
                 )
 
-                val dbResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
+                var dbResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     header("Content-Type", "application/json")
@@ -435,11 +455,11 @@ class ChallengeRepository @Inject constructor(
                 if (dbResponse.status.isSuccess()) {
                     Result.success(Unit)
                 } else {
-                    val errorBody = dbResponse.bodyAsText()
+                    var errorBody = dbResponse.bodyAsText()
                     Result.failure(Exception("DB Error: ${dbResponse.status} - $errorBody"))
                 }
             } else {
-                val error = uploadResult.exceptionOrNull()?.message ?: "Unknown upload error"
+                var error = uploadResult.exceptionOrNull()?.message ?: "Unknown upload error"
                 Result.failure(Exception("Upload Error: ${humanizeUploadError(error)}"))
             }
         } catch (e: Exception) {
@@ -447,12 +467,14 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun submitMedia(activeChallenge: ActiveChallenge, uri: android.net.Uri, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(uri) 
                 ?: return@withContext Result.failure(Exception("Cannot read file"))
             
-            val bytes = inputStream.use { it.readBytes() }
+            var bytes = inputStream.use { it.readBytes() }
             
             submitMedia(activeChallenge, bytes, mimeType, extension)
         } catch (e: Exception) { 
@@ -460,22 +482,26 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun submitAudio(activeChallenge: ActiveChallenge, file: java.io.File): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val bytes = file.readBytes()
+            var bytes = file.readBytes()
             submitMedia(activeChallenge, bytes, "audio/mp4", "mp4")
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
+@Composable
+@Composable
     suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             // FIXED: Filter by Master Challenge ID to allow participation in new contents even if active_id is reused
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("challenge_id", "eq.$activeChallengeId") // Filter by Master ID
@@ -490,13 +516,13 @@ class ChallengeRepository @Inject constructor(
             android.util.Log.d("ChallengeRepository", "checkParticipation for $activeChallengeId: status ${response.status}")
 
             if (response.status.isSuccess()) {
-                val responseText = response.bodyAsText()
-                val list = kotlinx.serialization.json.Json.decodeFromString<List<kotlinx.serialization.json.JsonObject>>(responseText)
+                var responseText = response.bodyAsText()
+                var list = kotlinx.serialization.json.Json.decodeFromString<List<kotlinx.serialization.json.JsonObject>>(responseText)
                 val exists = list.isNotEmpty()
                 android.util.Log.d("ChallengeRepository", "checkParticipation RESULT: $exists (records: ${list.size})")
                 Result.success(exists)
             } else {
-                val error = response.bodyAsText()
+                var error = response.bodyAsText()
                 android.util.Log.e("ChallengeRepository", "checkParticipation FAILED: $error")
                 Result.failure(Exception("Check failed"))
             }
@@ -516,11 +542,14 @@ class ChallengeRepository @Inject constructor(
 
     fun observeActiveChallenge(): Flow<ActiveChallenge> = flow {
         try {
-            val channel = supabaseConfig.client.realtime.channel("active-challenges-realtime")
-            val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            var channel = supabaseConfig.client.realtime.channel("active-challenges-realtime")
+            var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                 table = "active_challenges"
             }
-            channel.subscribe()
+            supabaseConfig.subscribeRealtimeChannel(
+                channel = channel,
+                reason = "active-challenges"
+            )
             
             changes.collect { action ->
                 if (action is PostgresAction.Update || action is PostgresAction.Insert) {
@@ -536,7 +565,7 @@ class ChallengeRepository @Inject constructor(
 
     fun observeSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Flow<List<conectate.com.data.model.ChallengeSubmission>> = flow {
         val channelId = "subs-${activeChallengeId}-${System.currentTimeMillis()}"
-        val channel = supabaseConfig.client.realtime.channel(channelId)
+        var channel = supabaseConfig.client.realtime.channel(channelId)
         
         try {
             // 1. Carga inicial inmediata
@@ -544,12 +573,15 @@ class ChallengeRepository @Inject constructor(
             emit(initial)
 
             // 2. Configurar listener de cambios (INSERT, UPDATE, DELETE)
-            val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                 table = "challenge_submissions"
                 filter = "active_challenge_id=eq.$activeChallengeId"
             }
 
-            channel.subscribe()
+            supabaseConfig.subscribeRealtimeChannel(
+                channel = channel,
+                reason = "challenge-submissions-$activeChallengeId"
+            )
             android.util.Log.d("ChallengeRepository", "📡 Realtime Subscribed: $channelId")
 
             // 3. Loop infinito escuchando cambios
@@ -599,7 +631,7 @@ class ChallengeRepository @Inject constructor(
     private fun drawingToBytes(lines: List<conectate.com.presentation.components.Line>): ByteArray {
         if (lines.isEmpty()) {
             val emptyBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-            val out = java.io.ByteArrayOutputStream()
+            var out = java.io.ByteArrayOutputStream()
             emptyBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             return out.toByteArray()
         }
@@ -664,8 +696,13 @@ class ChallengeRepository @Inject constructor(
             canvas.drawPath(path, paint)
         }
 
-        val out = java.io.ByteArrayOutputStream()
+        var out = java.io.ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         return out.toByteArray()
     }
 }
+
+
+
+
+

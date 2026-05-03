@@ -2,13 +2,23 @@ package conectate.com.data.repository
 
 import android.content.Context
 import android.net.Uri
-import android.webkit.MimeTypeMap
 import conectate.com.BuildConfig
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.messaging.MessageStatusNormalizer
 import conectate.com.data.model.Chat
 import conectate.com.data.model.ChatParticipant
 import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.data.model.Message
+import conectate.com.data.repository.collection.CollectionDeleteRetrySupport
+import conectate.com.data.repository.message.MessageCacheManager
+import conectate.com.data.repository.message.MessageRemoteStore
+import conectate.com.data.repository.message.MessageRealtimeSync
+import conectate.com.data.repository.message.MessagePolicyEngine
+import conectate.com.data.repository.message.MessageNotificationService
+import conectate.com.data.repository.message.MessageUnreadCounter
+import conectate.com.data.repository.message.MessageSessionStateStore
+import conectate.com.data.repository.message.MessageMediaResolver
+import conectate.com.data.repository.message.MessageReportStore
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -22,9 +32,15 @@ import conectate.com.core.security.GuardedAction
 import conectate.com.core.security.GuardOutcome
 import conectate.com.core.security.InputSecurityPolicy
 import conectate.com.core.security.OperationGuard
-import conectate.com.presentation.components.isUserAdmin
 import conectate.com.domain.sync.ChatSyncDataSource
+import conectate.com.util.ChatSoundPlayer
 import conectate.com.util.Constants
+import conectate.com.util.buildCallEventPreview
+import conectate.com.util.buildConversationBackgroundPreview
+import conectate.com.util.guessMimeTypeFromUri
+import conectate.com.util.inferMimeTypeFromBytes
+import conectate.com.util.isCallEventContentType
+import conectate.com.util.resolveMediaMeta
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.gotrue.SessionStatus
 import io.github.jan.supabase.gotrue.auth
@@ -41,9 +57,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
-import java.net.URLDecoder
 import java.util.UUID
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -63,20 +77,27 @@ class MessageRepository @Inject constructor(
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
     private val operationGuard: OperationGuard,
-    @ApplicationContext private val context: Context
+    private val chatSoundPlayer: ChatSoundPlayer,
+    @ApplicationContext private val context: Context,
+    // Nuevos stores inyectados
+    private val messageCacheManager: MessageCacheManager,
+    private val messageRemoteStore: MessageRemoteStore,
+    private val messageRealtimeSync: MessageRealtimeSync,
+    private val messagePolicyEngine: MessagePolicyEngine,
+    private val messageNotificationService: MessageNotificationService,
+    private val messageUnreadCounter: MessageUnreadCounter
 ) : ChatSyncDataSource {
     companion object {
-        private const val VIEW_ONCE_PREFS = "view_once_guard"
-        private const val KEY_CONSUMED_IDS = "consumed_ids_json"
         private const val MAX_FORWARD_TARGETS_PER_BATCH = 20
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val json = Json { 
+    private val scope = newSafeScope("MessageRepository", Dispatchers.IO)
+    private var json = Json { 
         ignoreUnknownKeys = true 
         coerceInputValues = true
         isLenient = true
     }
+    private val transientNetworkRetryCodes = listOf("timeout", "timed out", "connection", "network", "502", "503", "504")
 
     // --- STATE ---
     
@@ -98,31 +119,55 @@ class MessageRepository @Inject constructor(
         return chatMutexes.getOrPut(chatId.trim().lowercase()) { kotlinx.coroutines.sync.Mutex() }
     }
 
-    // 5. Track initialization per chat session to avoid redundant syncs
-    private val initializedChats = ConcurrentHashMap<String, Boolean>()
+    // 5. Throttle expensive history fetches to avoid reloading on every chat-list pulse.
+    private val chatHistoryFetchTimestamps = ConcurrentHashMap<String, Long>()
 
     private var hasPurgedZombies = false
 
     // 6. Transient ID Mapper (FCM -> UUID) allows replies to work even during race conditions
     private val transientIdMap = ConcurrentHashMap<String, String>()
-    private val viewOnceConsumedIds = Collections.synchronizedSet(mutableSetOf<String>())
-    private val viewOncePrefs by lazy { context.getSharedPreferences(VIEW_ONCE_PREFS, Context.MODE_PRIVATE) }
-    @Volatile private var activeChatId: String? = null
-    @Volatile private var isActiveChatScreenVisible: Boolean = false
-    // Keeps local "read" intent stable when backend unread counters lag behind.
-    private val locallyReadChatOverrides = ConcurrentHashMap<String, Long>()
+    private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
+    private var sessionStateStore = MessageSessionStateStore(context)
+    private val mediaResolver = MessageMediaResolver(
+        storageService = storageService,
+        authService = authService,
+        supabaseConfig = supabaseConfig,
+        sessionStateStore = sessionStateStore
+    )
+    private val reportStore = MessageReportStore(
+        context = context,
+        supabaseConfig = supabaseConfig,
+        authService = authService,
+        storageService = storageService,
+        userRepository = userRepository,
+        moderationService = moderationService,
+        appMetrics = appMetrics,
+        operationGuard = operationGuard
+    )
+    private var sessionStatusJob: Job? = null
+    private var globalListenerJob: Job? = null
+
+    private fun currentSessionUserId(): String? =
+        SessionWriteGuard.normalizeAccountId(authService.getCurrentUserId())
+
+    private fun captureSessionSnapshot(expectedUserId: String? = currentSessionUserId()): SessionWriteGuard.Snapshot =
+        sessionWriteGuard.capture(expectedUserId)
+
+    private fun isSessionSnapshotValid(
+        snapshot: SessionWriteGuard.Snapshot,
+        source: String
+    ): Boolean {
+        val valid = sessionWriteGuard.isValid(snapshot)
+        if (!valid) {
+            android.util.Log.w(
+                "MessageRepository",
+                "Discarding stale session write from $source. expected=${snapshot.accountId}, active=${currentSessionUserId()}"
+            )
+        }
+        return valid
+    }
 
     init {
-        runCatching {
-            val raw = viewOncePrefs.getString(KEY_CONSUMED_IDS, null).orEmpty()
-            if (raw.isNotBlank()) {
-                val restored = json.decodeFromString<List<String>>(raw)
-                    .map { it.trim().lowercase() }
-                    .filter { it.isNotBlank() }
-                viewOnceConsumedIds.addAll(restored)
-            }
-        }
-
         // One-time nuke of local DMs to ensure clean state after critical identity bug
         scope.launch {
             try {
@@ -141,14 +186,28 @@ class MessageRepository @Inject constructor(
             }
         }
         
-        // Start Global Realtime Listener for Chat List - Responsive to Session
-        scope.launch {
+        // Start Global Realtime Listener using new MessageRealtimeSync component
+        sessionStatusJob = scope.launch {
             supabaseConfig.client.auth.sessionStatus.collect { status ->
-                globalListenerJob?.cancel() // Cleanup previous listeners
+                globalListenerJob?.cancel()
                 if (status is SessionStatus.Authenticated) {
-                    val userId = (status.session.user?.id ?: "").trim().lowercase()
-                    android.util.Log.d("MessageRepository", "[RECEIVE-FIX] Session Authenticated ($userId): Starting Global Realtime Listener")
-                    subscribeToGlobalMessages(userId)
+                    var userId = (status.session.user?.id ?: "").trim().lowercase()
+                    globalListenerJob = scope.launch {
+                        android.util.Log.d("MessageRepository", "[RECEIVE-FIX] Session Authenticated ($userId): Starting MessageRealtimeSync")
+                        messageRealtimeSync.start(userId)
+
+                        launch {
+                            messageRealtimeSync.messageEvents.collect { msg ->
+                                messageEvents.emit(msg)
+                            }
+                        }
+
+                        launch {
+                            messageCacheManager.cachedChats.collect { chats ->
+                                _userChats.value = chats
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -159,163 +218,50 @@ class MessageRepository @Inject constructor(
      */
     fun clearData() {
         android.util.Log.w("MessageRepository", "CLEAR DATA: Purging in-memory state...")
+        sessionWriteGuard.invalidate()
         _userChats.value = emptyList()
         _activeChatMessages.clear()
-        initializedChats.clear()
+        chatHistoryFetchTimestamps.clear()
         transientIdMap.clear()
-        locallyReadChatOverrides.clear()
         chatMutexes.clear()
-        activeChatId = null
-        isActiveChatScreenVisible = false
+        sessionStateStore.clearAll()
+        // Nuevos stores
+        messageCacheManager.clearAll()
+        messageRealtimeSync.clearAll()
+        messageUnreadCounter.clearCache()
         globalListenerJob?.cancel()
+        sessionStatusJob?.cancel()
     }
 
     fun setActiveChatSession(chatId: String?, isVisible: Boolean) {
-        val cleanId = chatId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-        activeChatId = cleanId
-        isActiveChatScreenVisible = cleanId != null && isVisible
+        sessionStateStore.setActiveChatSession(chatId, isVisible)
     }
 
-    private fun isActiveChatVisible(chatId: String): Boolean {
-        if (!isActiveChatScreenVisible) return false
-        val active = activeChatId ?: return false
-        return active == chatId.trim().lowercase()
-    }
+    // --- REALTIME: Delegado a MessageRealtimeSync ---
+    // Los métodos de realtime se manejan ahora en MessageRealtimeSync
+    // Esta clase actúa como facade/orquestador
 
-    private fun rememberLocalReadOverride(chatId: String) {
-        val cleanId = chatId.trim().lowercase()
-        if (cleanId.isNotBlank()) {
-            locallyReadChatOverrides[cleanId] = System.currentTimeMillis()
-        }
-    }
-
-    private fun clearLocalReadOverride(chatId: String) {
-        val cleanId = chatId.trim().lowercase()
-        if (cleanId.isNotBlank()) {
-            locallyReadChatOverrides.remove(cleanId)
-        }
-    }
-
-    private fun hasLocalReadOverride(chatId: String): Boolean {
-        val cleanId = chatId.trim().lowercase()
-        if (cleanId.isBlank()) return false
-        return locallyReadChatOverrides.containsKey(cleanId)
-    }
-
-    // --- REALTIME: GLOBAL ---
-
-    private var globalListenerJob: Job? = null
-
-    private suspend fun subscribeToGlobalMessages(userId: String) {
-        globalListenerJob?.cancel()
-        globalListenerJob = scope.launch {
-            val cleanUserId = userId.trim().lowercase()
-            var retryCount = 0
-            while (isActive) {
-                var channel: RealtimeChannel? = null
-                var changesJob: Job? = null
-                var heartbeatJob: Job? = null
-                try {
-                    val client = supabaseConfig.client
-                    // Use user-specific channel name to avoid conflicts and improve debugging
-                    channel = client.channel("messages-realtime-$cleanUserId")
-                    
-                    val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                        table = "messages"
-                    }
-
-                    changesJob = launch {
-                        changes.collect { change ->
-                            when (change) {
-                                is PostgresAction.Insert -> {
-                                    val msg = parseMessageFromJson(change.record)
-                                    handleGlobalMessageInsert(msg)
-                                }
-                                is PostgresAction.Update -> {
-                                    val msg = parseMessageFromJson(change.record)
-                                    handleGlobalMessageUpdate(msg)
-                                }
-                                else -> {}
-                            }
-                        }
-                    }
-                    channel.subscribe()
-                    appMetrics.incrementCounter(
-                        metric = "dm_realtime_subscribe_success",
-                        attributes = mapOf("user_scope" to "direct_messages")
-                    )
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("MessageRepository", "[REALTIME] Subscribed to 'messages' (UID: $cleanUserId)")
-                    }
-                    
-                    if (BuildConfig.DEBUG) {
-                        heartbeatJob = launch {
-                            while (isActive) {
-                                delay(30_000)
-                                android.util.Log.d("MessageRepository", "[REALTIME] Channel status: ${channel.status.value}")
-                            }
-                        }
-                    }
-
-                    channel.status.collect { status ->
-                        if (
-                            status == RealtimeChannel.Status.UNSUBSCRIBED ||
-                            status.name == "DISCONNECTED" ||
-                            status.name == "CLOSED" ||
-                            status.name == "TIMED_OUT"
-                        ) {
-                            throw IllegalStateException("messages realtime channel dropped: $status")
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    if (!isActive) throw e
-                    android.util.Log.w("MessageRepository", "[REALTIME] Subscription cancelled, retrying...")
-                    retryCount += 1
-                    appMetrics.incrementCounter(
-                        metric = "dm_realtime_reconnect_attempt",
-                        attributes = mapOf("reason" to "cancellation", "retry_count" to retryCount.toString())
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "[REALTIME-ERROR] Retrying in 5s...", e)
-                    retryCount += 1
-                    appMetrics.recordFailure(
-                        metric = "dm_realtime_subscription",
-                        throwable = e,
-                        attributes = mapOf("retry_count" to retryCount.toString())
-                    )
-                } finally {
-                    heartbeatJob?.cancel()
-                    changesJob?.cancel()
-                    if (channel != null) {
-                        try {
-                            channel.unsubscribe()
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-
-                if (isActive) {
-                    delay(5000)
-                }
-            }
-        }
-    }
-
-    private suspend fun handleGlobalMessageInsert(msg: Message) {
+    private suspend fun handleGlobalMessageInsert(
+        msg: Message,
+        sessionUserId: String? = currentSessionUserId()
+    ) {
         val normalizedMsg = msg.withNormalizedStatus()
-        val cleanId = normalizedMsg.chat_id.trim().lowercase()
+        var cleanId = normalizedMsg.chat_id.trim().lowercase()
+        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
+        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-start:$cleanId")) return
         android.util.Log.d("MessageRepository", "Global insert received: ${normalizedMsg.content} for chat $cleanId")
         
-        val currentUserId = authService.getCurrentUserId()
+        var currentUserId = sessionSnapshot.accountId
         
         // 1. ATOMIC PROCESSING (Room + UI Flow)
         // We lock for the specific chat to ensure Realtime and FCM events happen sequentially.
         scope.launch {
-            val mutex = getMutexForChat(cleanId)
+            var mutex = getMutexForChat(cleanId)
             mutex.withLock {
+                if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-room:$cleanId")) return@withLock
                 try {
                     val chatRecord = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }?.chat
-                    val isActuallyGroup = chatRecord?.is_group == true
+                    var isActuallyGroup = chatRecord?.is_group == true
                     
                     android.util.Log.d("MessageRepository", "[RECEIVE-TRACE] Chat lookup: $cleanId, Found: ${chatRecord != null}, isGroup: $isActuallyGroup")
                     if (chatRecord != null && !chatRecord.is_group && chatRecord.participants.size < 2) {
@@ -361,14 +307,17 @@ class MessageRepository @Inject constructor(
                     }
                     val finalizedMsg = hydratedMsg
 
+                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-db:$cleanId")) return@withLock
                     // Save to Room
-                    val entity = conectate.com.data.local.entity.MessageEntity.fromDomain(finalizedMsg, isSynced = true)
+                    var entity = conectate.com.data.local.entity.MessageEntity.fromDomain(finalizedMsg, isSynced = true)
                     messageDao.insertMessage(entity)
                     
                     // 2. FLOW UPDATES (Atomic update inside Mutex)
+                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-flow:$cleanId")) return@withLock
                     addMessageToFlowLogic(cleanId, finalizedMsg)
 
                     // 3. RE-ROUTE TO PULSE
+                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-pulse:$cleanId")) return@withLock
                     messageEvents.emit(finalizedMsg)
                 } catch (e: Exception) {
                     android.util.Log.e("MessageRepository", "❌ Room handling error", e)
@@ -376,9 +325,13 @@ class MessageRepository @Inject constructor(
             }
         }
         
+        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-post-room:$cleanId")) return
         if (currentUserId != null) {
-            val cleanCurrentUserId = currentUserId.trim().lowercase()
+            var cleanCurrentUserId = currentUserId.trim().lowercase()
             if (normalizedMsg.sender_id.trim().lowercase() != cleanCurrentUserId) {
+                if (sessionStateStore.isActiveChatVisible(cleanId) && !isCallEventContentType(normalizedMsg.content_type)) {
+                    chatSoundPlayer.playReceive()
+                }
                 // I am the recipient: sent -> delivered immediately.
                 // Read is handled strictly by viewport logic in ChatViewModel (visible + focused chat).
                 scope.launch {
@@ -390,21 +343,24 @@ class MessageRepository @Inject constructor(
         // 4. CHAT LIST UPDATE
         if (currentUserId != null) {
             scope.launch {
-                val currentChats = _userChats.value.toMutableList()
-                val cleanCurrentUserId = currentUserId.trim().lowercase()
-                val idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
+                if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-chat-list:$cleanId")) return@launch
+                var currentChats = _userChats.value.toMutableList()
+                var cleanCurrentUserId = currentUserId.trim().lowercase()
+                var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
 
                 if (idx != -1) {
+                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-chat-update:$cleanId")) return@launch
                     updateChatInList(currentChats, idx, normalizedMsg, cleanCurrentUserId)
                 } else {
                     android.util.Log.d("MessageRepository", "New chat $cleanId discovered. Verifying with server...")
                     val chatRes = getChatById(cleanId)
-                    val chat = chatRes.getOrNull()
+                    var chat = chatRes.getOrNull()
+                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-after-chat-fetch:$cleanId")) return@launch
                     
                     if (chat != null) {
                         // CRITICAL PRIVACY FIX: Only add chat if the current user is a participant.
                         // This prevents "Ghost Chats" from other users leaking into the UI.
-                        val participants = chat.participants.map { it.trim().lowercase() }
+                        var participants = chat.participants.map { it.trim().lowercase() }
                         if (!participants.contains(cleanCurrentUserId)) {
                              android.util.Log.e("MessageRepository", "BLOCKED LEAK: Message for chat ${chat.id} received but user is not a participant.")
                              return@launch
@@ -415,15 +371,15 @@ class MessageRepository @Inject constructor(
                             android.util.Log.w("MessageRepository", "Discovering DM with <2 participants: ${chat.id}")
                         }
                         
-                        val otherId = chat.participants.firstOrNull { it.trim().lowercase() != cleanCurrentUserId }
+                        var otherId = chat.participants.firstOrNull { it.trim().lowercase() != cleanCurrentUserId }
                         android.util.Log.d("MessageRepository", "[DISCOVERY-TRACE] Other participant for DM: $otherId")
                         if (normalizedMsg.sender_id.trim().lowercase() != cleanCurrentUserId) {
-                            clearLocalReadOverride(cleanId)
+                            sessionStateStore.clearLocalReadOverride(cleanId)
                         }
                         
-                        val cachedUser = otherId?.let { userDao.getUser(it) }
-                        val resolvedName = cachedUser?.full_name?.ifBlank { cachedUser.username } ?: "Usuario"
-                        val resolvedImage = cachedUser?.avatar_url
+                        var cachedUser = otherId?.let { userDao.getUser(it) }
+                        var resolvedName = cachedUser?.full_name?.ifBlank { cachedUser.username } ?: "Usuario"
+                        var resolvedImage = cachedUser?.avatar_url
                         
                         val placeholder = ChatWithLastMessage(
                             chat = chat.copy(
@@ -438,8 +394,8 @@ class MessageRepository @Inject constructor(
                             otherUserName = resolvedName,
                             otherUserImage = resolvedImage,
                             otherUserId = otherId,
-                            otherUserVerified = cachedUser?.is_verified ?: isUserAdmin(resolvedName),
-                            otherUserIsAdmin = cachedUser?.is_admin ?: isUserAdmin(resolvedName)
+                            otherUserVerified = cachedUser?.is_verified ?: false,
+                            otherUserIsAdmin = cachedUser?.is_admin ?: false
                         )
                         
                         android.util.Log.d("MessageRepository", "[DISCOVERY-TRACE] Resolving chat ${chat.id} as $resolvedName")
@@ -448,9 +404,11 @@ class MessageRepository @Inject constructor(
                         val newList = (currentChats + placeholder).sortedByDescending { 
                             it.chat.safeLastMessageAt 
                         }
+                        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-list-emit:$cleanId")) return@launch
                         _userChats.value = newList
                         
                         // Persist to Room
+                        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-chat-cache:$cleanId")) return@launch
                         chatDao.insertChat(conectate.com.data.local.entity.ChatEntity.fromDomain(
                             chat = chat,
                             displayName = resolvedName,
@@ -470,8 +428,13 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    private suspend fun handleGlobalMessageUpdate(msg: Message) {
+    private suspend fun handleGlobalMessageUpdate(
+        msg: Message,
+        sessionUserId: String? = currentSessionUserId()
+    ) {
+        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         withContext(Dispatchers.IO) {
+            if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-start:${msg.id}")) return@withContext
             try {
                 android.util.Log.d("MessageRepository", "🔄 UPDATE received for message ${msg.id}")
                 
@@ -523,7 +486,7 @@ class MessageRepository @Inject constructor(
                     read_at = mergedReceipt.readAt
                 )
 
-                val cleanId = finalMsg.chat_id.trim().lowercase()
+                var cleanId = finalMsg.chat_id.trim().lowercase()
                 if (cleanId.isEmpty()) {
                     android.util.Log.w("MessageRepository", "⚠️ Update ignorado: chat_id vacío en mensaje ${msg.id}")
                     return@withContext
@@ -532,9 +495,11 @@ class MessageRepository @Inject constructor(
                 android.util.Log.d("MessageRepository", "📝 Applying update: content='${finalMsg.content}', is_edited=${finalMsg.is_edited}, deleted_for_all=${finalMsg.deleted_for_all}")
 
                 // 3. Guardar en Room
+                if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-before-db:${msg.id}")) return@withContext
                 messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(finalMsg, isSynced = true))
                 
                 // 4. Actualizar flujo UI (CRÍTICO para que el otro usuario vea el cambio)
+                if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-before-flow:${msg.id}")) return@withContext
                 updateMessageInFlow(cleanId, finalMsg)
                 
                 android.util.Log.d("MessageRepository", "✅ Update procesado y aplicado a UI: ${msg.id} en $cleanId")
@@ -546,32 +511,32 @@ class MessageRepository @Inject constructor(
 
     private suspend fun getMessageFromSupabase(messageId: String): Result<Message> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$messageId")
             }
             if (response.status.isSuccess()) {
-                val list = response.body<List<Message>>()
+                var list = response.body<List<Message>>()
                 if (list.isNotEmpty()) Result.success(list.first().withNormalizedStatus()) else Result.failure(Exception("Not found"))
             } else Result.failure(Exception("Supabase error"))
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    private fun updateChatInList(currentChats: MutableList<ChatWithLastMessage>, index: Int, msg: Message, currentUserId: String) {
-        val existing = currentChats[index]
+    private suspend fun updateChatInList(currentChats: MutableList<ChatWithLastMessage>, index: Int, msg: Message, currentUserId: String) {
+        var existing = currentChats[index]
         
         // Unread Count: Normalize IDs to prevent case-sensitivity issues
-        val cleanSenderId = msg.sender_id.trim().lowercase()
-        val cleanCurrentUserId = currentUserId.trim().lowercase()
+        var cleanSenderId = msg.sender_id.trim().lowercase()
+        var cleanCurrentUserId = currentUserId.trim().lowercase()
         val shouldIncrementUnread = UnreadPolicy.shouldIncrementUnread(
             senderId = cleanSenderId,
             currentUserId = cleanCurrentUserId,
-            isConversationVisible = isActiveChatVisible(msg.chat_id)
+            isConversationVisible = sessionStateStore.isActiveChatVisible(msg.chat_id)
         )
         if (shouldIncrementUnread) {
-            clearLocalReadOverride(msg.chat_id)
+            sessionStateStore.clearLocalReadOverride(msg.chat_id)
         }
         val newUnread = when {
             shouldIncrementUnread -> existing.unreadCount + 1
@@ -580,7 +545,7 @@ class MessageRepository @Inject constructor(
         }
         
         // Construct preview
-        val preview = buildPreviewForContentType(msg.content_type, msg.content)
+        var preview = buildPreviewForContentType(msg.content_type, msg.content)
 
         currentChats[index] = existing.copy(
             lastMessage = msg,
@@ -590,24 +555,19 @@ class MessageRepository @Inject constructor(
                 last_message_at = msg.created_at
             )
         )
-        // Move to top
-        val item = currentChats.removeAt(index)
-        currentChats.add(0, item)
-        _userChats.value = currentChats
+        _userChats.value = sortChatsByPriority(currentChats)
 
-        // 3. PERSIST TO ROOM (NEW)
-        scope.launch {
-            try {
-                val chatId = msg.chat_id.trim().lowercase()
-                chatDao.updateLastMessage(chatId, preview, msg.safeCreatedAt)
-                if (shouldIncrementUnread) {
-                    chatDao.incrementUnreadCount(chatId)
-                } else if (isActiveChatVisible(chatId)) {
-                    chatDao.markAsRead(chatId)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("MessageRepository", "Global insert Room update failed", e)
+        // Persist immediately so Room emits the reordered list without waiting on a nested launch.
+        var chatId = msg.chat_id.trim().lowercase()
+        try {
+            chatDao.updateLastMessage(chatId, preview, msg.safeCreatedAt)
+            if (shouldIncrementUnread) {
+                chatDao.incrementUnreadCount(chatId)
+            } else if (sessionStateStore.isActiveChatVisible(chatId)) {
+                chatDao.markAsRead(chatId)
             }
+        } catch (e: Exception) {
+            android.util.Log.e("MessageRepository", "Global insert Room update failed", e)
         }
     }
 
@@ -634,35 +594,83 @@ class MessageRepository @Inject constructor(
     }
 
     private fun isMissingPreferenceColumnError(body: String): Boolean {
-        val normalized = body.lowercase()
+        var normalized = body.lowercase()
         val referencesPreferenceColumns = normalized.contains("is_muted") || normalized.contains("is_pinned")
         val looksLikeMissingColumn = normalized.contains("column") || normalized.contains("42703")
         return referencesPreferenceColumns && looksLikeMissingColumn
     }
 
+    private fun ChatEntity.belongsToUser(activeUserId: String): Boolean {
+        var cleanUserId = activeUserId.trim().lowercase()
+        if (cleanUserId.isBlank()) return false
+        val participantIds = runCatching {
+            Json.decodeFromString<List<String>>(participantsJson)
+        }.getOrDefault(emptyList())
+            .map { it.trim().lowercase() }
+        return participantIds.contains(cleanUserId)
+    }
+
     // --- CHAT LIST ---
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getUserChatsFlow(): Flow<List<ChatWithLastMessage>> {
         scope.launch { getUserChats() } // Background sync
-        
-        // Use Room as the single source of truth for the UI
-        return chatDao.getAllChatsFlow().map { entities ->
-            entities.map { it.toDomainWithDetails() }
-        }.distinctUntilChanged()
+
+        return authService.observeSession()
+            .map { session ->
+                session?.user?.id?.trim()?.lowercase()
+                    ?: authService.getCurrentUserId()?.trim()?.lowercase()
+            }
+            .distinctUntilChanged()
+            .flatMapLatest { activeUserId ->
+                if (activeUserId.isNullOrBlank()) {
+                    flowOf(emptyList())
+                } else {
+                    chatDao.getAllChatsFlow()
+                        .flatMapLatest { entities ->
+                            val visibleEntities = entities.filter { it.chat.belongsToUser(activeUserId) }
+                            val lastMessageIds = visibleEntities
+                                .mapNotNull { it.chat.last_message_id?.trim() }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+
+                            if (lastMessageIds.isEmpty()) {
+                                flowOf(visibleEntities.map { it.toDomainWithDetails() })
+                            } else {
+                                messageDao.getMessagesByIdsFlow(lastMessageIds).map { messageEntities ->
+                                    val messageMap = messageEntities.associateBy { it.id.trim().lowercase() }
+                                    visibleEntities.map { entity ->
+                                        val overrideMessage = entity.chat.last_message_id
+                                            ?.trim()
+                                            ?.lowercase()
+                                            ?.let(messageMap::get)
+                                            ?.toDomain()
+                                        entity.toDomainWithDetails(overrideMessage)
+                                    }
+                                }
+                            }
+                        }
+                }
+                }
+            .distinctUntilChanged()
     }
 
     suspend fun getUserChats(): Result<List<ChatWithLastMessage>> {
         return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var cleanUserId = userId.trim().lowercase()
+            var sessionSnapshot = captureSessionSnapshot(userId)
+            var accessToken = authService.ensureValidAccessToken()
+                .getOrElse { return Result.failure(it) }
 
             // 0. Fetch Local Chats first (for fallback/optimistic)
             val allLocalEntities = chatDao.getAllChatsSync()
-            val allLocalChatsDomain = allLocalEntities.map { it.toDomain() }
+            val visibleLocalEntities = allLocalEntities.filter { it.belongsToUser(cleanUserId) }
+            val allLocalChatsDomain = visibleLocalEntities.map { it.toDomain() }
             
             // PRE-LOAD: Ensure UI has local data while we fetch remote
-            if (_userChats.value.isEmpty()) {
-                val preLoad = allLocalEntities
+            if (_userChats.value.isEmpty() && isSessionSnapshotValid(sessionSnapshot, "get-user-chats-preload")) {
+                val preLoad = visibleLocalEntities
                     .sortedWith(
                         compareByDescending<ChatEntity> { it.is_pinned }
                             .thenByDescending { normalizeDate(it.last_message_at ?: "") }
@@ -673,28 +681,44 @@ class MessageRepository @Inject constructor(
             }
 
             // 1. Fetch Remote Chats (Explicitly lowercased filter)
-            val cleanUserId = userId.trim().lowercase()
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("participants", "cs.{\"$cleanUserId\"}")
                 parameter("order", "last_message_at.desc.nullslast")
             }
-            
-            val remoteChats: List<Chat> = if (response.status.isSuccess()) response.body() else emptyList()
+
+            val remoteChats: List<Chat> = if (response.status.isSuccess()) {
+                response.body()
+            } else {
+                val responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
+                android.util.Log.w(
+                    "MessageRepository",
+                    "getUserChats remote fetch failed ${response.status.value}: $responseBody"
+                )
+                if (allLocalChatsDomain.isEmpty()) {
+                    return Result.failure(Exception("No se pudieron cargar tus chats en este momento"))
+                }
+                emptyList()
+            }
             
             // 2. Combine and Normalize
             val allChatsJoined = (remoteChats + allLocalChatsDomain)
                 .distinctBy { it.id.trim().lowercase() }
             
             if (allChatsJoined.isEmpty()) {
-                _userChats.value = emptyList()
+                if (isSessionSnapshotValid(sessionSnapshot, "get-user-chats-empty")) {
+                    _userChats.value = emptyList()
+                }
                 return Result.success(emptyList())
             }
 
             // 3. Enrich Metadata in BULK (Chunked to avoid URL limits)
             val activeChatIds = allChatsJoined.map { it.id.trim().lowercase() }
-            val otherUserIds = allChatsJoined.flatMap { it.participants }.filter { it != userId }.distinct()
+            val otherUserIds = allChatsJoined
+                .flatMap { chat -> chat.participants.map { it.trim().lowercase() } }
+                .filter { it.isNotBlank() && it != cleanUserId }
+                .distinct()
             
             // A. Get Profiles
             val profilesMap = if (otherUserIds.isNotEmpty()) {
@@ -702,7 +726,7 @@ class MessageRepository @Inject constructor(
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("id", "in.(${otherUserIds.joinToString(",")})")
-                    parameter("select", "id,username,displayName,avatar_url,is_verified,is_admin,email")
+                    parameter("select", "id,username,display_name,full_name,avatar_url,is_verified,is_admin,email")
                 }
                 if (userRes.status.isSuccess()) {
                     userRes.body<List<conectate.com.data.model.User>>().associateBy { it.id.trim().lowercase() }
@@ -720,7 +744,7 @@ class MessageRepository @Inject constructor(
                 if (nickRes.status.isSuccess()) {
                     nickRes.body<List<JsonObject>>()
                         .mapNotNull { nicknameJson ->
-                            val targetId = nicknameJson["target_user_id"]
+                            var targetId = nicknameJson["target_user_id"]
                                 ?.jsonPrimitive
                                 ?.contentOrNull
                                 ?.trim()
@@ -737,7 +761,7 @@ class MessageRepository @Inject constructor(
             if (activeChatIds.isNotEmpty()) {
                 activeChatIds.chunked(30).forEach { chunk ->
                     try {
-                        val partRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+                        var partRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
                             header("Authorization", "Bearer $accessToken")
                             header("apikey", supabaseConfig.supabaseAnonKey)
                             parameter("chat_id", "in.(${chunk.joinToString(",")})")
@@ -763,11 +787,11 @@ class MessageRepository @Inject constructor(
                         }
 
                         participantRows.forEach chatParticipantLoop@{ participantJson ->
-                            val cid = participantJson["chat_id"]?.jsonPrimitive?.content?.trim()?.lowercase()
+                            var cid = participantJson["chat_id"]?.jsonPrimitive?.content?.trim()?.lowercase()
                                 ?: return@chatParticipantLoop
-                            val clearedAt = participantJson["cleared_at"]?.jsonPrimitive?.contentOrNull
-                            val isMuted = participantJson["is_muted"]?.jsonPrimitive?.booleanOrNull ?: false
-                            val isPinned = participantJson["is_pinned"]?.jsonPrimitive?.booleanOrNull ?: false
+                            var clearedAt = participantJson["cleared_at"]?.jsonPrimitive?.contentOrNull
+                            var isMuted = participantJson["is_muted"]?.jsonPrimitive?.booleanOrNull ?: false
+                            var isPinned = participantJson["is_pinned"]?.jsonPrimitive?.booleanOrNull ?: false
                             participantStateMap[cid] = ChatParticipantState(
                                 clearedAt = clearedAt,
                                 isMuted = isMuted,
@@ -788,7 +812,7 @@ class MessageRepository @Inject constructor(
                             header("apikey", supabaseConfig.supabaseAnonKey)
                             parameter("chat_id", "in.(${chunk.joinToString(",")})")
                             parameter("order", "created_at.desc")
-                            parameter("limit", "1000") 
+                            parameter("limit", "100") // v22.4: Reduced from 1000 to 100 to save resources
                         }
                         if (msgRes.status.isSuccess()) {
                             msgRes.body<List<Message>>()
@@ -806,7 +830,7 @@ class MessageRepository @Inject constructor(
             if (activeChatIds.isNotEmpty()) {
                 activeChatIds.chunked(30).forEach { chunk ->
                     try {
-                        val countRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+                        var countRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                             header("Authorization", "Bearer $accessToken")
                             header("apikey", supabaseConfig.supabaseAnonKey)
                             parameter("select", "chat_id,read_at,sender_id,status")
@@ -817,12 +841,12 @@ class MessageRepository @Inject constructor(
                         if (countRes.status.isSuccess()) {
                             val unreadMsgs = countRes.body<List<JsonObject>>()
                             unreadMsgs.forEach unreadLoop@{ json ->
-                                val cid = json["chat_id"]?.jsonPrimitive?.content?.trim()?.lowercase()
+                                var cid = json["chat_id"]?.jsonPrimitive?.content?.trim()?.lowercase()
                                     ?: return@unreadLoop
-                                val senderId = json["sender_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                                var senderId = json["sender_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
                                     ?: return@unreadLoop
-                                val status = json["status"]?.jsonPrimitive?.contentOrNull
-                                val readAt = json["read_at"]?.jsonPrimitive?.contentOrNull
+                                var status = json["status"]?.jsonPrimitive?.contentOrNull
+                                var readAt = json["read_at"]?.jsonPrimitive?.contentOrNull
                                 val isUnread = MessageStatusNormalizer.isUnread(status, readAt)
                                 if (senderId != cleanUserId && isUnread) {
                                     unreadCountsMap[cid] = (unreadCountsMap[cid] ?: 0) + 1
@@ -837,24 +861,24 @@ class MessageRepository @Inject constructor(
 
             // 3. Construct Final Objects
             val enrichedChats = allChatsJoined.map { chat ->
-                val cleanChatId = chat.id.trim().lowercase()
-                val isActuallyGroup = chat.is_group || chat.participants.size != 2
-                val participants = chat.participants.map { it.trim().lowercase() }
+                var cleanChatId = chat.id.trim().lowercase()
+                var isActuallyGroup = chat.is_group || chat.participants.size != 2
+                var participants = chat.participants.map { it.trim().lowercase() }
                 
-                val otherId = if (!isActuallyGroup) {
+                var otherId = if (!isActuallyGroup) {
                     participants.firstOrNull { it != userId.trim().lowercase() }
                 } else null
                 
-                val profile = otherId?.let { profilesMap[it] }
-                val nickname = otherId?.let { nicknamesMap[it] }
+                var profile = otherId?.let { profilesMap[it] }
+                var nickname = otherId?.let { nicknamesMap[it] }
                 val participantState = participantStateMap[cleanChatId]
-                val clearedAt = participantState?.clearedAt
-                val isMuted = participantState?.isMuted ?: chat.is_muted
-                val isPinned = participantState?.isPinned ?: chat.is_pinned
+                var clearedAt = participantState?.clearedAt
+                var isMuted = participantState?.isMuted ?: chat.is_muted
+                var isPinned = participantState?.isPinned ?: chat.is_pinned
                 
                 val realLastMsg = lastMessagesMap[cleanChatId]
                 val remoteUnread = unreadCountsMap[cleanChatId] ?: 0
-                val unread = if (hasLocalReadOverride(cleanChatId)) 0 else remoteUnread
+                var unread = if (sessionStateStore.hasLocalReadOverride(cleanChatId)) 0 else remoteUnread
 
                 // NUCLEAR FIX: Always compare Server vs Local to find the TRUE latest message
                 // The server might return stale data (2025), but Room has the "hola" we just sent (2026).
@@ -899,7 +923,7 @@ class MessageRepository @Inject constructor(
                     profile?.displayName ?: profile?.username ?: "Usuario"
                 }
                 
-                val resolvedImage = if (isActuallyGroup) chat.group_image else profile?.avatar_url
+                var resolvedImage = if (isActuallyGroup) chat.group_image else profile?.avatar_url
 
                 ChatWithLastMessage(
                     chat = chat.copy(
@@ -918,8 +942,8 @@ class MessageRepository @Inject constructor(
                     otherUserName = resolvedDisplayName,
                     otherUserImage = resolvedImage,
                     otherUserId = otherId,
-                    otherUserVerified = profile?.is_verified ?: (isUserAdmin(profile?.username, profile?.email)),
-                    otherUserIsAdmin = profile?.is_admin ?: (isUserAdmin(profile?.username, profile?.email)),
+                    otherUserVerified = profile?.is_verified ?: false,
+                    otherUserIsAdmin = profile?.is_admin ?: false,
                     nickname = nickname,
                     clearedAt = clearedAt
                 )
@@ -930,7 +954,7 @@ class MessageRepository @Inject constructor(
                 .groupBy { 
                     if (it.chat.is_group) "group_${it.chat.id}" 
                     else {
-                        val participants = it.chat.participants
+                        var participants = it.chat.participants
                             .map { p -> p.trim().lowercase() }
                             .sorted()
                         if (participants.size == 2) "dm_${participants.joinToString("_")}"
@@ -939,7 +963,8 @@ class MessageRepository @Inject constructor(
                 }
                 .map { (key, entries) -> 
                     // Pick the one with the NEWEST activity (based on effective last_message_at we just set)
-                    val best = entries.maxByOrNull { normalizeDate(it.chat.last_message_at ?: it.chat.created_at) }!!
+                    val best = entries.maxByOrNull { normalizeDate(it.chat.last_message_at ?: it.chat.created_at) }
+                        ?: entries.first()
                     val totalUnread = entries.sumOf { it.unreadCount }
                     
                     if (entries.size > 1) {
@@ -961,7 +986,7 @@ class MessageRepository @Inject constructor(
             
             // A. Merge Remote with Cache (Prefer Cache if fresher)
             val mergedRemote = distinctList.map { fetched ->
-                val cached = currentMap[fetched.chat.id]
+                var cached = currentMap[fetched.chat.id]
                 val cachedTime = cached?.lastMessage?.safeCreatedAt
                 val fetchedTime = fetched.lastMessage?.safeCreatedAt
                 
@@ -971,16 +996,18 @@ class MessageRepository @Inject constructor(
                 )
 
                 if (useCached) {
+                    val safeCached = cached ?: return@map fetched
+                    val safeCachedLastMessage = safeCached.lastMessage ?: return@map fetched
                     android.util.Log.d("MessageRepository", "🔥 Smart Merge: PRESERVING fresher cached message for ${fetched.chat.id} (Cached: $cachedTime vs Remote: $fetchedTime)")
                     fetched.copy(
-                        lastMessage = cached!!.lastMessage,
-                        otherUserName = if (fetched.otherUserName == "Usuario" || fetched.otherUserName == "Cargando...") cached.otherUserName else fetched.otherUserName,
-                        otherUserImage = if (fetched.otherUserImage == null) cached.otherUserImage else fetched.otherUserImage,
+                        lastMessage = safeCachedLastMessage,
+                        otherUserName = if (fetched.otherUserName == "Usuario" || fetched.otherUserName == "Cargando...") safeCached.otherUserName else fetched.otherUserName,
+                        otherUserImage = if (fetched.otherUserImage == null) safeCached.otherUserImage else fetched.otherUserImage,
                         chat = fetched.chat.copy(
-                            last_message = cached.chat.last_message,
-                            last_message_at = cached.chat.last_message_at ?: cached.lastMessage?.created_at ?: fetched.chat.last_message_at,
-                            last_message_id = cached.chat.last_message_id,
-                            group_name = if (fetched.chat.group_name == "Usuario" || fetched.chat.group_name == "Cargando...") cached.chat.group_name else fetched.chat.group_name
+                            last_message = safeCached.chat.last_message,
+                            last_message_at = safeCached.chat.last_message_at ?: safeCachedLastMessage.created_at ?: fetched.chat.last_message_at,
+                            last_message_id = safeCached.chat.last_message_id,
+                            group_name = if (fetched.chat.group_name == "Usuario" || fetched.chat.group_name == "Cargando...") safeCached.chat.group_name else fetched.chat.group_name
                         )
                     )
                 } else {
@@ -994,7 +1021,7 @@ class MessageRepository @Inject constructor(
             
             // B. Add Local-Only (Optimistic) Chats
             // These are chats we created locally but Supabase hasn't returned yet (Latency/RLS)
-            val optimisticChats = allLocalEntities.filter { local -> 
+            val optimisticChats = visibleLocalEntities.filter { local -> 
                 !remoteMap.containsKey(local.id.trim().lowercase()) 
             }.map { it.toDomainWithDetails() }
 
@@ -1005,6 +1032,7 @@ class MessageRepository @Inject constructor(
 
             // 5. UPDATE ROOM CACHE (PRESERVING DELETED CHATS) & AUTO-REPAIR "Usuario"
             scope.launch {
+                if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-cache-start")) return@launch
                 try {
                     // CRITICAL: Get list of locally deleted chats first
                     val allLocalChats = chatDao.getAllChatsSync() // Need sync version
@@ -1016,7 +1044,7 @@ class MessageRepository @Inject constructor(
                     // AUTO-RESURRECTION: Only if server data is strictly NEWER than local
                     val chatsToResurrect = allLocalChats.filter { local ->
                          if (!local.is_deleted) return@filter false
-                         val remoteChat = remoteMap[local.id.trim().lowercase()]
+                         var remoteChat = remoteMap[local.id.trim().lowercase()]
                          if (remoteChat == null) return@filter false
                          
                          val remoteAt = normalizeDate(remoteChat.lastMessage?.safeCreatedAt ?: remoteChat.chat.safeLastMessageAt)
@@ -1043,14 +1071,16 @@ class MessageRepository @Inject constructor(
                     }
                     
                     // Update UI ONLY after filtering
+                    if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-before-emit")) return@launch
                     _userChats.value = finalMergedList
                     
                     // Filter out chats that user has deleted locally (Redundant but safe for DB update list)
                     val chatsToUpdate = finalMergedList // Already filtered above
                     
                     // Update Users first to avoid FK issues
+                    if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-before-users")) return@launch
                     val userEntities = chatsToUpdate.mapNotNull { chat ->
-                        val otherId = chat.chat.participants.firstOrNull { it != userId }
+                        var otherId = chat.chat.participants.firstOrNull { it != userId }
                         if (otherId != null && chat.otherUserName != "Usuario") {
                             conectate.com.data.local.entity.UserEntity(
                                 id = otherId,
@@ -1078,7 +1108,7 @@ class MessageRepository @Inject constructor(
                     if (shouldPerformCleanup) {
                         allLocalChats.forEach { local: ChatEntity ->
                             val cleanLocalId = local.id.trim().lowercase()
-                            val participants = try { Json.decodeFromString<List<String>>(local.participantsJson) } catch(e: Exception) { emptyList<String>() }
+                            var participants = try { Json.decodeFromString<List<String>>(local.participantsJson) } catch(e: Exception) { emptyList<String>() }
                             val isParticipant = participants.map { it.trim().lowercase() }.contains(currentCleanUserId)
                             
                             // We purge if:
@@ -1102,8 +1132,9 @@ class MessageRepository @Inject constructor(
                     }
 
                     // Update Chats (excluding deleted ones)
+                    if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-before-chats")) return@launch
                     val chatEntities = chatsToUpdate.map { chat ->
-                        val otherId = if (!chat.chat.is_group) chat.chat.participants.firstOrNull { it != userId } else null
+                        var otherId = if (!chat.chat.is_group) chat.chat.participants.firstOrNull { it != userId } else null
                         conectate.com.data.local.entity.ChatEntity.fromDomain(
                             chat = chat.chat,
                             displayName = chat.otherUserName,
@@ -1130,11 +1161,12 @@ class MessageRepository @Inject constructor(
                     if (brokenChats.isNotEmpty()) {
                         android.util.Log.w("MessageRepository", "Found ${brokenChats.size} broken 'Usuario' chats. Attempting auto-repair...")
                         brokenChats.forEach { broken ->
-                            launch {
-                                val otherId = broken.chat.participants.firstOrNull { it != userId }
+                            launch repairLaunch@{
+                                if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-repair:${broken.chat.id}")) return@repairLaunch
+                                var otherId = broken.chat.participants.firstOrNull { it != userId }
                                 if (otherId != null) {
                                     val profileRes = userRepository.getUserById(otherId)
-                                    val profile = profileRes.getOrNull()
+                                    var profile = profileRes.getOrNull()
                                     if (profile != null) {
                                         val realName = profile.displayName.ifBlank {
                                             profile.username?.ifBlank { "Usuario" } ?: "Usuario"
@@ -1142,6 +1174,7 @@ class MessageRepository @Inject constructor(
                                          android.util.Log.d("MessageRepository", "🔧 Repaired chat ${broken.chat.id}: Usuario -> $realName")
                                          
                                          // Update User Cache
+                                         if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-repair-user:${broken.chat.id}")) return@repairLaunch
                                          userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(profile))
                                          
                                          // Update Chat Entity
@@ -1158,6 +1191,7 @@ class MessageRepository @Inject constructor(
                                             nickname = broken.nickname,
                                             clearedAt = broken.clearedAt
                                          )
+                                         if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-repair-chat:${broken.chat.id}")) return@repairLaunch
                                          chatDao.insertChat(correctedEntity)
                                          
                                          // Trigger UI Refresh? No, flow will update on next pulse or we can force it?
@@ -1174,6 +1208,9 @@ class MessageRepository @Inject constructor(
                 }
             }
 
+            if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-result")) {
+                return Result.success(chatDao.getAllChatsSync().map { it.toDomainWithDetails() })
+            }
             Result.success(finalMergedList)
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "getUserChats error", e)
@@ -1181,16 +1218,18 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     override suspend fun syncChats(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val chatsResult = getUserChats()
-            val chats = chatsResult.getOrElse { return@withContext Result.failure(it) }
+            var chats = chatsResult.getOrElse { return@withContext Result.failure(it) }
 
             // Sync recent conversations first to avoid heavy bursts in large accounts.
             chats.sortedByDescending { it.chat.safeLastMessageAt }
                 .take(30)
                 .forEach { chatWithLastMessage ->
-                    val chatId = chatWithLastMessage.chat.id.trim().lowercase()
+                    var chatId = chatWithLastMessage.chat.id.trim().lowercase()
                     if (chatId.isNotBlank()) {
                         fetchMessageHistory(chatId)
                     }
@@ -1203,11 +1242,13 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     override suspend fun retryPendingMessages(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.success(0)
-            val token = authService.getAccessToken()
+            var token = authService.getAccessToken()
                 ?: return@withContext Result.success(0)
 
             val pendingMessages = messageDao.getPendingSendMessages()
@@ -1219,7 +1260,7 @@ class MessageRepository @Inject constructor(
             var syncedCount = 0
             pendingMessages.forEach { pending ->
                 if (pending.sender_id.trim().lowercase() != currentUserId) return@forEach
-                val synced = syncPendingSendMessage(pending, token)
+                var synced = syncPendingSendMessage(pending, token)
                 if (synced) {
                     syncedCount++
                 } else {
@@ -1234,9 +1275,11 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     override suspend fun retryPendingDeletes(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.success(0)
 
             val pendingDeletes = messageDao.getPendingDeleteMessages()
@@ -1247,9 +1290,9 @@ class MessageRepository @Inject constructor(
 
             var syncedCount = 0
             pendingDeletes.forEach { pending ->
-                val synced = syncPendingDeleteMessage(pending, currentUserId)
+                var synced = syncPendingDeleteMessage(pending, currentUserId)
                 if (synced) {
-                    val syncedEntity = pending.copy(
+                    var syncedEntity = pending.copy(
                         status = "sent",
                         is_synced = true,
                         pending_action = null
@@ -1304,7 +1347,7 @@ class MessageRepository @Inject constructor(
             )
             updateMessageInFlow(pending.chat_id, syncedMessage)
 
-            val preview = buildPreviewForContentType(syncedMessage.content_type, syncedMessage.content)
+            var preview = buildPreviewForContentType(syncedMessage.content_type, syncedMessage.content)
             updateChatLastMessageInternal(
                 chatId = pending.chat_id.trim().lowercase(),
                 preview = preview,
@@ -1324,31 +1367,40 @@ class MessageRepository @Inject constructor(
         pending: conectate.com.data.local.entity.MessageEntity,
         currentUserId: String
     ): Boolean {
-        return try {
-            if (pending.deleted_for_all) {
-                supabaseConfig.client.postgrest["messages"].update({
-                    set("deleted_for_all", true)
-                }) {
-                    filter { eq("id", pending.id) }
+        val deleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
+            logTag = "MessageRepository",
+            messageId = pending.id,
+            remoteDelete = {
+                if (pending.deleted_for_all) {
+                    supabaseConfig.client.postgrest["messages"].update({
+                        set("deleted_for_all", true)
+                    }) {
+                        filter { eq("id", pending.id) }
+                    }
+                } else {
+                    var deletedBy = parseDeletedBy(pending)
+                        .map { it.trim().lowercase() }
+                        .toMutableList()
+                    if (!deletedBy.contains(currentUserId)) {
+                        deletedBy.add(currentUserId)
+                    }
+                    supabaseConfig.client.postgrest["messages"].update({
+                        set("deleted_by", deletedBy.distinct())
+                    }) {
+                        filter { eq("id", pending.id) }
+                    }
                 }
-            } else {
-                val deletedBy = parseDeletedBy(pending)
-                    .map { it.trim().lowercase() }
-                    .toMutableList()
-                if (!deletedBy.contains(currentUserId)) {
-                    deletedBy.add(currentUserId)
-                }
-                supabaseConfig.client.postgrest["messages"].update({
-                    set("deleted_by", deletedBy.distinct())
-                }) {
-                    filter { eq("id", pending.id) }
-                }
+            },
+            isRetryableNetworkError = { error ->
+                var text = error.message?.lowercase().orEmpty()
+                transientNetworkRetryCodes.any { code -> text.contains(code) }
             }
-            true
-        } catch (e: Exception) {
-            android.util.Log.w("MessageRepository", "retryPendingDeletes failed for ${pending.id}", e)
-            false
+        )
+
+        deleteResult.exceptionOrNull()?.let { error ->
+            android.util.Log.w("MessageRepository", "retryPendingDeletes failed for ${pending.id}", error)
         }
+        return deleteResult.isSuccess
     }
 
     private fun parseDeletedBy(message: conectate.com.data.local.entity.MessageEntity): List<String> {
@@ -1362,7 +1414,7 @@ class MessageRepository @Inject constructor(
     private suspend fun countUnreadMessages(chatId: String, userId: String, token: String): Int {
         return try {
             // Get My Last Read
-            val partRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+            var partRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("chat_id", "eq.$chatId")
@@ -1370,11 +1422,11 @@ class MessageRepository @Inject constructor(
                 parameter("select", "last_read_at")
             }
             if (!partRes.status.isSuccess()) return 0
-            val body = partRes.body<JsonArray>()
+            var body = partRes.body<JsonArray>()
             val lastReadAt = body.firstOrNull()?.jsonObject?.get("last_read_at")?.jsonPrimitive?.contentOrNull
 
             // Count messages > last_read_at AND sender != Me
-            val countRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+            var countRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("chat_id", "eq.$chatId")
@@ -1392,19 +1444,21 @@ class MessageRepository @Inject constructor(
         } catch (e: Exception) { 0 }
     }
 
+@Composable
+@Composable
     suspend fun setNickname(targetUserId: String, nickname: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("user_id", currentUserId)
                 put("target_user_id", targetUserId)
                 put("nickname", nickname ?: "")
             }
             
             if (nickname.isNullOrBlank()) {
-                val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/nicknames") {
+                var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/nicknames") {
                     header("Authorization", "Bearer $token")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("user_id", "eq.$currentUserId")
@@ -1419,13 +1473,13 @@ class MessageRepository @Inject constructor(
             }
 
             // Update local Room
-            val chat = chatDao.getChatByOtherUserId(targetUserId)
+            var chat = chatDao.getChatByOtherUserId(targetUserId)
             if (chat != null) {
                 chatDao.updateNickname(chat.id, nickname)
                 
                 // Update Memory flow
-                val currentChats = _userChats.value.toMutableList()
-                val idx = currentChats.indexOfFirst { it.chat.id == chat.id }
+                var currentChats = _userChats.value.toMutableList()
+                var idx = currentChats.indexOfFirst { it.chat.id == chat.id }
                 if (idx != -1) {
                     currentChats[idx] = currentChats[idx].copy(nickname = nickname)
                     _userChats.value = currentChats
@@ -1438,18 +1492,20 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val cleanId = chatId.trim().lowercase()
-            val now = java.time.Instant.now().toString()
+            var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var cleanId = chatId.trim().lowercase()
+            var now = java.time.Instant.now().toString()
             
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("cleared_at", now)
             }
             
-            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1469,8 +1525,8 @@ class MessageRepository @Inject constructor(
                 _activeChatMessages[cleanId]?.value = emptyList()
                 
                 // Update Chat List Metadata
-                val currentChats = _userChats.value.toMutableList()
-                val idx = currentChats.indexOfFirst { it.chat.id == cleanId }
+                var currentChats = _userChats.value.toMutableList()
+                var idx = currentChats.indexOfFirst { it.chat.id == cleanId }
                 if (idx != -1) {
                     currentChats[idx] = currentChats[idx].copy(
                         clearedAt = now,
@@ -1490,10 +1546,30 @@ class MessageRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
 
+@Composable
+@Composable
+    suspend fun getCachedMessages(chatId: String): List<Message> = withContext(Dispatchers.IO) {
+        var cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return@withContext emptyList()
+
+        var activeUserId = currentSessionUserId()
+        val localMessages = messageDao.getMessagesSync(cleanId).map { it.toDomain() }
+        var unified = unifyMessageList(localMessages)
+
+        if (activeUserId.isNullOrBlank()) {
+            unified
+        } else {
+            unified.filterNot { message ->
+                message.deleted_by.any { deletedBy ->
+                    deletedBy.trim().lowercase() == activeUserId
+                }
+            }
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getMessagesFlow(chatId: String): Flow<List<Message>> {
-        val cleanId = chatId.trim().lowercase()
-        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+        var cleanId = chatId.trim().lowercase()
         
         return _userChats.flatMapLatest { chats ->
             var currentChat = chats.find { it.chat.id.trim().lowercase() == cleanId }
@@ -1501,13 +1577,13 @@ class MessageRepository @Inject constructor(
             // Fallback to Room if memory is syncing
             if (currentChat == null) {
                 try {
-                    val local = chatDao.getChatById(cleanId)
+                    var local = chatDao.getChatById(cleanId)
                     if (local != null) currentChat = local.toDomainWithDetails()
                 } catch(e: Exception) { /* ignore */ }
             }
             
-            val participants = currentChat?.chat?.participants?.map { it.trim().lowercase() }?.sorted() ?: emptyList()
-            val isGroup = currentChat?.chat?.is_group == true
+            var participants = currentChat?.chat?.participants?.map { it.trim().lowercase() }?.sorted() ?: emptyList()
+            var isGroup = currentChat?.chat?.is_group == true
             
             // 1. Identify Sibling IDs
             val siblingIds = if (participants.size == 2 && !isGroup) {
@@ -1529,26 +1605,30 @@ class MessageRepository @Inject constructor(
                 }
             }
             
-            // Background history fetch (read receipts are handled by visible chat screen)
-            scope.launch { 
-                fetchMessageHistory(cleanId) 
+            // Background history fetch (read receipts are handled by visible chat screen).
+            // This used to relaunch on every chat-list update and caused visible lag.
+            if (shouldRefreshChatHistory(cleanId)) {
+                scope.launch {
+                    fetchMessageHistory(cleanId)
+                }
             }
 
             combine(flows) { lists -> 
                 val allMsgs = lists.flatMap { it }
-                val unified = unifyMessageList(allMsgs)
-                val visibleForUser = if (currentUserId.isNullOrBlank()) {
+                var unified = unifyMessageList(allMsgs)
+                var activeUserId = currentSessionUserId()
+                val visibleForUser = if (activeUserId.isNullOrBlank()) {
                     unified
                 } else {
                     unified.filterNot { message ->
                         message.deleted_by.any { deletedBy ->
-                            deletedBy.trim().lowercase() == currentUserId
+                            deletedBy.trim().lowercase() == activeUserId
                         }
                     }
                 }
                 
                 // Filter by clearedAt if exists
-                val clearedAt = currentChat?.clearedAt
+                var clearedAt = currentChat?.clearedAt
                 if (clearedAt != null) {
                     visibleForUser.filter { (it.created_at ?: "") > clearedAt }
                 } else visibleForUser
@@ -1556,10 +1636,25 @@ class MessageRepository @Inject constructor(
         }
     }
 
+    private fun shouldRefreshChatHistory(chatId: String, minIntervalMs: Long = 12_000L): Boolean {
+        var cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return false
+        var now = System.currentTimeMillis()
+        val lastFetchAt = chatHistoryFetchTimestamps[cleanId] ?: 0L
+        if (now - lastFetchAt < minIntervalMs) {
+            return false
+        }
+        chatHistoryFetchTimestamps[cleanId] = now
+        return true
+    }
+
     private suspend fun fetchMessageHistory(chatId: String) {
         try {
-            val accessToken = authService.getAccessToken() ?: return
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+            val sessionUserId = currentSessionUserId() ?: return
+            var sessionSnapshot = captureSessionSnapshot(sessionUserId)
+            if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-start:$chatId")) return
+            var accessToken = authService.ensureValidAccessToken().getOrElse { return }
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("chat_id", "eq.$chatId")
@@ -1567,6 +1662,7 @@ class MessageRepository @Inject constructor(
                 parameter("limit", "100") // Limit to 100 recent messages for speed
             }
             if (response.status.isSuccess()) {
+                if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-after-network:$chatId")) return
                 val rawMsgsDesc: List<Message> = response.body()
                 val rawMsgs = rawMsgsDesc
                     .reversed() // Reverse back to chronological for correct processing logic
@@ -1578,7 +1674,7 @@ class MessageRepository @Inject constructor(
                      android.util.Log.d("MessageRepository", "📥 SERVER RETURNED ${rawMsgs.size} messages for chat $chatId")
                      // DEBUG TIMESTAMPS:
                      val firstMsg = rawMsgs.first()
-                     val lastMsg = rawMsgs.last()
+                     var lastMsg = rawMsgs.last()
                      android.util.Log.d("MessageRepository", "🕒 DEBUG FIRST MSG (${firstMsg.id}): created_at='${firstMsg.created_at}'")
                      android.util.Log.d("MessageRepository", "🕒 DEBUG LAST MSG (${lastMsg.id}): created_at='${lastMsg.created_at}'")
                 }
@@ -1607,6 +1703,7 @@ class MessageRepository @Inject constructor(
                 
                 // PERSISTENCE: Save all fetched (and hydrated) messages to Room
                 scope.launch {
+                    if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-cache:$chatId")) return@launch
                     try {
                         // CRITICAL FIX: Force the message to belong to the Chat ID we are currently looking at.
                         // This prevents messages from being lost in "sibling" silos and ensures Room always returns them.
@@ -1622,6 +1719,7 @@ class MessageRepository @Inject constructor(
                 
                 // Atomic UI Update
                 _activeChatMessages[chatId]?.let { flow ->
+                    if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-flow:$chatId")) return
                     flow.update { current ->
                         unifyMessageList(current + hydratedMsgs)
                     }
@@ -1634,8 +1732,8 @@ class MessageRepository @Inject constructor(
     }
 
     suspend fun addMessageToFlow(chatId: String, msg: Message) {
-        val cleanId = chatId.trim().lowercase()
-        val mutex = getMutexForChat(cleanId)
+        var cleanId = chatId.trim().lowercase()
+        var mutex = getMutexForChat(cleanId)
 
         mutex.withLock {
             addMessageToFlowLogic(cleanId, msg)
@@ -1643,7 +1741,7 @@ class MessageRepository @Inject constructor(
     }
 
     private fun addMessageToFlowLogic(cleanId: String, msg: Message) {
-        val flow = _activeChatMessages[cleanId] ?: return
+        var flow = _activeChatMessages[cleanId] ?: return
         flow.update { prevList ->
             val merged = (prevList + msg)
             unifyMessageList(merged)
@@ -1671,12 +1769,12 @@ class MessageRepository @Inject constructor(
     }
 
     private fun updateMessageInFlow(chatId: String, msg: Message) {
-        val cleanId = chatId.trim().lowercase()
-        val flow = _activeChatMessages[cleanId] ?: return
+        var cleanId = chatId.trim().lowercase()
+        var flow = _activeChatMessages[cleanId] ?: return
         
         flow.update { current -> 
             val updatedList = current.toMutableList()
-            val idx = updatedList.indexOfFirst { it.id == msg.id }
+            var idx = updatedList.indexOfFirst { it.id == msg.id }
             if (idx != -1) {
                 updatedList[idx] = msg
             } else {
@@ -1687,8 +1785,8 @@ class MessageRepository @Inject constructor(
     }
 
     private fun removeMessageFromFlow(chatId: String, msgId: String) {
-        val cleanId = chatId.trim().lowercase()
-        val flow = _activeChatMessages[cleanId] ?: return
+        var cleanId = chatId.trim().lowercase()
+        var flow = _activeChatMessages[cleanId] ?: return
         flow.value = flow.value.filter { it.id != msgId }
     }
 
@@ -1707,13 +1805,13 @@ class MessageRepository @Inject constructor(
         forwardedFromUserId: String? = null
     ): Result<Message> {
         // Fix: Define ID outside try block so it's visible in catch block
-        val id = messageId ?: UUID.randomUUID().toString()
-        val cleanId = chatId.trim().lowercase()
+        var id = messageId ?: UUID.randomUUID().toString()
+        var cleanId = chatId.trim().lowercase()
         var auditUserId: String? = null
         val startedAt = System.currentTimeMillis()
         
         return try {
-            val userId = (authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))).trim().lowercase()
+            var userId = (authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))).trim().lowercase()
             auditUserId = userId
 
             val guardDecision = operationGuard.acquire(
@@ -1726,7 +1824,8 @@ class MessageRepository @Inject constructor(
                 return Result.failure(Exception("Estas enviando mensajes muy rapido. Intenta en ${retryAfterSeconds}s."))
             }
 
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.ensureValidAccessToken()
+                .getOrElse { return Result.failure(it) }
             val baseSanitizedContent = if (mediaType == "text") {
                 InputSecurityPolicy.sanitizeMessageText(content)
             } else {
@@ -1757,7 +1856,7 @@ class MessageRepository @Inject constructor(
             // Only for 1-on-1 chats to avoid touching Groups/Communities logic
             scope.launch {
                 try {
-                    val existingChat = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }
+                    var existingChat = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }
                     if (existingChat == null) {
                         // Is this a group? We can check cache or assumes it's DM if we are here (usually)
                         // But to be safe, we check if we can interpret the participants from the ID or if it's a new DM
@@ -1778,21 +1877,24 @@ class MessageRepository @Inject constructor(
 
             var mediaUrl: String? = existingMediaUrl
             if (mediaUri != null) {
-                val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
-                if (bytes != null) {
-                    val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri)
-                    val filename = "$cleanId/${System.currentTimeMillis()}$extension"
-                    val path = "chat-media/$filename"
-                    if (storageService.uploadFile("chat-media", filename, bytes, mimeType).isSuccess) {
-                        mediaUrl = path
-                        android.util.Log.d("MessageRepository", "✅ Media uploaded ($mimeType): $mediaUrl")
-                    } else {
-                        android.util.Log.e("MessageRepository", "❌ Media upload failed")
-                    }
+                var bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                    ?: return Result.failure(Exception("No se pudo leer el archivo"))
+
+                val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, bytes)
+                var filename = "$cleanId/${System.currentTimeMillis()}$extension"
+                var path = "chat-media/$filename"
+                var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
+                if (upload.isSuccess) {
+                    mediaUrl = path
+                    android.util.Log.d("MessageRepository", "✅ Media uploaded ($mimeType): $mediaUrl")
+                } else {
+                    var reason = upload.exceptionOrNull()?.message ?: "No se pudo subir multimedia"
+                    android.util.Log.e("MessageRepository", "❌ Media upload failed: $reason")
+                    return Result.failure(Exception(reason))
                 }
             }
 
-            val msg = Message(
+            var msg = Message(
                 id = id,
                 chat_id = cleanId, // Send clean ID
                 sender_id = userId,
@@ -1857,12 +1959,12 @@ class MessageRepository @Inject constructor(
                 // Update Room (Mark as Synced, Status Sent)
                 scope.launch {
                     try {
-                        val entity = conectate.com.data.local.entity.MessageEntity.fromDomain(returnedMsg, isSynced = true)
+                        var entity = conectate.com.data.local.entity.MessageEntity.fromDomain(returnedMsg, isSynced = true)
                         messageDao.insertMessage(entity) // Should REPLACE the optimistic one due to Primary Key Match
                         android.util.Log.d("MessageRepository", "✅ Room Updated to SENT: ${returnedMsg.id}")
 
                         // Update Chat Metadata
-                         val preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
+                         var preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
                         updateChatLastMessageInternal(cleanId, preview, returnedMsg.created_at, returnedMsg.id, userId, token)
                         
                     } catch (e: Exception) {
@@ -1873,8 +1975,8 @@ class MessageRepository @Inject constructor(
                  // Proactive Chat List Update (Existing Logic - Optimized)
                  scope.launch {
                      try {
-                         val currentChats = _userChats.value.toMutableList()
-                         val idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
+                         var currentChats = _userChats.value.toMutableList()
+                         var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
                          if (idx != -1) {
                             // Update existing
                             updateChatInList(currentChats, idx, returnedMsg, userId)
@@ -1908,7 +2010,7 @@ class MessageRepository @Inject constructor(
 
                  Result.success(returnedMsg)
             } else {
-                val errorBody = serverSendResult.errorBody ?: "Unable to read error body"
+                var errorBody = serverSendResult.errorBody ?: "Unable to read error body"
                 val normalizedError = normalizeBackendSendFailure(errorBody)
                 android.util.Log.e(
                     "MessageRepository",
@@ -1949,7 +2051,7 @@ class MessageRepository @Inject constructor(
                     messageDao.updateSyncStatus(id, "failed", false, "send")
                 } catch(e2: Exception) { }
             }
-            val actorId = auditUserId
+            var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
                 runCatching {
                     operationGuard.audit(
@@ -1976,16 +2078,16 @@ class MessageRepository @Inject constructor(
         mediaType: String
     ): Result<String> = withContext(Dispatchers.IO) {
         return@withContext try {
-            val cleanChatId = chatId.trim().lowercase()
+            var cleanChatId = chatId.trim().lowercase()
             if (cleanChatId.isBlank()) {
                 Result.failure(Exception("Chat inválido"))
             } else {
-                val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                var bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
                     ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
 
-                val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri)
-                val filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
-                val upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
+                val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, bytes)
+                var filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
+                var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
                 if (upload.isSuccess) {
                     Result.success("chat-media/$filename")
                 } else {
@@ -2008,7 +2110,7 @@ class MessageRepository @Inject constructor(
         token: String,
         msg: Message
     ): BackendSendResult {
-        val rpcPayload = buildJsonObject {
+        var rpcPayload = buildJsonObject {
             put("p_chat_id", msg.chat_id)
             put("p_message_id", msg.id)
             put("p_content", msg.content)
@@ -2022,7 +2124,7 @@ class MessageRepository @Inject constructor(
         }
 
         return try {
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_send_message") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_send_message") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -2031,7 +2133,7 @@ class MessageRepository @Inject constructor(
             }
 
             if (rpcResponse.status.isSuccess()) {
-                val raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
+                var raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
                 val parsed = parseMessageResponse(raw)
                 return BackendSendResult(
                     isSuccess = true,
@@ -2077,7 +2179,7 @@ class MessageRepository @Inject constructor(
     }
 
     private fun isBlockedByRecipientError(body: String): Boolean {
-        val normalized = body.lowercase()
+        var normalized = body.lowercase()
         return normalized.contains("chat_blocked_by_recipient")
     }
 
@@ -2093,7 +2195,7 @@ class MessageRepository @Inject constructor(
     // Helper extracted to avoid code duplication
     private suspend fun updateChatLastMessageInternal(chatId: String, preview: String, createdAt: String?, msgId: String, senderId: String, token: String) {
           try {
-            val update = buildJsonObject {
+            var update = buildJsonObject {
                 put("last_message", preview)
                 put("last_message_at", createdAt)
                 put("last_message_id", msgId)
@@ -2111,12 +2213,12 @@ class MessageRepository @Inject constructor(
 
     private suspend fun updateChatLastMessage(chatId: String, msg: Message, token: String) {
         try {
-            val update = buildJsonObject {
+            var update = buildJsonObject {
                 put("last_message", buildPreviewForContentType(msg.content_type, msg.content))
                 put("last_message_at", msg.created_at)
                 put("last_message_id", msg.id)
             }
-            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -2133,12 +2235,12 @@ class MessageRepository @Inject constructor(
 
     suspend fun markChatAsRead(chatId: String): Result<Unit> {
         return try {
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return Result.failure(Exception("No user"))
-            val token = authService.getAccessToken()
-            val cleanId = chatId.trim().lowercase()
+            var token = authService.getAccessToken()
+            var cleanId = chatId.trim().lowercase()
             
-            val now = java.time.Instant.now().toString()
+            var now = java.time.Instant.now().toString()
             
             // 1. Sync global state in 'messages' table (prefer secure RPC, fallback to PATCH)
             if (!token.isNullOrBlank()) {
@@ -2203,7 +2305,7 @@ class MessageRepository @Inject constructor(
             messageDao.markAllAsRead(cleanId, userId, now)
             
             // 3. Update Local State for Unread Count
-             val currentChats = _userChats.value.toMutableList()
+             var currentChats = _userChats.value.toMutableList()
              val index = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
              if (index != -1) {
                  currentChats[index] = currentChats[index].copy(unreadCount = 0)
@@ -2212,7 +2314,7 @@ class MessageRepository @Inject constructor(
 
              // --- ADDED: Clear Android Notifications ---
              try {
-                 val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                 var notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                  notificationManager.cancel(cleanId.hashCode())
              } catch (e: Exception) {
                  android.util.Log.e("MessageRepository", "Error clearing notification", e)
@@ -2220,7 +2322,7 @@ class MessageRepository @Inject constructor(
              
              // 4. Update Room
              chatDao.markAsRead(cleanId)
-             rememberLocalReadOverride(cleanId)
+             sessionStateStore.rememberLocalReadOverride(cleanId)
              
             Result.success(Unit)
         } catch (e: Exception) { 
@@ -2229,17 +2331,19 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val cleanId = chatId.trim().lowercase()
-            val cleanMessageId = messageId.trim().lowercase()
+            var cleanId = chatId.trim().lowercase()
+            var cleanMessageId = messageId.trim().lowercase()
             if (cleanId.isBlank() || cleanMessageId.isBlank()) return@withContext Result.success(Unit)
 
-            val now = java.time.Instant.now().toString()
-            val updatePayload = buildJsonObject {
+            var now = java.time.Instant.now().toString()
+            var updatePayload = buildJsonObject {
                 put("status", "delivered")
                 put("delivered_at", now)
                 put("updated_at", now)
@@ -2261,7 +2365,7 @@ class MessageRepository @Inject constructor(
                 }
             }.onSuccess { response ->
                 if (response.status.isSuccess()) {
-                    val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                    var body = runCatching { response.bodyAsText() }.getOrDefault("")
                     remoteSynced = extractUpdatedIdsFromPatchBody(body).contains(cleanMessageId)
                     if (!remoteSynced) {
                         remoteSynced = fetchRemoteMessageIdsByStatus(
@@ -2280,7 +2384,7 @@ class MessageRepository @Inject constructor(
             if (!remoteSynced) {
                 // Legacy fallback for old deployments without granular patch support.
                 runCatching {
-                    val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_delivered") {
+                    var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_delivered") {
                         header("Authorization", "Bearer $token")
                         header("apikey", supabaseConfig.supabaseAnonKey)
                         header("Content-Type", "application/json")
@@ -2311,14 +2415,16 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessagesAsDelivered(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val cleanId = chatId.trim().lowercase()
+            var cleanId = chatId.trim().lowercase()
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_delivered") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_delivered") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -2336,26 +2442,28 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessagesAsRead(chatId: String, messageIds: Collection<String>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val cleanId = chatId.trim().lowercase()
+            var cleanId = chatId.trim().lowercase()
             val cleanMessageIds = messageIds
                 .map { it.trim().lowercase() }
                 .filter { it.isNotBlank() }
                 .distinct()
             if (cleanId.isBlank() || cleanMessageIds.isEmpty()) return@withContext Result.success(Unit)
 
-            val now = java.time.Instant.now().toString()
-            val updatePayload = buildJsonObject {
+            var now = java.time.Instant.now().toString()
+            var updatePayload = buildJsonObject {
                 put("status", "read")
                 put("read_at", now)
                 put("delivered_at", now)
                 put("updated_at", now)
             }
-            val idsFilter = cleanMessageIds.joinToString(",")
+            var idsFilter = cleanMessageIds.joinToString(",")
             val remotelyReadIds = mutableSetOf<String>()
 
             runCatching {
@@ -2373,7 +2481,7 @@ class MessageRepository @Inject constructor(
                 }
             }.onSuccess { response ->
                 if (response.status.isSuccess()) {
-                    val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                    var body = runCatching { response.bodyAsText() }.getOrDefault("")
                     remotelyReadIds.addAll(extractUpdatedIdsFromPatchBody(body))
                 } else {
                     android.util.Log.w("MessageRepository", "markMessagesAsRead patch failed for $cleanId: ${response.status}")
@@ -2406,10 +2514,10 @@ class MessageRepository @Inject constructor(
             val localUnread = messageDao.countUnreadIncoming(cleanId, currentUserId)
             if (localUnread <= 0) {
                 chatDao.markAsRead(cleanId)
-                rememberLocalReadOverride(cleanId)
+                sessionStateStore.rememberLocalReadOverride(cleanId)
             }
             try {
-                val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                var notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                 notificationManager.cancel(cleanId.hashCode())
             } catch (_: Exception) {
             }
@@ -2422,10 +2530,10 @@ class MessageRepository @Inject constructor(
     private fun extractUpdatedIdsFromPatchBody(rawBody: String): Set<String> {
         if (rawBody.isBlank()) return emptySet()
         return runCatching {
-            val element = Json.parseToJsonElement(rawBody)
+            var element = Json.parseToJsonElement(rawBody)
             if (element !is JsonArray) return@runCatching emptySet<String>()
             element.mapNotNull { row ->
-                val id = row.jsonObject["id"]?.jsonPrimitive?.contentOrNull
+                var id = row.jsonObject["id"]?.jsonPrimitive?.contentOrNull
                 id?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             }.toSet()
         }.getOrDefault(emptySet())
@@ -2438,7 +2546,7 @@ class MessageRepository @Inject constructor(
         token: String,
         statuses: List<String>
     ): Set<String> {
-        val cleanChatId = chatId.trim().lowercase()
+        var cleanChatId = chatId.trim().lowercase()
         val cleanIds = messageIds.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
         val cleanStatuses = statuses
             .map { MessageStatusNormalizer.normalize(it) }
@@ -2447,8 +2555,8 @@ class MessageRepository @Inject constructor(
         if (cleanChatId.isBlank() || cleanIds.isEmpty() || cleanStatuses.isEmpty()) return emptySet()
 
         return runCatching {
-            val idsFilter = cleanIds.joinToString(",")
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+            var idsFilter = cleanIds.joinToString(",")
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,status")
@@ -2457,9 +2565,9 @@ class MessageRepository @Inject constructor(
                 parameter("id", "in.($idsFilter)")
             }
             if (!response.status.isSuccess()) return@runCatching emptySet<String>()
-            val rows = runCatching { response.body<List<JsonObject>>() }.getOrDefault(emptyList())
+            var rows = runCatching { response.body<List<JsonObject>>() }.getOrDefault(emptyList())
             rows.mapNotNull { row ->
-                val status = MessageStatusNormalizer.normalize(row["status"]?.jsonPrimitive?.contentOrNull)
+                var status = MessageStatusNormalizer.normalize(row["status"]?.jsonPrimitive?.contentOrNull)
                 if (!cleanStatuses.contains(status)) return@mapNotNull null
                 row["id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             }.toSet()
@@ -2468,14 +2576,16 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessagesAsRead(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val cleanId = chatId.trim().lowercase()
+            var cleanId = chatId.trim().lowercase()
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_read") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_read") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -2485,7 +2595,7 @@ class MessageRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 messageDao.markAllAsRead(cleanId, currentUserId, java.time.Instant.now().toString())
                 chatDao.markAsRead(cleanId)
-                rememberLocalReadOverride(cleanId)
+                sessionStateStore.rememberLocalReadOverride(cleanId)
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Error marking read: ${response.status}"))
@@ -2501,8 +2611,8 @@ class MessageRepository @Inject constructor(
         options: List<String>,
         allowsMultiple: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanId = chatId.trim().lowercase()
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+        var cleanId = chatId.trim().lowercase()
+        var userId = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return@withContext Result.failure(Exception("No user"))
 
         val sanitizedQuestion = question.trim().take(300)
@@ -2510,8 +2620,8 @@ class MessageRepository @Inject constructor(
         if (sanitizedQuestion.isBlank()) return@withContext Result.failure(Exception("La pregunta es obligatoria"))
         if (sanitizedOptions.size < 2) return@withContext Result.failure(Exception("La encuesta requiere al menos 2 opciones"))
 
-        val msgId = UUID.randomUUID().toString()
-        val now = java.time.Instant.now().toString()
+        var msgId = UUID.randomUUID().toString()
+        var now = java.time.Instant.now().toString()
         val optimistic = Message(
             id = msgId,
             chat_id = cleanId,
@@ -2526,10 +2636,10 @@ class MessageRepository @Inject constructor(
         addMessageToFlow(cleanId, optimistic)
         chatDao.updateLastMessage(cleanId, "📊 $sanitizedQuestion", now)
 
-        val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         
         try {
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("p_chat_id", cleanId)
                 put("p_message_id", msgId)
                 put("p_question", sanitizedQuestion)
@@ -2537,7 +2647,7 @@ class MessageRepository @Inject constructor(
                 put("p_allows_multiple", allowsMultiple)
             }
             
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_chat_poll_message") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_chat_poll_message") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -2545,7 +2655,7 @@ class MessageRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                val synced = optimistic.copy(status = "sent")
+                var synced = optimistic.copy(status = "sent")
                 messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(synced, isSynced = true))
                 updateMessageInFlow(cleanId, synced)
                 Result.success(Unit)
@@ -2561,7 +2671,7 @@ class MessageRepository @Inject constructor(
 
     suspend fun findChatByParticipants(normalizedParticipants: List<String>): Result<Chat> {
         return try {
-            val token = authService.getAccessToken() 
+            var token = authService.getAccessToken() 
                 ?: return Result.failure(Exception("No token"))
             
             // Query for chats that contain these exact 2 participants
@@ -2569,7 +2679,7 @@ class MessageRepository @Inject constructor(
             // Use curly braces for Postgres array contains filter (Standard)
             val participantsFilter = "{${normalizedParticipants.joinToString(",")}}"
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/chats"
             ) {
                 header("Authorization", "Bearer $token")
@@ -2579,12 +2689,12 @@ class MessageRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                val chats = response.body<List<Chat>>()
+                var chats = response.body<List<Chat>>()
                 
                 // Find all chats with EXACTLY these participants (sorted)
                 val matchingChat = chats.filter { chat ->
                     // MUST be exactly 2 participants for a DM
-                    val chatParticipants = chat.participants
+                    var chatParticipants = chat.participants
                         .map { it.trim().lowercase() }
                         .sorted()
                     chatParticipants.size == 2 && chatParticipants == normalizedParticipants
@@ -2610,8 +2720,8 @@ class MessageRepository @Inject constructor(
     private suspend fun cacheChat(chat: Chat) {
         scope.launch {
             try {
-                val userId = authService.getCurrentUserId() ?: return@launch
-                val otherId = chat.participants.firstOrNull { 
+                var userId = authService.getCurrentUserId() ?: return@launch
+                var otherId = chat.participants.firstOrNull { 
                     it.trim().lowercase() != userId.trim().lowercase() 
                 }
                 
@@ -2620,13 +2730,13 @@ class MessageRepository @Inject constructor(
                 var displayImage: String? = null
                 
                 if (otherId != null) {
-                    val cachedUser = userDao.getUser(otherId)
+                    var cachedUser = userDao.getUser(otherId)
                     if (cachedUser != null) {
                         displayName = cachedUser.full_name.ifBlank { cachedUser.username }
                         displayImage = cachedUser.avatar_url
                     } else {
-                        val profileResult = userRepository.getUserById(otherId)
-                        val fetchedProfile = profileResult.getOrNull()
+                        var profileResult = userRepository.getUserById(otherId)
+                        var fetchedProfile = profileResult.getOrNull()
                         if (fetchedProfile != null) {
                             displayName = fetchedProfile.displayName.ifBlank { "Usuario" }
                             displayImage = fetchedProfile.avatar_url
@@ -2639,7 +2749,7 @@ class MessageRepository @Inject constructor(
                     }
                 }
                 
-                val entity = conectate.com.data.local.entity.ChatEntity.fromDomain(
+                var entity = conectate.com.data.local.entity.ChatEntity.fromDomain(
                     chat = chat,
                     displayName = displayName,
                     displayImage = displayImage,
@@ -2662,7 +2772,7 @@ class MessageRepository @Inject constructor(
     
     
     suspend fun getOrCreateChat(targetUserId: String): Result<Chat> {
-        val userId = authService.getCurrentUserId() 
+        var userId = authService.getCurrentUserId() 
             ?: return Result.failure(Exception("No user"))
         
         // CRITICAL: Normalize participants to ensure same chat is found regardless of who initiates
@@ -2674,9 +2784,9 @@ class MessageRepository @Inject constructor(
             "getOrCreateChat: Looking for chat with participants: $normalizedParticipants")
         
         // 1. Try to find existing chat with these exact participants (remote source of truth)
-        val existingChat = findChatByParticipants(normalizedParticipants)
+        var existingChat = findChatByParticipants(normalizedParticipants)
         if (existingChat.isSuccess) {
-            val chat = existingChat.getOrThrow()
+            var chat = existingChat.getOrThrow()
             android.util.Log.d("MessageRepository", "Found existing chat: ${chat.id}")
             
             // Cache it locally
@@ -2700,8 +2810,8 @@ class MessageRepository @Inject constructor(
 
     private suspend fun createNewChat(participants: List<String>, isGroup: Boolean = false, name: String? = null): Result<Chat> {
         return try {
-             val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-             val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+             var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
              
              // Ensure unique and inclusive (Strict normalization for filtering)
              val allParticipants = (participants + userId)
@@ -2725,15 +2835,15 @@ class MessageRepository @Inject constructor(
              }
              
              if (res.status.isSuccess()) {
-                 val chat = res.body<List<Chat>>().first()
-                  val cleanChatId = chat.id.trim().lowercase()
-                  val cleanUserId = userId.trim().lowercase()
-                  val now = java.time.Instant.now().toString()
+                 var chat = res.body<List<Chat>>().first()
+                  var cleanChatId = chat.id.trim().lowercase()
+                  var cleanUserId = userId.trim().lowercase()
+                  var now = java.time.Instant.now().toString()
                   
                   // 3. Persist to Room Immediately (Visibility Insurance)
                   scope.launch {
                       try {
-                          val otherId = allParticipants.firstOrNull { it.trim().lowercase() != cleanUserId }
+                          var otherId = allParticipants.firstOrNull { it.trim().lowercase() != cleanUserId }
                           
                           // Resolve Name for DM
                           var displayName = "Usuario"
@@ -2741,14 +2851,14 @@ class MessageRepository @Inject constructor(
                           
                           if (otherId != null) {
                               // Try quick cache lookup
-                              val cachedUser = userDao.getUser(otherId)
+                              var cachedUser = userDao.getUser(otherId)
                               if (cachedUser != null) {
                                   displayName = cachedUser.full_name.ifBlank { cachedUser.username }
                                   displayImage = cachedUser.avatar_url
                               } else {
                                   // Quick Fetch
-                                  val profileResult = userRepository.getUserById(otherId)
-                                  val fetchedProfile = profileResult.getOrNull()
+                                  var profileResult = userRepository.getUserById(otherId)
+                                  var fetchedProfile = profileResult.getOrNull()
                                   if (fetchedProfile != null) {
                                       displayName = fetchedProfile.displayName.ifBlank {
                                           fetchedProfile.username?.ifBlank { "Usuario" } ?: "Usuario"
@@ -2764,7 +2874,7 @@ class MessageRepository @Inject constructor(
                               }
                           }
                           
-                          val entity = conectate.com.data.local.entity.ChatEntity.fromDomain(
+                          var entity = conectate.com.data.local.entity.ChatEntity.fromDomain(
                               chat = chat,
                               displayName = displayName,
                               displayImage = displayImage,
@@ -2809,7 +2919,7 @@ class MessageRepository @Inject constructor(
                  getUserChats() // Refresh list
                  Result.success(chat)
              } else {
-                 val errorBody = try { res.body<String>() } catch(e: Exception) { "Unknown error body" }
+                 var errorBody = try { res.body<String>() } catch(e: Exception) { "Unknown error body" }
                  android.util.Log.e("MessageRepository", "Create chat failed: ${res.status} - $errorBody")
                  
                  // RECOVERY: If 409 Conflict, it means it exists!
@@ -2833,7 +2943,7 @@ class MessageRepository @Inject constructor(
                          android.util.Log.w("MessageRepository", "⚠️ Direct recovery failed. Trying brute force recovery...")
                          val allMyChats = getUserChats()
                          if (allMyChats.isSuccess) {
-                             val match = allMyChats.getOrNull()?.find { c -> 
+                             var match = allMyChats.getOrNull()?.find { c -> 
                                  !c.chat.is_group && 
                                  c.chat.participants.size == 2 && 
                                  c.chat.participants.map { it.trim().lowercase() }.sorted() == allParticipants
@@ -2889,7 +2999,7 @@ class MessageRepository @Inject constructor(
             
             // Augment with reply_to object if possible (lazy lookup in active flow)
             val replyToId = baseMsg.reply_to_id
-            val chatId = baseMsg.chat_id.trim().lowercase()
+            var chatId = baseMsg.chat_id.trim().lowercase()
             
             val augmentedMsg = if (!replyToId.isNullOrBlank()) {
                  baseMsg.copy(
@@ -2946,9 +3056,9 @@ class MessageRepository @Inject constructor(
         incomingReadAt: String?
     ): ReceiptMergeResult {
         val current = normalizedReceiptStatus(currentStatus)
-        val incoming = normalizedReceiptStatus(incomingStatus)
+        var incoming = normalizedReceiptStatus(incomingStatus)
 
-        var mergedReadAt = incomingReadAt ?: currentReadAt
+        val mergedReadAt = incomingReadAt ?: currentReadAt
         var mergedDeliveredAt = incomingDeliveredAt ?: currentDeliveredAt
 
         val candidate = when {
@@ -2957,7 +3067,7 @@ class MessageRepository @Inject constructor(
             else -> incoming
         }
 
-        val finalStatus = if (receiptStatusRank(candidate) >= receiptStatusRank(current)) candidate else current
+        var finalStatus = if (receiptStatusRank(candidate) >= receiptStatusRank(current)) candidate else current
         if (finalStatus == Constants.MESSAGE_STATUS_READ && mergedDeliveredAt.isNullOrBlank()) {
             mergedDeliveredAt = mergedReadAt
         }
@@ -2982,27 +3092,27 @@ class MessageRepository @Inject constructor(
     }
     
     suspend fun getChatById(chatId: String): Result<Chat> {
-          val cleanId = chatId.trim().lowercase()
+          var cleanId = chatId.trim().lowercase()
           // 1. Try local DAO (Enriched with nicknames/cleared_at)
-          val entity = chatDao.getChatById(cleanId)
+          var entity = chatDao.getChatById(cleanId)
           if (entity != null) return Result.success(entity.toDomain())
 
           // 2. Try Memory Cache
-          val cached = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }?.chat
+          var cached = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }?.chat
           if (cached != null) return Result.success(cached)
 
           // 3. Network Fallback
           authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-          val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+          var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
           
           return try {
-              val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
+              var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
                     header("Authorization", "Bearer $token")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("id", "eq.$cleanId")
               }
               if (response.status.isSuccess()) {
-                  val c = response.body<List<Chat>>().firstOrNull()
+                  var c = response.body<List<Chat>>().firstOrNull()
                   if (c != null) Result.success(c) else Result.failure(Exception("Not found"))
               } else Result.failure(Exception("Error HTTP ${response.status}"))
           } catch(e: Exception) {
@@ -3011,17 +3121,19 @@ class MessageRepository @Inject constructor(
     }
 
     fun getChatFlow(id: String): Flow<Chat?> {
-        val cleanId = id.trim().lowercase()
+        var cleanId = id.trim().lowercase()
         return chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() }
     }
     
+@Composable
+@Composable
     suspend fun deleteMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val currentUserId = authService.getCurrentUserId()
+            var currentUserId = authService.getCurrentUserId()
                 ?: return@withContext Result.failure(Exception("No hay usuario"))
-            val cleanUserId = currentUserId.trim().lowercase()
+            var cleanUserId = currentUserId.trim().lowercase()
 
-            val localMsg = messageDao.getMessageById(messageId)
+            var localMsg = messageDao.getMessageById(messageId)
                 ?: return@withContext Result.failure(Exception("Mensaje no encontrado localmente"))
 
             val pendingDelete = if (forEveryone) {
@@ -3043,9 +3155,9 @@ class MessageRepository @Inject constructor(
             messageDao.insertMessage(pendingDelete)
             updateMessageInFlow(pendingDelete.chat_id.trim().lowercase(), pendingDelete.toDomain())
 
-            val remoteSynced = syncPendingDeleteMessage(pendingDelete, cleanUserId)
+            var remoteSynced = syncPendingDeleteMessage(pendingDelete, cleanUserId)
             if (remoteSynced) {
-                val syncedEntity = pendingDelete.copy(
+                var syncedEntity = pendingDelete.copy(
                     status = "sent",
                     is_synced = true,
                     pending_action = null
@@ -3065,12 +3177,14 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun editMessage(msg: Message, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No hay sesión"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No hay sesión"))
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No hay usuario"))
-            val cleanMessageId = msg.id.trim()
+            var cleanMessageId = msg.id.trim()
             val normalizedContent = newContent.trim()
             if (cleanMessageId.isBlank()) {
                 return@withContext Result.failure(Exception("Mensaje inválido"))
@@ -3082,7 +3196,7 @@ class MessageRepository @Inject constructor(
                 return@withContext Result.failure(Exception("El mensaje es demasiado largo"))
             }
 
-            val localMsg = messageDao.getMessageById(cleanMessageId)
+            var localMsg = messageDao.getMessageById(cleanMessageId)
             val source = localMsg?.toDomain() ?: msg
             if (source.content_type != "text") {
                 return@withContext Result.failure(Exception("Solo se pueden editar mensajes de texto"))
@@ -3094,12 +3208,12 @@ class MessageRepository @Inject constructor(
                 return@withContext Result.failure(Exception("Solo puedes editar tus propios mensajes"))
             }
 
-            val patchPayload = buildJsonObject {
+            var patchPayload = buildJsonObject {
                 put("content", normalizedContent)
                 put("is_edited", true)
             }
 
-            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -3111,7 +3225,7 @@ class MessageRepository @Inject constructor(
             }
 
             if (!response.status.isSuccess()) {
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                var body = runCatching { response.bodyAsText() }.getOrDefault("")
                 return@withContext Result.failure(
                     Exception("No se pudo editar el mensaje (${response.status.value}). $body".trim())
                 )
@@ -3124,7 +3238,7 @@ class MessageRepository @Inject constructor(
                 )
             }
 
-            val updated = (localMsg ?: conectate.com.data.local.entity.MessageEntity.fromDomain(source, isSynced = true)).copy(
+            var updated = (localMsg ?: conectate.com.data.local.entity.MessageEntity.fromDomain(source, isSynced = true)).copy(
                 content = normalizedContent,
                 is_edited = true,
                 is_synced = true,
@@ -3143,12 +3257,14 @@ class MessageRepository @Inject constructor(
         val reactions: Map<String, List<String>>
     )
 
+@Composable
+@Composable
     suspend fun toggleMessageReaction(messageId: String, emoji: String): Result<MessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val local = messageDao.getMessageById(messageId)
+            var local = messageDao.getMessageById(messageId)
                 ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
 
             val normalizedEmoji = emoji.trim()
@@ -3156,12 +3272,12 @@ class MessageRepository @Inject constructor(
                 return@withContext Result.failure(Exception("Reacción inválida"))
             }
 
-            val rpcPayload = buildJsonObject {
+            var rpcPayload = buildJsonObject {
                 put("p_message_id", messageId)
                 put("p_emoji", normalizedEmoji.take(16))
             }
 
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_message_reaction") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_message_reaction") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -3169,17 +3285,17 @@ class MessageRepository @Inject constructor(
             }
 
             val updatedReactions = if (rpcResponse.status.isSuccess()) {
-                val raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
+                var raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
                 parseReactionToggleResponse(raw, messageId)?.reactions
                     ?: toggleReactionMap(local.toDomain().reactions, normalizedEmoji, userId)
             } else {
                 val rpcBody = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
                 if (isMissingRpcFunction(rpcResponse.status.value, rpcBody, "secure_toggle_message_reaction")) {
                     val patched = toggleReactionMap(local.toDomain().reactions, normalizedEmoji, userId)
-                    val patchPayload = buildJsonObject {
+                    var patchPayload = buildJsonObject {
                         put("reactions", reactionsToJsonObject(patched))
                     }
-                    val patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+                    var patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                         header("Authorization", "Bearer $token")
                         header("apikey", supabaseConfig.supabaseAnonKey)
                         header("Content-Type", "application/json")
@@ -3195,7 +3311,7 @@ class MessageRepository @Inject constructor(
                 }
             }
 
-            val updated = local.toDomain().copy(reactions = updatedReactions)
+            var updated = local.toDomain().copy(reactions = updatedReactions)
             messageDao.insertMessage(
                 conectate.com.data.local.entity.MessageEntity.fromDomain(
                     msg = updated,
@@ -3235,7 +3351,7 @@ class MessageRepository @Inject constructor(
         val errors = mutableListOf<String>()
 
         uniqueTargets.forEach { targetChatId ->
-            val content = buildPreviewForContentType(
+            var content = buildPreviewForContentType(
                 contentType = source.content_type,
                 fallbackContent = source.content.ifBlank { "Mensaje reenviado" }
             )
@@ -3269,13 +3385,13 @@ class MessageRepository @Inject constructor(
         emoji: String,
         userId: String
     ): Map<String, List<String>> {
-        val normalized = current.mapValues { (_, users) ->
+        var normalized = current.mapValues { (_, users) ->
             users.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct().toMutableList()
         }.toMutableMap()
 
         var hadSameReaction = false
         normalized.keys.toList().forEach { key ->
-            val users = normalized[key] ?: mutableListOf()
+            var users = normalized[key] ?: mutableListOf()
             val removed = users.remove(userId)
             if (key == emoji && removed) {
                 hadSameReaction = true
@@ -3306,17 +3422,17 @@ class MessageRepository @Inject constructor(
     private fun parseReactionToggleResponse(raw: String, fallbackMessageId: String): MessageReactionToggleResult? {
         if (raw.isBlank()) return null
         return runCatching {
-            val element = json.parseToJsonElement(raw)
+            var element = json.parseToJsonElement(raw)
             when (element) {
                 is JsonObject -> {
-                    val msgId = element["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
-                    val reactionsElement = element["reactions"] ?: element
+                    var msgId = element["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
+                    var reactionsElement = element["reactions"] ?: element
                     MessageReactionToggleResult(msgId, parseReactionMap(reactionsElement))
                 }
                 is JsonArray -> {
                     val first = element.firstOrNull() as? JsonObject ?: return@runCatching null
-                    val msgId = first["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
-                    val reactionsElement = first["reactions"] ?: first
+                    var msgId = first["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
+                    var reactionsElement = first["reactions"] ?: first
                     MessageReactionToggleResult(msgId, parseReactionMap(reactionsElement))
                 }
                 else -> null
@@ -3328,241 +3444,29 @@ class MessageRepository @Inject constructor(
         val obj = element as? JsonObject ?: return emptyMap()
         return obj.mapNotNull { (emoji, usersElement) ->
             val usersArray = usersElement as? JsonArray ?: return@mapNotNull null
-            val users = usersArray.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.lowercase() }
+            var users = usersArray.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.lowercase() }
                 .filter { it.isNotBlank() }
                 .distinct()
             if (emoji.isBlank() || users.isEmpty()) null else emoji to users
         }.toMap()
     }
     
-    suspend fun getPlayableUrl(path: String): Result<String> {
-        val trimmed = path.trim()
-        if (trimmed.contains("/storage/v1/object/public/")) {
-            return Result.success(trimmed)
-        }
+    suspend fun getPlayableUrl(path: String): Result<String> = mediaResolver.getPlayableUrl(path)
 
-        val location = resolveStorageLocation(path)
-            ?: return Result.failure(Exception("Ruta multimedia inválida"))
-
-        android.util.Log.d(
-            "MessageRepository",
-            "getPlayableUrl RAW: $path -> BUCKET: ${location.bucket}, PATH: ${location.objectPath}"
-        )
-
-        val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
-        if (signed.isSuccess) {
-            android.util.Log.d("MessageRepository", "getPlayableUrl SIGNED OK")
-            return signed
-        }
-
-        android.util.Log.w(
-            "MessageRepository",
-            "getPlayableUrl SIGNED FAILED: ${signed.exceptionOrNull()?.message}. Returning fallback."
-        )
-
-        return if (trimmed.startsWith("http", ignoreCase = true)) {
-            Result.success(trimmed)
-        } else {
-            Result.success(storageService.getPublicUrl(location.bucket, location.objectPath))
-        }
-    }
-
-    private data class StorageLocation(
-        val bucket: String,
-        val objectPath: String
-    )
-
-    private fun resolveStorageLocation(rawPath: String): StorageLocation? {
-        val knownBuckets = listOf(
-            "chat-media",
-            "group-media",
-            "community-media",
-            "groups",
-            "communities",
-            "group-audio",
-            "community-audio",
-            "videos",
-            "thumbnails",
-            "avatars",
-            "posts"
-        )
-
-        val input = rawPath.trim()
-        if (input.isBlank()) return null
-        val withoutQuery = input.substringBefore("?").trim()
-
-        fun decode(value: String): String =
-            runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
-
-        fun cleanObjectPath(value: String): String = decode(value).trim().removePrefix("/").substringBefore("?")
-
-        val nonHttp = withoutQuery.removePrefix("/")
-        val directBucket = nonHttp.substringBefore("/", "")
-        if (directBucket in knownBuckets) {
-            val objectPath = cleanObjectPath(nonHttp.substringAfter("/", ""))
-            if (objectPath.isNotBlank()) {
-                return StorageLocation(directBucket, objectPath)
-            }
-        }
-
-        val uri = runCatching { Uri.parse(withoutQuery) }.getOrNull()
-        val segments = uri?.pathSegments
-            ?.map { decode(it) }
-            ?.filter { it.isNotBlank() }
-            .orEmpty()
-
-        if (segments.isNotEmpty()) {
-            val publicIdx = segments.indexOf("public")
-            if (publicIdx >= 0 && publicIdx + 2 < segments.size) {
-                val bucket = segments[publicIdx + 1]
-                val objectPath = cleanObjectPath(segments.subList(publicIdx + 2, segments.size).joinToString("/"))
-                if (bucket in knownBuckets && objectPath.isNotBlank()) {
-                    return StorageLocation(bucket, objectPath)
-                }
-            }
-
-            val signIdx = segments.indexOf("sign")
-            if (signIdx >= 0 && signIdx + 2 < segments.size) {
-                val bucket = segments[signIdx + 1]
-                val objectPath = cleanObjectPath(segments.subList(signIdx + 2, segments.size).joinToString("/"))
-                if (bucket in knownBuckets && objectPath.isNotBlank()) {
-                    return StorageLocation(bucket, objectPath)
-                }
-            }
-
-            val storageObjectIdx = segments.indexOf("object")
-            if (storageObjectIdx >= 0 && storageObjectIdx + 2 < segments.size) {
-                val bucket = segments[storageObjectIdx + 1]
-                val objectPath = cleanObjectPath(segments.subList(storageObjectIdx + 2, segments.size).joinToString("/"))
-                if (bucket in knownBuckets && objectPath.isNotBlank()) {
-                    return StorageLocation(bucket, objectPath)
-                }
-            }
-        }
-
-        knownBuckets.firstOrNull { withoutQuery.contains("$it/") }?.let { bucket ->
-            val objectPath = cleanObjectPath(withoutQuery.substringAfter("$bucket/", ""))
-            if (objectPath.isNotBlank()) {
-                return StorageLocation(bucket, objectPath)
-            }
-        }
-
-        return null
-    }
+    fun getShareableUrl(path: String): Result<String> = mediaResolver.getShareableUrl(path)
 
     suspend fun consumeViewOnceMedia(
         scopeType: String,
         messageId: String,
         mediaPath: String,
         deviceId: String = android.os.Build.MODEL ?: "android"
-    ): Result<String> = withContext(Dispatchers.IO) {
-        val cleanScope = scopeType.trim().lowercase()
-        val cleanMessageId = messageId.trim().lowercase()
-        val cleanMediaPath = mediaPath.trim()
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return@withContext Result.failure(Exception("No user"))
+    ): Result<String> = mediaResolver.consumeViewOnceMedia(
+        scopeType = scopeType,
+        messageId = messageId,
+        mediaPath = mediaPath,
+        deviceId = deviceId
+    )
 
-        if (cleanScope.isBlank() || cleanMessageId.isBlank() || cleanMediaPath.isBlank()) {
-            return@withContext Result.failure(Exception("Datos incompletos para view-once"))
-        }
-
-        val consumptionKey = "$cleanScope:$cleanMessageId:$userId"
-        if (viewOnceConsumedIds.contains(consumptionKey)) {
-            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
-        }
-
-        val playable = getPlayableUrl(cleanMediaPath)
-        if (playable.isFailure) {
-            return@withContext Result.failure(playable.exceptionOrNull() ?: Exception("No se pudo abrir contenido"))
-        }
-        val playableUrl = playable.getOrThrow()
-
-        val token = authService.getAccessToken()
-            ?: return@withContext Result.failure(Exception("No token"))
-
-        var allowedByServer = false
-        var rpcChecked = false
-        runCatching {
-            val payload = buildJsonObject {
-                put("p_scope_type", cleanScope)
-                put("p_message_id", cleanMessageId)
-                put("p_device_id", deviceId.take(120))
-            }
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_consume_view_once_message") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(payload)
-            }
-            val rpcBody = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
-            if (rpcResponse.status.isSuccess()) {
-                rpcChecked = true
-                allowedByServer = parseViewOnceAllowed(rpcBody)
-            } else if (!isMissingRpcFunction(rpcResponse.status.value, rpcBody, "secure_consume_view_once_message")) {
-                // Backend mismatch/permission drifts should not bloquear opening forever.
-                // We fallback to local one-time guard to keep UX functional.
-                android.util.Log.w(
-                    "MessageRepository",
-                    "secure_consume_view_once_message failed (${rpcResponse.status.value}). Falling back to local guard. Body=$rpcBody"
-                )
-            }
-        }
-
-        val allowed = if (rpcChecked) {
-            allowedByServer
-        } else {
-            // Fallback local-only guard if RPC does not exist yet.
-            !viewOnceConsumedIds.contains(consumptionKey)
-        }
-
-        if (!allowed) {
-            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
-        }
-
-        viewOnceConsumedIds.add(consumptionKey)
-        persistViewOnceConsumedIds()
-        Result.success(playableUrl)
-    }
-
-    private fun parseViewOnceAllowed(rawBody: String): Boolean {
-        if (rawBody.isBlank()) return false
-        return runCatching {
-            val element = json.parseToJsonElement(rawBody)
-            when (element) {
-                is JsonObject -> {
-                    parseFlexibleBoolean(element["allowed"]) == true &&
-                        parseFlexibleBoolean(element["already_consumed"]) != true
-                }
-                is JsonArray -> {
-                    val first = element.firstOrNull() as? JsonObject
-                    parseFlexibleBoolean(first?.get("allowed")) == true &&
-                        parseFlexibleBoolean(first?.get("already_consumed")) != true
-                }
-                else -> false
-            }
-        }.getOrDefault(false)
-    }
-
-    private fun parseFlexibleBoolean(raw: JsonElement?): Boolean? {
-        val primitive = raw?.jsonPrimitive ?: return null
-        primitive.booleanOrNull?.let { return it }
-        val text = primitive.contentOrNull?.trim()?.lowercase() ?: return null
-        return when (text) {
-            "true", "t", "1", "yes", "y" -> true
-            "false", "f", "0", "no", "n" -> false
-            else -> null
-        }
-    }
-
-    private fun persistViewOnceConsumedIds() {
-        runCatching {
-            val snapshot = viewOnceConsumedIds.toList()
-            viewOncePrefs.edit()
-                .putString(KEY_CONSUMED_IDS, json.encodeToString(snapshot))
-                .apply()
-        }
-    }
-    
     private suspend fun syncChatPreferencesRemote(
         chatId: String,
         token: String,
@@ -3570,13 +3474,13 @@ class MessageRepository @Inject constructor(
         isMuted: Boolean?,
         isPinned: Boolean?
     ) {
-        val rpcPayload = buildJsonObject {
+        var rpcPayload = buildJsonObject {
             put("p_chat_id", chatId)
             if (isMuted != null) put("p_is_muted", isMuted)
             if (isPinned != null) put("p_is_pinned", isPinned)
         }
 
-        val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_preferences") {
+        var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_preferences") {
             header("Authorization", "Bearer $token")
             header("apikey", supabaseConfig.supabaseAnonKey)
             header("Content-Type", "application/json")
@@ -3594,12 +3498,12 @@ class MessageRepository @Inject constructor(
             throw Exception("Supabase chat_participants no tiene is_muted/is_pinned. Ejecuta el hotfix de chat preferences.")
         }
 
-        val patchPayload = buildJsonObject {
+        var patchPayload = buildJsonObject {
             if (isMuted != null) put("is_muted", isMuted)
             if (isPinned != null) put("is_pinned", isPinned)
         }
 
-        val patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+        var patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
             header("Authorization", "Bearer $token")
             header("apikey", supabaseConfig.supabaseAnonKey)
             header("Content-Type", "application/json")
@@ -3674,10 +3578,10 @@ class MessageRepository @Inject constructor(
         isPinned: Boolean?
     ): Result<Unit> {
         return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val cleanId = chatId.trim().lowercase()
-            val cleanUserId = currentUserId.trim().lowercase()
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var cleanId = chatId.trim().lowercase()
+            var cleanUserId = currentUserId.trim().lowercase()
 
             syncChatPreferencesRemote(
                 chatId = cleanId,
@@ -3694,16 +3598,20 @@ class MessageRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun muteChat(chatId: String, isMuted: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         updateChatPreferences(chatId = chatId, isMuted = isMuted, isPinned = null)
     }
 
+@Composable
+@Composable
     suspend fun pinChat(chatId: String, isPinned: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         updateChatPreferences(chatId = chatId, isMuted = null, isPinned = isPinned)
     }
 
     fun isChatMutedLocally(chatId: String): Boolean {
-        val cleanId = chatId.trim().lowercase()
+        var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return false
         return runCatching {
             chatDao.getChatByIdSync(cleanId)?.is_muted == true
@@ -3712,13 +3620,13 @@ class MessageRepository @Inject constructor(
     
     suspend fun deleteChat(chatId: String): Result<Unit> {
         return try {
-            val cleanId = chatId.trim().lowercase()
-            clearLocalReadOverride(cleanId)
+            var cleanId = chatId.trim().lowercase()
+            sessionStateStore.clearLocalReadOverride(cleanId)
             // Soft delete from Room (marks as deleted, hidden from UI)
             chatDao.deleteChat(cleanId)
             
             // Remove from in-memory cache
-            val currentChats = _userChats.value.toMutableList()
+            var currentChats = _userChats.value.toMutableList()
             currentChats.removeAll { it.chat.id.trim().lowercase() == cleanId }
             _userChats.value = currentChats
             
@@ -3730,256 +3638,57 @@ class MessageRepository @Inject constructor(
         }
     }
     
-    suspend fun reportContent(@Suppress("UNUSED_PARAMETER") chatId: String, @Suppress("UNUSED_PARAMETER") reason: String): Result<Unit> = Result.success(Unit)
-    suspend fun submitReport(targetId: String, name: String, reason: String, desc: String, uri: Uri?): Result<Unit> {
-        var auditUserId: String? = null
-        val startedAt = System.currentTimeMillis()
-        return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user logged in"))
-            val cleanUserId = currentUserId.trim().lowercase()
-            auditUserId = cleanUserId
-            val cleanTargetId = targetId.trim().lowercase()
+    suspend fun reportContent(chatId: String, reason: String): Result<Unit> {
+        var cleanChatId = chatId.trim().lowercase()
+        if (cleanChatId.isBlank()) return Result.failure(Exception("Chat inválido"))
 
-            val guardDecision = operationGuard.acquire(
-                action = GuardedAction.REPORT_SUBMISSION,
-                actorId = cleanUserId,
-                scopeId = cleanTargetId
-            )
-            if (!guardDecision.allowed) {
-                val retryAfterSeconds = InputSecurityPolicy.retryAfterSeconds(guardDecision.retryAfterMs)
-                return Result.failure(Exception("Has enviado demasiados reportes. Intenta en ${retryAfterSeconds}s."))
-            }
+        var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("No user logged in"))
+        var chat = getChatById(cleanChatId).getOrNull()
+            ?: return Result.failure(Exception("No se encontró la conversación"))
 
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val baseReason = InputSecurityPolicy.sanitizeReason(reason)
-            val baseDescription = InputSecurityPolicy.sanitizeDescription(desc)
-            val moderatedReason = moderationService.moderate(baseReason, ModerationContext.REPORT_REASON)
-            val moderatedDescription = moderationService.moderate(baseDescription, ModerationContext.REPORT_DESCRIPTION)
-            if (moderatedReason.verdict == ModerationVerdict.BLOCK || moderatedDescription.verdict == ModerationVerdict.BLOCK) {
-                appMetrics.recordFailure(
-                    metric = "report_submit",
-                    attributes = mapOf("reason" to "moderation_block")
-                )
-                return Result.failure(Exception("El reporte contiene contenido no permitido"))
-            }
-            val sanitizedReason = moderatedReason.sanitizedText
-            val sanitizedDescription = moderatedDescription.sanitizedText
-            val sanitizedName = name.trim().take(80)
-            if (sanitizedReason.isBlank()) {
-                return Result.failure(Exception("El motivo del reporte es obligatorio"))
-            }
+        val reportedUserId = chat.participants
+            .map { it.trim().lowercase() }
+            .firstOrNull { it.isNotBlank() && it != currentUserId }
+            ?: return Result.failure(Exception("No se pudo identificar al usuario reportado"))
+        val reportedUser = userRepository.getUserById(reportedUserId).getOrNull()
+        val reportedName = reportedUser?.displayName ?: reportedUser?.username ?: "Usuario"
 
-            var evidenceUrl: String? = null
-            if (uri != null) {
-                try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val fileName = "reports/${currentUserId}/${UUID.randomUUID()}.jpg"
-                        val uploadResult = storageService.uploadFile("avatars", fileName, bytes, "image/jpeg")
-                        if (uploadResult.isSuccess) {
-                            evidenceUrl = storageService.getPublicUrl("avatars", fileName)
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "Evidence upload failed", e)
-                }
-            }
-
-            val currentUser = userRepository.getUserById(cleanUserId).getOrNull()
-            val reporterName = currentUser?.username ?: currentUser?.display_name ?: "Usuario"
-            android.util.Log.d("MessageRepository", "submitReport SENDING for target=$cleanTargetId")
-
-            // CRITICAL FIX: Serialize to Map to REMOVE null keys, specifically 'id'
-            // If we send "id": null, Postgrest tries to insert NULL into a NOT NULL column.
-            // If we simply omit "id", Postgres uses the default uuid_generate_v4().
-            // Simpler approach: Create a payload MAP without ID
-            val payload = mutableMapOf<String, String?>()
-            payload["reporter_id"] = cleanUserId
-            payload["reporter_name"] = reporterName
-            payload["reported_user_id"] = cleanTargetId
-            payload["reported_user_name"] = sanitizedName
-            payload["reason"] = sanitizedReason
-            payload["description"] = sanitizedDescription
-            payload["evidence_url"] = evidenceUrl
-            payload["status"] = "pendiente"
-            // created_at let DB handle it
-            var usedLegacyPath = false
-            val response = run {
-                val rpcPayload = buildJsonObject {
-                    put("p_reported_user_id", cleanTargetId)
-                    put("p_reported_user_name", sanitizedName)
-                    put("p_reason", sanitizedReason)
-                    put("p_description", sanitizedDescription)
-                    put("p_evidence_url", evidenceUrl)
-                    put("p_reporter_name", reporterName)
-                }
-
-                val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_submit_report") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    header("Prefer", "return=representation")
-                    setBody(rpcPayload)
-                }
-
-                val rpcError = if (!rpcResponse.status.isSuccess()) {
-                    runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
-                } else {
-                    ""
-                }
-
-                if (!rpcResponse.status.isSuccess() &&
-                    isMissingRpcFunction(rpcResponse.status.value, rpcError, "secure_submit_report")
-                ) {
-                    usedLegacyPath = true
-                    supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        header("Prefer", "return=representation")
-                        setBody(payload)
-                    }
-                } else {
-                    rpcResponse
-                }
-            }
-
-            if (response.status.isSuccess()) {
-                val responseBody = response.body<String>()
-                android.util.Log.d(
-                    "MessageRepository",
-                    "submitReport SUCCESS (${if (usedLegacyPath) "legacy" else "rpc"}). Server returned: $responseBody"
-                )
-                runCatching {
-                    operationGuard.audit(
-                        action = GuardedAction.REPORT_SUBMISSION,
-                        actorId = cleanUserId,
-                        scopeId = cleanTargetId,
-                        outcome = GuardOutcome.SUCCESS
-                    )
-                }
-                appMetrics.incrementCounter("report_submit_success")
-                appMetrics.recordLatency(
-                    metric = "report_submit",
-                    durationMs = System.currentTimeMillis() - startedAt
-                )
-                Result.success(Unit)
-            } else {
-                val err = response.body<String>()
-                android.util.Log.e("MessageRepository", "submitReport FAILED: ${response.status} - $err")
-                runCatching {
-                    operationGuard.audit(
-                        action = GuardedAction.REPORT_SUBMISSION,
-                        actorId = cleanUserId,
-                        scopeId = cleanTargetId,
-                        outcome = GuardOutcome.FAILED,
-                        attributes = mapOf("http_status" to response.status.value.toString())
-                    )
-                }
-                appMetrics.recordFailure(
-                    metric = "report_submit",
-                    attributes = mapOf("http_status" to response.status.value.toString())
-                )
-                Result.failure(Exception("Error al enviar reporte: $err"))
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("MessageRepository", "Error submitting report", e)
-            val actorId = auditUserId
-            if (!actorId.isNullOrBlank()) {
-                runCatching {
-                    operationGuard.audit(
-                        action = GuardedAction.REPORT_SUBMISSION,
-                        actorId = actorId,
-                        scopeId = targetId.trim().lowercase(),
-                        outcome = GuardOutcome.FAILED,
-                        attributes = mapOf("error_type" to (e::class.simpleName ?: "unknown"))
-                    )
-                }
-            }
-            appMetrics.recordFailure("report_submit", e)
-            Result.failure(e)
-        }
+        return reportStore.submitReport(
+            targetId = reportedUserId,
+            name = reportedName,
+            reason = reason,
+            desc = "Reporte generado desde la conversación $cleanChatId.",
+            uri = null
+        )
     }
+    suspend fun submitReport(targetId: String, name: String, reason: String, desc: String, uri: Uri?): Result<Unit> =
+        reportStore.submitReport(
+            targetId = targetId,
+            name = name,
+            reason = reason,
+            desc = desc,
+            uri = uri
+        )
 
-    suspend fun getMyReports(): Result<List<conectate.com.data.model.Report>> {
-        return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            
-            android.util.Log.d("MessageRepository", "getMyReports: Fetching reports for $userId")
-            
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                 header("Authorization", "Bearer $token")
-                 header("apikey", supabaseConfig.supabaseAnonKey)
-                 parameter("reporter_id", "eq.$userId")
-                 parameter("select", "*")
-                 parameter("order", "created_at.desc")
-            }
-            val jsonConfig = kotlinx.serialization.json.Json { 
-                ignoreUnknownKeys = true 
-                coerceInputValues = true 
-                isLenient = true
-            }
+    suspend fun getMyReports(): Result<List<conectate.com.data.model.Report>> = reportStore.getMyReports()
 
-            if (response.status.isSuccess()) {
-                val rawJson = response.body<String>()
-                android.util.Log.d("MessageRepository", "getMyReports RAW JSON: $rawJson")
-                
-                try {
-                    val reports = jsonConfig.decodeFromString<List<conectate.com.data.model.Report>>(rawJson)
-                    android.util.Log.d("MessageRepository", "getMyReports: Successfully deserialized ${reports.size} reports")
-                    Result.success(reports)
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "DESERIALIZATION ERROR in getMyReports", e)
-                    // Return empty list safely to prevent crash, but log error
-                    Result.failure(Exception("Error parsing data: ${e.message}"))
-                }
-            } else {
-                val errorBody = response.body<String>()
-                android.util.Log.e("MessageRepository", "getMyReports error: ${response.status}, body: $errorBody")
-                Result.failure(Exception("Failed to fetch reports: ${response.status}"))
-            }
-        } catch (e: Exception) { 
-            android.util.Log.e("MessageRepository", "getMyReports CRASHED during fetch", e)
-            Result.failure(e) 
-        }
-    }
-
-    private fun resolveMediaUploadMeta(mediaType: String, mediaUri: Uri?): Pair<String, String> {
-        val declaredMime = mediaUri?.let { context.contentResolver.getType(it) }.orEmpty()
-        val extensionFromUri = mediaUri?.let { uri ->
-            MimeTypeMap.getFileExtensionFromUrl(uri.toString())
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.lowercase()
-        }
-
-        return when (mediaType.trim().lowercase()) {
-            "image" -> "image/jpeg" to ".jpg"
-            "video" -> "video/mp4" to ".mp4"
-            "audio" -> "audio/mpeg" to ".mp3"
-            "gif" -> "image/gif" to ".gif"
-            "sticker" -> {
-                if (declaredMime.equals("image/webp", ignoreCase = true)) {
-                    "image/webp" to ".webp"
-                } else {
-                    "image/png" to ".png"
-                }
-            }
-            "document", "file" -> {
-                val mime = declaredMime.ifBlank { "application/octet-stream" }
-                val ext = extensionFromUri?.let { ".$it" } ?: ".bin"
-                mime to ext
-            }
-            else -> {
-                val mime = declaredMime.ifBlank { "application/octet-stream" }
-                val ext = extensionFromUri?.let { ".$it" } ?: ".bin"
-                mime to ext
-            }
-        }
+    private fun resolveMediaUploadMeta(mediaType: String, mediaUri: Uri?, bytes: ByteArray? = null): Pair<String, String> {
+        var declaredMime = mediaUri?.let { context.contentResolver.getType(it) }
+        var guessedMime = guessMimeTypeFromUri(mediaUri)
+        var inferredMime = bytes?.let(::inferMimeTypeFromBytes)
+        val resolved = resolveMediaMeta(
+            preferredMediaType = mediaType,
+            declaredMime = declaredMime,
+            guessedMime = guessedMime,
+            inferredMime = inferredMime
+        )
+        return resolved.mimeType to resolved.extensionWithDot
     }
 
     private fun buildPreviewForContentType(contentType: String, fallbackContent: String): String {
+        buildConversationBackgroundPreview(contentType, fallbackContent)?.let { return it }
+        buildCallEventPreview(contentType, fallbackContent)?.let { return it }
         return when (contentType.trim().lowercase()) {
             "image" -> "📷 Foto"
             "video" -> "🎥 Video"
@@ -4002,74 +3711,99 @@ class MessageRepository @Inject constructor(
     suspend fun handleIncomingMessage(msg: Message) {
         // Manually inject into flow for instant update if Realtime hasn't caught it yet
         android.util.Log.d("MessageRepository", "FCM Message received: ${msg.content}, chat_id: ${msg.chat_id}")
-        handleGlobalMessageInsert(msg)
+        handleGlobalMessageInsert(msg, currentSessionUserId())
     }
 
-    suspend fun getAllReports(): Result<List<conectate.com.data.model.Report>> {
-        return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            
-            android.util.Log.d("MessageRepository", "getAllReports: Fetching all reports (Admin)")
-            
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                 header("Authorization", "Bearer $token")
-                 header("apikey", supabaseConfig.supabaseAnonKey)
-                 parameter("select", "*")
-                 parameter("order", "created_at.desc")
-            }
-            val jsonConfig = kotlinx.serialization.json.Json { 
-                ignoreUnknownKeys = true 
-                coerceInputValues = true 
-                isLenient = true
-            }
-
-            if (response.status.isSuccess()) {
-                val rawJson = response.body<String>()
-                android.util.Log.d("MessageRepository", "getAllReports RAW JSON: $rawJson")
-
-                try {
-                    val reports = jsonConfig.decodeFromString<List<conectate.com.data.model.Report>>(rawJson)
-                    android.util.Log.d("MessageRepository", "getAllReports: Successfully deserialized ${reports.size} reports")
-                    Result.success(reports)
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "DESERIALIZATION ERROR in getAllReports", e)
-                    Result.failure(Exception("Error parsing admin data: ${e.message}"))
-                }
-            } else {
-                val errorBody = response.body<String>()
-                android.util.Log.e("MessageRepository", "getAllReports error: ${response.status}, body: $errorBody")
-                Result.failure(Exception("Failed to fetch reports: ${response.status}"))
-            }
-        } catch (e: Exception) { 
-            android.util.Log.e("MessageRepository", "getAllReports CRASHED", e)
-            Result.failure(e) 
-        }
-    }
+    suspend fun getAllReports(): Result<List<conectate.com.data.model.Report>> = reportStore.getAllReports()
 
     // --- FALLBACK PROFILE RESOLUTION ---
     fun getCachedUserProfile(chatId: String): conectate.com.data.model.User? {
-        val cleanId = chatId.trim().lowercase()
+        var cleanId = chatId.trim().lowercase()
         // 1. Try In-Memory Cache
-        val cached = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }
+        var cached = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }
         if (cached != null) return userFromCachedChat(cached)
         
         // 2. Try Local Room Sync
         return runCatching {
-            val entity = chatDao.getChatByIdSync(cleanId) // Need to add this to DAO or use a blocking call
+            var entity = chatDao.getChatByIdSync(cleanId) // Need to add this to DAO or use a blocking call
             if (entity != null) {
+                var cachedUser = entity.other_user_id?.let { userDao.getUserSync(it) }
+                var resolvedName = entity.display_name
+                    ?.takeIf { it.isNotBlank() }
+                    ?: cachedUser?.full_name?.takeIf { it.isNotBlank() }
+                    ?: cachedUser?.username
                 conectate.com.data.model.User(
-                    id = entity.other_user_id ?: "",
-                    display_name = entity.display_name,
-                    avatar_url = entity.display_image,
-                    username = entity.display_name ?: "Usuario"
+                    id = entity.other_user_id ?: cachedUser?.id.orEmpty(),
+                    display_name = resolvedName,
+                    avatar_url = entity.display_image ?: cachedUser?.avatar_url,
+                    username = resolvedName ?: cachedUser?.username ?: "Usuario"
                 )
             } else null
         }.getOrNull()
     }
 
     fun getCachedUserProfileByUserId(userId: String): conectate.com.data.model.User? {
-        val cached = _userChats.value.find { !it.chat.is_group && it.chat.participants.contains(userId) } ?: return null
+        var cleanUserId = userId.trim().lowercase()
+        var cached = _userChats.value.find {
+            !it.chat.is_group && it.chat.participants.any { participant ->
+                participant.trim().lowercase() == cleanUserId
+            }
+        } ?: return null
         return userFromCachedChat(cached)
+    }
+
+@Composable
+@Composable
+    suspend fun refreshDirectChatIdentity(chatId: String, otherUserId: String): conectate.com.data.model.User? = withContext(Dispatchers.IO) {
+        var cleanChatId = chatId.trim().lowercase()
+        var cleanUserId = otherUserId.trim().lowercase()
+        if (cleanChatId.isBlank() || cleanUserId.isBlank()) return@withContext null
+
+        var profile = userRepository.getUserById(cleanUserId).getOrNull()
+            ?: getCachedUserProfile(cleanChatId)
+            ?: getCachedUserProfileByUserId(cleanUserId)
+            ?: return@withContext null
+
+        runCatching {
+            userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(profile))
+        }
+
+        var resolvedName = profile.displayName.ifBlank { profile.username ?: "Usuario" }
+        var resolvedImage = profile.avatar_url
+
+        runCatching {
+            chatDao.getChatById(cleanChatId)?.let { entity ->
+                chatDao.insertChat(
+                    entity.copy(
+                        display_name = resolvedName,
+                        display_image = resolvedImage,
+                        other_user_id = cleanUserId
+                    )
+                )
+            }
+        }.onFailure {
+            android.util.Log.w("MessageRepository", "Failed to refresh DM identity for $cleanChatId", it)
+        }
+
+        _userChats.update { chats ->
+            chats.map { item ->
+                if (item.chat.id.trim().lowercase() != cleanChatId || item.chat.is_group) {
+                    item
+                } else {
+                    item.copy(
+                        chat = item.chat.copy(
+                            group_name = resolvedName,
+                            group_image = resolvedImage
+                        ),
+                        otherUserName = resolvedName,
+                        otherUserImage = resolvedImage,
+                        otherUserId = cleanUserId
+                    )
+                }
+            }
+        }
+
+        profile
     }
 
     private fun userFromCachedChat(cached: ChatWithLastMessage): conectate.com.data.model.User {
@@ -4083,30 +3817,13 @@ class MessageRepository @Inject constructor(
         )
     }
 
-    suspend fun updateReportStatus(reportId: String, newStatus: String): Result<Unit> {
-         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val update = buildJsonObject { put("status", newStatus) }
-            supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                 header("Authorization", "Bearer $token")
-                 header("apikey", supabaseConfig.supabaseAnonKey)
-                 header("Content-Type", "application/json")
-                 parameter("id", "eq.$reportId")
-                 setBody(update)
-            }
-            Result.success(Unit)
-        } catch (e: Exception) { Result.failure(e) }
-    }
+    suspend fun updateReportStatus(reportId: String, newStatus: String): Result<Unit> =
+        reportStore.updateReportStatus(reportId, newStatus)
 
-    suspend fun deleteReport(reportId: String): Result<Unit> {
-         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                 header("Authorization", "Bearer $token")
-                 header("apikey", supabaseConfig.supabaseAnonKey)
-                 parameter("id", "eq.$reportId")
-            }
-            Result.success(Unit)
-        } catch (e: Exception) { Result.failure(e) }
-    }
+    suspend fun deleteReport(reportId: String): Result<Unit> = reportStore.deleteReport(reportId)
 }
+
+
+
+
+

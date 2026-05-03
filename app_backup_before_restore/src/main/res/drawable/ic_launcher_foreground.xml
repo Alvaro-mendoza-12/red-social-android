@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Modern chat/messaging icon for social network app -->
+    <group>
+        <!-- Main chat bubble (speech bubble) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M20,24c0,-8 9,-14 20,-14h28c11,0 20,6 20,14v26c0,8 -9,14 -20,14H48l-12,10v-10c-11,0 -20,-6 -20,-14V24z"/>
+        
+        <!-- Three message lines (representing conversation) -->
+        <path
+            android:fillColor="#2196F3"
+            android:pathData="M32,38h44v4H32z"/>
+        <path
+            android:fillColor="#4CAF50"
+            android:pathData="M32,46h36v4H32z"/>
+        <path
+            android:fillColor="#FF9800"
+            android:pathData="M32,54h28v4H32z"/>
+        
+        <!-- Small reply indicator -->
+        <path
+            android:fillColor="#E3F2FD"
+            android:pathData="M24,62c-2,0 -3,1 -3,2v3l2,-1h4c2,0 3,-1 3,-2S28,62 24,62z"/>
+    </group>
+</vector>
+

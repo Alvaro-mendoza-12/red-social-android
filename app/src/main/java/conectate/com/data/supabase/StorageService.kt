@@ -49,7 +49,7 @@ class StorageService @Inject constructor(
         allowOverwrite: Boolean = true
     ): Result<StorageResponse> {
         val startedAt = System.currentTimeMillis()
-        val normalizedPath = normalizeStoragePath(fileName)
+        var normalizedPath = normalizeStoragePath(fileName)
             ?: return Result.failure(Exception("Invalid storage path"))
         val canonicalContentType = normalizeContentType(contentType)
         val metricAttrs = mapOf(
@@ -73,7 +73,7 @@ class StorageService @Inject constructor(
                 return Result.failure(Exception(validation.reason ?: "Upload blocked by media policy"))
             }
 
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
             val mediaHash = sha256Hex(bytes)
@@ -95,7 +95,7 @@ class StorageService @Inject constructor(
                 return Result.failure(registerResult.exceptionOrNull() ?: Exception(reason))
             }
 
-            val response = config.httpClient.post {
+            var response = config.httpClient.post {
                 url {
                     takeFrom(config.supabaseUrl)
                     appendPathSegments("storage", "v1", "object", bucketName)
@@ -119,13 +119,19 @@ class StorageService @Inject constructor(
                 )
                 Result.success(storageResponse)
             } else {
-                val errorBody = try { response.body<String>() } catch (e: Exception) { "No error body" }
+                var errorBody = try { response.body<String>() } catch (e: Exception) { "No error body" }
                 android.util.Log.e("StorageService", "Upload failed: ${response.status} - $errorBody")
                 appMetrics.recordFailure(
                     metric = "media_upload",
                     attributes = metricAttrs + ("http_status" to response.status.value.toString())
                 )
-                Result.failure(Exception("Failed to upload file: ${response.status}"))
+                Result.failure(
+                    buildSupabaseHttpException(
+                        statusCode = response.status.value,
+                        responseBody = errorBody,
+                        fallbackMessage = "No se pudo subir el archivo."
+                    )
+                )
             }
         } catch (e: Exception) {
             android.util.Log.e("StorageService", "Exception uploading file", e)
@@ -140,12 +146,12 @@ class StorageService @Inject constructor(
 
     suspend fun downloadFile(bucketName: String, fileName: String): Result<ByteArray> {
         return try {
-            val normalizedPath = normalizeStoragePath(fileName)
+            var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
-            val response = config.httpClient.get {
+            var response = config.httpClient.get {
                 url {
                     takeFrom(config.supabaseUrl)
                     appendPathSegments("storage", "v1", "object", bucketName)
@@ -159,7 +165,14 @@ class StorageService @Inject constructor(
                 val bytes: ByteArray = response.body()
                 Result.success(bytes)
             } else {
-                Result.failure(Exception("Failed to download file: ${response.status}"))
+                var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
+                Result.failure(
+                    buildSupabaseHttpException(
+                        statusCode = response.status.value,
+                        responseBody = errorBody,
+                        fallbackMessage = "No se pudo descargar el archivo."
+                    )
+                )
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -168,12 +181,12 @@ class StorageService @Inject constructor(
 
     suspend fun deleteFile(bucketName: String, fileName: String): Result<Unit> {
         return try {
-            val normalizedPath = normalizeStoragePath(fileName)
+            var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
-            val response = config.httpClient.delete {
+            var response = config.httpClient.delete {
                 url {
                     takeFrom(config.supabaseUrl)
                     appendPathSegments("storage", "v1", "object", bucketName)
@@ -186,7 +199,14 @@ class StorageService @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(Unit)
             } else {
-                Result.failure(Exception("Failed to delete file: ${response.status}"))
+                var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
+                Result.failure(
+                    buildSupabaseHttpException(
+                        statusCode = response.status.value,
+                        responseBody = errorBody,
+                        fallbackMessage = "No se pudo eliminar el archivo."
+                    )
+                )
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -195,10 +215,10 @@ class StorageService @Inject constructor(
 
     suspend fun listFiles(bucketName: String, path: String = ""): Result<List<String>> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
-            val response = config.httpClient.get {
+            var response = config.httpClient.get {
                 url {
                     takeFrom(config.supabaseUrl)
                     appendPathSegments("storage", "v1", "object", "list", bucketName)
@@ -213,7 +233,14 @@ class StorageService @Inject constructor(
                 val fileNames = files.mapNotNull { it["name"] as? String }
                 Result.success(fileNames)
             } else {
-                Result.failure(Exception("Failed to list files: ${response.status}"))
+                var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
+                Result.failure(
+                    buildSupabaseHttpException(
+                        statusCode = response.status.value,
+                        responseBody = errorBody,
+                        fallbackMessage = "No se pudo consultar el almacenamiento."
+                    )
+                )
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -221,8 +248,8 @@ class StorageService @Inject constructor(
     }
 
     fun getPublicUrl(bucketName: String, fileName: String): String {
-        val baseUrl = config.supabaseUrl.removeSuffix("/")
-        val normalizedPath = normalizeStoragePath(fileName) ?: return ""
+        var baseUrl = config.supabaseUrl.removeSuffix("/")
+        var normalizedPath = normalizeStoragePath(fileName) ?: return ""
         // Join segments manually for simple GET URL
         val encodedFileName = normalizedPath
             .split("/")
@@ -233,14 +260,14 @@ class StorageService @Inject constructor(
 
     suspend fun createSignedUrl(bucketName: String, fileName: String, expiresIn: Int = 3600): Result<String> {
         return try {
-            val normalizedPath = normalizeStoragePath(fileName)
+            var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
             val signBody = mapOf("expiresIn" to expiresIn)
             
-            val response = config.httpClient.post {
+            var response = config.httpClient.post {
                 url {
                     takeFrom(config.supabaseUrl)
                     appendPathSegments("storage", "v1", "object", "sign", bucketName)
@@ -261,7 +288,7 @@ class StorageService @Inject constructor(
                 val finalUrl = if (signedUrlPath.startsWith("http")) {
                     signedUrlPath
                 } else {
-                    val baseUrl = config.supabaseUrl.removeSuffix("/")
+                    var baseUrl = config.supabaseUrl.removeSuffix("/")
                     // Clean the path and ensure it's not empty
                     val cleanPath = signedUrlPath.removePrefix("/")
                     
@@ -282,9 +309,15 @@ class StorageService @Inject constructor(
                 android.util.Log.e("StorageService", "Sign SUCCESS final: $finalUrl")
                 Result.success(finalUrl)
             } else {
-                val errorBody = try { response.body<String>() } catch (e: Exception) { "No body" }
+                var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
                 android.util.Log.e("StorageService", "Sign FAILED: ${response.status} - $errorBody")
-                Result.failure(Exception("Failed to sign url: ${response.status}"))
+                Result.failure(
+                    buildSupabaseHttpException(
+                        statusCode = response.status.value,
+                        responseBody = errorBody,
+                        fallbackMessage = "No se pudo generar el enlace del archivo."
+                    )
+                )
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -304,7 +337,7 @@ class StorageService @Inject constructor(
     }
 
     private fun normalizeContentType(value: String): String {
-        val raw = value.substringBefore(";").trim().lowercase()
+        val raw = value.substringBefore("").trim().lowercase()
         return when (raw) {
             "image/jpg" -> "image/jpeg"
             "audio/m4a", "audio/x-m4a" -> "audio/mp4"
@@ -329,7 +362,7 @@ class StorageService @Inject constructor(
                 put("p_sha256", sha256)
             }
 
-            val response = config.httpClient.post("${config.supabaseUrl}/rest/v1/rpc/register_media_object") {
+            var response = config.httpClient.post("${config.supabaseUrl}/rest/v1/rpc/register_media_object") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", config.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -339,7 +372,10 @@ class StorageService @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(Unit)
             } else {
-                val errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
+                var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
+                mapSupabaseServiceRestrictionMessage(errorBody)?.let { friendlyMessage ->
+                    return Result.failure(Exception(friendlyMessage))
+                }
                 if (isMissingRegisterRpc(response.status.value, errorBody)) {
                     Result.success(Unit)
                 } else {
@@ -393,3 +429,6 @@ class StorageService @Inject constructor(
         return compact.take(220)
     }
 }
+
+
+

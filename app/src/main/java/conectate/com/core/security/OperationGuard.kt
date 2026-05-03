@@ -36,6 +36,8 @@ object InputSecurityPolicy {
     const val MAX_REPORT_REASON_LENGTH = 120
     const val MAX_REPORT_DESCRIPTION_LENGTH = 2000
 
+@Composable
+@Composable
     fun sanitizeMessageText(value: String): String {
         return value.trim().take(MAX_TEXT_MESSAGE_LENGTH)
     }
@@ -134,7 +136,7 @@ class OperationGuard @Inject constructor(
         nowMs: Long
     ): GuardDecision {
         while (bucket.acceptedAtMs.isNotEmpty()) {
-            val oldest = bucket.acceptedAtMs.first()
+            var oldest = bucket.acceptedAtMs.first()
             if (nowMs - oldest >= action.windowMs) {
                 bucket.acceptedAtMs.removeFirst()
             } else {
@@ -153,7 +155,7 @@ class OperationGuard @Inject constructor(
         }
 
         if (bucket.acceptedAtMs.size >= action.maxEvents) {
-            val oldest = bucket.acceptedAtMs.first()
+            var oldest = bucket.acceptedAtMs.first()
             val retryAfter = max(1L, action.windowMs - (nowMs - oldest))
             return GuardDecision(allowed = false, retryAfterMs = retryAfter)
         }
@@ -186,3 +188,8 @@ class OperationGuard @Inject constructor(
         private const val TAG = "OperationGuard"
     }
 }
+
+
+
+
+

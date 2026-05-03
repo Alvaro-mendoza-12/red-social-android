@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 
 type RoomScope = 'group' | 'community'
 
@@ -90,6 +90,14 @@ const roomConfigByScope: Record<RoomScope, RoomConfig> = {
   },
 }
 
+type PendingAttachment = {
+  id: string
+  file: File
+  contentType: 'image' | 'video' | 'audio' | 'file'
+  previewUrl: string
+  caption: string
+}
+
 function inferContentType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
   if (file.type.startsWith('video/')) return 'video'
@@ -125,6 +133,54 @@ function isViewOnceType(contentType: string): boolean {
 
 function reactionCount(reactions: Record<string, string[]>, emoji: string): number {
   return reactions[emoji]?.length ?? 0
+}
+
+function toMillis(value: string): number {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function previewUrlForFile(file: File): string {
+  if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    return URL.createObjectURL(file)
+  }
+  return ''
+}
+
+function formatFileSize(sizeInBytes: number): string {
+  if (sizeInBytes < 1024) return `${sizeInBytes} B`
+  if (sizeInBytes < 1024 * 1024) return `${Math.round(sizeInBytes / 1024)} KB`
+  return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function dayKeyOf(value: string): string {
+  if (!value) return 'sin-fecha'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return `${parsed.getFullYear()}-${parsed.getMonth()}-${parsed.getDate()}`
+}
+
+function formatConversationDay(value: string): string {
+  if (!value) return 'Sin fecha'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  const now = new Date()
+  const todayKey = dayKeyOf(now.toISOString())
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const dayKey = dayKeyOf(parsed.toISOString())
+
+  if (dayKey === todayKey) return 'Hoy'
+  if (dayKey === dayKeyOf(yesterday.toISOString())) return 'Ayer'
+
+  const includeYear = parsed.getFullYear() !== now.getFullYear()
+  return new Intl.DateTimeFormat('es-CO', {
+    day: 'numeric',
+    month: 'long',
+    year: includeYear ? 'numeric' : undefined,
+  }).format(parsed)
 }
 
 function mapRoomMessage(row: GenericRow): RoomMessage {
@@ -189,6 +245,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [replyToId, setReplyToId] = useState<string | null>(null)
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState('Si\nNo')
+  const [showPollComposer, setShowPollComposer] = useState(false)
   const [pollAllowsMultiple, setPollAllowsMultiple] = useState(false)
   const [creatingPoll, setCreatingPoll] = useState(false)
   const [pollStatesById, setPollStatesById] = useState<Record<string, PollState[]>>({})
@@ -197,17 +254,258 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [showMessageSearch, setShowMessageSearch] = useState(false)
+  const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [showQuickTools, setShowQuickTools] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const normalizedMessageSearch = useMemo(() => messageSearchQuery.trim().toLowerCase(), [messageSearchQuery])
+  const filteredMessages = useMemo(() => {
+    if (!normalizedMessageSearch) return messages
+    return messages.filter((message) => {
+      const haystack = `${message.content} ${message.contentType} ${message.mediaUrl}`.toLowerCase()
+      return haystack.includes(normalizedMessageSearch)
+    })
+  }, [messages, normalizedMessageSearch])
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
+  const threadRef = useRef<HTMLElement | null>(null)
+  const messageSearchInputRef = useRef<HTMLInputElement | null>(null)
+  const shouldStickToBottomRef = useRef(true)
+  const forceScrollToBottomRef = useRef(true)
+  const pendingInitialBottomSnapRef = useRef(true)
+  const pendingAttachmentsRef = useRef<PendingAttachment[]>([])
+  const audioRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const loadSequenceRef = useRef(0)
   const deviceId = useMemo(() => {
     const storageKey = 'conectate-web-device-id'
-    const existing = localStorage.getItem(storageKey)
-    if (existing && existing.trim().length > 0) return existing
-    const generated = crypto.randomUUID()
-    localStorage.setItem(storageKey, generated)
-    return generated
+    const fallbackId = () => {
+      try {
+        return crypto.randomUUID()
+      } catch {
+        return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      }
+    }
+    try {
+      const existing = localStorage.getItem(storageKey)
+      if (existing && existing.trim().length > 0) return existing
+      const generated = fallbackId()
+      localStorage.setItem(storageKey, generated)
+      return generated
+    } catch {
+      return fallbackId()
+    }
   }, [])
+
+  const upsertMessageInState = useCallback((nextMessage: RoomMessage) => {
+    setMessages((current) => {
+      const index = current.findIndex((entry) => entry.id === nextMessage.id)
+      if (index === -1) {
+        return [...current, nextMessage].sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
+      }
+      const next = [...current]
+      next[index] = nextMessage
+      next.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
+      return next
+    })
+  }, [])
+
+  const removeMessageFromState = useCallback((messageId: string) => {
+    if (!messageId) return
+    setMessages((current) => current.filter((entry) => entry.id !== messageId))
+    setConsumedViewOnce((current) => {
+      if (!current[messageId]) return current
+      const next = { ...current }
+      delete next[messageId]
+      return next
+    })
+    setReceiptsByMessage((current) => {
+      if (!current[messageId]) return current
+      const next = { ...current }
+      delete next[messageId]
+      return next
+    })
+  }, [])
+
+  const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const thread = threadRef.current
+    if (!thread) return
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    thread.scrollTo({ top: thread.scrollHeight, behavior })
+  }, [])
+
+  const handleThreadScroll = useCallback(() => {
+    const thread = threadRef.current
+    if (!thread) return
+    const distanceToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight
+    const isNearBottom = distanceToBottom < 120
+    shouldStickToBottomRef.current = isNearBottom
+    setShowScrollToBottom(!isNearBottom && messages.length > 0)
+  }, [messages.length])
+
+  const queueAttachmentFiles = useCallback((input: FileList | File[] | null) => {
+    if (!input || input.length === 0) return
+    const files = Array.from(input).filter((entry) => entry.size > 0)
+    if (files.length === 0) return
+    setPendingAttachments((current) => [
+      ...current,
+      ...files.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        contentType: inferContentType(file),
+        previewUrl: previewUrlForFile(file),
+        caption: '',
+      })),
+    ])
+  }, [])
+
+  const stopAudioStream = useCallback(() => {
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop())
+    audioStreamRef.current = null
+  }, [])
+
+  const toggleAudioRecording = useCallback(async () => {
+    const activeRecorder = audioRecorderRef.current
+    if (activeRecorder && activeRecorder.state !== 'inactive') {
+      activeRecorder.stop()
+      return
+    }
+    if (
+      typeof window === 'undefined' ||
+      typeof MediaRecorder === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioStreamRef.current = stream
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+      const supportedMimeType = mimeCandidates.find((candidate) => {
+        try {
+          return MediaRecorder.isTypeSupported(candidate)
+        } catch {
+          return false
+        }
+      })
+      const recorder = supportedMimeType
+        ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+        : new MediaRecorder(stream)
+      audioChunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+      recorder.onstop = () => {
+        const blobType = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(audioChunksRef.current, { type: blobType })
+        audioChunksRef.current = []
+        audioRecorderRef.current = null
+        stopAudioStream()
+        setIsRecordingAudio(false)
+        if (blob.size === 0) return
+        const extension = blobType.includes('ogg') ? 'ogg' : 'webm'
+        const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blobType })
+        queueAttachmentFiles([file])
+      }
+      recorder.onerror = () => {
+        audioChunksRef.current = []
+        audioRecorderRef.current = null
+        stopAudioStream()
+        setIsRecordingAudio(false)
+      }
+      recorder.start(250)
+      audioRecorderRef.current = recorder
+      setIsRecordingAudio(true)
+    } catch {
+      audioChunksRef.current = []
+      audioRecorderRef.current = null
+      stopAudioStream()
+      setIsRecordingAudio(false)
+    }
+  }, [queueAttachmentFiles, stopAudioStream])
+
+  const updatePendingAttachmentCaption = useCallback((attachmentId: string, caption: string) => {
+    setPendingAttachments((current) =>
+      current.map((entry) => (entry.id === attachmentId ? { ...entry, caption } : entry)),
+    )
+  }, [])
+
+  const removePendingAttachment = useCallback((attachmentId: string) => {
+    setPendingAttachments((current) => {
+      const target = current.find((entry) => entry.id === attachmentId)
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return current.filter((entry) => entry.id !== attachmentId)
+    })
+  }, [])
+
+  const clearPendingAttachments = useCallback(() => {
+    setPendingAttachments((current) => {
+      current.forEach((entry) => {
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      })
+      return []
+    })
+  }, [])
+
+  const handleDropZoneDragOver = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setDragActive(true)
+  }, [])
+
+  const handleDropZoneDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDragActive(false)
+  }, [])
+
+  const handleDropZoneDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setDragActive(false)
+      queueAttachmentFiles(event.dataTransfer.files)
+    },
+    [queueAttachmentFiles],
+  )
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments
+  }, [pendingAttachments])
+
+  useEffect(() => {
+    return () => {
+      pendingAttachmentsRef.current.forEach((entry) => {
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      const recorder = audioRecorderRef.current
+      if (recorder) {
+        recorder.ondataavailable = null
+        recorder.onstop = null
+        recorder.onerror = null
+        if (recorder.state !== 'inactive') {
+          recorder.stop()
+        }
+      }
+      audioRecorderRef.current = null
+      audioChunksRef.current = []
+      stopAudioStream()
+    }
+  }, [stopAudioStream])
 
   const loadPollStates = useCallback(async (rows: RoomMessage[]) => {
     if (!supabase) return
@@ -228,6 +526,40 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     )
     setPollStatesById(Object.fromEntries(entries))
   }, [])
+
+  const refreshPollState = useCallback(async (pollId: string) => {
+    if (!supabase || !pollId) return
+    const { data, error } = await supabase.rpc('secure_get_poll_state', { p_poll_id: pollId })
+    if (error) return
+    setPollStatesById((current) => ({
+      ...current,
+      [pollId]: ((data ?? []) as GenericRow[]).map(mapPollState),
+    }))
+  }, [])
+
+  const refreshMessageById = useCallback(
+    async (messageId: string) => {
+      if (!supabase || !messageId || !cleanRoomId) return
+      const { data, error } = await supabase
+        .from(config.messageTable)
+        .select('*')
+        .eq(config.roomForeignKey, cleanRoomId)
+        .eq('id', messageId)
+        .limit(1)
+      if (error) return
+      const row = ((data ?? []) as GenericRow[])[0]
+      if (!row) {
+        removeMessageFromState(messageId)
+        return
+      }
+      const mapped = mapRoomMessage(row)
+      upsertMessageInState(mapped)
+      if (mapped.pollId) {
+        void refreshPollState(mapped.pollId)
+      }
+    },
+    [cleanRoomId, config.messageTable, config.roomForeignKey, refreshPollState, removeMessageFromState, upsertMessageInState],
+  )
 
   const loadConsumedViewOnce = useCallback(
     async (rows: RoomMessage[]) => {
@@ -263,8 +595,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [cleanRoomId, config.markReadRpc, config.roomIdParam, user])
 
   const loadRoom = useCallback(async () => {
+    const loadSequence = ++loadSequenceRef.current
+    const isStaleLoad = () => loadSequenceRef.current !== loadSequence
     if (!supabase || !user || !cleanRoomId) {
-      setLoading(false)
+      if (!isStaleLoad()) {
+        setLoading(false)
+      }
       return
     }
     setLoading(true)
@@ -278,11 +614,15 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (roomError) throw roomError
       const roomRow = ((roomRows ?? []) as GenericRow[])[0]
       if (!roomRow) {
-        setError('No tienes acceso a esta sala o no existe.')
-        setLoading(false)
+        if (!isStaleLoad()) {
+          setError('No tienes acceso a esta sala o no existe.')
+          setLoading(false)
+        }
         return
       }
-      setTitle(textOf(roomRow, ['name', 'title', 'readable_id'], scope === 'group' ? 'Grupo' : 'Comunidad'))
+      if (!isStaleLoad()) {
+        setTitle(textOf(roomRow, ['name', 'title', 'readable_id'], scope === 'group' ? 'Grupo' : 'Comunidad'))
+      }
 
       const { data: messageRows, error: msgError } = await supabase
         .from(config.messageTable)
@@ -293,12 +633,17 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (msgError) throw msgError
 
       const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapRoomMessage)
+      if (isStaleLoad()) return
       setMessages(mappedMessages)
       await Promise.all([loadPollStates(mappedMessages), loadConsumedViewOnce(mappedMessages), markAsRead()])
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar la sala'))
+      if (!isStaleLoad()) {
+        setError(friendlyError(caught, 'No se pudo cargar la sala'))
+      }
     } finally {
-      setLoading(false)
+      if (!isStaleLoad()) {
+        setLoading(false)
+      }
     }
   }, [
     cleanRoomId,
@@ -317,6 +662,63 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [loadRoom])
 
   useEffect(() => {
+    forceScrollToBottomRef.current = true
+    pendingInitialBottomSnapRef.current = true
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    setShowMessageSearch(false)
+    setMessageSearchQuery('')
+  }, [cleanRoomId])
+
+  useEffect(() => {
+    if (showMessageSearch) return
+    if (!messages.length && !forceScrollToBottomRef.current) return
+    const shouldScroll = forceScrollToBottomRef.current || shouldStickToBottomRef.current
+    if (!shouldScroll) return
+    const behavior: ScrollBehavior = forceScrollToBottomRef.current ? 'auto' : 'smooth'
+    const frame = window.requestAnimationFrame(() => {
+      scrollThreadToBottom(behavior)
+      forceScrollToBottomRef.current = false
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages, scrollThreadToBottom, showMessageSearch])
+
+  useEffect(() => {
+    if (loading || !pendingInitialBottomSnapRef.current) return
+    const snapToBottom = () => scrollThreadToBottom('auto')
+    const frame = window.requestAnimationFrame(snapToBottom)
+    const timer = window.setTimeout(snapToBottom, 180)
+    pendingInitialBottomSnapRef.current = false
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [loading, scrollThreadToBottom])
+
+  useEffect(() => {
+    if (!showMessageSearch) return
+    const frame = window.requestAnimationFrame(() => messageSearchInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [showMessageSearch])
+
+  useEffect(() => {
+    if (!cleanRoomId || !user) return
+    const syncReadState = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      void markAsRead()
+    }
+    syncReadState()
+    const intervalId = window.setInterval(syncReadState, 15000)
+    window.addEventListener('focus', syncReadState)
+    document.addEventListener('visibilitychange', syncReadState)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', syncReadState)
+      document.removeEventListener('visibilitychange', syncReadState)
+    }
+  }, [cleanRoomId, markAsRead, user])
+
+  useEffect(() => {
     const client = supabase
     if (!client || !user || !cleanRoomId) return
     const channel = client
@@ -329,15 +731,45 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           table: config.messageTable,
           filter: `${config.roomForeignKey}=eq.${cleanRoomId}`,
         },
-        () => {
-          void loadRoom()
+        (payload) => {
+          const row = ((payload.eventType === 'DELETE' ? payload.old : payload.new) ?? {}) as GenericRow
+          const messageId = textOf(row, ['id'], '')
+          if (!messageId) return
+          if (payload.eventType === 'DELETE') {
+            removeMessageFromState(messageId)
+            return
+          }
+          const mapped = mapRoomMessage(row)
+          upsertMessageInState(mapped)
+          if (mapped.pollId) {
+            void refreshPollState(mapped.pollId)
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'message_poll_votes' },
+        (payload) => {
+          const row = ((payload.eventType === 'DELETE' ? payload.old : payload.new) ?? {}) as GenericRow
+          const pollId = textOf(row, ['poll_id'], '')
+          if (!pollId) return
+          void refreshPollState(pollId)
         },
       )
       .subscribe()
     return () => {
       void client.removeChannel(channel)
     }
-  }, [cleanRoomId, config.messageTable, config.roomForeignKey, loadRoom, scope, user])
+  }, [
+    cleanRoomId,
+    config.messageTable,
+    config.roomForeignKey,
+    refreshPollState,
+    removeMessageFromState,
+    scope,
+    upsertMessageInState,
+    user,
+  ])
 
   async function sendMessage(
     content: string,
@@ -375,16 +807,46 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     if (insertError) throw insertError
   }
 
+  async function sendPendingAttachments(textFallback: string) {
+    if (!supabase || !user || !cleanRoomId || pendingAttachments.length === 0) return
+    const queued = [...pendingAttachments]
+    setUploading(true)
+    try {
+      for (let index = 0; index < queued.length; index += 1) {
+        const attachment = queued[index]
+        const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const filePath = `${scope}/${user.id}/${Date.now()}_${index}_${safeName}`
+        const { error: uploadError } = await supabase.storage
+          .from(config.mediaBucket)
+          .upload(filePath, attachment.file, { contentType: attachment.file.type || undefined })
+        if (uploadError) throw uploadError
+        const { data } = supabase.storage.from(config.mediaBucket).getPublicUrl(filePath)
+        const caption =
+          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+        await sendMessage(caption, data.publicUrl, attachment.contentType, index === 0 ? replyToId : null)
+        setPendingAttachments((current) => current.filter((entry) => entry.id !== attachment.id))
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+      }
+      setReplyToId(null)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const text = draft.trim()
-    if (!text || sending) return
+    if ((!text && pendingAttachments.length === 0) || sending || uploading) return
     setSending(true)
     try {
-      await sendMessage(text, '', 'text', replyToId)
-      setDraft('')
-      setReplyToId(null)
-      await loadRoom()
+      if (pendingAttachments.length > 0) {
+        await sendPendingAttachments(text)
+        setDraft('')
+      } else {
+        await sendMessage(text, '', 'text', replyToId)
+        setDraft('')
+        setReplyToId(null)
+      }
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar mensaje'))
     } finally {
@@ -392,26 +854,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
   }
 
-  async function handleAttachFile(file: File | null) {
-    if (!supabase || !user || !cleanRoomId || !file) return
-    setUploading(true)
-    try {
-      const contentType = inferContentType(file)
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = `${scope}/${user.id}/${Date.now()}_${safeName}`
-      const { error: uploadError } = await supabase.storage
-        .from(config.mediaBucket)
-        .upload(filePath, file, { contentType: file.type || undefined })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from(config.mediaBucket).getPublicUrl(filePath)
-      await sendMessage(file.name, data.publicUrl, contentType, replyToId)
-      setReplyToId(null)
-      await loadRoom()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo subir el archivo'))
-    } finally {
-      setUploading(false)
-    }
+  function handleAttachFile(input: FileList | File[] | null) {
+    queueAttachmentFiles(input)
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -422,7 +866,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       setError(friendlyError(reactionError, 'No se pudo reaccionar'))
       return
     }
-    await loadRoom()
+    await refreshMessageById(messageId)
   }
 
   async function handleAttachViewOnceFile(file: File | null) {
@@ -447,7 +891,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         replyToId,
       )
       setReplyToId(null)
-      await loadRoom()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar view-once'))
     } finally {
@@ -480,7 +923,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       setPollQuestion('')
       setPollOptions('Si\nNo')
       setPollAllowsMultiple(false)
-      await loadRoom()
+      setShowPollComposer(false)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
@@ -540,7 +983,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         message.id,
         message.senderId,
       )
-      await loadRoom()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo reenviar mensaje'))
     }
@@ -581,46 +1023,153 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     )
   }
 
+  const rootClassName = [
+    embedded ? 'section-stack chat-detail-embedded' : 'section-stack',
+    dragActive ? 'chat-drop-active' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <section className={embedded ? 'section-stack chat-detail-embedded' : 'section-stack'}>
-      <div className="row-between">
-        {!embedded ? (
-          <Link to="/app/messages" className="inline-link">
-            ← Volver
-          </Link>
-        ) : null}
-        <h2>{title}</h2>
+    <section
+      className={rootClassName}
+      onDragOver={handleDropZoneDragOver}
+      onDragLeave={handleDropZoneDragLeave}
+      onDrop={handleDropZoneDrop}
+    >
+      {dragActive ? (
+        <div className="chat-drop-overlay">
+          <strong>Suelta archivos para {scope === 'group' ? 'el grupo' : 'la comunidad'}</strong>
+          <small>Imágenes, videos, audios y documentos</small>
+        </div>
+      ) : null}
+
+      <div className="chat-header-row row-between shadow-sm">
+        <div className="row-actions">
+          {!embedded ? (
+            <Link to="/app/messages" className="icon-btn-sm" title="Volver">
+              ←
+            </Link>
+          ) : null}
+          <h2>{title}</h2>
+        </div>
+        <div className="row-actions chat-head-actions">
+          <button
+            className={showMessageSearch ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
+            type="button"
+            title="Buscar"
+            onClick={() => {
+              setShowMessageSearch((current) => !current)
+              if (showMessageSearch) {
+                setMessageSearchQuery('')
+              } else {
+                setShowQuickTools(false)
+              }
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor" /></svg>
+          </button>
+          <button
+            className={showQuickTools ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
+            type="button"
+            title="Menú"
+            onClick={() => setShowQuickTools((current) => !current)}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+              <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <article className="surface-card section-stack">
-        <h3>Encuesta en {scope === 'group' ? 'grupo' : 'comunidad'}</h3>
-        <input
-          className="text-input"
-          placeholder="Pregunta"
-          value={pollQuestion}
-          onChange={(event) => setPollQuestion(event.target.value)}
-        />
-        <textarea
-          className="text-input textarea-input"
-          rows={3}
-          value={pollOptions}
-          onChange={(event) => setPollOptions(event.target.value)}
-        />
-        <label className="checkbox-inline">
+      {showMessageSearch ? (
+        <div className="chat-search-row">
           <input
-            type="checkbox"
-            checked={pollAllowsMultiple}
-            onChange={(event) => setPollAllowsMultiple(event.target.checked)}
+            ref={messageSearchInputRef}
+            className="text-input chat-search-input"
+            placeholder={`Buscar en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
+            value={messageSearchQuery}
+            onChange={(event) => setMessageSearchQuery(event.target.value)}
           />
-          Permitir multiples
-        </label>
-        <button className="ghost-btn" type="button" disabled={creatingPoll} onClick={() => void createPoll()}>
-          {creatingPoll ? 'Creando...' : 'Crear encuesta'}
-        </button>
-      </article>
+          {normalizedMessageSearch ? (
+            <small className="chat-search-count">
+              {filteredMessages.length} resultado{filteredMessages.length === 1 ? '' : 's'}
+            </small>
+          ) : null}
+          <button
+            className="mini-action-btn"
+            type="button"
+            onClick={() => {
+              setShowMessageSearch(false)
+              setMessageSearchQuery('')
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+      ) : null}
 
-      <section className="chat-thread">
-        {messages.map((message) => {
+      {showQuickTools ? (
+        <section className="surface-subcard chat-inline-tools">
+          <div className="row-between">
+            <strong>Herramientas</strong>
+            <button className="mini-action-btn" type="button" onClick={() => setShowQuickTools(false)}>
+              Cerrar
+            </button>
+          </div>
+          <div className="row-actions wrap">
+            <button className="ghost-btn-sm" type="button" onClick={() => setShowPollComposer((current) => !current)}>
+              {showPollComposer ? 'Ocultar encuesta' : 'Nueva encuesta'}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {showPollComposer ? (
+        <article className="surface-subcard section-stack">
+          <h3>Encuesta en {scope === 'group' ? 'grupo' : 'comunidad'}</h3>
+          <input
+            className="text-input tiny-input"
+            placeholder="Pregunta"
+            value={pollQuestion}
+            onChange={(event) => setPollQuestion(event.target.value)}
+          />
+          <textarea
+            className="text-input textarea-input"
+            rows={3}
+            value={pollOptions}
+            onChange={(event) => setPollOptions(event.target.value)}
+          />
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={pollAllowsMultiple}
+              onChange={(event) => setPollAllowsMultiple(event.target.checked)}
+            />
+            Permitir multiples
+          </label>
+          <button className="primary-btn-sm" type="button" disabled={creatingPoll} onClick={() => void createPoll()}>
+            {creatingPoll ? 'Creando...' : 'Crear encuesta'}
+          </button>
+        </article>
+      ) : null}
+
+      <div className="chat-thread-shell">
+        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
+          {filteredMessages.length === 0 && normalizedMessageSearch ? (
+            <div className="chat-search-empty">
+              <small className="muted-line">No hay mensajes para ese filtro.</small>
+            </div>
+          ) : filteredMessages.length === 0 ? (
+            <div className="chat-search-empty">
+              <small className="muted-line">Todavía no hay mensajes en esta sala.</small>
+            </div>
+          ) : filteredMessages.map((message, index) => {
+          const previousMessage = index > 0 ? filteredMessages[index - 1] : null
+          const showDaySeparator =
+            !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
           const mine = message.senderId === user?.id
@@ -633,97 +1182,118 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           const consumed = consumedViewOnce[message.id] === true
           const receipts = receiptsByMessage[message.id] ?? []
           return (
-            <article key={message.id} className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
-              {message.isForwarded ? <small>Reenviado</small> : null}
-              {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
-              {message.deletedForAll ? (
-                <p className="muted-line">Mensaje eliminado para todos</p>
-              ) : message.contentType === 'poll' && pollRows.length > 0 ? (
-                <div className="poll-stack">
-                  <strong>{pollMeta?.question || message.content}</strong>
-                  {pollRows.map((option) => (
+            <Fragment key={message.id}>
+              {showDaySeparator ? (
+                <div className="chat-day-separator">
+                  <span>{formatConversationDay(message.createdAt)}</span>
+                </div>
+              ) : null}
+              <article className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
+                {message.isForwarded ? <small>Reenviado</small> : null}
+                {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
+                {message.deletedForAll ? (
+                  <p className="muted-line">Mensaje eliminado para todos</p>
+                ) : message.contentType === 'poll' && pollRows.length > 0 ? (
+                  <div className="poll-stack">
+                    <strong>{pollMeta?.question || message.content}</strong>
+                    {pollRows.map((option) => (
+                      <button
+                        key={option.optionId}
+                        type="button"
+                        className={option.votedByMe ? 'poll-option active' : 'poll-option'}
+                        disabled={option.isClosed}
+                        onClick={() =>
+                          void votePollOption(message.pollId ?? '', option.optionId, !option.votedByMe)
+                        }
+                      >
+                        <span>{option.optionText}</span>
+                        <span>{option.voteCount}</span>
+                      </button>
+                    ))}
+                    <small>
+                      {pollMeta?.totalVotes ?? 0} votos · {pollMeta?.allowsMultiple ? 'Multiple' : 'Unica'}
+                    </small>
+                  </div>
+                ) : (
+                  <>
+                    {message.content ? <p>{message.content}</p> : null}
+                    {message.mediaUrl && message.contentType === 'audio' ? (
+                      <audio className="chat-audio-player" controls preload="metadata" src={message.mediaUrl}>
+                        Tu navegador no soporta audio embebido.
+                      </audio>
+                    ) : null}
+                    {message.mediaUrl && isViewOnceType(message.contentType) ? (
+                      consumed ? (
+                        <small>Contenido view-once ya consumido.</small>
+                      ) : (
+                        <button className="ghost-btn" type="button" onClick={() => void consumeViewOnce(message)}>
+                          Ver una vez
+                        </button>
+                      )
+                    ) : null}
+                    {message.mediaUrl &&
+                    message.contentType !== 'audio' &&
+                    !isViewOnceType(message.contentType) ? (
+                      <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
+                        Abrir archivo
+                      </a>
+                    ) : null}
+                  </>
+                )}
+                <div className="reaction-row">
+                  {['👍', '❤️', '😂'].map((emoji) => (
                     <button
-                      key={option.optionId}
+                      key={emoji}
                       type="button"
-                      className={option.votedByMe ? 'poll-option active' : 'poll-option'}
-                      disabled={option.isClosed}
-                      onClick={() =>
-                        void votePollOption(message.pollId ?? '', option.optionId, !option.votedByMe)
-                      }
+                      className="reaction-chip"
+                      onClick={() => void toggleReaction(message.id, emoji)}
                     >
-                      <span>{option.optionText}</span>
-                      <span>{option.voteCount}</span>
+                      {emoji} {reactionCount(message.reactions, emoji)}
                     </button>
                   ))}
-                  <small>
-                    {pollMeta?.totalVotes ?? 0} votos · {pollMeta?.allowsMultiple ? 'Multiple' : 'Unica'}
-                  </small>
                 </div>
-              ) : (
-                <>
-                  {message.content ? <p>{message.content}</p> : null}
-                  {message.mediaUrl && isViewOnceType(message.contentType) ? (
-                    consumed ? (
-                      <small>Contenido view-once ya consumido.</small>
-                    ) : (
-                      <button className="ghost-btn" type="button" onClick={() => void consumeViewOnce(message)}>
-                        Ver una vez
-                      </button>
-                    )
-                  ) : null}
-                  {message.mediaUrl && !isViewOnceType(message.contentType) ? (
-                    <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
-                      Abrir archivo
-                    </a>
-                  ) : null}
-                </>
-              )}
-              <div className="reaction-row">
-                {['👍', '❤️', '😂'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    className="reaction-chip"
-                    onClick={() => void toggleReaction(message.id, emoji)}
-                  >
-                    {emoji} {reactionCount(message.reactions, emoji)}
-                  </button>
-                ))}
-              </div>
-              {!message.deletedForAll ? (
-                <div className="row-actions">
-                  <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
-                    Responder
-                  </button>
-                  <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
-                    Reenviar
-                  </button>
-                  <button className="mini-action-btn" type="button" onClick={() => void loadMessageReceipts(message.id)}>
-                    Leidos
-                  </button>
-                </div>
-              ) : null}
-              {receipts.length > 0 ? (
-                <div className="receipt-stack">
-                  {receipts.map((receipt) => (
-                    <small key={`${message.id}-${receipt.userId}`}>
-                      {receipt.username} · {receipt.readAt ? `Leido ${formatDateTime(receipt.readAt)}` : 'Entregado'}
-                    </small>
-                  ))}
-                </div>
-              ) : null}
-              <small>
-                {formatDateTime(message.createdAt)}
-                {message.isEdited ? ' · editado' : ''}
-                {' · '}
-                {message.status}
-                {message.deliveredAt ? ' · entregado' : ''}
-                {message.readAt ? ' · leido' : ''}
-              </small>
-            </article>
+                {!message.deletedForAll ? (
+                  <div className="row-actions">
+                    <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
+                      Responder
+                    </button>
+                    <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
+                      Reenviar
+                    </button>
+                    <button className="mini-action-btn" type="button" onClick={() => void loadMessageReceipts(message.id)}>
+                      Leidos
+                    </button>
+                  </div>
+                ) : null}
+                {receipts.length > 0 ? (
+                  <div className="receipt-stack">
+                    {receipts.map((receipt) => (
+                      <small key={`${message.id}-${receipt.userId}`}>
+                        {receipt.username} · {receipt.readAt ? `Leido ${formatDateTime(receipt.readAt)}` : 'Entregado'}
+                      </small>
+                    ))}
+                  </div>
+                ) : null}
+                <small>
+                  {formatDateTime(message.createdAt)}
+                  {message.isEdited ? ' · editado' : ''}
+                  {' · '}
+                  {message.status}
+                  {message.deliveredAt ? ' · entregado' : ''}
+                  {message.readAt ? ' · leido' : ''}
+                </small>
+              </article>
+            </Fragment>
           )
         })}
-      </section>
+          <div className="chat-thread-bottom-anchor" />
+        </section>
+        {showScrollToBottom ? (
+          <button className="chat-scroll-bottom-btn" type="button" onClick={() => scrollThreadToBottom('smooth')}>
+            Ultimo ↓
+          </button>
+        ) : null}
+      </div>
 
       {replyToMessage ? (
         <div className="surface-subcard row-between">
@@ -734,27 +1304,93 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </div>
       ) : null}
 
-      <form className="composer" onSubmit={handleSend}>
-        <input
-          className="text-input"
-          placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <label className="ghost-btn file-pick-btn">
-          Adjuntar
+      {pendingAttachments.length > 0 ? (
+        <section className="attachment-draft-tray fade-in">
+          <div className="row-between">
+            <strong>Adjuntos ({pendingAttachments.length})</strong>
+            <small className="muted-line">Se enviarán juntos al tocar enviar</small>
+            <button className="mini-action-btn" type="button" onClick={clearPendingAttachments}>
+              Limpiar
+            </button>
+          </div>
+          <div className="attachment-draft-grid">
+            {pendingAttachments.map((attachment) => (
+              <article key={attachment.id} className="attachment-draft-item">
+                {attachment.previewUrl ? (
+                  attachment.contentType === 'video' ? (
+                    <video className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
+                  ) : (
+                    <img className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
+                  )
+                ) : (
+                  <div className="attachment-preview attachment-preview-fallback">
+                    <span>{attachment.contentType === 'audio' ? 'Audio' : 'Archivo'}</span>
+                  </div>
+                )}
+                <div className="attachment-draft-body">
+                  <div className="attachment-draft-meta">
+                    <strong>{attachment.file.name}</strong>
+                    <small>{formatFileSize(attachment.file.size)}</small>
+                  </div>
+                  <input
+                    className="text-input tiny-input"
+                    placeholder="Texto opcional para este archivo"
+                    value={attachment.caption}
+                    onChange={(event) =>
+                      updatePendingAttachmentCaption(attachment.id, event.target.value)
+                    }
+                  />
+                </div>
+                <button
+                  className="mini-action-btn attachment-remove-btn"
+                  type="button"
+                  onClick={() => removePendingAttachment(attachment.id)}
+                >
+                  Quitar
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+        <label className="icon-btn clickable" title="Adjuntar archivo">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
           <input
             type="file"
+            multiple
             hidden
             onChange={(event) => {
-              const file = event.target.files?.[0] ?? null
-              void handleAttachFile(file)
+              const files = event.target.files
+              handleAttachFile(files)
               event.currentTarget.value = ''
             }}
           />
         </label>
-        <label className="ghost-btn file-pick-btn">
-          View-once
+
+        <button
+          className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}
+          type="button"
+          title={isRecordingAudio ? 'Detener grabación' : 'Grabar audio'}
+          onClick={() => void toggleAudioRecording()}
+        >
+          {isRecordingAudio ? (
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <rect x="7" y="7" width="10" height="10" rx="2.2" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zm5 9a1 1 0 112 0 7 7 0 01-6 6.93V21h3a1 1 0 110 2H8a1 1 0 110-2h3v-2.07A7 7 0 015 12a1 1 0 112 0 5 5 0 0010 0z" fill="currentColor" />
+            </svg>
+          )}
+        </button>
+
+        <label className="icon-btn clickable" title="Enviar view-once">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M12 4a8 8 0 018 8 8 8 0 01-8 8 8 8 0 01-8-8 8 8 0 018-8z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+          </svg>
           <input
             type="file"
             hidden
@@ -766,8 +1402,24 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             }}
           />
         </label>
-        <button className="primary-btn" type="submit" disabled={sending || uploading}>
-          {sending ? 'Enviando...' : uploading ? 'Subiendo...' : 'Enviar'}
+
+        <button className="icon-btn" type="button" title="Nueva encuesta" onClick={() => setShowPollComposer((current) => !current)}>
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h6v2H4v-2z" fill="currentColor" /></svg>
+        </button>
+
+        <input
+          className="text-input chat-input-field"
+          placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+
+        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>
+          {sending || uploading ? (
+            '...'
+          ) : (
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor" /></svg>
+          )}
         </button>
       </form>
     </section>

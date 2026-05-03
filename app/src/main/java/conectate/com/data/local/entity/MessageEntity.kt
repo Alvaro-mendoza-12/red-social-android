@@ -48,7 +48,7 @@ data class MessageEntity(
     val pending_action: String? = null // "send", "delete", "edit", null
 ) {
     fun toDomain(): Message {
-        val canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
+        var canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
         return Message(
             id = id,
             chat_id = chat_id,
@@ -76,7 +76,7 @@ data class MessageEntity(
 
     companion object {
         fun fromDomain(msg: Message, isSynced: Boolean = true, pendingAction: String? = null): MessageEntity {
-            val canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
+            var canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
             return MessageEntity(
                 id = msg.id,
                 chat_id = msg.chat_id,
@@ -105,3 +105,6 @@ data class MessageEntity(
         }
     }
 }
+
+
+

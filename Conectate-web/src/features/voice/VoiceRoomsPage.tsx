@@ -4,7 +4,7 @@ import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 
 type VoiceRoom = {
   id: string

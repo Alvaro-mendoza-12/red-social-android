@@ -5,7 +5,9 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import conectate.com.data.local.entity.MessageEntity
+import conectate.com.data.model.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 @Dao
 interface MessageDao {
@@ -18,11 +20,35 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE chat_id = :chatId ORDER BY created_at ASC")
     fun getMessagesFlow(chatId: String): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages WHERE chat_id = :chatId ORDER BY created_at ASC")
+    suspend fun getMessagesSync(chatId: String): List<MessageEntity>
+
+    suspend fun getMessagesForChat(chatId: String): List<Message> =
+        getMessagesSync(chatId).map { it.toDomain() }
+
+    fun observeMessagesForChat(chatId: String): Flow<List<Message>> =
+        getMessagesFlow(chatId).map { messages -> messages.map { it.toDomain() } }
+
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): MessageEntity?
 
+    @Query("SELECT * FROM messages WHERE id IN (:messageIds)")
+    fun getMessagesByIdsFlow(messageIds: List<String>): Flow<List<MessageEntity>>
+
     @Query("DELETE FROM messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: String)
+
+    suspend fun deleteMessageById(messageId: String) {
+        deleteMessage(messageId)
+    }
+
+    suspend fun insertMessage(message: Message) {
+        insertMessage(MessageEntity.fromDomain(message))
+    }
+
+    suspend fun updateMessage(message: Message) {
+        insertMessage(MessageEntity.fromDomain(message))
+    }
     
     // OFFLINE SYNC QUERIES
     @Query("SELECT * FROM messages WHERE is_synced = 0 AND pending_action = 'send'")

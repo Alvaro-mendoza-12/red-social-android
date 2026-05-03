@@ -6,11 +6,24 @@ import conectate.com.data.local.entity.GroupMemberEntity
 import conectate.com.data.local.entity.GroupMessageEntity
 import kotlinx.coroutines.flow.Flow
 
+data class GroupUnreadCountRow(
+    val groupId: String,
+    val unreadCount: Int
+)
+
 @Dao
 interface GroupDao {
     // GROUPS
     @Query("SELECT * FROM groups WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     fun getAllGroupsFlow(): Flow<List<GroupEntity>>
+
+    @Query(
+        "SELECT groups.* FROM groups " +
+            "INNER JOIN group_members ON group_members.group_id = groups.id " +
+            "WHERE groups.is_deleted = 0 AND group_members.user_id = :userId " +
+            "ORDER BY COALESCE(groups.last_message_at, groups.created_at) DESC"
+    )
+    fun getGroupsForUserFlow(userId: String): Flow<List<GroupEntity>>
 
     @Query("SELECT * FROM groups WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     suspend fun getAllGroupsSync(): List<GroupEntity>
@@ -51,7 +64,7 @@ interface GroupDao {
 
     @Transaction
     suspend fun upsertGroup(group: GroupEntity) {
-        val result = insertGroupIgnore(group)
+        var result = insertGroupIgnore(group)
         if (result == -1L) {
             updateGroup(group)
         }
@@ -117,6 +130,9 @@ interface GroupDao {
     @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
     fun getMessagesFlow(groupId: String): Flow<List<GroupMessageEntity>>
 
+    @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
+    suspend fun getMessagesSync(groupId: String): List<GroupMessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<GroupMessageEntity>)
 
@@ -158,12 +174,21 @@ interface GroupDao {
     )
 
     @Query(
-            "SELECT COUNT(*) FROM group_messages " +
+        "SELECT COUNT(*) FROM group_messages " +
             "WHERE group_id = :groupId " +
             "AND sender_id != :currentUserId " +
             "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')"
     )
     suspend fun countUnreadIncoming(groupId: String, currentUserId: String): Int
+
+    @Query(
+        "SELECT group_id AS groupId, COUNT(*) AS unreadCount " +
+            "FROM group_messages " +
+            "WHERE sender_id != :currentUserId " +
+            "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received') " +
+            "GROUP BY group_id"
+    )
+    suspend fun getUnreadCountRows(currentUserId: String): List<GroupUnreadCountRow>
 
     @Query(
         "UPDATE group_messages " +
@@ -181,3 +206,6 @@ interface GroupDao {
         currentUserId: String
     )
 }
+
+
+

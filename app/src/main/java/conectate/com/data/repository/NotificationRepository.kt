@@ -1,9 +1,12 @@
 package conectate.com.data.repository
 
+import android.content.Context
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.repository.RepositoryCallHandler
 import conectate.com.core.result.AppResult
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -20,11 +23,22 @@ import android.util.Log
 class NotificationRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
-    private val repositoryCallHandler: RepositoryCallHandler
+    private val repositoryCallHandler: RepositoryCallHandler,
+    @ApplicationContext private val context: Context
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    companion object {
+        private const val PREFS = "notification_repository_cache"
+        private const val KEY_LAST_REGISTERED_FCM = "last_registered_fcm"
+    }
+
+    private val scope = newSafeScope("NotificationRepository", Dispatchers.IO)
     private val _unreadCount = MutableStateFlow(0)
     val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
+    private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+    fun clearData() {
+        _unreadCount.value = 0
+    }
 
     init {
         // Automatically start observing if we have a user
@@ -46,7 +60,7 @@ class NotificationRepository @Inject constructor(
         operation: String,
         block: suspend () -> T
     ): Result<T> {
-        return when (val result = repositoryCallHandler.io(operation, block)) {
+        return when (var result = repositoryCallHandler.io(operation, block)) {
             is AppResult.Success -> Result.success(result.data)
             is AppResult.Error -> {
                 val throwable = result.error.cause ?: IllegalStateException(result.error.message)
@@ -90,15 +104,12 @@ class NotificationRepository @Inject constructor(
      */
     suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
         return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
-            Log.d("NotificationRepository", "🔍 Fetching notifications for user: $userId")
-            Log.d("NotificationRepository", "🔑 Token (first 20 chars): ${token.take(20)}...")
-            
             // We perform a join to get actor details (display_name, avatar_url)
             // Query: notifications?recipient_id=eq.userId&select=*,actor:profiles!actor_id(display_name,avatar_url)&order=created_at.desc
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("recipient_id", "eq.$userId")
@@ -106,21 +117,14 @@ class NotificationRepository @Inject constructor(
                 parameter("order", "created_at.desc")
             }
 
-            Log.d("NotificationRepository", "📡 HTTP Status: ${response.status.value} ${response.status.description}")
-            Log.d("NotificationRepository", "📋 Response Headers: ${response.headers.entries().joinToString { "${it.key}: ${it.value}" }}")
-
             if (response.status.isSuccess()) {
-                val jsonBody = response.bodyAsText()
-                Log.d("NotificationRepository", "📄 Response body length: ${jsonBody.length} chars")
-                Log.d("NotificationRepository", "📄 Response body preview: ${jsonBody.take(200)}...")
-                
+                var jsonBody = response.bodyAsText()
                 // PERFORMANCE FIX: Move heavy JSON decoding and mapping to IO thread
                 val notifications = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val jsonArray = supabaseConfig.json.decodeFromString<JsonArray>(jsonBody)
-                    Log.d("NotificationRepository", "📦 Parsed ${jsonArray.size} notification items")
                     
                     fun getSafeString(key: String, base: JsonObject): String? {
-                        val element = base[key]
+                        var element = base[key]
                         if (element == null || element is kotlinx.serialization.json.JsonNull) return null
                         val str = try {
                             element.jsonPrimitive.contentOrNull ?: element.toString().removeSurrounding("\"")
@@ -138,7 +142,7 @@ class NotificationRepository @Inject constructor(
                     }
 
                      jsonArray.map { element ->
-                        val obj = element as JsonObject
+                        var obj = element as JsonObject
                         val profileElement = obj["actor"]
                         val actorObj = when {
                             profileElement is JsonObject -> profileElement
@@ -178,20 +182,20 @@ class NotificationRepository @Inject constructor(
 
     suspend fun markAsRead(notificationId: String): Result<Unit> {
         return safeRepositoryCall("notifications.markAsRead") {
-            val userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
             val cleanId = notificationId.trim()
             if (cleanId.isBlank()) throw IllegalArgumentException("Notification id is required")
 
-            val secureResult = secureMarkRead(token, listOf(cleanId), markAll = false)
+            var secureResult = secureMarkRead(token, listOf(cleanId), markAll = false)
             if (secureResult.isFailure) {
-                val secureError = secureResult.exceptionOrNull()
+                var secureError = secureResult.exceptionOrNull()
                 if (secureError == null || !secureError.isMissingFunctionError()) {
                     throw secureError ?: IllegalStateException("secure_mark_notifications_read failed")
                 }
 
-                val update = buildJsonObject { put("is_read", true) }
-                val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+                var update = buildJsonObject { put("is_read", true) }
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                     header("Authorization", "Bearer $token")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("id", "eq.$cleanId")
@@ -210,18 +214,18 @@ class NotificationRepository @Inject constructor(
 
     suspend fun markAllAsRead(): Result<Unit> {
         return safeRepositoryCall("notifications.markAllAsRead") {
-            val userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
 
-            val secureResult = secureMarkRead(token, emptyList(), markAll = true)
+            var secureResult = secureMarkRead(token, emptyList(), markAll = true)
             if (secureResult.isFailure) {
-                val secureError = secureResult.exceptionOrNull()
+                var secureError = secureResult.exceptionOrNull()
                 if (secureError == null || !secureError.isMissingFunctionError()) {
                     throw secureError ?: IllegalStateException("secure_mark_notifications_read failed")
                 }
 
-                val update = buildJsonObject { put("is_read", true) }
-                val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+                var update = buildJsonObject { put("is_read", true) }
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                     header("Authorization", "Bearer $token")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("recipient_id", "eq.$userId")
@@ -238,16 +242,64 @@ class NotificationRepository @Inject constructor(
         }
     }
 
+    suspend fun markMatchingAsRead(
+        types: List<String>,
+        actorId: String? = null,
+        targetId: String? = null
+    ): Result<Unit> {
+        return safeRepositoryCall("notifications.markMatchingAsRead") {
+            val normalizedTypes = types
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (normalizedTypes.isEmpty()) return@safeRepositoryCall
+
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+
+            var update = buildJsonObject { put("is_read", true) }
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                parameter("recipient_id", "eq.$userId")
+                parameter("is_read", "eq.false")
+                if (normalizedTypes.size == 1) {
+                    parameter("type", "eq.${normalizedTypes.first()}")
+                } else {
+                    parameter("type", "in.(${normalizedTypes.joinToString(",")})")
+                }
+                actorId
+                    ?.trim()
+                    ?.lowercase()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { parameter("actor_id", "eq.$it") }
+                targetId
+                    ?.trim()
+                    ?.lowercase()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { parameter("target_id", "eq.$it") }
+                setBody(update)
+            }
+
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Error marking matching notifications as read: ${response.status}")
+            }
+
+            updateUnreadCount()
+        }
+    }
+
     suspend fun updateUnreadCount(): Result<Int> {
         return getUnreadCount()
     }
 
     suspend fun getUnreadCount(): Result<Int> {
         return safeRepositoryCall("notifications.getUnreadCount") {
-            val userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
 
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("recipient_id", "eq.$userId")
@@ -271,19 +323,22 @@ class NotificationRepository @Inject constructor(
      * Observable flow of incoming notifications for the current user.
      */
     fun observeNotifications(): Flow<conectate.com.data.model.Notification> = flow {
-        val userId = authService.getCurrentUserId() ?: return@flow
+        var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
         Log.d("NotificationRepository", "🏠 Starting observeNotifications for user: $userId")
         
+        val client = supabaseConfig.client
+        var channel = client.realtime.channel("notifications-realtime-$userId")
         try {
-            val client = supabaseConfig.client
-            val channel = client.realtime.channel("notifications-realtime-$userId")
-            
             val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                 table = "notifications"
+                this.filter = "recipient_id=eq.$userId"
             }
 
             // Subscribe before collection. This is a suspend call.
-            channel.subscribe()
+            supabaseConfig.subscribeRealtimeChannel(
+                channel = channel,
+                reason = "notifications-$userId"
+            )
             Log.d("NotificationRepository", "📡 Subscribed to 'notifications' channel")
 
             changes.collect { action ->
@@ -319,6 +374,9 @@ class NotificationRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e("NotificationRepository", "🚨 Error in observeNotifications flow", e)
+        } finally {
+            runCatching { channel.unsubscribe() }
+            runCatching { client.realtime.removeChannel(channel) }
         }
     }
 
@@ -333,10 +391,10 @@ class NotificationRepository @Inject constructor(
         extraData: kotlinx.serialization.json.JsonObject = buildJsonObject {}
     ): Result<Unit> {
         return try {
-            val actorId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var actorId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             if (actorId == recipientId) return Result.success(Unit) // Don't notify self
 
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             val notificationData = buildJsonObject {
                 put("recipient_id", recipientId)
@@ -347,7 +405,7 @@ class NotificationRepository @Inject constructor(
                 put("extra_data", extraData)
             }
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -363,15 +421,26 @@ class NotificationRepository @Inject constructor(
 
     suspend fun registerFcmToken(token: String): Result<Unit> {
         return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-
-            val body = buildJsonObject {
-                put("user_id", userId)
-                put("token", token)
+            val cleanToken = token.trim()
+            if (cleanToken.isBlank()) {
+                return Result.failure(IllegalArgumentException("FCM token is blank"))
             }
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            val normalizedUserId = userId.trim().lowercase()
+            val cacheKey = buildFcmRegistrationCacheKey(normalizedUserId, cleanToken)
+
+            if (prefs.getString(KEY_LAST_REGISTERED_FCM, null) == cacheKey) {
+                return Result.success(Unit)
+            }
+
+            var body = buildJsonObject {
+                put("user_id", normalizedUserId)
+                put("token", cleanToken)
+            }
+
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -379,7 +448,10 @@ class NotificationRepository @Inject constructor(
                 setBody(body)
             }
 
-            if (response.status.isSuccess()) Result.success(Unit)
+            if (response.status.isSuccess()) {
+                prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
+                Result.success(Unit)
+            }
             else Result.failure(Exception("Error registering token: ${response.status}"))
         } catch (e: Exception) {
             Result.failure(e)
@@ -388,18 +460,31 @@ class NotificationRepository @Inject constructor(
 
     suspend fun unregisterFcmToken(): Result<Unit> {
         return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var accessToken = authService.getAccessToken()
+            var lastRegisteredToken = prefs.getString(KEY_LAST_REGISTERED_FCM, null)
+                ?.substringAfter('|', "")
+                ?.trim()
+                ?.ifBlank { null }
+            if (userId.isNullOrBlank() || accessToken.isNullOrBlank()) {
+                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
+                return Result.success(Unit)
+            }
 
-            // Delete all tokens for this user on this device (simplified: delete by user_id)
-            // In a better system, we'd delete only THIS specific token, but this ensures no phantom notifications.
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {
+            if (lastRegisteredToken == null) {
+                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
+                return Result.success(Unit)
+            }
+
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
+                parameter("token", "eq.$lastRegisteredToken")
             }
 
             if (response.status.isSuccess()) {
+                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
                 Log.d("NotificationRepository", "FCM Token unregistered for user $userId")
                 Result.success(Unit)
             } else {
@@ -414,8 +499,8 @@ class NotificationRepository @Inject constructor(
 
     private suspend fun fetchActorProfile(actorId: String): Pair<String?, String?> {
         return try {
-            val token = authService.getAccessToken() ?: return null to null
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            var token = authService.getAccessToken() ?: return null to null
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$actorId")
@@ -423,14 +508,14 @@ class NotificationRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                val jsonBody = response.bodyAsText()
+                var jsonBody = response.bodyAsText()
                 val profiles = supabaseConfig.json.decodeFromString<List<JsonObject>>(jsonBody)
                 val profile = profiles.firstOrNull() ?: return null to null
                 
                 fun getSafe(key: String): String? {
-                    val element = profile[key]
+                    var element = profile[key]
                     if (element == null || element is JsonNull) return null
-                    val s = element.jsonPrimitive.contentOrNull
+                    var s = element.jsonPrimitive.contentOrNull
                     return if (s == "null" || s.isNullOrBlank()) null else s
                 }
 
@@ -445,4 +530,11 @@ class NotificationRepository @Inject constructor(
             null to null
         }
     }
+
+    private fun buildFcmRegistrationCacheKey(userId: String, token: String): String {
+        return "${userId.trim().lowercase()}|${token.trim()}"
+    }
 }
+
+
+

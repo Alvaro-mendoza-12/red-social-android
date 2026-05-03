@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+internal val AppTypography = Typography
+
 private val DarkColorScheme = darkColorScheme(
     primary = RedPrimary,
     onPrimary = TextOnPrimary,
@@ -79,7 +81,7 @@ fun RedSocialTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = AppTypography,
         content = content
     )
 }

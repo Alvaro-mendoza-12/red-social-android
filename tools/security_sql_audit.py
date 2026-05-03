@@ -27,6 +27,8 @@ SKIP_DIR_NAMES = {
     ".git",
     ".gradle",
     ".idea",
+    ".kilo",
+    ".agent",
     "build",
     "node_modules",
 }
@@ -64,9 +66,43 @@ def finding_id(rule: str, file_path: str, subject: str) -> str:
     return hashlib.sha1(payload).hexdigest()[:16]
 
 
-def iter_sql_files(root: Path) -> Iterable[Path]:
+def load_manifest(root: Path, manifest_path: Path) -> list[Path]:
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for raw_line in manifest_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        candidate = (root / line).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(f"Manifest entry escapes repository root: {line}") from exc
+
+        if candidate.suffix.lower() != ".sql":
+            raise ValueError(f"Manifest entry is not a SQL file: {line}")
+        if not candidate.exists():
+            raise FileNotFoundError(f"Manifest entry not found: {line}")
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        files.append(candidate)
+
+    return files
+
+
+def iter_sql_files(root: Path, manifest_files: list[Path] | None = None) -> Iterable[Path]:
+    if manifest_files is not None:
+        yield from manifest_files
+        return
     for path in root.rglob("*.sql"):
         if any(part in SKIP_DIR_NAMES for part in path.parts):
+            continue
+        if not path.is_file():
             continue
         yield path
 
@@ -226,6 +262,7 @@ def main() -> int:
     parser.add_argument("--report", default="build/reports/security/sql_security_audit.md")
     parser.add_argument("--json", default="build/reports/security/sql_security_audit.json")
     parser.add_argument("--fail-threshold", default="HIGH", choices=list(SEVERITY_ORDER.keys()))
+    parser.add_argument("--manifest", help="Optional newline-delimited manifest of deployable SQL files")
     parser.add_argument("--update-baseline", action="store_true")
     args = parser.parse_args()
 
@@ -234,9 +271,15 @@ def main() -> int:
     report_md = Path(args.report)
     report_json = Path(args.json)
     fail_threshold = args.fail_threshold
+    manifest_files = None
+    if args.manifest:
+        manifest_path = Path(args.manifest)
+        if not manifest_path.is_absolute():
+            manifest_path = (root / manifest_path).resolve()
+        manifest_files = load_manifest(root, manifest_path)
 
     findings: list[Finding] = []
-    for sql_file in iter_sql_files(root):
+    for sql_file in iter_sql_files(root, manifest_files):
         findings.extend(scan_sql_file(root, sql_file))
 
     findings.sort(key=lambda f: (-SEVERITY_ORDER[f.severity], f.file, f.rule, f.subject))

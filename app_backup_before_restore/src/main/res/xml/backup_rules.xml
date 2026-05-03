@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Back up only non-sensitive UX preferences. -->
+    <include domain="sharedpref" path="theme_prefs.xml" />
+    <include domain="sharedpref" path="messages_preferences.xml" />
+    <include domain="sharedpref" path="app_prefs.xml" />
+
+    <!-- No extra excludes are needed here because the explicit includes above
+         already limit backup to the safe preference files only. -->
+</full-backup-content>

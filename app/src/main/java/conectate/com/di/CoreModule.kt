@@ -4,8 +4,8 @@ import conectate.com.core.concurrency.DefaultDispatcherProvider
 import conectate.com.core.concurrency.DispatcherProvider
 import conectate.com.core.crash.AndroidCrashReporter
 import conectate.com.core.crash.CrashReporter
-import conectate.com.core.feed.DefaultFeedRankingEngine
 import conectate.com.core.feed.FeedRankingEngine
+import conectate.com.core.feed.FeedRankingEngineML
 import conectate.com.core.feed.FeedSignalTracker
 import conectate.com.core.feed.InMemoryFeedSignalTracker
 import conectate.com.core.logging.AndroidAppLogger
@@ -44,7 +44,7 @@ abstract class CoreModule {
 
     @Binds
     @Singleton
-    abstract fun bindFeedRankingEngine(impl: DefaultFeedRankingEngine): FeedRankingEngine
+    abstract fun bindFeedRankingEngine(impl: FeedRankingEngineML): FeedRankingEngine
 
     @Binds
     @Singleton

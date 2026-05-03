@@ -1,5 +1,6 @@
 package conectate.com.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import conectate.com.data.model.User
@@ -11,13 +12,20 @@ data class UserEntity(
     val full_name: String,
     val avatar_url: String?,
     val bio: String?,
+    @ColumnInfo(defaultValue = "0")
     val follower_count: Int = 0,
+    @ColumnInfo(defaultValue = "0")
     val following_count: Int = 0,
+    @ColumnInfo(defaultValue = "0")
     val is_verified: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
     val is_admin: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
     val voice_access_granted: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
     val is_online: Boolean = false,
     val last_seen: String? = null,
+    @ColumnInfo(defaultValue = "0")
     val updated_at: Long = System.currentTimeMillis()
 ) {
     val displayName: String

@@ -1,0 +1,335 @@
+# 🔥 CONÉCTATE PROMETHEUS CONFIGURATION - ENTERPRISE PRODUCTION READY
+# Configuración principal de Prometheus con scraping, alerting y storage
+# Basado en mejores prácticas oficiales de Prometheus
+
+global:
+  # 🔥 GLOBAL SETTINGS - Configuración global
+  scrape_interval: 15s          # Intervalo de scraping (15s para alta resolución)
+  evaluation_interval: 15s     # Intervalo de evaluación de reglas
+  scrape_timeout: 10s          # Timeout de scraping
+  external_labels:
+    cluster: 'conectate-production'
+    region: 'us-west-1'
+    environment: 'production'
+
+# 🔥 RULE FILES - Archivos de reglas de alerting
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+  - "/etc/prometheus/rules/conectate/*.yml"
+
+# 🔥 ALERTMANAGER CONFIG - Configuración de AlertManager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# 🔥 SCRAPE CONFIGS - Configuración de scraping
+scrape_configs:
+  # 🔥 PROMETHEUS SELF-MONITORING - Auto-monitoreo
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+    honor_timestamps: true
+
+  # 🔥 GRAFANA MONITORING - Monitoreo de Grafana
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/api/prometheus/metrics'
+    honor_labels: true
+
+  # 🔥 ALERTMANAGER MONITORING - Monitoreo de AlertManager
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+
+  # 🔥 NODE EXPORTER - Métricas del sistema
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets:
+        - 'node-exporter:9100'
+        - 'node-exporter-2:9100'
+        - 'node-exporter-3:9100'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'conectate-server-${1}'
+      - source_labels: [__address__]
+        regex: 'node-exporter-(.*):9100'
+        target_label: node_id
+        replacement: '${1}'
+
+  # 🔥 CADVISOR - Métricas de contenedores
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+
+  # 🔥 BLACKBOX EXPORTER - Monitoreo de endpoints externos
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - https://conectate.com
+        - https://api.conectate.com/health
+        - https://staging.conectate.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # 🔥 BLACKBOX ICMP - Monitoreo de conectividad
+  - job_name: 'blackbox-icmp'
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets:
+        - 8.8.8.8
+        - 1.1.1.1
+        - conectate.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # 🔥 PUSHGATEWAY - Para métricas batch jobs
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+
+  # 🔥 REDIS EXPORTER - Métricas de Redis
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+
+  # 🔥 POSTGRES EXPORTER - Métricas de PostgreSQL
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+
+  # 🔥 ANDROID METRICS - Métricas específicas de Android
+  - job_name: 'android-metrics'
+    static_configs:
+      - targets: ['android-metrics-exporter:9200']
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    metrics_path: '/metrics'
+    honor_labels: true
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'conectate-android-api'
+
+  # 🔥 KUBERNETES PODS - Métricas de pods de Kubernetes
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - conectate-production
+            - conectate-staging
+            - monitoring
+    relabel_configs:
+      # Solo scrapear pods con anotación prometheus.io/scrape=true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      # Configurar el path desde la anotación
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      # Configurar el puerto desde la anotación
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # Configurar el scheme desde la anotación
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      # Configurar el job desde la anotación
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_job]
+        action: replace
+        target_label: job
+        regex: (.+)
+      # Añadir labels de Kubernetes
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        action: replace
+        target_label: kubernetes_container_name
+
+  # 🔥 KUBERNETES SERVICES - Métricas de servicios de Kubernetes
+  - job_name: 'kubernetes-services'
+    kubernetes_sd_configs:
+      - role: service
+        namespaces:
+          names:
+            - conectate-production
+            - conectate-staging
+            - monitoring
+    relabel_configs:
+      # Solo scrapear servicios con anotación prometheus.io/scrape=true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      # Configurar el path desde la anotación
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      # Configurar el puerto desde la anotación
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # Configurar el scheme desde la anotación
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      # Configurar el job desde la anotación
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_job]
+        action: replace
+        target_label: job
+        regex: (.+)
+      # Añadir labels de Kubernetes
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_service_name
+
+  # 🔥 KUBERNETES NODES - Métricas de nodes de Kubernetes
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+  # 🔥 CONECTATE API ENDPOINTS - Monitoreo específico de APIs
+  - job_name: 'conectate-api'
+    metrics_path: '/metrics'
+    scheme: https
+    static_configs:
+      - targets:
+        - 'api.conectate.com'
+        - 'staging-api.conectate.com'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    honor_labels: true
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'conectate-api-${1}'
+      - source_labels: [__address__]
+        regex: '(.*)\.conectate\.com'
+        target_label: environment
+        replacement: '${1}'
+
+  # 🔥 CONECTATE WEB APP - Monitoreo de aplicación web
+  - job_name: 'conectate-web'
+    metrics_path: '/metrics'
+    scheme: https
+    static_configs:
+      - targets:
+        - 'conectate.com'
+        - 'staging.conectate.com'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    honor_labels: true
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'conectate-web-${1}'
+      - source_labels: [__address__]
+        regex: '(.*)\.conectate\.com'
+        target_label: environment
+        replacement: '${1}'
+
+  # 🔥 EXTERNAL SERVICES - Servicios externos monitoreados
+  - job_name: 'external-services'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+        - 'payment-service.external.com:9090'
+        - 'notification-service.external.com:9090'
+        - 'analytics-service.external.com:9090'
+    scrape_interval: 60s
+    scrape_timeout: 20s
+    honor_labels: true
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'external-${1}'
+
+# 🔥 REMOTE WRITE - Escritura a almacenamiento remoto (Thanos)
+remote_write:
+  - url: "http://thanos-store:10901/api/v1/receive"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*|process_.*|prometheus_.*'
+        action: drop
+
+# 🔥 REMOTE READ - Lectura desde almacenamiento remoto
+remote_read:
+  - url: "http://thanos-query:9090/api/v1/query"
+    read_recent: true
+    prefer_remote: false

@@ -132,7 +132,7 @@ fun CinemaPlayer(
     // Sync from ViewModel (External events)
     LaunchedEffect(viewModel.cinemaSync) {
         viewModel.cinemaSync.collectLatest { event ->
-            if (!isCreator) {
+            if (!isCreator && event != null) {
                 // More tolerant sync (3 seconds delta) to avoid stutter on slow networks
                 if (Math.abs(exoPlayer.currentPosition - event.currentPosition) > 3000) {
                     exoPlayer.seekTo(event.currentPosition)

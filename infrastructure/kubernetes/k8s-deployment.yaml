@@ -1,0 +1,450 @@
+# 🔥 CONÉCTATE KUBERNETES DEPLOYMENT - ENTERPRISE PRODUCTION READY
+# Basado en mejores prácticas oficiales de Kubernetes
+# Optimizado para alta disponibilidad, escalabilidad y seguridad
+
+---
+# 🔥 NAMESPACE - Aislamiento de recursos
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: conectate-prod
+  labels:
+    name: conectate-prod
+    environment: production
+    project: conectate
+---
+# 🔥 CONFIGMAP - Configuración centralizada
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: conectate-config
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+data:
+  # Database configuration
+  DATABASE_HOST: "postgres-service.conectate-prod.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "conectate_prod"
+  
+  # Redis configuration
+  REDIS_HOST: "redis-service.conectate-prod.svc.cluster.local"
+  REDIS_PORT: "6379"
+  
+  # API configuration
+  API_BASE_URL: "https://api.conectate.com"
+  API_VERSION: "v1"
+  
+  # Feature flags
+  ENABLE_ML_FEATURES: "true"
+  ENABLE_STREAMING: "true"
+  ENABLE_BIOMETRIC: "true"
+  
+  # Performance settings
+  MAX_CONNECTIONS: "100"
+  CACHE_TTL: "3600"
+  
+  # Security settings
+  JWT_EXPIRY: "86400"
+  RATE_LIMIT: "1000"
+  
+  # Monitoring settings
+  METRICS_ENABLED: "true"
+  LOG_LEVEL: "INFO"
+---
+# 🔥 SECRET - Secrets encriptados
+apiVersion: v1
+kind: Secret
+metadata:
+  name: conectate-secrets
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+type: Opaque
+data:
+  # Base64 encoded secrets
+  DATABASE_PASSWORD: <BASE64_ENCODED_PASSWORD>
+  REDIS_PASSWORD: <BASE64_ENCODED_PASSWORD>
+  JWT_SECRET: <BASE64_ENCODED_JWT_SECRET>
+  API_KEY: <BASE64_ENCODED_API_KEY>
+  SSL_CERTIFICATE: <BASE64_ENCODED_SSL_CERT>
+  SSL_KEY: <BASE64_ENCODED_SSL_KEY>
+---
+# 🔥 PERSISTENT VOLUME CLAIM - Almacenamiento persistente
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: conectate-storage
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+# 🔥 DEPLOYMENT - Aplicación principal
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-api
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: conectate
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: conectate
+        tier: backend
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      # 🔥 SECURITY: Non-root containers
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: conectate-api
+        image: conectate/api:1.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        env:
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: conectate-config
+              key: DATABASE_HOST
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: conectate-secrets
+              key: DATABASE_PASSWORD
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: conectate-config
+              key: REDIS_HOST
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: conectate-secrets
+              key: REDIS_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: conectate-secrets
+              key: JWT_SECRET
+        # 🔥 PERFORMANCE: Resource limits y requests
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        # 🔥 HEALTH CHECKS: Liveness y Readiness probes
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # 🔥 SECURITY: Container security
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 🔥 VOLUMES: Mount de almacenamiento
+        volumeMounts:
+        - name: conectate-storage
+          mountPath: /app/storage
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: conectate-storage
+        persistentVolumeClaim:
+          claimName: conectate-storage
+      - name: tmp
+        emptyDir: {}
+      # 🔥 SECURITY: Pod security policies
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+---
+# 🔥 SERVICE - Exposición del servicio
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-api-service
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: conectate
+    tier: backend
+---
+# 🔥 INGRESS - Entrada HTTP con TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: conectate-ingress
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: frontend
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+  - hosts:
+    - api.conectate.com
+    - conectate.com
+    secretName: conectate-tls
+  rules:
+  - host: api.conectate.com
+    http:
+      paths:
+      - path: /api(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: conectate-api-service
+            port:
+              number: 80
+  - host: conectate.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: conectate-api-service
+            port:
+              number: 80
+---
+# 🔥 HORIZONTAL POD AUTOSCALER - Escalado automático
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conectate-hpa
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conectate-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+---
+# 🔥 POD DISRUPTION BUDGET - Alta disponibilidad
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: conectate-pdb
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: backend
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: conectate
+      tier: backend
+---
+# 🔥 NETWORK POLICY - Seguridad de red
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: conectate-network-policy
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: security
+spec:
+  podSelector:
+    matchLabels:
+      app: conectate
+      tier: backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: conectate
+          tier: backend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+          tier: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+          tier: cache
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443
+---
+# 🔥 SERVICE MONITOR - Monitoring con Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: conectate-monitor
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: conectate
+      tier: backend
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+---
+# 🔥 POD SECURITY POLICY - Seguridad a nivel de pod
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: conectate-psp
+  namespace: conectate-prod
+  labels:
+    app: conectate
+    tier: security
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+  fsGroup:
+    rule: 'RunAsAny'
+  readOnlyRootFilesystem: true

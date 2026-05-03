@@ -1,0 +1,2328 @@
+# 🔥 CONÉCTATE API DOCUMENTATION - OPENAPI 3.0 SPECIFICATION
+# Documentación API basada en OpenAPI 3.0 con mejores prácticas
+# Implementación 100% realista con especificación completa y ejemplos
+
+openapi: 3.0.3
+info:
+  title: Conectate API
+  description: |
+    ## API RESTful de Conectate
+    
+    Esta API proporciona acceso a todas las funcionalidades de la plataforma Conectate,
+    incluyendo gestión de usuarios, contenido, streaming, machine learning y más.
+    
+    ### Características principales:
+    - **Autenticación JWT** con refresh tokens
+    - **Rate limiting** configurable por endpoint
+    - **CORS** habilitado para dominios autorizados
+    - **Versioning** de API semántico
+    - **Documentación** interactiva con Swagger UI
+    - **Testing** con ejemplos incluidos
+    - **Seguridad** enterprise con Zero Trust
+    
+    ### Base URL:
+    - **Producción**: `https://api.conectate.com/v1`
+    - **Staging**: `https://staging-api.conectate.com/v1`
+    - **Desarrollo**: `https://dev-api.conectate.com/v1`
+    
+    ### Contacto:
+    - **Email**: api@conectate.com
+    - **Soporte**: support@conectate.com
+    - **Documentación**: https://docs.conectate.com
+    - **Status**: https://status.conectate.com
+  version: 1.0.0
+  contact:
+    name: Conectate API Team
+    email: api@conectate.com
+    url: https://conectate.com
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://conectate.com/terms
+  x-logo:
+    url: https://conectate.com/logo.png
+    backgroundColor: "#FFFFFF"
+    altText: "Conectate Logo"
+
+# 🔥 SERVERS - Servidores disponibles
+servers:
+  - url: https://api.conectate.com/v1
+    description: Servidor de producción
+    variables:
+      version:
+        enum: [v1, v2]
+        default: v1
+        description: Versión de la API
+  - url: https://staging-api.conectate.com/v1
+    description: Servidor de staging
+  - url: https://dev-api.conectate.com/v1
+    description: Servidor de desarrollo
+
+# 🔥 TAGS - Agrupación de endpoints
+tags:
+  - name: Authentication
+    description: Operaciones de autenticación y gestión de sesiones
+    externalDocs:
+      description: Guía de autenticación
+      url: https://docs.conectate.com/auth
+  - name: Users
+    description: Gestión de usuarios y perfiles
+    externalDocs:
+      description: Guía de usuarios
+      url: https://docs.conectate.com/users
+  - name: Content
+    description: Gestión de contenido y posts
+    externalDocs:
+      description: Guía de contenido
+      url: https://docs.conectate.com/content
+  - name: Streaming
+    description: Streaming en tiempo real y video
+    externalDocs:
+      description: Guía de streaming
+      url: https://docs.conectate.com/streaming
+  - name: ML & AI
+    description: Machine Learning y análisis predictivo
+    externalDocs:
+      description: Guía de ML
+      url: https://docs.conectate.com/ml
+  - name: Analytics
+    description: Análisis y métricas
+    externalDocs:
+      description: Guía de analytics
+      url: https://docs.conectate.com/analytics
+  - name: Security
+    description: Seguridad y biometría
+    externalDocs:
+      description: Guía de seguridad
+      url: https://docs.conectate.com/security
+
+# 🔥 PATHS - ENDPOINTS DE LA API
+paths:
+  # 🔥 AUTHENTICATION ENDPOINTS - Endpoints de autenticación
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Iniciar sesión de usuario
+      description: Autentica un usuario con email y contraseña
+      operationId: loginUser
+      externalDocs:
+        description: Guía de login
+        url: https://docs.conectate.com/auth/login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              loginValid:
+                summary: Login válido
+                value:
+                  email: user@conectate.com
+                  password: password123
+                  rememberMe: true
+              loginInvalid:
+                summary: Login inválido
+                value:
+                  email: invalid@email.com
+                  password: wrongpassword
+      responses:
+        '200':
+          description: Login exitoso
+          headers:
+            Set-Cookie:
+              description: Refresh token cookie
+              schema:
+                type: string
+                example: refresh_token=abc123; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                loginSuccess:
+                  summary: Login exitoso
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "user_123"
+                        email: "user@conectate.com"
+                        firstName: "John"
+                        lastName: "Doe"
+                        avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                        verified: true
+                        createdAt: "2024-01-01T00:00:00Z"
+                      tokens:
+                        accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        refreshToken: "refresh_token_abc123"
+                        expiresIn: 3600
+                        tokenType: "Bearer"
+                    message: "Login successful"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+      x-rate-limit: 5/minute
+      x-code-samples:
+        - lang: 'JavaScript'
+          label: 'JavaScript/Node.js'
+          source: |
+            const response = await fetch('https://api.conectate.com/v1/auth/login', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                email: 'user@conectate.com',
+                password: 'password123'
+              })
+            });
+            const data = await response.json();
+        - lang: 'Python'
+          label: 'Python'
+          source: |
+            import requests
+            
+            response = requests.post(
+                'https://api.conectate.com/v1/auth/login',
+                json={
+                    'email': 'user@conectate.com',
+                    'password': 'password123'
+                }
+            )
+            data = response.json()
+        - lang: 'cURL'
+          label: 'cURL'
+          source: |
+            curl -X POST "https://api.conectate.com/v1/auth/login" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "email": "user@conectate.com",
+                "password": "password123"
+              }'
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Registrar nuevo usuario
+      description: Crea una nueva cuenta de usuario
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              registerValid:
+                summary: Registro válido
+                value:
+                  email: newuser@conectate.com
+                  password: password123
+                  firstName: "John"
+                  lastName: "Doe"
+                  acceptTerms: true
+                  acceptPrivacy: true
+      responses:
+        '201':
+          description: Usuario creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                registerSuccess:
+                  summary: Registro exitoso
+                  value:
+                    success: true
+                    data:
+                      user:
+                        id: "user_456"
+                        email: "newuser@conectate.com"
+                        firstName: "John"
+                        lastName: "Doe"
+                        avatar: null
+                        verified: false
+                        createdAt: "2024-01-01T00:00:00Z"
+                      verificationToken: "verify_token_abc123"
+                    message: "User registered successfully. Please check your email."
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: El usuario ya existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                userExists:
+                  summary: Usuario ya existe
+                  value:
+                    success: false
+                    error:
+                      code: "USER_EXISTS"
+                      message: "User with this email already exists"
+                      details: "An account with email newuser@conectate.com already exists"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+      x-rate-limit: 3/minute
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refrescar token de acceso
+      description: Genera un nuevo access token usando el refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            examples:
+              refreshValid:
+                summary: Refresh válido
+                value:
+                  refreshToken: "refresh_token_abc123"
+      responses:
+        '200':
+          description: Token refrescado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+              examples:
+                refreshSuccess:
+                  summary: Refresh exitoso
+                  value:
+                    success: true
+                    data:
+                      accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      expiresIn: 3600
+                      tokenType: "Bearer"
+                    message: "Token refreshed successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Cerrar sesión
+      description: Cierra la sesión del usuario actual
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sesión cerrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+              examples:
+                logoutSuccess:
+                  summary: Logout exitoso
+                  value:
+                    success: true
+                    message: "Logged out successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 🔥 USER ENDPOINTS - Endpoints de usuarios
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Obtener perfil del usuario actual
+      description: Recupera la información del perfil del usuario autenticado
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Perfil de usuario obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+              examples:
+                userProfile:
+                  summary: Perfil de usuario
+                  value:
+                    success: true
+                    data:
+                      id: "user_123"
+                      email: "user@conectate.com"
+                      firstName: "John"
+                      lastName: "Doe"
+                      avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                      bio: "Software developer passionate about technology"
+                      location: "San Francisco, CA"
+                      website: "https://johndoe.com"
+                      verified: true
+                      followers: 1250
+                      following: 890
+                      posts: 156
+                      createdAt: "2024-01-01T00:00:00Z"
+                      updatedAt: "2024-01-15T10:30:00Z"
+                      preferences:
+                        theme: "dark"
+                        language: "en"
+                        notifications:
+                          email: true
+                          push: true
+                          sms: false
+                        privacy:
+                          profileVisibility: "public"
+                          showOnlineStatus: true
+                          allowDirectMessages: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [Users]
+      summary: Actualizar perfil del usuario
+      description: Actualiza la información del perfil del usuario autenticado
+      operationId: updateCurrentUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+            examples:
+              updateProfile:
+                summary: Actualizar perfil
+                value:
+                  firstName: "John"
+                  lastName: "Smith"
+                  bio: "Updated bio"
+                  location: "New York, NY"
+                  website: "https://johnsmith.com"
+                  preferences:
+                    theme: "light"
+                    notifications:
+                      email: false
+                      push: true
+      responses:
+        '200':
+          description: Perfil actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+              examples:
+                profileUpdated:
+                  summary: Perfil actualizado
+                  value:
+                    success: true
+                    data:
+                      id: "user_123"
+                      email: "user@conectate.com"
+                      firstName: "John"
+                      lastName: "Smith"
+                      bio: "Updated bio"
+                      location: "New York, NY"
+                      website: "https://johnsmith.com"
+                      updatedAt: "2024-01-20T14:30:00Z"
+                    message: "Profile updated successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Obtener perfil de usuario específico
+      description: Recupera la información pública de un usuario específico
+      operationId: getUserById
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID del usuario
+          schema:
+            type: string
+            format: uuid
+            example: "user_123"
+      responses:
+        '200':
+          description: Perfil de usuario obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+              examples:
+                publicProfile:
+                  summary: Perfil público
+                  value:
+                    success: true
+                    data:
+                      id: "user_123"
+                      firstName: "John"
+                      lastName: "Doe"
+                      avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                      bio: "Software developer passionate about technology"
+                      location: "San Francisco, CA"
+                      website: "https://johndoe.com"
+                      verified: true
+                      followers: 1250
+                      following: 890
+                      posts: 156
+                      createdAt: "2024-01-01T00:00:00Z"
+        '404':
+          description: Usuario no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                userNotFound:
+                  summary: Usuario no encontrado
+                  value:
+                    success: false
+                    error:
+                      code: "USER_NOT_FOUND"
+                      message: "User not found"
+                      details: "User with ID user_123 does not exist"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 🔥 CONTENT ENDPOINTS - Endpoints de contenido
+  /posts:
+    get:
+      tags: [Content]
+      summary: Obtener lista de posts
+      description: Recupera una lista paginada de posts
+      operationId: getPosts
+      parameters:
+        - name: page
+          in: query
+          description: Número de página
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Límite de resultados por página
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          description: Campo de ordenamiento
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, likes, comments]
+            default: createdAt
+        - name: order
+          in: query
+          description: Dirección de ordenamiento
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: tag
+          in: query
+          description: Filtrar por tag
+          schema:
+            type: string
+            example: "technology"
+        - name: author
+          in: query
+          description: Filtrar por autor
+          schema:
+            type: string
+            format: uuid
+            example: "user_123"
+      responses:
+        '200':
+          description: Lista de posts obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostsResponse'
+              examples:
+                postsList:
+                  summary: Lista de posts
+                  value:
+                    success: true
+                    data:
+                      posts:
+                        - id: "post_123"
+                          title: "Introduction to Machine Learning"
+                          content: "Machine learning is a subset of artificial intelligence..."
+                          author:
+                            id: "user_123"
+                            firstName: "John"
+                            lastName: "Doe"
+                            avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                          tags: ["machine-learning", "ai", "technology"]
+                          likes: 42
+                          comments: 8
+                          shares: 3
+                          createdAt: "2024-01-15T10:30:00Z"
+                          updatedAt: "2024-01-15T10:30:00Z"
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 156
+                        totalPages: 8
+                        hasNext: true
+                        hasPrev: false
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Content]
+      summary: Crear nuevo post
+      description: Crea un nuevo post
+      operationId: createPost
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+            examples:
+              createPost:
+                summary: Crear post
+                value:
+                  title: "My First Post"
+                  content: "This is the content of my first post..."
+                  tags: ["introduction", "first-post"]
+                  visibility: "public"
+      responses:
+        '201':
+          description: Post creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+              examples:
+                postCreated:
+                  summary: Post creado
+                  value:
+                    success: true
+                    data:
+                      id: "post_456"
+                      title: "My First Post"
+                      content: "This is the content of my first post..."
+                      author:
+                        id: "user_123"
+                        firstName: "John"
+                        lastName: "Doe"
+                        avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                      tags: ["introduction", "first-post"]
+                      likes: 0
+                      comments: 0
+                      shares: 0
+                      visibility: "public"
+                      createdAt: "2024-01-20T15:30:00Z"
+                      updatedAt: "2024-01-20T15:30:00Z"
+                    message: "Post created successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      x-rate-limit: 10/minute
+
+  /posts/{postId}:
+    get:
+      tags: [Content]
+      summary: Obtener post específico
+      description: Recupera un post específico por ID
+      operationId: getPostById
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: ID del post
+          schema:
+            type: string
+            format: uuid
+            example: "post_123"
+      responses:
+        '200':
+          description: Post obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+              examples:
+                postDetail:
+                  summary: Detalle del post
+                  value:
+                    success: true
+                    data:
+                      id: "post_123"
+                      title: "Introduction to Machine Learning"
+                      content: "Machine learning is a subset of artificial intelligence..."
+                      author:
+                        id: "user_123"
+                        firstName: "John"
+                        lastName: "Doe"
+                        avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                      tags: ["machine-learning", "ai", "technology"]
+                      likes: 42
+                      comments: 8
+                      shares: 3
+                      visibility: "public"
+                      createdAt: "2024-01-15T10:30:00Z"
+                      updatedAt: "2024-01-15T10:30:00Z"
+        '404':
+          description: Post no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                postNotFound:
+                  summary: Post no encontrado
+                  value:
+                    success: false
+                    error:
+                      code: "POST_NOT_FOUND"
+                      message: "Post not found"
+                      details: "Post with ID post_123 does not exist"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [Content]
+      summary: Actualizar post
+      description: Actualiza un post existente
+      operationId: updatePost
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: ID del post
+          schema:
+            type: string
+            format: uuid
+            example: "post_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+            examples:
+              updatePost:
+                summary: Actualizar post
+                value:
+                  title: "Updated Post Title"
+                  content: "Updated content..."
+                  tags: ["updated", "content"]
+                  visibility: "public"
+      responses:
+        '200':
+          description: Post actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+              examples:
+                postUpdated:
+                  summary: Post actualizado
+                  value:
+                    success: true
+                    data:
+                      id: "post_123"
+                      title: "Updated Post Title"
+                      content: "Updated content..."
+                      updatedAt: "2024-01-20T16:30:00Z"
+                    message: "Post updated successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No autorizado para editar este post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notAuthorized:
+                  summary: No autorizado
+                  value:
+                    success: false
+                    error:
+                      code: "NOT_AUTHORIZED"
+                      message: "Not authorized to edit this post"
+                      details: "You can only edit your own posts"
+        '404':
+          description: Post no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [Content]
+      summary: Eliminar post
+      description: Elimina un post existente
+      operationId: deletePost
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: ID del post
+          schema:
+            type: string
+            format: uuid
+            example: "post_123"
+      responses:
+        '200':
+          description: Post eliminado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+              examples:
+                postDeleted:
+                  summary: Post eliminado
+                  value:
+                    success: true
+                    message: "Post deleted successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No autorizado para eliminar este post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # 🔥 STREAMING ENDPOINTS - Endpoints de streaming
+  /streaming/rooms:
+    get:
+      tags: [Streaming]
+      summary: Obtener lista de salas de streaming
+      description: Recupera una lista de salas de streaming activas
+      operationId: getStreamingRooms
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Número de página
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Límite de resultados por página
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: category
+          in: query
+          description: Filtrar por categoría
+          schema:
+            type: string
+            enum: [gaming, education, entertainment, music, talk]
+      responses:
+        '200':
+          description: Lista de salas obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamingRoomsResponse'
+              examples:
+                roomsList:
+                  summary: Lista de salas
+                  value:
+                    success: true
+                    data:
+                      rooms:
+                        - id: "room_123"
+                          title: "Gaming Session"
+                          description: "Join us for an exciting gaming session"
+                          host:
+                            id: "user_456"
+                            firstName: "Jane"
+                            lastName: "Smith"
+                            avatar: "https://cdn.conectate.com/avatars/user_456.jpg"
+                          category: "gaming"
+                          isLive: true
+                          viewers: 125
+                          maxViewers: 500
+                          thumbnail: "https://cdn.conectate.com/thumbnails/room_123.jpg"
+                          startedAt: "2024-01-20T18:00:00Z"
+                      pagination:
+                        page: 1
+                        limit: 20
+                        total: 45
+                        totalPages: 3
+                        hasNext: true
+                        hasPrev: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Streaming]
+      summary: Crear sala de streaming
+      description: Crea una nueva sala de streaming
+      operationId: createStreamingRoom
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStreamingRoomRequest'
+            examples:
+              createRoom:
+                summary: Crear sala
+                value:
+                  title: "My Live Stream"
+                  description: "Welcome to my live stream!"
+                  category: "gaming"
+                  maxViewers: 100
+                  isPrivate: false
+      responses:
+        '201':
+          description: Sala creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamingRoomResponse'
+              examples:
+                roomCreated:
+                  summary: Sala creada
+                  value:
+                    success: true
+                    data:
+                      id: "room_789"
+                      title: "My Live Stream"
+                      description: "Welcome to my live stream!"
+                      host:
+                        id: "user_123"
+                        firstName: "John"
+                        lastName: "Doe"
+                        avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+                      category: "gaming"
+                      isLive: false
+                      viewers: 0
+                      maxViewers: 100
+                      thumbnail: null
+                      streamKey: "stream_key_abc123"
+                      createdAt: "2024-01-20T19:00:00Z"
+                    message: "Streaming room created successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      x-rate-limit: 5/minute
+
+  # 🔥 ML & AI ENDPOINTS - Endpoints de ML y AI
+  /ml/predict/user-behavior:
+    post:
+      tags: [ML & AI]
+      summary: Predecir comportamiento de usuario
+      description: Analiza y predice el comportamiento de un usuario usando ML
+      operationId: predictUserBehavior
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserBehaviorPredictionRequest'
+            examples:
+              predictBehavior:
+                summary: Predecir comportamiento
+                value:
+                  userId: "user_123"
+                  timeWindow: "7d"
+                  features:
+                    - sessionCount
+                    - avgSessionDuration
+                    - interactionRate
+                    - contentDiversity
+      responses:
+        '200':
+          description: Predicción generada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserBehaviorPredictionResponse'
+              examples:
+                predictionSuccess:
+                  summary: Predicción exitosa
+                  value:
+                    success: true
+                    data:
+                      userId: "user_123"
+                      behaviorCategory: "ACTIVE_USER"
+                      confidence: 0.85
+                      predictions:
+                        - category: "ACTIVE_USER"
+                          probability: 0.85
+                        - category: "CASUAL_USER"
+                          probability: 0.10
+                        - category: "POWER_USER"
+                          probability: 0.03
+                        - category: "DORMANT_USER"
+                          probability: 0.01
+                        - category: "AT_RISK_USER"
+                          probability: 0.01
+                      features:
+                        sessionCount: 25
+                        avgSessionDuration: 1800
+                        interactionRate: 0.75
+                        contentDiversity: 0.65
+                      timestamp: "2024-01-20T20:00:00Z"
+                    message: "User behavior prediction completed"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ml/recommend/content:
+    post:
+      tags: [ML & AI]
+      summary: Recomendar contenido
+      description: Genera recomendaciones de contenido personalizadas
+      operationId: recommendContent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentRecommendationRequest'
+            examples:
+              recommendContent:
+                summary: Recomendar contenido
+                value:
+                  userId: "user_123"
+                  limit: 10
+                  context:
+                    lastViewed: "post_456"
+                    interests: ["technology", "gaming", "music"]
+      responses:
+        '200':
+          description: Recomendaciones generadas exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentRecommendationResponse'
+              examples:
+                recommendationsSuccess:
+                  summary: Recomendaciones exitosas
+                  value:
+                    success: true
+                    data:
+                      userId: "user_123"
+                      recommendations:
+                        - contentId: "post_789"
+                          score: 0.92
+                          reason: "ML Recommendation"
+                          metadata:
+                            title: "Advanced Machine Learning Techniques"
+                            author: "Jane Smith"
+                            tags: ["machine-learning", "ai", "advanced"]
+                        - contentId: "post_790"
+                          score: 0.87
+                          reason: "Based on your interests"
+                          metadata:
+                            title: "Gaming Technology Trends 2024"
+                            author: "Bob Johnson"
+                            tags: ["gaming", "technology", "trends"]
+                      timestamp: "2024-01-20T20:00:00Z"
+                    message: "Content recommendations generated successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+# 🔥 COMPONENTS - Componentes reutilizables
+components:
+  # 🔥 SECURITY SCHEMES - Esquemas de seguridad
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT Bearer Token authentication
+        
+        Para autenticarse, incluye el token en el header:
+        ```
+        Authorization: Bearer <token>
+        ```
+        
+        El token se obtiene del endpoint `/auth/login`.
+
+  # 🔥 SCHEMAS - Esquemas de datos
+  schemas:
+    # 🔥 AUTHENTICATION SCHEMAS - Esquemas de autenticación
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email del usuario
+          example: "user@conectate.com"
+        password:
+          type: string
+          minLength: 8
+          description: Contraseña del usuario
+          example: "password123"
+        rememberMe:
+          type: boolean
+          description: Recordar sesión
+          default: false
+      example:
+        email: "user@conectate.com"
+        password: "password123"
+        rememberMe: true
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Indica si la operación fue exitosa
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            tokens:
+              $ref: '#/components/schemas/Tokens'
+        message:
+          type: string
+          description: Mensaje de respuesta
+      example:
+        success: true
+        data:
+          user:
+            id: "user_123"
+            email: "user@conectate.com"
+            firstName: "John"
+            lastName: "Doe"
+            avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+            verified: true
+            createdAt: "2024-01-01T00:00:00Z"
+          tokens:
+            accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            refreshToken: "refresh_token_abc123"
+            expiresIn: 3600
+            tokenType: "Bearer"
+        message: "Login successful"
+
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName, acceptTerms, acceptPrivacy]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email del usuario
+          example: "newuser@conectate.com"
+        password:
+          type: string
+          minLength: 8
+          description: Contraseña del usuario
+          example: "password123"
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Nombre del usuario
+          example: "John"
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Apellido del usuario
+          example: "Doe"
+        acceptTerms:
+          type: boolean
+          description: Acepta términos y condiciones
+          example: true
+        acceptPrivacy:
+          type: boolean
+          description: Acepta política de privacidad
+          example: true
+      example:
+        email: "newuser@conectate.com"
+        password: "password123"
+        firstName: "John"
+        lastName: "Doe"
+        acceptTerms: true
+        acceptPrivacy: true
+
+    RegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            verificationToken:
+              type: string
+              description: Token de verificación de email
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          user:
+            id: "user_456"
+            email: "newuser@conectate.com"
+            firstName: "John"
+            lastName: "Doe"
+            avatar: null
+            verified: false
+            createdAt: "2024-01-01T00:00:00Z"
+          verificationToken: "verify_token_abc123"
+        message: "User registered successfully. Please check your email."
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh token
+          example: "refresh_token_abc123"
+      example:
+        refreshToken: "refresh_token_abc123"
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+              description: Nuevo access token
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            expiresIn:
+              type: integer
+              description: Tiempo de expiración en segundos
+              example: 3600
+            tokenType:
+              type: string
+              description: Tipo de token
+              example: "Bearer"
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          expiresIn: 3600
+          tokenType: "Bearer"
+        message: "Token refreshed successfully"
+
+    LogoutResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      example:
+        success: true
+        message: "Logged out successfully"
+
+    # 🔥 USER SCHEMAS - Esquemas de usuarios
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID del usuario
+          example: "user_123"
+        email:
+          type: string
+          format: email
+          description: Email del usuario
+          example: "user@conectate.com"
+        firstName:
+          type: string
+          description: Nombre del usuario
+          example: "John"
+        lastName:
+          type: string
+          description: Apellido del usuario
+          example: "Doe"
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+          description: URL del avatar
+          example: "https://cdn.conectate.com/avatars/user_123.jpg"
+        verified:
+          type: boolean
+          description: Indica si el usuario está verificado
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación
+          example: "2024-01-01T00:00:00Z"
+
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            bio:
+              type: string
+              nullable: true
+              description: Biografía del usuario
+              example: "Software developer passionate about technology"
+            location:
+              type: string
+              nullable: true
+              description: Ubicación del usuario
+              example: "San Francisco, CA"
+            website:
+              type: string
+              format: uri
+              nullable: true
+              description: Sitio web personal
+              example: "https://johndoe.com"
+            followers:
+              type: integer
+              description: Número de seguidores
+              example: 1250
+            following:
+              type: integer
+              description: Número de seguidos
+              example: 890
+            posts:
+              type: integer
+              description: Número de posts
+              example: 156
+            updatedAt:
+              type: string
+              format: date-time
+              description: Fecha de última actualización
+              example: "2024-01-15T10:30:00Z"
+            preferences:
+              $ref: '#/components/schemas/UserPreferences'
+
+    PublicUserProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            bio:
+              type: string
+              nullable: true
+              description: Biografía del usuario
+              example: "Software developer passionate about technology"
+            location:
+              type: string
+              nullable: true
+              description: Ubicación del usuario
+              example: "San Francisco, CA"
+            website:
+              type: string
+              format: uri
+              nullable: true
+              description: Sitio web personal
+              example: "https://johndoe.com"
+            followers:
+              type: integer
+              description: Número de seguidores
+              example: 1250
+            following:
+              type: integer
+              description: Número de seguidos
+              example: 890
+            posts:
+              type: integer
+              description: Número de posts
+              example: 156
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Nombre del usuario
+          example: "John"
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Apellido del usuario
+          example: "Smith"
+        bio:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Biografía del usuario
+          example: "Updated bio"
+        location:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Ubicación del usuario
+          example: "New York, NY"
+        website:
+          type: string
+          format: uri
+          nullable: true
+          description: Sitio web personal
+          example: "https://johnsmith.com"
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+      example:
+        firstName: "John"
+        lastName: "Smith"
+        bio: "Updated bio"
+        location: "New York, NY"
+        website: "https://johnsmith.com"
+        preferences:
+          theme: "light"
+          notifications:
+            email: false
+            push: true
+
+    UserPreferences:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, system]
+          description: Tema preferido
+          example: "dark"
+        language:
+          type: string
+          enum: [en, es, fr, de, zh]
+          description: Idioma preferido
+          example: "en"
+        notifications:
+          type: object
+          properties:
+            email:
+              type: boolean
+              description: Notificaciones por email
+              example: true
+            push:
+              type: boolean
+              description: Notificaciones push
+              example: true
+            sms:
+              type: boolean
+              description: Notificaciones SMS
+              example: false
+        privacy:
+          type: object
+          properties:
+            profileVisibility:
+              type: string
+              enum: [public, friends, private]
+              description: Visibilidad del perfil
+              example: "public"
+            showOnlineStatus:
+              type: boolean
+              description: Mostrar estado en línea
+              example: true
+            allowDirectMessages:
+              type: boolean
+              description: Permitir mensajes directos
+              example: true
+      example:
+        theme: "dark"
+        language: "en"
+        notifications:
+          email: true
+          push: true
+          sms: false
+        privacy:
+          profileVisibility: "public"
+          showOnlineStatus: true
+          allowDirectMessages: true
+
+    # 🔥 TOKENS SCHEMA - Esquema de tokens
+    Tokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: Token de acceso JWT
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: Token de refresco
+          example: "refresh_token_abc123"
+        expiresIn:
+          type: integer
+          description: Tiempo de expiración en segundos
+          example: 3600
+        tokenType:
+          type: string
+          description: Tipo de token
+          example: "Bearer"
+
+    # 🔥 CONTENT SCHEMAS - Esquemas de contenido
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID del post
+          example: "post_123"
+        title:
+          type: string
+          description: Título del post
+          example: "Introduction to Machine Learning"
+        content:
+          type: string
+          description: Contenido del post
+          example: "Machine learning is a subset of artificial intelligence..."
+        author:
+          $ref: '#/components/schemas/User'
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags del post
+          example: ["machine-learning", "ai", "technology"]
+        likes:
+          type: integer
+          description: Número de likes
+          example: 42
+        comments:
+          type: integer
+          description: Número de comentarios
+          example: 8
+        shares:
+          type: integer
+          description: Número de shares
+          example: 3
+        visibility:
+          type: string
+          enum: [public, friends, private]
+          description: Visibilidad del post
+          example: "public"
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Fecha de última actualización
+          example: "2024-01-15T10:30:00Z"
+
+    CreatePostRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Título del post
+          example: "My First Post"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Contenido del post
+          example: "This is the content of my first post..."
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Tags del post
+          example: ["introduction", "first-post"]
+        visibility:
+          type: string
+          enum: [public, friends, private]
+          default: public
+          description: Visibilidad del post
+          example: "public"
+      example:
+        title: "My First Post"
+        content: "This is the content of my first post..."
+        tags: ["introduction", "first-post"]
+        visibility: "public"
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Título del post
+          example: "Updated Post Title"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Contenido del post
+          example: "Updated content..."
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+          description: Tags del post
+          example: ["updated", "content"]
+        visibility:
+          type: string
+          enum: [public, friends, private]
+          description: Visibilidad del post
+          example: "public"
+      example:
+        title: "Updated Post Title"
+        content: "Updated content..."
+        tags: ["updated", "content"]
+        visibility: "public"
+
+    PostResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Post'
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          id: "post_123"
+          title: "Introduction to Machine Learning"
+          content: "Machine learning is a subset of artificial intelligence..."
+          author:
+            id: "user_123"
+            firstName: "John"
+            lastName: "Doe"
+            avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+          tags: ["machine-learning", "ai", "technology"]
+          likes: 42
+          comments: 8
+          shares: 3
+          visibility: "public"
+          createdAt: "2024-01-15T10:30:00Z"
+          updatedAt: "2024-01-15T10:30:00Z"
+        message: "Post created successfully"
+
+    PostsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            posts:
+              type: array
+              items:
+                $ref: '#/components/schemas/Post'
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          posts:
+            - id: "post_123"
+              title: "Introduction to Machine Learning"
+              content: "Machine learning is a subset of artificial intelligence..."
+              author:
+                id: "user_123"
+                firstName: "John"
+                lastName: "Doe"
+                avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+              tags: ["machine-learning", "ai", "technology"]
+              likes: 42
+              comments: 8
+              shares: 3
+              createdAt: "2024-01-15T10:30:00Z"
+              updatedAt: "2024-01-15T10:30:00Z"
+          pagination:
+            page: 1
+            limit: 20
+            total: 156
+            totalPages: 8
+            hasNext: true
+            hasPrev: false
+        message: "Posts retrieved successfully"
+
+    # 🔥 STREAMING SCHEMAS - Esquemas de streaming
+    StreamingRoom:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID de la sala
+          example: "room_123"
+        title:
+          type: string
+          description: Título de la sala
+          example: "Gaming Session"
+        description:
+          type: string
+          description: Descripción de la sala
+          example: "Join us for an exciting gaming session"
+        host:
+          $ref: '#/components/schemas/User'
+        category:
+          type: string
+          enum: [gaming, education, entertainment, music, talk]
+          description: Categoría de la sala
+          example: "gaming"
+        isLive:
+          type: boolean
+          description: Indica si la sala está en vivo
+          example: true
+        viewers:
+          type: integer
+          description: Número de espectadores actuales
+          example: 125
+        maxViewers:
+          type: integer
+          description: Número máximo de espectadores
+          example: 500
+        thumbnail:
+          type: string
+          format: uri
+          nullable: true
+          description: URL del thumbnail
+          example: "https://cdn.conectate.com/thumbnails/room_123.jpg"
+        streamKey:
+          type: string
+          description: Clave de streaming (solo para el host)
+          example: "stream_key_abc123"
+        startedAt:
+          type: string
+          format: date-time
+          description: Fecha de inicio del stream
+          example: "2024-01-20T18:00:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación de la sala
+          example: "2024-01-20T17:30:00Z"
+
+    CreateStreamingRoomRequest:
+      type: object
+      required: [title, category]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Título de la sala
+          example: "My Live Stream"
+        description:
+          type: string
+          maxLength: 500
+          description: Descripción de la sala
+          example: "Welcome to my live stream!"
+        category:
+          type: string
+          enum: [gaming, education, entertainment, music, talk]
+          description: Categoría de la sala
+          example: "gaming"
+        maxViewers:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: Número máximo de espectadores
+          example: 100
+        isPrivate:
+          type: boolean
+          default: false
+          description: Indica si la sala es privada
+          example: false
+      example:
+        title: "My Live Stream"
+        description: "Welcome to my live stream!"
+        category: "gaming"
+        maxViewers: 100
+        isPrivate: false
+
+    StreamingRoomResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/StreamingRoom'
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          id: "room_789"
+          title: "My Live Stream"
+          description: "Welcome to my live stream!"
+          host:
+            id: "user_123"
+            firstName: "John"
+            lastName: "Doe"
+            avatar: "https://cdn.conectate.com/avatars/user_123.jpg"
+          category: "gaming"
+          isLive: false
+          viewers: 0
+          maxViewers: 100
+          thumbnail: null
+          streamKey: "stream_key_abc123"
+          createdAt: "2024-01-20T19:00:00Z"
+        message: "Streaming room created successfully"
+
+    StreamingRoomsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            rooms:
+              type: array
+              items:
+                $ref: '#/components/schemas/StreamingRoom'
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          rooms:
+            - id: "room_123"
+              title: "Gaming Session"
+              description: "Join us for an exciting gaming session"
+              host:
+                id: "user_456"
+                firstName: "Jane"
+                lastName: "Smith"
+                avatar: "https://cdn.conectate.com/avatars/user_456.jpg"
+              category: "gaming"
+              isLive: true
+              viewers: 125
+              maxViewers: 500
+              thumbnail: "https://cdn.conectate.com/thumbnails/room_123.jpg"
+              startedAt: "2024-01-20T18:00:00Z"
+          pagination:
+            page: 1
+            limit: 20
+            total: 45
+            totalPages: 3
+            hasNext: true
+            hasPrev: false
+        message: "Streaming rooms retrieved successfully"
+
+    # 🔥 ML & AI SCHEMAS - Esquemas de ML y AI
+    UserBehaviorPredictionRequest:
+      type: object
+      required: [userId, timeWindow]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: ID del usuario
+          example: "user_123"
+        timeWindow:
+          type: string
+          pattern: ^\d+[dwm]$
+          description: Ventana de tiempo para análisis
+          example: "7d"
+        features:
+          type: array
+          items:
+            type: string
+          description: Características a analizar
+          example: ["sessionCount", "avgSessionDuration", "interactionRate", "contentDiversity"]
+      example:
+        userId: "user_123"
+        timeWindow: "7d"
+        features:
+          - sessionCount
+          - avgSessionDuration
+          - interactionRate
+          - contentDiversity
+
+    UserBehaviorPredictionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+              description: ID del usuario
+              example: "user_123"
+            behaviorCategory:
+              type: string
+              enum: [ACTIVE_USER, CASUAL_USER, POWER_USER, DORMANT_USER, AT_RISK_USER]
+              description: Categoría de comportamiento predicha
+              example: "ACTIVE_USER"
+            confidence:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: Confianza de la predicción
+              example: 0.85
+            predictions:
+              type: array
+              items:
+                type: object
+                properties:
+                  category:
+                    type: string
+                    enum: [ACTIVE_USER, CASUAL_USER, POWER_USER, DORMANT_USER, AT_RISK_USER]
+                    description: Categoría de comportamiento
+                  probability:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+                    description: Probabilidad de la categoría
+              description: Predicciones detalladas
+              example:
+                - category: "ACTIVE_USER"
+                  probability: 0.85
+                - category: "CASUAL_USER"
+                  probability: 0.10
+            features:
+              type: object
+              description: Características analizadas
+              example:
+                sessionCount: 25
+                avgSessionDuration: 1800
+                interactionRate: 0.75
+                contentDiversity: 0.65
+            timestamp:
+              type: string
+              format: date-time
+              description: Timestamp de la predicción
+              example: "2024-01-20T20:00:00Z"
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          userId: "user_123"
+          behaviorCategory: "ACTIVE_USER"
+          confidence: 0.85
+          predictions:
+            - category: "ACTIVE_USER"
+              probability: 0.85
+            - category: "CASUAL_USER"
+              probability: 0.10
+          features:
+            sessionCount: 25
+            avgSessionDuration: 1800
+            interactionRate: 0.75
+            contentDiversity: 0.65
+          timestamp: "2024-01-20T20:00:00Z"
+        message: "User behavior prediction completed"
+
+    ContentRecommendationRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: ID del usuario
+          example: "user_123"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+          description: Límite de recomendaciones
+          example: 10
+        context:
+          type: object
+          properties:
+            lastViewed:
+              type: string
+              format: uuid
+              description: Último contenido visto
+              example: "post_456"
+            interests:
+              type: array
+              items:
+                type: string
+              description: Intereses del usuario
+              example: ["technology", "gaming", "music"]
+      example:
+        userId: "user_123"
+        limit: 10
+        context:
+          lastViewed: "post_456"
+          interests: ["technology", "gaming", "music"]
+
+    ContentRecommendationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+              description: ID del usuario
+              example: "user_123"
+            recommendations:
+              type: array
+              items:
+                type: object
+                properties:
+                  contentId:
+                    type: string
+                    format: uuid
+                    description: ID del contenido recomendado
+                    example: "post_789"
+                  score:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+                    description: Score de la recomendación
+                    example: 0.92
+                  reason:
+                    type: string
+                    description: Razón de la recomendación
+                    example: "ML Recommendation"
+                  metadata:
+                    type: object
+                    description: Metadatos del contenido
+                    example:
+                      title: "Advanced Machine Learning Techniques"
+                      author: "Jane Smith"
+                      tags: ["machine-learning", "ai", "advanced"]
+            timestamp:
+              type: string
+              format: date-time
+              description: Timestamp de las recomendaciones
+              example: "2024-01-20T20:00:00Z"
+        message:
+          type: string
+      example:
+        success: true
+        data:
+          userId: "user_123"
+          recommendations:
+            - contentId: "post_789"
+              score: 0.92
+              reason: "ML Recommendation"
+              metadata:
+                title: "Advanced Machine Learning Techniques"
+                author: "Jane Smith"
+                tags: ["machine-learning", "ai", "advanced"]
+            - contentId: "post_790"
+              score: 0.87
+              reason: "Based on your interests"
+              metadata:
+                title: "Gaming Technology Trends 2024"
+                author: "Bob Johnson"
+                tags: ["gaming", "technology", "trends"]
+          timestamp: "2024-01-20T20:00:00Z"
+        message: "Content recommendations generated successfully"
+
+    # 🔥 COMMON SCHEMAS - Esquemas comunes
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Página actual
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          description: Límite de resultados por página
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          description: Total de resultados
+          example: 156
+        totalPages:
+          type: integer
+          minimum: 0
+          description: Total de páginas
+          example: 8
+        hasNext:
+          type: boolean
+          description: Indica si hay página siguiente
+          example: true
+        hasPrev:
+          type: boolean
+          description: Indica si hay página anterior
+          example: false
+      example:
+        page: 1
+        limit: 20
+        total: 156
+        totalPages: 8
+        hasNext: true
+        hasPrev: false
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Código de error
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Mensaje de error
+              example: "Invalid input data"
+            details:
+              type: string
+              description: Detalles adicionales del error
+              example: "Email format is invalid"
+            timestamp:
+              type: string
+              format: date-time
+              description: Timestamp del error
+              example: "2024-01-20T20:00:00Z"
+      example:
+        success: false
+        error:
+          code: "VALIDATION_ERROR"
+          message: "Invalid input data"
+          details: "Email format is invalid"
+          timestamp: "2024-01-20T20:00:00Z"
+
+    DeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Resource deleted successfully"
+      example:
+        success: true
+        message: "Post deleted successfully"
+
+  # 🔥 RESPONSES - Respuestas reutilizables
+  responses:
+    BadRequest:
+      description: Solicitud inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validationError:
+              summary: Error de validación
+              value:
+                success: false
+                error:
+                  code: "VALIDATION_ERROR"
+                  message: "Invalid input data"
+                  details: "Email format is invalid"
+                  timestamp: "2024-01-20T20:00:00Z"
+
+    Unauthorized:
+      description: No autorizado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorizedError:
+              summary: Error de autorización
+              value:
+                success: false
+                error:
+                  code: "UNAUTHORIZED"
+                  message: "Authentication required"
+                  details: "Please provide valid authentication credentials"
+                  timestamp: "2024-01-20T20:00:00Z"
+
+    TooManyRequests:
+      description: Demasiadas solicitudes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            rateLimitError:
+              summary: Error de rate limit
+              value:
+                success: false
+                error:
+                  code: "RATE_LIMIT_EXCEEDED"
+                  message: "Too many requests"
+                  details: "Rate limit exceeded. Try again later."
+                  timestamp: "2024-01-20T20:00:00Z"
+      headers:
+        Retry-After:
+          description: Tiempo de espera antes de reintentar
+          schema:
+            type: integer
+            example: 60
+
+    InternalServerError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            serverError:
+              summary: Error del servidor
+              value:
+                success: false
+                error:
+                  code: "INTERNAL_SERVER_ERROR"
+                  message: "Internal server error"
+                  details: "An unexpected error occurred"
+                  timestamp: "2024-01-20T20:00:00Z"
+
+# 🔥 TAGS EXTENSION - Extensiones de etiquetas
+x-tag-groups:
+  - name: Core
+    tags:
+      - Authentication
+      - Users
+  - name: Content
+    tags:
+      - Content
+      - Streaming
+  - name: Advanced
+    tags:
+      - ML & AI
+      - Analytics
+      - Security
+
+# 🔥 GLOBAL SECURITY - Seguridad global
+security:
+  - bearerAuth: []
+
+# 🔥 EXTERNAL DOCUMENTATION - Documentación externa
+x-externalDocs:
+  description: "Documentación completa de la API Conectate"
+  url: "https://docs.conectate.com/api"
+
+# 🔥 SCHEMAS EXTENSION - Extensiones de esquemas
+x-schema-paths:
+  /auth/login:
+    post:
+      summary: "Iniciar sesión"
+      description: "Autentica un usuario con email y contraseña"
+      tags:
+        - Authentication
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'

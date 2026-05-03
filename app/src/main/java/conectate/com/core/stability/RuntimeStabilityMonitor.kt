@@ -10,11 +10,10 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import conectate.com.core.concurrency.DispatcherProvider
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.observability.AppMetrics
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -33,7 +32,7 @@ class RuntimeStabilityMonitor @Inject constructor(
 
     private val started = AtomicBoolean(false)
     private val isForeground = AtomicBoolean(true)
-    private val scope = CoroutineScope(SupervisorJob() + dispatchers.default)
+    private val scope = newSafeScope("RuntimeStabilityMonitor", dispatchers.default)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lastStallReportAtMs = AtomicLong(0L)
     private val lastMemoryReportAtMs = AtomicLong(0L)
@@ -48,7 +47,7 @@ class RuntimeStabilityMonitor @Inject constructor(
         }
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     private val memoryCallbacks = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
             if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
@@ -90,12 +89,12 @@ class RuntimeStabilityMonitor @Inject constructor(
                 val lagMs = SystemClock.uptimeMillis() - lastMainPulseAtMs
                 if (lagMs < MAIN_STALL_THRESHOLD_MS) continue
 
-                val now = SystemClock.uptimeMillis()
-                val lastReport = lastStallReportAtMs.get()
+                var now = SystemClock.uptimeMillis()
+                var lastReport = lastStallReportAtMs.get()
                 if (now - lastReport < MAIN_STALL_REPORT_COOLDOWN_MS) continue
                 lastStallReportAtMs.set(now)
 
-                val attrs = mapOf(
+                var attrs = mapOf(
                     "stall_ms" to lagMs.toString(),
                     "foreground" to "true"
                 )
@@ -110,14 +109,14 @@ class RuntimeStabilityMonitor @Inject constructor(
     }
 
     private fun handleMemoryPressure(source: String, level: Int) {
-        val attrs = mapOf(
+        var attrs = mapOf(
             "source" to source,
             "level" to level.toString()
         )
         appMetrics.incrementCounter(metric = "memory_pressure_event", attributes = attrs)
 
-        val now = SystemClock.uptimeMillis()
-        val lastReport = lastMemoryReportAtMs.get()
+        var now = SystemClock.uptimeMillis()
+        var lastReport = lastMemoryReportAtMs.get()
         if (now - lastReport < MEMORY_REPORT_COOLDOWN_MS) return
         lastMemoryReportAtMs.set(now)
 
@@ -144,3 +143,6 @@ class RuntimeStabilityMonitor @Inject constructor(
         private const val MEMORY_REPORT_COOLDOWN_MS = 60_000L
     }
 }
+
+
+

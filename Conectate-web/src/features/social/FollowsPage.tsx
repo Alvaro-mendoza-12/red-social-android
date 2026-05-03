@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 
 type FollowTab = 'following' | 'followers'
 

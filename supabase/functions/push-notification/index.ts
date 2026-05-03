@@ -196,6 +196,12 @@ serve(async (req) => {
             const focusMessageId = getExtraDataValue("focus_message_id")
             const groupId = getExtraDataValue("group_id")
             const communityId = getExtraDataValue("community_id")
+            const callId = getExtraDataValue("call_id") || String(record.target_id || "")
+            const callContextType = getExtraDataValue("call_context_type") || getExtraDataValue("context_type")
+            const callContextId = getExtraDataValue("call_context_id") || getExtraDataValue("context_id")
+            const callTitle = getExtraDataValue("call_title") || ""
+            const callAction = getExtraDataValue("call_action") || ""
+            const callCreatedAt = getExtraDataValue("call_created_at") || ""
             const explicitPostId = getExtraDataValue("post_id")
             const explicitVideoId = getExtraDataValue("video_id")
             const targetType = String(record.target_type || "")
@@ -237,6 +243,14 @@ serve(async (req) => {
                 case 'share_post': notificationBody = `${actorName} compartió tu publicación`; break;
                 case 'share': notificationBody = `${actorName} compartió tu publicación`; break;
                 case 'admin_warning_video': notificationBody = `Tu video recibió una advertencia de moderación`; break;
+                case 'call_invite': notificationBody = `${actorName} te está llamando`; break;
+                case 'call_cancel':
+                    notificationBody = callAction === "end"
+                        ? `${actorName} finalizó la llamada`
+                        : callAction === "missed"
+                            ? `La llamada expiró antes de conectarse`
+                            : `${actorName} canceló la llamada`
+                    break;
                 default: notificationBody = content || `Nueva actividad social de ${actorName}`;
             }
 
@@ -266,6 +280,12 @@ serve(async (req) => {
                 sender_avatar: String(actorProfile?.avatar_url || ""),
                 target_id: targetId,
                 target_type: inferredTargetType,
+                call_id: callId,
+                call_context_type: callContextType,
+                call_context_id: callContextId,
+                call_title: callTitle,
+                call_action: callAction,
+                call_created_at: callCreatedAt,
                 comment_id: resolvedCommentId,
                 focus_comment_id: focusCommentId || resolvedCommentId,
                 parent_id: parentId,
@@ -277,7 +297,7 @@ serve(async (req) => {
                 post_id: resolvedPostId,
                 video_id: resolvedVideoId,
                 body: String(notificationBody),
-                channel_id: "social_channel"
+                channel_id: normalizedType === "call_invite" ? "call_channel" : "social_channel"
             }
         } else {
             return new Response(JSON.stringify({ message: "Ignore table" }), { status: 200 })
@@ -316,32 +336,39 @@ serve(async (req) => {
 
         // 6. Send notifications via FCM
         const sendResults = await Promise.all(tokens.map(async (t: any) => {
+            const isCallInvite = String(fcmData?.type || "").trim().toLowerCase() === "call_invite"
+            const ttlValue = isCallInvite ? "45s" : "86400s"
+            const normalizedData = Object.fromEntries(
+                Object.entries(fcmData || {}).map(([key, value]) => [key, value == null ? "" : String(value)])
+            )
+            if (isCallInvite) {
+                console.log(
+                    `[push-notification] Sending call_invite to token ${String(t.token).slice(0, 12)}... ` +
+                    `for call ${String(normalizedData["call_id"] || "")}`
+                )
+            }
             const messageBody = {
                 message: {
                     token: t.token,
-                    notification: {
-                        title: notificationTitle,
-                        body: notificationBody,
-                    },
-                    data: fcmData,
+                    data: normalizedData,
                     android: {
                         priority: "high",
-                        ttl: "86400s", // 24 hours
-                        notification: {
-                            channel_id: fcmData.channel_id || "default_channel"
-                        }
+                        ttl: ttlValue,
+                        direct_boot_ok: true
                     },
                     apns: {
                         headers: {
                             "apns-priority": "10", // High priority
-                            "apns-expiration": `${Math.floor(Date.now() / 1000) + 86400}` // 24 hours from now
+                            "apns-expiration": `${Math.floor(Date.now() / 1000) + (isCallInvite ? 45 : 86400)}`
                         },
                         payload: {
                             aps: {
-                                alert: {
-                                    title: notificationTitle,
-                                    body: notificationBody,
-                                },
+                                ...(isCallInvite ? {} : {
+                                    alert: {
+                                        title: notificationTitle,
+                                        body: notificationBody,
+                                    },
+                                }),
                                 "content-available": 1, // For background data refresh
                             },
                         },
@@ -352,6 +379,9 @@ serve(async (req) => {
                 },
             }
 
+            // Android uses data-only payloads so MyFirebaseMessagingService can build the final
+            // local notification immediately with the app's MessagingStyle/actions.
+
             const res = await fetch(FIREBASE_MESSAGING_URL, {
                 method: "POST",
                 headers: {
@@ -360,7 +390,18 @@ serve(async (req) => {
                 },
                 body: JSON.stringify(messageBody)
             })
-            return res.json()
+            const responseText = await res.text()
+            if (isCallInvite) {
+                console.log(
+                    `[push-notification] FCM response for call_invite ${String(normalizedData["call_id"] || "")}: ` +
+                    `${res.status} ${responseText}`
+                )
+            }
+            return {
+                ok: res.ok,
+                status: res.status,
+                body: responseText
+            }
         }))
 
         return new Response(JSON.stringify({ success: true, results: sendResults }), { status: 200 })

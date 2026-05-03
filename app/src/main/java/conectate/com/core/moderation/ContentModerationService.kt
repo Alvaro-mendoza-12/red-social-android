@@ -92,7 +92,7 @@ class SimpleContentModerationService @Inject constructor(
             )
         }
 
-        val links = "(https?://\\S+)".toRegex().findAll(normalized).map { it.value.lowercase() }.toList()
+        var links = "(https?://\\S+)".toRegex().findAll(normalized).map { it.value.lowercase() }.toList()
         val excessiveLinks = links.size >= 4
         if (excessiveLinks) {
             return emitResult(
@@ -127,7 +127,7 @@ class SimpleContentModerationService @Inject constructor(
         }
 
         var sanitized = normalized
-        val flags = mutableSetOf<String>()
+        var flags = mutableSetOf<String>()
 
         if (containsControlChars) {
             sanitized = sanitized.filter { it.code >= 32 || it == '\n' || it == '\t' }
@@ -175,7 +175,7 @@ class SimpleContentModerationService @Inject constructor(
             flags += "trimmed_length"
         }
 
-        val verdict = if (flags.isEmpty()) {
+        var verdict = if (flags.isEmpty()) {
             ModerationVerdict.ALLOW
         } else {
             ModerationVerdict.SANITIZE
@@ -248,3 +248,6 @@ class SimpleContentModerationService @Inject constructor(
         )
     }
 }
+
+
+

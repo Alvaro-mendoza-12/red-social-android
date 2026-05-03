@@ -8,7 +8,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@Composable
+
 fun ForcedSuspensionAlertDialog(
     visible: Boolean,
     suspensionEndDate: String?,
@@ -58,3 +58,9 @@ private fun formatSuspensionDate(raw: String?): String {
         instant.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
     }.getOrDefault(value)
 }
+
+
+
+
+
+

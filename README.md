@@ -77,7 +77,7 @@ El sistema de salas de voz usa un servidor personalizado Socket.io para la seña
 El proyecto incluye pipeline en `.github/workflows/android-ci.yml` con:
 
 - `quality-gate`: ejecuta `:app:qualityGateDebug` (`testDebugUnitTest` + `lintDebug`)
-- `quality-gate`: corre auditoría SQL de seguridad (`tools/security_sql_audit.py`) y publica reportes
+- `quality-gate`: corre auditoría SQL de seguridad sobre `sql/release-manifest.txt` y publica reportes
 - `release-smoke`: valida `:app:assembleRelease` en cada push
 - `release-smoke`: valida budgets de performance de APK/DEX/native (`tools/performance_budget_check.py`)
 - Workflow adicional `.github/workflows/android-instrumented-smoke.yml`:
@@ -97,7 +97,13 @@ El proyecto incluye pipeline en `.github/workflows/android-ci.yml` con:
 ### Auditoría SQL de seguridad (local)
 
 ```bash
-python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+```
+
+Inventario histórico opcional del árbol SQL completo:
+
+```bash
+python tools/security_sql_audit.py --root . --report build/reports/security/sql_security_inventory.md --json build/reports/security/sql_security_inventory.json --fail-threshold HIGH
 ```
 
 ### Performance budgets release (local)
@@ -184,47 +190,62 @@ Ejemplo: permitir lectura pública en un bucket `avatars` y control de escritura
 - **Kotlin** 1.9.20
 - **Jetpack Compose** BOM 2023.10.01
 - **Supabase** (gotrue, postgrest, realtime, storage)
-- **Hilt** 2.48
+- **Hilt** 2.51
 - **Navigation Compose** 2.7.5
 - **Coil** 2.5.0 (carga de imágenes)
-- **ExoPlayer** 1.2.0 (reproducción de video)
-- **WebRTC Native** 120.6099.04
+- **Media3 / ExoPlayer** 1.5.1 (reproducción de video)
+- **WebRTC Native** 137.7151.05
 - **Socket.io Client** 2.1.0
 
 ## 📝 Estado Actual del Proyecto
 
-### ✅ Completado
+El proyecto ya no está en estado inicial. Hoy cuenta con:
 
-- [x] Configuración de Gradle y dependencias
-- [x] Integración inicial con Supabase
+- autenticación y perfil sobre Supabase;
+- mensajería, grupos, comunidades y salas de voz con Android nativo;
+- feed de video, perfil y social en producción de desarrollo;
+- Hilt, Compose, navegación y repositorios ya integrados;
+- validación local con `compileDebugKotlin`, `testDebugUnitTest` y `lintDebug`.
 
-**Cambios recientes (migración completa a Supabase)**
+Puntos importantes sobre el estado real:
 
-- **Eliminación total de Firebase**: Removidos `FirebaseModule.kt`, `MyFirebaseMessagingService.kt` y referencias a Firebase. El proyecto ahora es 100% Supabase.
-- Reemplazado uso directo de `FirebaseAuth` en `RoomDetailViewModel` por `AuthRepository`.
-- `AgoraConfig.kt` creado con App ID de desarrollo.
-- `google-services.json` retirado del seguimiento git (ejecutar localmente: `git rm --cached google-services.json`).
-- [x] Modelos de datos
-- [x] Repositorios (Auth, User, Message, Video)
-- [x] Módulos de Hilt
-- [x] Tema de Compose con colores rojos
-- [x] Sistema de navegación
-- [x] ViewModel de autenticación
-- [x] Pantalla de login básica
-- [ ] Servicio de notificaciones push (removido: no implementado en Supabase)
-- [x] Recursos XML (strings, colores, temas)
+- La app usa **Supabase como backend principal**, pero todavía existen piezas Android ligadas a **Firebase Cloud Messaging** para push/notificaciones.
+- El contrato activo de push quedó centralizado en `conectate.com.data.service.MyFirebaseMessagingService`; la implementación legacy ya no forma parte de la superficie principal.
+- `wallet` y el descubrimiento público por hashtags quedaron **feature-gateados** para evitar rutas rotas mientras se terminan sus contratos reales.
+- La base ya es funcional, pero todavía sigue en fase de **saneamiento estructural**: repositorios grandes, tests insuficientes y deuda SQL/RLS todavía abierta.
+- A nivel Android, la base ya quedó bastante más consistente para seguir con nuevas funcionalidades sin cargar otra vez tanta duplicación entre `mensajes`, `grupos` y `comunidades`.
+- La referencia técnica viva para esa base está en `docs/ANDROID_CODEBASE_BASELINE_2026.md`.
+- La guía de orden del repositorio y clasificación de carpetas está en `docs/REPO_STRUCTURE_GUIDE_2026.md`.
+- El chequeo local más completo ahora se puede correr con `./gradlew qualityGateFull`.
 
-### 🚧 Pendiente de Implementación
+Validación local cerrada el `2026-04-26`:
 
-- [ ] Pantallas completas de registro
-- [ ] Pantallas de mensajería (lista y chat)
-- [ ] Pantallas de  videos (feed, player, upload)
-- [ ] Pantallas de perfil (vista, edición)
-- [ ] Implementación de salas de voz con Agora
-- [ ] Componentes UI reutilizables
-- [ ] Gestión de permisos
-- [ ] Compresión de imágenes y videos
-- [ ] Tests unitarios y de integración
+- `:app:compileDebugKotlin`
+- `:app:assembleDebug`
+- `:app:testDebugUnitTest`
+- `:app:lintDebug`
+- `:app:qualityGateDebug`
+- `:app:assembleRelease`
+- `:app:bundleRelease`
+- `python tools/performance_budget_check.py --artifacts app/build/outputs/apk/release app/build/outputs/bundle/release/app-release.aab`
+
+### Base técnica ya consolidada
+
+- Modelos de datos y persistencia local
+- Repositorios principales de `auth`, `user`, `message`, `video`, `group`, `community`
+- Módulos de Hilt
+- Navegación principal
+- Pantallas principales de `mensajes`, `videos`, `social` y `perfil`
+- Ajustes de app y de mensajes
+- Infraestructura de realtime, voz y push
+
+### Deuda prioritaria antes de grandes funcionalidades nuevas
+
+- aumentar cobertura de tests unitarios e instrumentados;
+- limpiar documentación para que refleje exactamente el código actual;
+- endurecer seguridad SQL/RLS.
+
+La limpieza estructural principal del Android ya está bastante avanzada; lo que más condiciona la siguiente etapa ya no es tanto duplicación visual/repositorios de `grupo` y `comunidad`, sino pruebas de regresión y seguridad backend.
 
 ## 🎨 Diseño
 

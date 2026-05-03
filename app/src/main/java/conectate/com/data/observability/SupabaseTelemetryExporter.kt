@@ -2,6 +2,7 @@ package conectate.com.data.observability
 
 import conectate.com.BuildConfig
 import conectate.com.core.concurrency.DispatcherProvider
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.telemetry.AppTelemetry
 import conectate.com.core.telemetry.TelemetryEvent
@@ -12,7 +13,6 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -52,7 +52,7 @@ class SupabaseTelemetryExporter @Inject constructor(
 
     private val started = AtomicBoolean(false)
     private val disabledUntilMs = AtomicLong(0L)
-    private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
+    private val scope = newSafeScope("SupabaseTelemetryExporter", dispatchers.io)
     private val queueMutex = Mutex()
     private val flushMutex = Mutex()
     private val queue = ArrayDeque<TelemetryEvent>()
@@ -92,7 +92,7 @@ class SupabaseTelemetryExporter @Inject constructor(
         if (!flushMutex.tryLock()) return
 
         try {
-            val batch = queueMutex.withLock {
+            var batch = queueMutex.withLock {
                 if (queue.isEmpty()) {
                     emptyList()
                 } else {
@@ -200,3 +200,6 @@ class SupabaseTelemetryExporter @Inject constructor(
         private const val MAX_ATTRIBUTES_PER_EVENT = 20
     }
 }
+
+
+

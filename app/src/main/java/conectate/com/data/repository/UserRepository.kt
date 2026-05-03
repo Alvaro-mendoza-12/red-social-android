@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.model.User
 import conectate.com.data.model.UpdateProfileRequest
+import conectate.com.data.repository.user.UserLocalStateStore
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -13,15 +15,19 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.*
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.ByteArrayOutputStream
+import java.text.Normalizer
 import java.net.URLEncoder
 import java.util.UUID
 import kotlinx.coroutines.flow.flowOn
@@ -31,11 +37,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.*
 import io.github.jan.supabase.realtime.*
+import io.github.jan.supabase.gotrue.auth
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,76 +74,435 @@ class UserRepository @Inject constructor(
 
     private val blockedMentionCacheTtlMs = 30_000L
     private val avatarMaxBytes = 50L * 1024 * 1024
+    private val localStateStore = UserLocalStateStore(context)
+
+    private fun normalizePrivacyUserId(userId: String): String = localStateStore.normalizeUserId(userId)
+
+@Composable
+@Composable
+    private fun sanitizeProfileText(value: String?): String? {
+        return value
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+    }
+
+@Composable
+@Composable
+    private fun slugifyUsername(value: String?): String {
+        val raw = sanitizeProfileText(value) ?: return ""
+        var normalized = Normalizer.normalize(raw, Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+
+        return normalized
+            .lowercase()
+            .replace(Regex("[^a-z0-9._]"), "_")
+            .replace(Regex("[._]{2,}"), "_")
+            .replace(Regex("_+"), "_")
+            .trim('_', '.')
+            .take(24)
+    }
+
+    private fun buildDeterministicUsername(userId: String): String {
+        return "usuario_${normalizePrivacyUserId(userId).take(8)}"
+    }
+
+    private suspend fun isUsernameAvailable(
+        token: String,
+        username: String,
+        currentUserId: String
+    ): Boolean {
+        if (username.isBlank()) return false
+
+        return try {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token")
+                parameter("username", "eq.$username")
+                parameter("select", "id")
+                parameter("limit", 1)
+            }
+
+            if (!response.status.isSuccess()) {
+                return false
+            }
+
+            var rows = response.body<List<JsonObject>>()
+            var existingId = rows.firstOrNull()
+                ?.get("id")
+                ?.jsonPrimitive
+                ?.contentOrNull
+                ?.trim()
+                ?.lowercase()
+
+            existingId == null || existingId == currentUserId
+        } catch (e: Exception) {
+            android.util.Log.w("UserRepository", "Username availability check failed for $username", e)
+            false
+        }
+    }
+
+    private suspend fun resolveUsernameForProfile(
+        userId: String,
+        preferredUsername: String?,
+        preferredDisplayName: String?,
+        email: String
+    ): String {
+        var normalizedUserId = normalizePrivacyUserId(userId)
+        val emailLocalPart = email.substringBefore("@").takeIf { it.isNotBlank() && it != email }
+        val baseCandidate = listOf(
+            preferredUsername,
+            preferredDisplayName,
+            emailLocalPart,
+            "usuario"
+        ).map(::slugifyUsername).firstOrNull { it.isNotBlank() }
+            ?: buildDeterministicUsername(normalizedUserId)
+
+        val candidateWithSuffix = "${baseCandidate.take(17)}_${normalizedUserId.take(6)}"
+            .trim('_')
+            .take(24)
+            .ifBlank { buildDeterministicUsername(normalizedUserId) }
+
+        val fallbackCandidate = buildDeterministicUsername(normalizedUserId)
+        var candidates = linkedSetOf(baseCandidate, candidateWithSuffix, fallbackCandidate)
+        var token = authService.getAccessTokenAwait()
+
+        if (token.isNullOrBlank()) {
+            return candidates.first()
+        }
+
+        candidates.forEach { candidate ->
+            if (isUsernameAvailable(token, candidate, normalizedUserId)) {
+                return candidate
+            }
+        }
+
+        return fallbackCandidate
+    }
+
+@Composable
+@Composable
+    private suspend fun prepareProfileForPersistence(user: User): User {
+        val normalizedId = normalizePrivacyUserId(user.id)
+        var sessionSeed = authService.getCurrentUserProfileSeed()
+        val normalizedEmail = sanitizeProfileText(user.email)?.lowercase()
+            ?: sessionSeed?.email?.trim()?.lowercase()
+            ?: authService.getCurrentUserEmail()?.trim()?.lowercase()
+            ?: ""
+        var displayName = sanitizeProfileText(user.display_name)
+            ?: sanitizeProfileText(user.full_name)
+            ?: sanitizeProfileText(sessionSeed?.displayName)
+            ?: sanitizeProfileText(sessionSeed?.fullName)
+            ?: normalizedEmail.substringBefore("@").trim().ifBlank { "Usuario" }
+        var fullName = sanitizeProfileText(user.full_name)
+            ?: sanitizeProfileText(user.display_name)
+            ?: sanitizeProfileText(sessionSeed?.fullName)
+            ?: displayName
+        val resolvedUsername = resolveUsernameForProfile(
+            userId = normalizedId,
+            preferredUsername = user.username,
+            preferredDisplayName = displayName,
+            email = normalizedEmail
+        )
+
+        return user.copy(
+            id = normalizedId,
+            email = normalizedEmail,
+            username = resolvedUsername,
+            full_name = fullName,
+            display_name = sanitizeProfileText(user.display_name) ?: fullName,
+            avatar_url = sanitizeProfileText(user.avatar_url) ?: sanitizeProfileText(sessionSeed?.avatarUrl),
+            country = sanitizeProfileText(user.country) ?: sanitizeProfileText(sessionSeed?.country),
+            city = sanitizeProfileText(user.city),
+            bio = sanitizeProfileText(user.bio)
+        )
+    }
+
+    private fun buildProfilePayload(
+        user: User,
+        privacyPolicyAccepted: Boolean,
+        acceptedAt: String?
+    ): JsonObject {
+        return buildJsonObject {
+            put("id", JsonPrimitive(user.id))
+            put("email", JsonPrimitive(user.email))
+            user.username?.let { put("username", JsonPrimitive(it)) }
+            user.full_name?.let { put("full_name", JsonPrimitive(it)) }
+            user.display_name?.let { put("display_name", JsonPrimitive(it)) }
+            user.country?.let { put("country", JsonPrimitive(it)) }
+            user.city?.let { put("city", JsonPrimitive(it)) }
+            user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
+            user.bio?.let { put("bio", JsonPrimitive(it)) }
+            if (privacyPolicyAccepted) {
+                put("privacy_policy_accepted", JsonPrimitive(true))
+                if (acceptedAt != null) {
+                    put("privacy_policy_accepted_at", JsonPrimitive(acceptedAt))
+                }
+            }
+        }
+    }
+
+    private suspend fun submitProfileUpsert(
+        token: String,
+        body: JsonObject
+    ): HttpResponse {
+        return supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Authorization", "Bearer $token")
+            header("Content-Type", "application/json")
+            header("Prefer", "resolution=merge-duplicates,return=representation")
+            parameter("on_conflict", "id")
+            setBody(body)
+        }
+    }
+
+@Composable
+@Composable
+    private fun isMissingPrivacyAcceptedColumn(errorBody: String): Boolean {
+        return errorBody.contains("privacy_policy_accepted", ignoreCase = true) &&
+            errorBody.contains("does not exist", ignoreCase = true)
+    }
+
+    private fun isDuplicateUsernameError(errorBody: String): Boolean {
+        return errorBody.contains("username", ignoreCase = true) &&
+            (
+                errorBody.contains("duplicate key", ignoreCase = true) ||
+                    errorBody.contains("already exists", ignoreCase = true) ||
+                    errorBody.contains("23505")
+                )
+    }
+
+    private fun buildProfileUpdateFields(
+        request: UpdateProfileRequest,
+        lastNameChange: String?
+    ): LinkedHashMap<String, JsonElement> {
+        return linkedMapOf<String, JsonElement>().apply {
+            request.display_name?.let {
+                put("display_name", JsonPrimitive(it))
+                put("full_name", JsonPrimitive(it))
+            }
+            request.bio?.let { put("bio", JsonPrimitive(it)) }
+            request.country?.let { put("country", JsonPrimitive(it)) }
+            request.city?.let { put("city", JsonPrimitive(it)) }
+            request.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
+            request.cover_url?.let { put("cover_url", JsonPrimitive(it)) }
+            lastNameChange?.let { put("last_name_change", JsonPrimitive(it)) }
+            request.is_private?.let { put("is_private", JsonPrimitive(it)) }
+            request.profile_visibility?.let { put("profile_visibility", JsonPrimitive(it)) }
+            request.last_seen_visibility?.let { put("last_seen_visibility", JsonPrimitive(it)) }
+            request.online_status_visibility?.let { put("online_status_visibility", JsonPrimitive(it)) }
+            request.balance?.let { put("balance", JsonPrimitive(it)) }
+        }
+    }
+
+@Composable
+@Composable
+    private fun extractMissingProfilesColumn(errorBody: String): String? {
+        val patterns = listOf(
+            Regex("Could not find the '([a-zA-Z0-9_]+)' column of 'profiles'", RegexOption.IGNORE_CASE),
+            Regex("column\\s+['\"]?profiles\\.([a-zA-Z0-9_]+)['\"]?\\s+does not exist", RegexOption.IGNORE_CASE),
+            Regex("column\\s+['\"]?([a-zA-Z0-9_]+)['\"]?\\s+does not exist", RegexOption.IGNORE_CASE)
+        )
+
+        return patterns.firstNotNullOfOrNull { pattern ->
+            pattern.find(errorBody)?.groupValues?.getOrNull(1)
+        }?.trim()?.lowercase()
+    }
+
+    private suspend fun fetchRemoteUserById(
+        userId: String,
+        token: String,
+        currentUserId: String?
+    ): Result<User?> {
+        return try {
+            suspend fun requestProfile(accessToken: String): Pair<HttpResponse, String> {
+                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $accessToken")
+                    parameter("id", "eq.$userId")
+                    parameter("select", "*")
+                    parameter("limit", 1)
+                }
+                return response to response.bodyAsText()
+            }
+
+            var (response, rawBody) = requestProfile(token)
+
+            if (isJwtExpiredError(response.status, rawBody)) {
+                var refreshedToken = refreshAccessToken()
+                if (!refreshedToken.isNullOrBlank()) {
+                    var retry = requestProfile(refreshedToken)
+                    response = retry.first
+                    rawBody = retry.second
+                }
+            }
+
+            if (!response.status.isSuccess()) {
+                return Result.failure(Exception(profileLoadErrorMessage(response.status, rawBody)))
+            }
+
+            var users = supabaseConfig.json.decodeFromString<List<User>>(rawBody)
+            var user = users.firstOrNull()?.let(::applyLocalUserOverrides)
+            android.util.Log.d("UserRepository", "Fetched user $userId: ${user?.displayName}")
+
+            if (user != null) {
+                userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(user))
+                if (userId == currentUserId) {
+                    saveProfileLocally(user)
+                }
+            } else {
+                android.util.Log.w("UserRepository", "Network profile lookup returned empty for $userId")
+            }
+
+            Result.success(user)
+        } catch (e: Exception) {
+            android.util.Log.e("UserRepository", "Network fetch failed for $userId", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun ensureCurrentProfile(userHint: User? = null): Result<User> {
+        TestRuntimeOverrides.currentUser(context)?.let { fakeUser ->
+            return Result.success(fakeUser)
+        }
+        var currentUserId = authService.getCurrentUserId()
+            ?.let(::normalizePrivacyUserId)
+            ?: return Result.failure(Exception("No user logged in"))
+        var token = authService.getAccessTokenAwait()
+            ?: return Result.failure(Exception("No access token"))
+
+        fetchRemoteUserById(currentUserId, token, currentUserId).getOrNull()?.let { existingUser ->
+            return Result.success(existingUser)
+        }
+
+        var sessionSeed = authService.getCurrentUserProfileSeed()
+        val localCurrent = getLocalProfileRaw()
+            ?.takeIf { normalizePrivacyUserId(it.id) == currentUserId }
+        var cachedEntity = runCatching { userDao.getUser(currentUserId)?.toDomain() }.getOrNull()
+        val resolvedEmail = sanitizeProfileText(userHint?.email)?.lowercase()
+            ?: sanitizeProfileText(sessionSeed?.email)?.lowercase()
+            ?: sanitizeProfileText(localCurrent?.email)?.lowercase()
+            ?: authService.getCurrentUserEmail()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("No se pudo reconstruir el correo del perfil"))
+        val resolvedDisplayName = sanitizeProfileText(userHint?.display_name)
+            ?: sanitizeProfileText(userHint?.full_name)
+            ?: sanitizeProfileText(sessionSeed?.displayName)
+            ?: sanitizeProfileText(sessionSeed?.fullName)
+            ?: sanitizeProfileText(localCurrent?.display_name)
+            ?: sanitizeProfileText(localCurrent?.full_name)
+            ?: sanitizeProfileText(cachedEntity?.full_name)
+            ?: resolvedEmail.substringBefore("@").trim().ifBlank { "Usuario" }
+        val privacyAccepted = userHint?.privacy_policy_accepted == true ||
+            localCurrent?.privacy_policy_accepted == true ||
+            sessionSeed?.privacyPolicyAccepted == true ||
+            localStateStore.getLocalPrivacyAccepted(currentUserId)
+        val seedUser = User(
+            id = currentUserId,
+            email = resolvedEmail,
+            username = sanitizeProfileText(userHint?.username)
+                ?: sanitizeProfileText(localCurrent?.username)
+                ?: sanitizeProfileText(cachedEntity?.username),
+            full_name = sanitizeProfileText(userHint?.full_name)
+                ?: sanitizeProfileText(localCurrent?.full_name)
+                ?: sanitizeProfileText(cachedEntity?.full_name)
+                ?: resolvedDisplayName,
+            display_name = sanitizeProfileText(userHint?.display_name)
+                ?: sanitizeProfileText(localCurrent?.display_name)
+                ?: sanitizeProfileText(sessionSeed?.displayName)
+                ?: resolvedDisplayName,
+            avatar_url = sanitizeProfileText(userHint?.avatar_url)
+                ?: sanitizeProfileText(localCurrent?.avatar_url)
+                ?: sanitizeProfileText(cachedEntity?.avatar_url)
+                ?: sanitizeProfileText(sessionSeed?.avatarUrl),
+            country = sanitizeProfileText(userHint?.country)
+                ?: sanitizeProfileText(localCurrent?.country)
+                ?: sanitizeProfileText(sessionSeed?.country),
+            city = sanitizeProfileText(userHint?.city)
+                ?: sanitizeProfileText(localCurrent?.city),
+            bio = sanitizeProfileText(userHint?.bio)
+                ?: sanitizeProfileText(localCurrent?.bio)
+                ?: sanitizeProfileText(cachedEntity?.bio),
+            privacy_policy_accepted = privacyAccepted,
+            privacy_policy_accepted_at = sanitizeProfileText(userHint?.privacy_policy_accepted_at)
+                ?: sanitizeProfileText(localCurrent?.privacy_policy_accepted_at)
+                ?: sanitizeProfileText(sessionSeed?.privacyPolicyAcceptedAt)
+                ?: localStateStore.getLocalPrivacyAcceptedAt(currentUserId)
+        )
+
+        createProfile(seedUser, privacyPolicyAccepted = privacyAccepted)
+            .getOrElse { return Result.failure(it) }
+
+        val repairedUser = fetchRemoteUserById(currentUserId, token, currentUserId).getOrNull()
+            ?: getLocalProfile()?.takeIf { normalizePrivacyUserId(it.id) == currentUserId }
+            ?: applyLocalUserOverrides(seedUser)
+
+        return Result.success(repairedUser)
+    }
 
     // ─────────────────────────────────────────────
     // GET USER BY ID
     // ─────────────────────────────────────────────
     suspend fun getUserById(userId: String): Result<User?> {
+        TestRuntimeOverrides.currentUser(context)
+            ?.takeIf { normalizePrivacyUserId(it.id) == normalizePrivacyUserId(userId) }
+            ?.let { return Result.success(it) }
         return try {
-            val token = authService.getAccessToken()
-            val currentUserId = authService.getCurrentUserId()
+            var normalizedUserId = normalizePrivacyUserId(userId)
+            var token = authService.getAccessTokenAwait()
+            var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+            var remoteLookupWasEmpty = false
+            var remoteFailure: Throwable? = null
 
-            // Try network if token exists
             if (token != null) {
-                try {
-                    val response = supabaseConfig.httpClient.get(
-                        "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
-                    ) {
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Authorization", "Bearer $token")
-                        parameter("id", "eq.$userId")
-                        parameter("select", "*") // Explicit select
-                        parameter("limit", 1)
-                    }
-
-                    if (response.status.isSuccess()) {
-                        val users = response.body<List<User>>()
-                        val user = users.firstOrNull()
-                        
-                        android.util.Log.d("UserRepository", "Fetched user $userId: ${user?.displayName}")
-
-                        if (user != null) {
-                            // Persistent Room Cache
-                            userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(user))
-                            
-                            // Legacy SharedPreferences Cache (Current User Only)
-                            if (userId == currentUserId) {
-                                saveProfileLocally(user)
-                            }
+                fetchRemoteUserById(normalizedUserId, token, currentUserId)
+                    .onSuccess { remoteUser ->
+                        if (remoteUser != null) {
+                            return Result.success(remoteUser)
                         }
-                        
-                        return Result.success(user)
-                    } else {
-                         android.util.Log.e("UserRepository", "Fetch failed: ${response.status}")
+                        remoteLookupWasEmpty = true
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("UserRepository", "Network fetch failed", e)
-                }
+                    .onFailure { throwable ->
+                        remoteFailure = throwable
+                    }
             }
 
-            // Fallback to cache (Any user)
-            val cachedEntity = userDao.getUser(userId)
+            if (normalizedUserId == currentUserId && (remoteLookupWasEmpty || remoteFailure != null)) {
+                ensureCurrentProfile()
+                    .onSuccess { repairedUser ->
+                        return Result.success(repairedUser)
+                    }
+                    .onFailure { throwable ->
+                        if (remoteFailure == null) {
+                            remoteFailure = throwable
+                        }
+                    }
+            }
+
+            var cachedEntity = userDao.getUser(normalizedUserId)
             if (cachedEntity != null) {
                 android.util.Log.d("UserRepository", "Returning cached profile from DAO")
-                return Result.success(cachedEntity.toDomain())
+                return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
             }
 
-            // Fallback to legacy prefs for current user
-            if (userId == currentUserId) {
+            if (normalizedUserId == currentUserId) {
                 val cachedUser = getLocalProfile()
                 if (cachedUser != null) {
                     return Result.success(cachedUser)
                 }
             }
-            
-            if (token == null) Result.failure(Exception("No access token and no cache"))
-            else Result.failure(Exception("Error loading profile"))
+
+            if (remoteLookupWasEmpty && normalizedUserId != currentUserId) {
+                Result.success(null)
+            } else if (token == null) {
+                Result.failure(Exception("No access token and no cache"))
+            } else {
+                Result.failure(remoteFailure ?: Exception("Error loading profile"))
+            }
         } catch (e: Exception) {
-            // Try cache on exception too
              try {
-                val cachedEntity = userDao.getUser(userId)
+                var normalizedUserId = normalizePrivacyUserId(userId)
+                var cachedEntity = userDao.getUser(normalizedUserId)
                 if (cachedEntity != null) {
-                    return Result.success(cachedEntity.toDomain())
+                    return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
                 }
             } catch (e2: Exception) { }
             
@@ -142,26 +510,35 @@ class UserRepository @Inject constructor(
         }
     }
 
-    private fun saveProfileLocally(user: User) {
-        try {
-            val prefs = context.getSharedPreferences("user_cache", Context.MODE_PRIVATE)
-            val json = Json.encodeToString(User.serializer(), user)
-            prefs.edit().putString("cached_profile", json).apply()
-        } catch (e: Exception) {
-            android.util.Log.e("UserRepository", "Failed to cache profile", e)
+    suspend fun getCachedUserSnapshot(userId: String): User? {
+        var normalizedUserId = normalizePrivacyUserId(userId)
+        var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+
+        if (normalizedUserId == currentUserId) {
+            getLocalProfile()?.let { return it }
         }
+
+        return runCatching {
+            userDao.getUser(normalizedUserId)
+                ?.toDomain()
+                ?.let(::applyLocalUserOverrides)
+        }.getOrNull()
+    }
+
+    private fun saveProfileLocally(user: User) {
+        localStateStore.saveProfile(user)
+    }
+
+    private fun getLocalProfileRaw(): User? {
+        return localStateStore.getLocalProfileRaw()
     }
 
     private fun getLocalProfile(): User? {
-        return try {
-            val prefs = context.getSharedPreferences("user_cache", Context.MODE_PRIVATE)
-            val json = prefs.getString("cached_profile", null)
-            if (json != null) {
-                Json { ignoreUnknownKeys = true }.decodeFromString(User.serializer(), json)
-            } else null
-        } catch (e: Exception) {
-             null
-        }
+        return localStateStore.getLocalProfile()
+    }
+
+    private fun applyLocalUserOverrides(user: User): User {
+        return localStateStore.applyLocalUserOverrides(user)
     }
 
     /**
@@ -169,16 +546,15 @@ class UserRepository @Inject constructor(
      */
     fun clearData() {
         android.util.Log.w("UserRepository", "CLEAR DATA: Purging local profile cache...")
-        val prefs = context.getSharedPreferences("user_cache", Context.MODE_PRIVATE)
-        prefs.edit().clear().apply()
+        localStateStore.clearAll()
     }
 
     suspend fun getAdditionalLoginEmails(): Result<List<String>> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
 
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
                 parameter("user_id", "eq.$userId")
@@ -187,7 +563,7 @@ class UserRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                val rows = response.body<List<JsonObject>>()
+                var rows = response.body<List<JsonObject>>()
                 val emails = rows.mapNotNull { row ->
                     row["email"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
                 }
@@ -202,16 +578,16 @@ class UserRepository @Inject constructor(
 
     suspend fun addAdditionalLoginEmail(email: String): Result<Unit> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val normalized = email.trim().lowercase()
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var normalized = email.trim().lowercase()
 
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("user_id", userId)
                 put("email", normalized)
             }
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
                 header("Content-Type", "application/json")
@@ -222,7 +598,7 @@ class UserRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(Unit)
             } else {
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                var body = runCatching { response.bodyAsText() }.getOrDefault("")
                 val errorMessage = when {
                     body.contains("MAX_ADDITIONAL_EMAILS_REACHED", ignoreCase = true) ->
                         "Solo puedes agregar hasta 3 correos adicionales."
@@ -243,11 +619,11 @@ class UserRepository @Inject constructor(
 
     suspend fun removeAdditionalLoginEmail(email: String): Result<Unit> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val normalized = email.trim().lowercase()
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var normalized = email.trim().lowercase()
 
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/profile_login_emails") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
                 parameter("user_id", "eq.$userId")
@@ -265,29 +641,54 @@ class UserRepository @Inject constructor(
     }
 
     suspend fun getUsersByIds(userIds: List<String>): Result<List<User>> {
-        if (userIds.isEmpty()) return Result.success(emptyList())
-        return try {
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No access token"))
+        val normalizedIds = userIds
+            .map(::normalizePrivacyUserId)
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (normalizedIds.isEmpty()) return Result.success(emptyList())
 
-            val response = supabaseConfig.httpClient.get(
+        val cachedUsers = normalizedIds.mapNotNull { userId ->
+            runCatching { userDao.getUser(userId)?.toDomain() }
+                .getOrNull()
+                ?.let(::applyLocalUserOverrides)
+        }
+
+        return try {
+            var token = authService.getAccessTokenAwait()
+                ?: return if (cachedUsers.isNotEmpty()) {
+                    Result.success(cachedUsers)
+                } else {
+                    Result.failure(Exception("No access token"))
+                }
+
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
-                parameter("id", "in.(${userIds.joinToString(",")})")
+                parameter("id", "in.(${normalizedIds.joinToString(",")})")
             }
 
             if (response.status.isSuccess()) {
-                val users = response.body<List<User>>()
+                val remoteUsers = response.body<List<User>>().map(::applyLocalUserOverrides)
+                val remoteIds = remoteUsers.map { normalizePrivacyUserId(it.id) }.toSet()
+                val mergedUsers = (remoteUsers + cachedUsers.filterNot { remoteIds.contains(normalizePrivacyUserId(it.id)) })
                 // Save all to Room
-                userDao.insertUsers(users.map { conectate.com.data.local.entity.UserEntity.fromDomain(it) })
-                Result.success(users)
+                userDao.insertUsers(mergedUsers.map { conectate.com.data.local.entity.UserEntity.fromDomain(it) })
+                Result.success(mergedUsers)
             } else {
-                Result.failure(Exception("Error loading profiles"))
+                if (cachedUsers.isNotEmpty()) {
+                    Result.success(cachedUsers)
+                } else {
+                    Result.failure(Exception("Error loading profiles"))
+                }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            if (cachedUsers.isNotEmpty()) {
+                Result.success(cachedUsers)
+            } else {
+                Result.failure(e)
+            }
         }
     }
 
@@ -296,63 +697,81 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     suspend fun createProfile(user: User, privacyPolicyAccepted: Boolean = false): Result<Unit> {
         return try {
-            val token = authService.getAccessToken()
+            var token = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
+            var acceptedAt = if (privacyPolicyAccepted) java.time.OffsetDateTime.now().toString() else null
 
-            val body = buildJsonObject {
-                put("id", JsonPrimitive(user.id))
-                put("email", JsonPrimitive(user.email))
-                user.username?.let { put("username", JsonPrimitive(it)) }
-                user.full_name?.let { put("full_name", JsonPrimitive(it)) }
-                user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
-                user.bio?.let { put("bio", JsonPrimitive(it)) }
-                put("privacy_policy_accepted", JsonPrimitive(privacyPolicyAccepted))
-                if (privacyPolicyAccepted) {
-                    put("privacy_policy_accepted_at", JsonPrimitive(java.time.OffsetDateTime.now().toString()))
+            val preparedUser = prepareProfileForPersistence(user)
+            val usernameCandidates = linkedSetOf(
+                preparedUser.username.orEmpty(),
+                buildDeterministicUsername(preparedUser.id)
+            ).filter { it.isNotBlank() }
+
+            var finalResponse: HttpResponse? = null
+            var finalUser = preparedUser
+            var finalError = ""
+
+            for (usernameCandidate in usernameCandidates) {
+                finalUser = preparedUser.copy(username = usernameCandidate)
+                var response = submitProfileUpsert(
+                    token = token,
+                    body = buildProfilePayload(
+                        user = finalUser,
+                        privacyPolicyAccepted = privacyPolicyAccepted,
+                        acceptedAt = acceptedAt
+                    )
+                )
+                var responseError = if (response.status.isSuccess()) "" else response.bodyAsText()
+
+                if (!response.status.isSuccess() && privacyPolicyAccepted && isMissingPrivacyAcceptedColumn(responseError)) {
+                    response = submitProfileUpsert(
+                        token = token,
+                        body = buildProfilePayload(
+                            user = finalUser,
+                            privacyPolicyAccepted = false,
+                            acceptedAt = null
+                        )
+                    )
+                    responseError = if (response.status.isSuccess()) "" else response.bodyAsText()
+                }
+
+                if (response.status.isSuccess()) {
+                    finalResponse = response
+                    finalError = ""
+                    break
+                }
+
+                finalError = responseError
+                if (!isDuplicateUsernameError(responseError)) {
+                    break
                 }
             }
 
-            var response = supabaseConfig.httpClient.post(
-                "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
-            ) {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $token")
-                header("Content-Type", "application/json")
-                header("Prefer", "return=minimal")
-                setBody(body)
-            }
+            var response = finalResponse
+            if (response != null && response.status.isSuccess()) {
+                val createdUser = runCatching {
+                    var rawBody = response.bodyAsText()
+                    supabaseConfig.json.decodeFromString<List<User>>(rawBody).firstOrNull()
+                }.getOrNull()
+                    ?.let(::applyLocalUserOverrides)
+                    ?: applyLocalUserOverrides(
+                        finalUser.copy(
+                            privacy_policy_accepted = privacyPolicyAccepted,
+                            privacy_policy_accepted_at = acceptedAt
+                        )
+                    )
 
-            if (!response.status.isSuccess() && privacyPolicyAccepted) {
-                val err = runCatching { response.bodyAsText() }.getOrDefault("")
-                val missingPrivacyColumn =
-                    err.contains("privacy_policy_accepted", ignoreCase = true) &&
-                        err.contains("does not exist", ignoreCase = true)
-                if (missingPrivacyColumn) {
-                    val fallbackBody = buildJsonObject {
-                        put("id", JsonPrimitive(user.id))
-                        put("email", JsonPrimitive(user.email))
-                        user.username?.let { put("username", JsonPrimitive(it)) }
-                        user.full_name?.let { put("full_name", JsonPrimitive(it)) }
-                        user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
-                        user.bio?.let { put("bio", JsonPrimitive(it)) }
-                    }
-                    response = supabaseConfig.httpClient.post(
-                        "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
-                    ) {
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Authorization", "Bearer $token")
-                        header("Content-Type", "application/json")
-                        header("Prefer", "return=minimal")
-                        setBody(fallbackBody)
-                    }
+                userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(createdUser))
+                var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+                if (currentUserId == null || normalizePrivacyUserId(createdUser.id) == currentUserId) {
+                    saveProfileLocally(createdUser)
                 }
-            }
-
-            if (response.status.isSuccess()) {
+                if (privacyPolicyAccepted && acceptedAt != null) {
+                    localStateStore.setLocalPrivacyAccepted(createdUser.id, acceptedAt, pendingSync = false)
+                }
                 Result.success(Unit)
             } else {
-                val err = runCatching { response.body<String>() }.getOrDefault("")
-                Result.failure(Exception("Create profile failed ${response.status}: $err"))
+                Result.failure(Exception("Create profile failed: ${finalError.ifBlank { "Unknown error" }}"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -361,31 +780,84 @@ class UserRepository @Inject constructor(
 
     suspend fun hasAcceptedPrivacyPolicy(userId: String? = authService.getCurrentUserId()): Result<Boolean> {
         return try {
-            val uid = userId ?: return Result.failure(Exception("Usuario no identificado"))
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $token")
-                parameter("id", "eq.$uid")
-                parameter("select", "privacy_policy_accepted")
-                parameter("limit", 1)
+            var uid = userId ?: return Result.failure(Exception("Usuario no identificado"))
+            var normalized = normalizePrivacyUserId(uid)
+            var sessionSeed = authService.getCurrentUserProfileSeed()
+                ?.takeIf { normalizePrivacyUserId(it.id) == normalized }
+            if (localStateStore.getLocalPrivacyAccepted(uid)) {
+                if (localStateStore.isPrivacySyncPending(uid)) {
+                    runCatching { syncPrivacyAcceptance(uid) }
+                }
+                return Result.success(true)
+            }
+            var token = authService.getAccessTokenAwait()
+                ?: return Result.failure(Exception("Sesión expirada. Inicia sesión de nuevo."))
+            suspend fun attemptFetch(accessToken: String): Pair<HttpResponse, String> {
+                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $accessToken")
+                    parameter("id", "eq.$uid")
+                    parameter("select", "privacy_policy_accepted,privacy_policy_accepted_at")
+                    parameter("limit", 1)
+                }
+                var errBody = runCatching { response.bodyAsText() }.getOrDefault("")
+                return response to errBody
+            }
+
+            var (response, err) = attemptFetch(token)
+
+            if (isJwtExpiredError(response.status, err)) {
+                var refreshedToken = refreshAccessToken()
+                if (!refreshedToken.isNullOrBlank()) {
+                    token = refreshedToken
+                    var retry = attemptFetch(token)
+                    response = retry.first
+                    err = retry.second
+                }
             }
 
             if (!response.status.isSuccess()) {
-                val err = runCatching { response.bodyAsText() }.getOrDefault("")
                 val missingPrivacyColumn =
                     err.contains("privacy_policy_accepted", ignoreCase = true) &&
                         err.contains("does not exist", ignoreCase = true)
-                if (missingPrivacyColumn) return Result.success(true)
-                return Result.failure(Exception("No se pudo validar políticas (${response.status.value})"))
+                if (missingPrivacyColumn) {
+                    var acceptedAt = java.time.OffsetDateTime.now().toString()
+                    localStateStore.setLocalPrivacyAccepted(normalized, acceptedAt, pendingSync = false)
+                    return Result.success(true)
+                }
+                return Result.failure(
+                    Exception(
+                        if (isJwtExpiredError(response.status, err)) {
+                            "Sesión expirada. Inicia sesión de nuevo."
+                        } else {
+                            "No se pudo validar políticas (${response.status.value})"
+                        }
+                    )
+                )
             }
 
-            val rows = response.body<List<JsonObject>>()
-            val accepted = rows.firstOrNull()
+            var rows = response.body<List<JsonObject>>()
+            val row = rows.firstOrNull()
+            var accepted = row
                 ?.get("privacy_policy_accepted")
                 ?.jsonPrimitive
                 ?.contentOrNull
                 ?.equals("true", ignoreCase = true) == true
+            if (!accepted && sessionSeed?.privacyPolicyAccepted == true) {
+                var acceptedAt = sessionSeed.privacyPolicyAcceptedAt
+                    ?: java.time.OffsetDateTime.now().toString()
+                localStateStore.setLocalPrivacyAccepted(normalized, acceptedAt, pendingSync = true)
+                runCatching { syncPrivacyAcceptance(uid) }
+                return Result.success(true)
+            }
+            if (accepted) {
+                var acceptedAt = row
+                    ?.get("privacy_policy_accepted_at")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?: java.time.OffsetDateTime.now().toString()
+                localStateStore.setLocalPrivacyAccepted(normalized, acceptedAt, pendingSync = false)
+            }
             Result.success(accepted)
         } catch (e: Exception) {
             Result.failure(e)
@@ -394,34 +866,174 @@ class UserRepository @Inject constructor(
 
     suspend fun acceptPrivacyPolicy(userId: String? = authService.getCurrentUserId()): Result<Unit> {
         return try {
-            val uid = userId ?: return Result.failure(Exception("Usuario no identificado"))
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val body = buildJsonObject {
-                put("privacy_policy_accepted", JsonPrimitive(true))
-                put("privacy_policy_accepted_at", JsonPrimitive(java.time.OffsetDateTime.now().toString()))
+            var uid = userId ?: return Result.failure(Exception("Usuario no identificado"))
+            var acceptedAt = java.time.OffsetDateTime.now().toString()
+            localStateStore.setLocalPrivacyAccepted(uid, acceptedAt, pendingSync = true)
+
+            var token = authService.getAccessTokenAwait()
+            if (token.isNullOrBlank()) {
+                android.util.Log.w("UserRepository", "acceptPrivacyPolicy: No token. Keeping local acceptance queued.")
+                return Result.success(Unit)
             }
-            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $token")
-                header("Content-Type", "application/json")
-                parameter("id", "eq.$uid")
-                setBody(body)
+
+            suspend fun attemptPatch(accessToken: String): Pair<HttpResponse, String> {
+                var payload = buildJsonObject {
+                    put("privacy_policy_accepted", JsonPrimitive(true))
+                    put("privacy_policy_accepted_at", JsonPrimitive(acceptedAt))
+                }
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $accessToken")
+                    header("Content-Type", "application/json")
+                    parameter("id", "eq.$uid")
+                    setBody(payload)
+                }
+                var errBody = runCatching { response.bodyAsText() }.getOrDefault("")
+                return response to errBody
             }
+
+            var (response, errBody) = attemptPatch(token)
+
+            // If session expired, try a single refresh + retry.
+            if (isJwtExpiredError(response.status, errBody)) {
+                var refreshedToken = refreshAccessToken()
+                if (!refreshedToken.isNullOrBlank()) {
+                    token = refreshedToken
+                    var retry = attemptPatch(token)
+                    response = retry.first
+                    errBody = retry.second
+                }
+            }
+
             if (response.status.isSuccess()) {
+                localStateStore.clearPrivacyPending(uid)
+                syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
                 Result.success(Unit)
             } else {
-                val err = runCatching { response.bodyAsText() }.getOrDefault("")
-                Result.failure(Exception("No se pudo aceptar políticas (${response.status.value}) $err"))
+                if (isMissingPrivacyColumn(errBody)) {
+                    // Backward-compat: if column missing, treat as accepted to avoid blocking the user.
+                    localStateStore.clearPrivacyPending(uid)
+                    syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
+                    Result.success(Unit)
+                } else {
+                    android.util.Log.w(
+                        "UserRepository",
+                        "Privacy acceptance queued (${response.status.value}): ${errBody.take(200)}"
+                    )
+                    syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
+                    Result.success(Unit)
+                }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            android.util.Log.e("UserRepository", "Privacy acceptance failed, keeping local acceptance queued", e)
+            Result.success(Unit)
+        }
+    }
+
+    private suspend fun syncPrivacyAcceptanceToAuthMetadata(acceptedAt: String) {
+        authService.updateUserMetadata(
+            fullName = null,
+            avatarUrl = null,
+            displayName = null,
+            country = null,
+            privacyPolicyAccepted = true,
+            privacyPolicyAcceptedAt = acceptedAt
+        ).onFailure {
+            android.util.Log.w("UserRepository", "Failed to sync privacy acceptance to auth metadata", it)
+        }
+    }
+
+    private suspend fun syncPrivacyAcceptance(userId: String): Boolean {
+        if (!localStateStore.isPrivacySyncPending(userId)) return false
+        var acceptedAt = localStateStore.getLocalPrivacyAcceptedAt(userId) ?: java.time.OffsetDateTime.now().toString()
+        var token = authService.getAccessTokenAwait() ?: return false
+
+        suspend fun attemptPatch(accessToken: String): Pair<HttpResponse, String> {
+            var payload = buildJsonObject {
+                put("privacy_policy_accepted", JsonPrimitive(true))
+                put("privacy_policy_accepted_at", JsonPrimitive(acceptedAt))
+            }
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $accessToken")
+                header("Content-Type", "application/json")
+                parameter("id", "eq.$userId")
+                setBody(payload)
+            }
+            var errBody = runCatching { response.bodyAsText() }.getOrDefault("")
+            return response to errBody
+        }
+
+        var (response, errBody) = attemptPatch(token)
+
+        if (isJwtExpiredError(response.status, errBody)) {
+            var refreshedToken = refreshAccessToken()
+            if (!refreshedToken.isNullOrBlank()) {
+                token = refreshedToken
+                var retry = attemptPatch(token)
+                response = retry.first
+                errBody = retry.second
+            }
+        }
+
+        if (response.status.isSuccess() || isMissingPrivacyColumn(errBody)) {
+            localStateStore.clearPrivacyPending(userId)
+            return true
+        }
+
+        return false
+    }
+
+    private fun isJwtExpiredError(status: HttpStatusCode, body: String): Boolean {
+        if (status != HttpStatusCode.Unauthorized && status.value != 401) return false
+        var lower = body.lowercase()
+        return lower.contains("jwt expired") ||
+            lower.contains("pgrst303") ||
+            lower.contains("invalid jwt") ||
+            lower.contains("token is expired") ||
+            lower.contains("expired token")
+    }
+
+@Composable
+@Composable
+    private fun isMissingPrivacyColumn(body: String): Boolean {
+        var lower = body.lowercase()
+        return lower.contains("privacy_policy_accepted") && lower.contains("does not exist")
+    }
+
+    private fun privacyPolicyErrorMessage(status: HttpStatusCode, body: String): String {
+        return when {
+            isJwtExpiredError(status, body) -> "Sesión expirada. Inicia sesión de nuevo."
+            status == HttpStatusCode.Unauthorized -> "Sesión inválida. Inicia sesión de nuevo."
+            status == HttpStatusCode.Forbidden -> "No tienes permisos para aceptar las políticas."
+            else -> "No se pudo aceptar políticas (${status.value}). Intenta de nuevo."
+        }
+    }
+
+    private fun profileLoadErrorMessage(status: HttpStatusCode, body: String): String {
+        return when {
+            isJwtExpiredError(status, body) -> "Sesión expirada. Inicia sesión de nuevo."
+            status == HttpStatusCode.Unauthorized -> "Sesión inválida. Inicia sesión de nuevo."
+            status == HttpStatusCode.Forbidden -> "No tienes permisos para ver este perfil."
+            status == HttpStatusCode.NotFound -> "No encontramos ese perfil."
+            else -> "No se pudo cargar el perfil (${status.value}). Intenta de nuevo."
+        }
+    }
+
+    private suspend fun refreshAccessToken(): String? {
+        return try {
+            supabaseConfig.client.auth.refreshCurrentSession()
+            authService.getAccessToken()
+        } catch (e: Exception) {
+            android.util.Log.e("UserRepository", "Refresh token failed", e)
+            null
         }
     }
 
     suspend fun getUserByEmail(email: String): Result<User?> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
                 parameter("email", "eq.$email")
@@ -429,7 +1041,7 @@ class UserRepository @Inject constructor(
                 parameter("limit", 1)
             }
             if (response.status.isSuccess()) {
-                val users = response.body<List<User>>()
+                var users = response.body<List<User>>()
                 Result.success(users.firstOrNull())
             } else Result.failure(Exception("Fetch failed ${response.status}"))
         } catch (e: Exception) { Result.failure(e) }
@@ -440,7 +1052,7 @@ class UserRepository @Inject constructor(
             val normalizedPhone = phone.trim().replace(Regex("[^0-9+]"), "")
             if (normalizedPhone.isBlank()) return Result.success(null)
 
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             val directResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
@@ -449,7 +1061,7 @@ class UserRepository @Inject constructor(
                 parameter("limit", 1)
             }
             if (directResponse.status.isSuccess()) {
-                val users = directResponse.body<List<User>>()
+                var users = directResponse.body<List<User>>()
                 if (users.isNotEmpty()) return Result.success(users.first())
             } else {
                 return Result.failure(Exception("Fetch failed ${directResponse.status}"))
@@ -466,7 +1078,7 @@ class UserRepository @Inject constructor(
                     parameter("limit", 1)
                 }
                 if (fallbackResponse.status.isSuccess()) {
-                    val users = fallbackResponse.body<List<User>>()
+                    var users = fallbackResponse.body<List<User>>()
                     return Result.success(users.firstOrNull())
                 }
                 return Result.failure(Exception("Fetch failed ${fallbackResponse.status}"))
@@ -480,8 +1092,8 @@ class UserRepository @Inject constructor(
 
     suspend fun getUserByUsername(username: String): Result<User?> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
                 parameter("username", "eq.$username")
@@ -489,7 +1101,7 @@ class UserRepository @Inject constructor(
                 parameter("limit", 1)
             }
             if (response.status.isSuccess()) {
-                val users = response.body<List<User>>()
+                var users = response.body<List<User>>()
                 Result.success(users.firstOrNull())
             } else Result.failure(Exception("Fetch failed ${response.status}"))
         } catch (e: Exception) { Result.failure(e) }
@@ -503,21 +1115,30 @@ class UserRepository @Inject constructor(
         request: UpdateProfileRequest
     ): Result<Unit> {
         return try {
-            val token = authService.getAccessToken()
+            var token = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
+            var normalizedUserId = normalizePrivacyUserId(userId)
+
+            if (request.is_private != null || request.profile_visibility != null) {
+                localStateStore.setLocalProfileVisibility(
+                    userId = normalizedUserId,
+                    isPrivate = request.is_private,
+                    profileVisibility = request.profile_visibility
+                )
+            }
 
             // ✅ ENFORCE 7-DAY NAME CHANGE COOLDOWN
             if (request.display_name != null) {
                 // Get current user profile to check last_name_change
-                val userResult = getUserById(userId)
+                val userResult = getUserById(normalizedUserId)
                 if (userResult.isSuccess) {
-                    val user = userResult.getOrNull()
-                    val lastNameChange = user?.last_name_change
+                    var user = userResult.getOrNull()
+                    var lastNameChange = user?.last_name_change
 
                     if (lastNameChange != null) {
                         try {
                             val lastChangeDate = java.time.LocalDateTime.parse(lastNameChange)
-                            val now = java.time.LocalDateTime.now()
+                            var now = java.time.LocalDateTime.now()
                             val daysSinceChange = java.time.Duration.between(lastChangeDate, now).toDays()
 
                             if (daysSinceChange < 7) {
@@ -535,49 +1156,161 @@ class UserRepository @Inject constructor(
             }
 
             // Build update request with last_name_change if name is being updated
-            val finalRequest = if (request.display_name != null) {
-                request.copy(last_name_change = java.time.LocalDateTime.now().toString())
+            val effectiveLastNameChange = if (request.display_name != null) {
+                java.time.LocalDateTime.now().toString()
             } else {
-                request
+                request.last_name_change
+            }
+            val payloadFields = buildProfileUpdateFields(request, effectiveLastNameChange)
+
+            android.util.Log.d(
+                "UserRepository",
+                "Updating profile fields displayName=${request.display_name != null}, avatar=${request.avatar_url != null}, fieldCount=${payloadFields.size}"
+            )
+
+            if (payloadFields.isEmpty()) {
+                return Result.success(Unit)
             }
 
-            // 🔥 LOG REQUEST FOR DEBUGGING
-            val jsonBody = kotlinx.serialization.json.Json.encodeToString(
-                UpdateProfileRequest.serializer(), 
-                finalRequest
-            )
-            android.util.Log.d("UserRepository", "Update profile request: $jsonBody")
+            suspend fun submitPatch(fields: Map<String, JsonElement>): HttpResponse {
+                return supabaseConfig.httpClient.patch(
+                    "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
+                ) {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $token")
+                    header("Content-Type", "application/json")
+                    header("Prefer", "return=representation")
+                    parameter("id", "eq.$normalizedUserId")
+                    setBody(JsonObject(fields))
+                }
+            }
 
-            val response = supabaseConfig.httpClient.patch(
-                "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
-            ) {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $token")
-                header("Content-Type", "application/json")
-                header("Prefer", "return=representation")
-                parameter("id", "eq.$userId")
-                setBody(finalRequest)
+            var response = submitPatch(payloadFields)
+            var responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
+
+            while (!response.status.isSuccess()) {
+                val missingColumn = extractMissingProfilesColumn(responseBody) ?: break
+                if (payloadFields.remove(missingColumn) == null) {
+                    break
+                }
+                android.util.Log.w(
+                    "UserRepository",
+                    "Profiles column '$missingColumn' is missing remotely. Retrying update without it."
+                )
+                if (payloadFields.isEmpty()) {
+                    return Result.success(Unit)
+                }
+                response = submitPatch(payloadFields)
+                responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
             }
 
             if (response.status.isSuccess()) {
-                val responseBody = response.body<String>()
-                android.util.Log.d("UserRepository", "Profile updated successfully: $responseBody")
+                android.util.Log.d("UserRepository", "Profile updated successfully")
+
+                val updatedUser = runCatching {
+                    if (responseBody.isBlank()) {
+                        null
+                    } else {
+                        supabaseConfig.json.decodeFromString<List<User>>(responseBody)
+                            .firstOrNull()
+                            ?.let(::applyLocalUserOverrides)
+                    }
+                }.getOrNull()
+                    ?: if (normalizedUserId == authService.getCurrentUserId()?.let(::normalizePrivacyUserId)) {
+                        getUserById(normalizedUserId).getOrNull()
+                    } else {
+                        null
+                    }
+
+                if (updatedUser != null) {
+                    userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
+                    if (updatedUser.id == authService.getCurrentUserId()) {
+                        saveProfileLocally(updatedUser)
+                    }
+                }
                 
                 // ✅ SYNC METADATA TO PREVENT RESET ON RE-LOGIN
                 authService.updateUserMetadata(
-                    fullName = finalRequest.display_name, 
-                    avatarUrl = finalRequest.avatar_url
+                    fullName = request.display_name,
+                    avatarUrl = request.avatar_url,
+                    displayName = request.display_name,
+                    country = request.country
                 )
                 
                 Result.success(Unit)
             } else {
-                val err = response.body<String>()
-                android.util.Log.e("UserRepository", "Update failed ${response.status}: $err")
-                Result.failure(Exception("Update failed ${response.status}: $err"))
+                android.util.Log.e("UserRepository", "Update failed ${response.status}: $responseBody")
+                Result.failure(Exception("Update failed ${response.status}: $responseBody"))
             }
         } catch (e: Exception) {
             android.util.Log.e("UserRepository", "Update profile exception", e)
             Result.failure(e)
+        }
+    }
+
+    suspend fun updatePresenceVisibility(
+        userId: String,
+        lastSeenVisibility: String? = null,
+        onlineStatusVisibility: String? = null
+    ): Result<Boolean> {
+        var normalizedLastSeen = lastSeenVisibility?.let(localStateStore::normalizePresenceVisibility)
+        var normalizedOnline = onlineStatusVisibility?.let(localStateStore::normalizePresenceVisibility)
+        if (normalizedLastSeen == null && normalizedOnline == null) {
+            return Result.success(true)
+        }
+
+        localStateStore.setLocalPresenceVisibility(
+            userId = userId,
+            lastSeenVisibility = normalizedLastSeen,
+            onlineStatusVisibility = normalizedOnline
+        )
+
+        return try {
+            var token = authService.getAccessTokenAwait()
+            if (token.isNullOrBlank()) {
+                return Result.success(false)
+            }
+
+            suspend fun attemptPatch(accessToken: String): Pair<HttpResponse, String> {
+                var payload = buildJsonObject {
+                    normalizedLastSeen?.let { put("last_seen_visibility", it) }
+                    normalizedOnline?.let { put("online_status_visibility", it) }
+                }
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $accessToken")
+                    header("Content-Type", "application/json")
+                    header("Prefer", "return=minimal")
+                    parameter("id", "eq.$userId")
+                    setBody(payload)
+                }
+                var responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
+                return response to responseBody
+            }
+
+            var (response, responseBody) = attemptPatch(token)
+            if (isJwtExpiredError(response.status, responseBody)) {
+                var refreshedToken = refreshAccessToken()
+                if (!refreshedToken.isNullOrBlank()) {
+                    token = refreshedToken
+                    var retry = attemptPatch(token)
+                    response = retry.first
+                    responseBody = retry.second
+                }
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(true)
+            } else {
+                android.util.Log.w(
+                    "UserRepository",
+                    "Presence visibility saved locally but remote sync failed (${response.status.value}): ${responseBody.take(200)}"
+                )
+                Result.success(false)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("UserRepository", "Presence visibility stored locally after sync failure", e)
+            Result.success(false)
         }
     }
 
@@ -604,17 +1337,17 @@ class UserRepository @Inject constructor(
         suffixLabel: String
     ): Result<String> {
         return try {
-            val userId = authService.getCurrentUserId()
+            var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
-            val bytes = context.contentResolver
+            var bytes = context.contentResolver
                 .openInputStream(uri)
                 ?.use { it.readBytes() }
                 ?: return Result.failure(Exception("Cannot read file"))
 
             val allowedImageMimeTypes = setOf("image/jpeg", "image/png", "image/webp")
             val hintedMime = context.contentResolver.getType(uri)
-                ?.substringBefore(";")
+                ?.substringBefore("")
                 ?.trim()
                 ?.lowercase()
             val inferredMime = inferImageMimeType(bytes)
@@ -730,13 +1463,13 @@ class UserRepository @Inject constructor(
         var workingBitmap = baseBitmap
         var lastCandidate: ByteArray? = null
         var quality = 92
-        var attempt = 0
+        val attempt = 0
 
         try {
             while (attempt < 10) {
                 val stream = ByteArrayOutputStream()
                 workingBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
-                val candidate = stream.toByteArray()
+                var candidate = stream.toByteArray()
                 lastCandidate = candidate
 
                 if (candidate.size.toLong() <= maxBytes) {
@@ -746,8 +1479,8 @@ class UserRepository @Inject constructor(
                 if (quality > 55) {
                     quality -= 10
                 } else {
-                    val nextWidth = (workingBitmap.width * 0.85f).toInt().coerceAtLeast(720)
-                    val nextHeight = (workingBitmap.height * 0.85f).toInt().coerceAtLeast(720)
+                    var nextWidth = (workingBitmap.width * 0.85f).toInt().coerceAtLeast(720)
+                    var nextHeight = (workingBitmap.height * 0.85f).toInt().coerceAtLeast(720)
                     if (nextWidth == workingBitmap.width && nextHeight == workingBitmap.height) {
                         break
                     }
@@ -803,10 +1536,10 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     suspend fun getAllUsers(limit: Int = 100): Result<List<User>> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
 
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -817,7 +1550,7 @@ class UserRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                val users = response.body<List<User>>()
+                var users = response.body<List<User>>()
                 Result.success(users)
             } else {
                 val errorBody = response.bodyAsText()
@@ -831,6 +1564,8 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // SEARCH USERS (name, username, numeric_id)
     // ─────────────────────────────────────────────
+@Composable
+@Composable
     suspend fun searchUsers(query: String): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
             val sanitizedQuery = query.trim()
@@ -839,7 +1574,7 @@ class UserRepository @Inject constructor(
             // 1. If it's a numeric ID, try exact match and also partial matches
             val numericId = sanitizedQuery.toLongOrNull()
 
-            val response = supabaseConfig.client.postgrest["profiles"].select {
+            var response = supabaseConfig.client.postgrest["profiles"].select {
                 filter {
                     if (numericId != null) {
                         or {
@@ -901,7 +1636,7 @@ class UserRepository @Inject constructor(
         if (username.isBlank()) return false
         if (user.is_suspended || user.isSuspendedNow) return false
 
-        val status = user.status?.trim()?.lowercase().orEmpty()
+        var status = user.status?.trim()?.lowercase().orEmpty()
         if (status in NON_MENTIONABLE_STATUSES) return false
 
         return true
@@ -909,8 +1644,8 @@ class UserRepository @Inject constructor(
 
     suspend fun getUsersByFollowerThreshold(threshold: Int): Result<List<User>> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $accessToken")
                 parameter("followers_count", "gte.$threshold")
@@ -918,8 +1653,8 @@ class UserRepository @Inject constructor(
                 parameter("limit", 50)
             }
             if (response.status.isSuccess()) {
-                 val bodyStr = response.bodyAsText()
-                 val users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
+                 var bodyStr = response.bodyAsText()
+                 var users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
                  Result.success(users)
             } else {
                  Result.failure(Exception("Error fetching admins: ${response.status}"))
@@ -936,20 +1671,20 @@ class UserRepository @Inject constructor(
     @kotlinx.serialization.Serializable
     private data class FollowerResponse(
         @kotlinx.serialization.SerialName("profiles")
-        val profile: User
+        val profile: User? = null
     )
 
     @kotlinx.serialization.Serializable
     private data class FollowingResponse(
         @kotlinx.serialization.SerialName("profiles")
-        val profile: User
+        val profile: User? = null
     )
 
     suspend fun followUser(targetUserId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
-            val currentUserId = authService.getCurrentUserId()
+            var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
             if (currentUserId == targetUserId) {
@@ -962,7 +1697,7 @@ class UserRepository @Inject constructor(
                 "following_id" to targetUserId
             )
             
-            val response = supabaseConfig.httpClient.post(
+            var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -972,7 +1707,7 @@ class UserRepository @Inject constructor(
             }
 
             if (!response.status.isSuccess()) {
-                val err = try { response.body<String>() } catch (e: Exception) { "" }
+                var err = try { response.body<String>() } catch (e: Exception) { "" }
                 // Ignore key violation (already following)
                 if (response.status == HttpStatusCode.Conflict || err.contains("duplicate key")) {
                     android.util.Log.w("UserRepository", "Already following $targetUserId (409). Treating as success.")
@@ -993,13 +1728,13 @@ class UserRepository @Inject constructor(
 
     suspend fun unfollowUser(targetUserId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
-            val currentUserId = authService.getCurrentUserId()
+            var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
             // 1. Delete from follows
-            val response = supabaseConfig.httpClient.delete(
+            var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1023,10 +1758,10 @@ class UserRepository @Inject constructor(
 
     suspend fun checkIsFollowing(targetUserId: String): Result<Boolean> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
 
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1037,11 +1772,11 @@ class UserRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                val bodyStr = response.body<String>()
+                var bodyStr = response.body<String>()
                 // Robust checking using JSON parsing
                 val isFollowing = try {
-                    val json = Json { ignoreUnknownKeys = true }
-                    val list = json.decodeFromString<List<Map<String, String>>>(bodyStr)
+                    var json = Json { ignoreUnknownKeys = true }
+                    var list = json.decodeFromString<List<Map<String, String>>>(bodyStr)
                     list.isNotEmpty()
                 } catch (e: Exception) {
                      android.util.Log.w("UserRepository", "Error parsing checksIsFollowing: $bodyStr")
@@ -1050,7 +1785,7 @@ class UserRepository @Inject constructor(
                 
                 Result.success(isFollowing)
             } else {
-                val err = response.body<String>()
+                var err = response.body<String>()
                 android.util.Log.e("UserRepository", "checkIsFollowing error: ${response.status} - $err")
                 Result.failure(Exception("Check failed: $err"))
             }
@@ -1059,11 +1794,61 @@ class UserRepository @Inject constructor(
         }
     }
 
+    suspend fun getFollowedUserIds(targetUserIds: Collection<String>): Result<Set<String>> {
+        return try {
+            val cleanTargetIds = targetUserIds
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            if (cleanTargetIds.isEmpty()) {
+                return Result.success(emptySet())
+            }
+
+            var accessToken = authService.getAccessTokenAwait()
+                ?: return Result.failure(Exception("No token"))
+            var currentUserId = authService.getCurrentUserId()
+                ?: return Result.failure(Exception("No user"))
+
+            var response = supabaseConfig.httpClient.get(
+                "${supabaseConfig.supabaseUrl}/rest/v1/follows"
+            ) {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $accessToken")
+                parameter("follower_id", "eq.$currentUserId")
+                parameter("following_id", "in.(${cleanTargetIds.joinToString(",")})")
+                parameter("select", "following_id")
+            }
+
+            if (!response.status.isSuccess()) {
+                var err = response.body<String>()
+                android.util.Log.e("UserRepository", "getFollowedUserIds error: ${response.status} - $err")
+                return Result.failure(Exception("Check failed: $err"))
+            }
+
+            var bodyStr = response.body<String>()
+            val followedIds = try {
+                var json = Json { ignoreUnknownKeys = true }
+                json.decodeFromString<List<Map<String, String>>>(bodyStr)
+                    .mapNotNull { it["following_id"]?.trim()?.lowercase() }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            } catch (e: Exception) {
+                android.util.Log.w("UserRepository", "Error parsing getFollowedUserIds: $bodyStr", e)
+                emptySet()
+            }
+
+            Result.success(followedIds)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getFollowers(userId: String): Result<List<User>> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1073,11 +1858,11 @@ class UserRepository @Inject constructor(
             }
 
              if (response.status.isSuccess()) {
-                val rawBody = response.body<String>()
-                val json = Json { ignoreUnknownKeys = true }
+                var rawBody = response.body<String>()
+                var json = Json { ignoreUnknownKeys = true }
                 // Parse List<FollowerResponse>
-                val list = json.decodeFromString<List<FollowerResponse>>(rawBody)
-                val users = list.map { it.profile }
+                var list = json.decodeFromString<List<FollowerResponse>>(rawBody)
+                var users = list.mapNotNull { it.profile }
                 Result.success(users)
             } else {
                 Result.failure(Exception("Fetch failed ${response.status}"))
@@ -1087,9 +1872,9 @@ class UserRepository @Inject constructor(
 
     suspend fun getFollowing(userId: String): Result<List<User>> {
          return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1099,11 +1884,11 @@ class UserRepository @Inject constructor(
             }
 
              if (response.status.isSuccess()) {
-                val rawBody = response.body<String>()
-                val json = Json { ignoreUnknownKeys = true }
+                var rawBody = response.body<String>()
+                var json = Json { ignoreUnknownKeys = true }
                 // Parse List<FollowingResponse>
-                val list = json.decodeFromString<List<FollowingResponse>>(rawBody)
-                val users = list.map { it.profile }
+                var list = json.decodeFromString<List<FollowingResponse>>(rawBody)
+                var users = list.mapNotNull { it.profile }
                 Result.success(users)
             } else {
                 Result.failure(Exception("Fetch failed ${response.status}"))
@@ -1132,9 +1917,9 @@ class UserRepository @Inject constructor(
     
     suspend fun blockUser(targetUserId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
-            val currentUserId = authService.getCurrentUserId()
+            var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
             val blockData = buildJsonObject {
@@ -1142,7 +1927,7 @@ class UserRepository @Inject constructor(
                 put("blocked_id", targetUserId)
             }
             
-            val response = supabaseConfig.httpClient.post(
+            var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1155,7 +1940,7 @@ class UserRepository @Inject constructor(
                 invalidateBlockedMentionCache()
                 Result.success(Unit)
             } else {
-                val err = response.body<String>()
+                var err = response.body<String>()
                 if (err.contains("duplicate key")) {
                     invalidateBlockedMentionCache()
                     Result.success(Unit) // Already blocked
@@ -1170,12 +1955,12 @@ class UserRepository @Inject constructor(
 
     suspend fun unblockUser(targetUserId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
-            val currentUserId = authService.getCurrentUserId()
+            var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
-            val response = supabaseConfig.httpClient.delete(
+            var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1197,9 +1982,9 @@ class UserRepository @Inject constructor(
 
     private suspend fun getBlockedRelationshipUserIds(currentUserId: String): Result<Set<String>> {
         return try {
-            val now = System.currentTimeMillis()
+            var now = System.currentTimeMillis()
             val normalizedCurrentUserId = currentUserId.trim().lowercase()
-            val cachedUserId = blockedMentionCacheUserId
+            var cachedUserId = blockedMentionCacheUserId
 
             if (
                 cachedUserId == normalizedCurrentUserId &&
@@ -1208,10 +1993,10 @@ class UserRepository @Inject constructor(
                 return Result.success(blockedMentionCacheIds)
             }
 
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
 
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1228,10 +2013,10 @@ class UserRepository @Inject constructor(
                 return Result.failure(Exception("Failed to fetch blocked relationships"))
             }
 
-            val rows = response.body<List<JsonObject>>()
+            var rows = response.body<List<JsonObject>>()
             val relatedIds = rows.mapNotNull { row ->
-                val blockerId = row["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
-                val blockedId = row["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                var blockerId = row["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                var blockedId = row["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
 
                 when {
                     blockerId == normalizedCurrentUserId && !blockedId.isNullOrBlank() -> blockedId
@@ -1258,14 +2043,14 @@ class UserRepository @Inject constructor(
 
     suspend fun getBlockRelationship(targetUserId: String): Result<BlockRelationship> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return Result.failure(Exception("No user logged in"))
-            val cleanTargetId = targetUserId.trim().lowercase()
+            var cleanTargetId = targetUserId.trim().lowercase()
             if (cleanTargetId.isBlank()) return Result.success(BlockRelationship())
 
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1282,12 +2067,12 @@ class UserRepository @Inject constructor(
                 return Result.failure(Exception("Failed to check block status"))
             }
 
-            val rows = response.body<List<JsonObject>>()
+            var rows = response.body<List<JsonObject>>()
             var blockedByMe = false
             var blockedMe = false
             rows.forEach { row ->
-                val blockerId = row["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
-                val blockedId = row["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                var blockerId = row["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                var blockedId = row["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
                 if (blockerId == currentUserId && blockedId == cleanTargetId) blockedByMe = true
                 if (blockerId == cleanTargetId && blockedId == currentUserId) blockedMe = true
             }
@@ -1304,12 +2089,12 @@ class UserRepository @Inject constructor(
     }
 
     fun observeBlockRelationship(targetUserId: String): Flow<BlockRelationship> = callbackFlow {
-        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+        var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         if (currentUserId.isNullOrBlank()) {
             close(IllegalStateException("No user logged in"))
             return@callbackFlow
         }
-        val cleanTargetId = targetUserId.trim().lowercase()
+        var cleanTargetId = targetUserId.trim().lowercase()
         if (cleanTargetId.isBlank()) {
             trySend(BlockRelationship())
             close()
@@ -1325,14 +2110,14 @@ class UserRepository @Inject constructor(
             return isBlockPairEvent(record, currentUserId, cleanTargetId)
         }
 
-        val channel = supabaseConfig.client.realtime.channel("blocked-users-$currentUserId-$cleanTargetId")
-        val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+        var channel = supabaseConfig.client.realtime.channel("blocked-users-$currentUserId-$cleanTargetId")
+        var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
             table = "blocked_users"
         }
 
-        val collectorJob = launch {
+        var collectorJob = launch {
             changes.collect { action ->
-                val shouldRefresh = when (action) {
+                var shouldRefresh = when (action) {
                     is PostgresAction.Insert -> affectsPair(action.record)
                     is PostgresAction.Update -> affectsPair(action.record)
                     is PostgresAction.Delete -> {
@@ -1349,8 +2134,11 @@ class UserRepository @Inject constructor(
             }
         }
 
-        val subscribeJob = launch {
-            channel.subscribe()
+        var subscribeJob = launch {
+            supabaseConfig.subscribeRealtimeChannel(
+                channel = channel,
+                reason = "blocked-users-$currentUserId-$cleanTargetId"
+            )
             refreshState()
         }
 
@@ -1365,8 +2153,8 @@ class UserRepository @Inject constructor(
         currentUserId: String,
         targetUserId: String
     ): Boolean {
-        val blockerId = record["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
-        val blockedId = record["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+        var blockerId = record["blocker_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+        var blockedId = record["blocked_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
         if (blockerId.isNullOrBlank() || blockedId.isNullOrBlank()) return false
         return (blockerId == currentUserId && blockedId == targetUserId) ||
             (blockerId == targetUserId && blockedId == currentUserId)
@@ -1378,8 +2166,8 @@ class UserRepository @Inject constructor(
 
     suspend fun getVerifiedUsers(): Result<List<User>> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val response = supabaseConfig.httpClient.get(
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1389,7 +2177,7 @@ class UserRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                val users = response.body<List<User>>()
+                var users = response.body<List<User>>()
                 Result.success(users)
             } else {
                 Result.failure(Exception("Failed to fetch verified users"))
@@ -1405,9 +2193,9 @@ class UserRepository @Inject constructor(
 
     suspend fun getVoiceAccessRequestStatus(userId: String): Result<String> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/voice_access_requests"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1419,12 +2207,12 @@ class UserRepository @Inject constructor(
             android.util.Log.d("UserRepository", "Fetching request status for $userId. Response: ${response.status}")
 
             if (response.status.isSuccess()) {
-                val bodyStr = response.bodyAsText()
-                val json = Json { ignoreUnknownKeys = true }
-                val list = json.decodeFromString<List<JsonObject>>(bodyStr)
+                var bodyStr = response.bodyAsText()
+                var json = Json { ignoreUnknownKeys = true }
+                var list = json.decodeFromString<List<JsonObject>>(bodyStr)
                 if (list.isNotEmpty()) {
                     val statusElement = list[0]["status"]
-                    val status = if (statusElement is kotlinx.serialization.json.JsonPrimitive) {
+                    var status = if (statusElement is kotlinx.serialization.json.JsonPrimitive) {
                         statusElement.content
                     } else {
                         "none"
@@ -1443,14 +2231,14 @@ class UserRepository @Inject constructor(
 
     suspend fun requestVoiceAccess(userId: String): Result<Unit> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
-            val payload = mapOf(
+            var payload = mapOf(
                 "user_id" to userId,
                 "status" to "pending"
             )
 
-            val response = supabaseConfig.httpClient.post(
+            var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/voice_access_requests"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1467,7 +2255,7 @@ class UserRepository @Inject constructor(
                 android.util.Log.d("UserRepository", "Voice access request already exists (409 Conflict)")
                 Result.success(Unit) // Treat conflict as success since record exists
             } else {
-                val err = response.bodyAsText()
+                var err = response.bodyAsText()
                 android.util.Log.e("UserRepository", "Voice access request failed: ${response.status} - $err")
                 Result.failure(Exception("Error servidor (${response.status.value})"))
             }
@@ -1479,9 +2267,9 @@ class UserRepository @Inject constructor(
 
     suspend fun getAdmins(): Result<List<User>> {
         return try {
-            val token = authService.getAccessToken()
+            var token = authService.getAccessTokenAwait()
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1491,8 +2279,8 @@ class UserRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                 val bodyStr = response.bodyAsText()
-                 val users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
+                 var bodyStr = response.bodyAsText()
+                 var users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
                  Result.success(users)
             } else {
                  Result.failure(Exception("Error fetching admins: ${response.status}"))
@@ -1504,9 +2292,9 @@ class UserRepository @Inject constructor(
 
     suspend fun createVoiceAccessReport(userId: String, userName: String): Result<Unit> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
-            val payload = mapOf(
+            var payload = mapOf(
                 "reporter_id" to userId,
                 "reporter_name" to userName,
                 "reported_user_id" to userId,
@@ -1516,7 +2304,7 @@ class UserRepository @Inject constructor(
                 "status" to "pendiente"
             )
             
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1527,7 +2315,7 @@ class UserRepository @Inject constructor(
                 android.util.Log.d("UserRepository", "Voice access report created")
                 Result.success(Unit)
             } else {
-                val err = response.bodyAsText()
+                var err = response.bodyAsText()
                 android.util.Log.e("UserRepository", "Report creation failed: ${response.status} - $err")
                 Result.failure(Exception("Error creating report: ${response.status}"))
             }
@@ -1546,11 +2334,11 @@ class UserRepository @Inject constructor(
      */
     suspend fun setOnlineStatus(userId: String, isOnline: Boolean): Result<Unit> {
         return try {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
             android.util.Log.d("UserRepository", "Setting online status for $userId to $isOnline")
             
-            val response = supabaseConfig.httpClient.post(
+            var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/rpc/update_user_online_status"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1566,7 +2354,7 @@ class UserRepository @Inject constructor(
                 android.util.Log.d("UserRepository", "Online status updated successfully")
                 Result.success(Unit)
             } else {
-                val err = response.bodyAsText()
+                var err = response.bodyAsText()
                 android.util.Log.e("UserRepository", "Failed to update online status: ${response.status} - $err")
                 Result.failure(Exception("Failed to update status"))
             }
@@ -1575,27 +2363,126 @@ class UserRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    /**
+     * Same as [setOnlineStatus], but uses an explicit access token.
+     * Useful for "force logout" flows where AuthService blocks token access immediately.
+     */
+    suspend fun setOnlineStatusWithToken(
+        userId: String,
+        isOnline: Boolean,
+        accessToken: String
+    ): Result<Unit> {
+        return try {
+            var token = accessToken.trim()
+            if (token.isBlank()) return Result.failure(Exception("No token"))
+
+            android.util.Log.d("UserRepository", "Setting online status (explicit token) for $userId to $isOnline")
+
+            var response = supabaseConfig.httpClient.post(
+                "${supabaseConfig.supabaseUrl}/rest/v1/rpc/update_user_online_status"
+            ) {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token")
+                header("Content-Type", "application/json")
+                setBody(buildJsonObject {
+                    put("user_id", userId)
+                    put("online_status", isOnline)
+                })
+            }
+
+            if (response.status.isSuccess()) {
+                android.util.Log.d("UserRepository", "Online status updated successfully (explicit token)")
+                Result.success(Unit)
+            } else {
+                var err = response.bodyAsText()
+                android.util.Log.e("UserRepository", "Failed to update online status (explicit token): ${response.status} - $err")
+                Result.failure(Exception("Failed to update status"))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UserRepository", "Exception updating online status (explicit token)", e)
+            Result.failure(e)
+        }
+    }
     
     /**
-     * Observar cambios en el estado de presencia de un usuario
-     * Retorna un Flow que emite true cuando está online, false cuando está offline
-     * Usa polling cada 30 segundos para verificar el estado
+     * Observa presencia con realtime sobre `profiles` y polling liviano como respaldo.
+     * Esto evita que el estado "Conectado" o "últ. vez" dependa solo de refrescos periódicos.
      */
-    fun observeUserPresence(userId: String): kotlinx.coroutines.flow.Flow<User> = kotlinx.coroutines.flow.flow {
-        while (true) {
-            try {
-                // Fetch fresh user data including last_seen
-                val result = getUserById(userId)
-                val user = result.getOrNull()
-                if (user != null) {
-                    emit(user)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("UserRepository", "Error checking user presence", e)
-            }
-            kotlinx.coroutines.delay(10000) // Polling interval: 10 seconds
+    fun observeUserPresence(userId: String): Flow<User> = callbackFlow {
+        val cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) {
+            close()
+            return@callbackFlow
         }
-    }.flowOn(kotlinx.coroutines.Dispatchers.IO)
+
+        suspend fun refreshState() {
+            var user = getUserById(cleanUserId).getOrNull() ?: return
+            trySend(user)
+        }
+
+        var channel = supabaseConfig.client.realtime.channel("presence-$cleanUserId")
+        var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            table = "profiles"
+            filter = "id=eq.$cleanUserId"
+        }
+
+        var collectorJob = launch {
+            changes.collect { action ->
+                var shouldRefresh = when (action) {
+                    is PostgresAction.Insert -> true
+                    is PostgresAction.Update -> true
+                    is PostgresAction.Delete -> true
+                    else -> false
+                }
+                if (shouldRefresh) {
+                    refreshState()
+                }
+            }
+        }
+
+        var subscribeJob = launch {
+            supabaseConfig.subscribeRealtimeChannel(
+                channel = channel,
+                reason = "presence-$cleanUserId"
+            )
+            refreshState()
+        }
+
+        val pollingJob = launch {
+            while (isActive) {
+                delay(12_000)
+                refreshState()
+            }
+        }
+
+        val statusJob = launch {
+            channel.status.collect { status ->
+                if (
+                    status == RealtimeChannel.Status.UNSUBSCRIBED ||
+                    status.name == "DISCONNECTED" ||
+                    status.name == "TIMED_OUT" ||
+                    status.name == "CLOSED"
+                ) {
+                    refreshState()
+                }
+            }
+        }
+
+        awaitClose {
+            collectorJob.cancel()
+            subscribeJob.cancel()
+            pollingJob.cancel()
+            statusJob.cancel()
+            launch {
+                runCatching { channel.unsubscribe() }
+            }
+        }
+    }.distinctUntilChanged { old, new ->
+        old.is_online == new.is_online &&
+            old.lastSeen == new.lastSeen &&
+            old.updated_at == new.updated_at
+    }.flowOn(Dispatchers.IO)
 
     private companion object {
         val NON_MENTIONABLE_STATUSES = setOf(
@@ -1608,3 +2495,8 @@ class UserRepository @Inject constructor(
         )
     }
 }
+
+
+
+
+

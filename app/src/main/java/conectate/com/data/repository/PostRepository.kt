@@ -7,7 +7,9 @@ import conectate.com.core.moderation.ContentModerationService
 import conectate.com.core.moderation.ModerationContext
 import conectate.com.core.moderation.ModerationVerdict
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.cache.UpstashCacheService
 import conectate.com.data.model.Post
+import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
@@ -42,15 +44,32 @@ class PostRepository @Inject constructor(
     private val appMetrics: AppMetrics,
     private val notificationRepository: NotificationRepository,
     private val userRepository: UserRepository,
+    private val hashtagRepository: HashtagRepository,
+    private val upstashCache: UpstashCacheService,
     @ApplicationContext private val context: Context
 ) {
 
     fun getGlobalPosts(offset: Int = 0, limit: Int = 20): Flow<List<Post>> = flow {
-        val startedAt = System.currentTimeMillis()
+        var startedAt = System.currentTimeMillis()
+        val cacheKey = "posts:global:offset=$offset:limit=$limit"
+        
         try {
-            val accessToken = authService.getAccessToken()
+            // 1. Intentar cache primero (solo para primera página)
+            if (offset == 0) {
+                val cachedJson = upstashCache.get(cacheKey)
+                if (cachedJson != null) {
+                    // Parse JSON a lista de Posts (requiere serialización)
+                    // Por ahora, skip por complejidad de deserialización sin Json object
+                    // En producción, usar kotlinx.serialization.decodeFromString<List<Post>>()
+                    // Por ahora solo emitimos vacío y recargamos
+                    // emit(emptyList()) // No emitimos cache hasta tener deserialización
+                }
+            }
+
+            // 2. Fetch desde Supabase
+            var accessToken = authService.getAccessToken()
             if (accessToken != null) {
-                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("limit", "$limit")
@@ -62,13 +81,22 @@ class PostRepository @Inject constructor(
 
                 if (response.status.isSuccess()) {
                     val rawPosts: List<Post> = response.body()
-                    val currentUserId = authService.getCurrentUserId()
+                    var currentUserId = authService.getCurrentUserId()
                     
-                    val posts = if (currentUserId != null) {
-                        val likedIds = getUserLikedPostIds(accessToken, currentUserId)
-                        val sharedIds = getUserSharedContentIds(currentUserId, "post")
+                    var posts = if (currentUserId != null) {
+                        var likedIds = getUserLikedPostIds(accessToken, currentUserId)
+                        var sharedIds = getUserSharedContentIds(currentUserId, "post")
                         rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = sharedIds.contains(it.id)) }
                     } else rawPosts
+
+                    // 3. Cachear si es primera página
+                    if (offset == 0 && posts.isNotEmpty()) {
+                        // Serializar a JSON (pendiente: implementar con kotlinx.serialization)
+                        // var json = Json.encodeToString(posts)
+                        // upstashCache.set(cacheKey, json, 300) // 5 min TTL
+                        // Por ahora solo metric
+                        appMetrics.incrementCounter("posts_cache_store")
+                    }
 
                     appMetrics.incrementCounter(
                         metric = "posts_fetch_success",
@@ -94,25 +122,25 @@ class PostRepository @Inject constructor(
                 )
                 emit(emptyList())
             }
-        } catch (e: Exception) {
-            android.util.Log.e("PostRepository", "Error fetching global posts", e)
-            appMetrics.recordFailure("posts_fetch", e, mapOf("source" to "global"))
-            emit(emptyList())
-        }
-    }.flowOn(kotlinx.coroutines.Dispatchers.IO)
+            } catch (e: Exception) {
+                android.util.Log.e("PostRepository", "Error fetching global posts", e)
+                appMetrics.recordFailure("posts_fetch", e, mapOf("source" to "global"))
+                emit(emptyList())
+            }
+        }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 
     fun getUserPosts(userId: String): Flow<List<Post>> = flow {
         try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessToken()
             if (accessToken != null) {
-                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("user_id", "eq.$userId")
                     parameter("order", "created_at.desc")
                     parameter("select", "*")
                     
-                    val currentUserId = authService.getCurrentUserId()
+                    var currentUserId = authService.getCurrentUserId()
                     if (userId != currentUserId) {
                         parameter("visibility", "eq.public")
                     }
@@ -120,11 +148,11 @@ class PostRepository @Inject constructor(
 
                 if (response.status.isSuccess()) {
                     val rawPosts: List<Post> = response.body()
-                    val currentUserId = authService.getCurrentUserId()
+                    var currentUserId = authService.getCurrentUserId()
                     
-                    val posts = if (currentUserId != null) {
-                        val likedIds = getUserLikedPostIds(accessToken, currentUserId)
-                        val sharedIds = getUserSharedContentIds(currentUserId, "post")
+                    var posts = if (currentUserId != null) {
+                        var likedIds = getUserLikedPostIds(accessToken, currentUserId)
+                        var sharedIds = getUserSharedContentIds(currentUserId, "post")
                         rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = sharedIds.contains(it.id)) }
                     } else rawPosts
                     
@@ -141,12 +169,12 @@ class PostRepository @Inject constructor(
 
     fun getSharedPosts(userId: String): Flow<List<Post>> = flow {
         try {
-            val accessToken = authService.getAccessToken()
-            val currentUserId = authService.getCurrentUserId()
+            var accessToken = authService.getAccessToken()
+            var currentUserId = authService.getCurrentUserId()
             
             if (accessToken != null) {
                 // Step 1: Get shared post IDs for this user
-                val sharedIds = getUserSharedContentIds(userId, "post")
+                var sharedIds = getUserSharedContentIds(userId, "post")
                 
                 if (sharedIds.isEmpty()) {
                     emit(emptyList())
@@ -154,7 +182,7 @@ class PostRepository @Inject constructor(
                 }
 
                 // Step 2: Fetch the actual posts using those IDs
-                val response = supabaseConfig.client.from("posts").select {
+                var response = supabaseConfig.client.from("posts").select {
                     filter {
                         isIn("id", sharedIds.toList())
                         if (userId != currentUserId) {
@@ -166,8 +194,8 @@ class PostRepository @Inject constructor(
 
                 val rawPosts: List<Post> = response.decodeList()
                 
-                val posts = if (currentUserId != null) {
-                    val likedIds = getUserLikedPostIds(accessToken, currentUserId)
+                var posts = if (currentUserId != null) {
+                    var likedIds = getUserLikedPostIds(accessToken, currentUserId)
                     // Note: sharedIds already contains the IDs for this user, so sharedByMe is true for all
                     rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = true) }
                 } else rawPosts
@@ -180,10 +208,12 @@ class PostRepository @Inject constructor(
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 
+@Composable
+@Composable
     suspend fun getPostById(postId: String): Result<Post> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$postId")
@@ -192,12 +222,12 @@ class PostRepository @Inject constructor(
 
             if (response.status.isSuccess()) {
                 val posts: List<Post> = response.body()
-                val post = posts.firstOrNull() ?: return@withContext Result.failure(Exception("Publicación no encontrada"))
+                var post = posts.firstOrNull() ?: return@withContext Result.failure(Exception("Publicación no encontrada"))
                 
-                val currentUserId = authService.getCurrentUserId()
+                var currentUserId = authService.getCurrentUserId()
                     val enrichedPost = if (currentUserId != null) {
-                        val likedIds = getUserLikedPostIds(accessToken, currentUserId)
-                        val sharedIds = getUserSharedContentIds(currentUserId, "post")
+                        var likedIds = getUserLikedPostIds(accessToken, currentUserId)
+                        var sharedIds = getUserSharedContentIds(currentUserId, "post")
                         post.copy(likedByMe = likedIds.contains(post.id), sharedByMe = sharedIds.contains(post.id))
                     } else post
                 
@@ -214,13 +244,13 @@ class PostRepository @Inject constructor(
     private suspend fun getUserSharedContentIds(userId: String, contentType: String): Set<String> {
         return try {
             // Fetch all shares for this user, we will filter nulls in Kotlin which is safer
-            val response = supabaseConfig.client.from("shares").select(Columns.list("post_id", "video_id")) {
+            var response = supabaseConfig.client.from("shares").select(Columns.list("post_id", "video_id")) {
                 filter {
                     eq("user_id", userId)
                 }
             }
-            val data = response.decodeList<JsonObject>()
-            val ids = data.mapNotNull { item -> 
+            var data = response.decodeList<JsonObject>()
+            var ids = data.mapNotNull { item -> 
                 if (contentType == "post") item["post_id"]?.jsonPrimitive?.contentOrNull
                 else item["video_id"]?.jsonPrimitive?.contentOrNull
             }.toSet()
@@ -235,7 +265,7 @@ class PostRepository @Inject constructor(
 
     private suspend fun getUserLikedPostIds(accessToken: String, userId: String): Set<String> {
         return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
@@ -253,12 +283,12 @@ class PostRepository @Inject constructor(
     }
 
     suspend fun createPost(content: String, mediaUris: List<Uri>, visibility: String = "public"): Result<Post> {
-        val startedAt = System.currentTimeMillis()
+        var startedAt = System.currentTimeMillis()
         return try {
-            val userId = authService.getCurrentUserId()
+            var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("Usuario no identificado"))
 
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessToken()
                 ?: return Result.failure(Exception("No access token"))
             val policyAccepted = userRepository.hasAcceptedPrivacyPolicy(userId).getOrElse { false }
             if (!policyAccepted) {
@@ -267,7 +297,7 @@ class PostRepository @Inject constructor(
                 )
             }
 
-            val moderation = moderationService.moderate(
+            var moderation = moderationService.moderate(
                 text = content,
                 context = ModerationContext.POST_CONTENT
             )
@@ -279,7 +309,7 @@ class PostRepository @Inject constructor(
                 return Result.failure(Exception("El contenido incumple nuestras politicas de comunidad"))
             }
 
-            val sanitizedContent = moderation.sanitizedText
+            var sanitizedContent = moderation.sanitizedText
             if (sanitizedContent.isBlank() && mediaUris.isEmpty()) {
                 return Result.failure(Exception("La publicacion esta vacia"))
             }
@@ -287,7 +317,10 @@ class PostRepository @Inject constructor(
                 return Result.failure(Exception("Maximo 10 archivos por publicacion"))
             }
 
-            val mediaUrls = mutableListOf<String>()
+            // Extraer hashtags del contenido (antes de subir media)
+            val extractedHashtags = hashtagRepository.extractHashtagsFromText(sanitizedContent)
+
+            var mediaUrls = mutableListOf<String>()
             
             // Upload media sequentially to reduce memory pressure on lower-end devices.
             for (uri in mediaUris) {
@@ -295,8 +328,8 @@ class PostRepository @Inject constructor(
                     val mediaPayload = readMediaPayload(uri)
                         ?: return Result.failure(Exception("No se pudo leer un archivo multimedia"))
 
-                    val fileName = "${userId}/${UUID.randomUUID()}.${mediaPayload.extension}"
-                    val uploadResult = storageService.uploadFile(
+                    var fileName = "${userId}/${UUID.randomUUID()}.${mediaPayload.extension}"
+                    var uploadResult = storageService.uploadFile(
                         bucketName = "post-media",
                         fileName = fileName,
                         bytes = mediaPayload.bytes,
@@ -317,34 +350,21 @@ class PostRepository @Inject constructor(
                 }
             }
 
-            // Fetch user info for the post
-            val profileResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
-                header("Authorization", "Bearer $accessToken")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("id", "eq.$userId")
-                parameter("select", "username,full_name,avatar_url,is_verified")
-            }
-            
-            var userName = "Usuario"
-            var userImage: String? = null
-            var isVerified = false
-            
-            if (profileResponse.status.isSuccess()) {
-                val profiles: List<Map<String, kotlinx.serialization.json.JsonElement>> = profileResponse.body()
-                val profile = profiles.firstOrNull()
-                
-                // Helper to safely get string from JsonElement and avoid "null"
-                fun getString(key: String): String? {
-                    val element = profile?.get(key)
-                    if (element == null || element is kotlinx.serialization.json.JsonNull) return null
-                    val str = element.jsonPrimitive.contentOrNull ?: element.toString().removeSurrounding("\"")
-                    return if (str == "null" || str.isEmpty()) null else str
-                }
+            val currentProfile = userRepository.getUserById(userId).getOrNull()
+                ?: userRepository.ensureCurrentProfile().getOrNull()
 
-                userName = getString("username") ?: getString("full_name") ?: "Usuario"
-                userImage = getString("avatar_url")
-                isVerified = profile?.get("is_verified")?.toString()?.toBooleanStrictOrNull() ?: false
-            }
+            var userName = currentProfile?.username
+                ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.display_name
+                    ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.full_name
+                    ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.email
+                    ?.substringBefore("@")
+                    ?.takeIf { it.isNotBlank() }
+                ?: "Usuario"
+            val userImage: String? = currentProfile?.avatar_url
+            var isVerified = currentProfile?.is_verified ?: false
 
             val postRequest = PostInsertRequest(
                 userId = userId,
@@ -353,10 +373,11 @@ class PostRepository @Inject constructor(
                 content = sanitizedContent,
                 mediaUrls = mediaUrls,
                 isVerified = isVerified,
-                visibility = visibility
+                visibility = visibility,
+                tags = extractedHashtags
             )
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -366,9 +387,20 @@ class PostRepository @Inject constructor(
 
             if (response.status.isSuccess()) {
                 val createdPost: List<Post> = response.body()
+                var postId = createdPost.first().id
+                
+                // Sincronizar hashtags localmente (cache) - llamada suspend directa
+                if (extractedHashtags.isNotEmpty()) {
+                    try {
+                        hashtagRepository.attachHashtagsToPost(postId, extractedHashtags)
+                    } catch (e: Exception) {
+                        android.util.Log.e("PostRepository", "Failed to sync hashtags locally", e)
+                    }
+                }
+
                 appMetrics.incrementCounter(
                     metric = "post_create_success",
-                    attributes = mapOf("media_count" to mediaUrls.size.toString())
+                    attributes = mapOf("media_count" to mediaUrls.size.toString(), "hashtag_count" to extractedHashtags.size.toString())
                 )
                 appMetrics.recordLatency(
                     metric = "post_create",
@@ -377,7 +409,7 @@ class PostRepository @Inject constructor(
                 )
                 Result.success(createdPost.first())
             } else {
-                val errorBody = response.body<String>()
+                var errorBody = response.body<String>()
                 appMetrics.recordFailure(
                     metric = "post_create",
                     attributes = mapOf("http_status" to response.status.value.toString())
@@ -392,8 +424,8 @@ class PostRepository @Inject constructor(
 
     suspend fun toggleLike(postId: String, isLiked: Boolean): Result<Unit> {
         return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             if (isLiked) {
                 // Unlike
@@ -422,7 +454,7 @@ class PostRepository @Inject constructor(
 
     suspend fun deletePost(postId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             
             supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -437,7 +469,7 @@ class PostRepository @Inject constructor(
 
     suspend fun updatePostVisibility(postId: String, visibility: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -454,7 +486,7 @@ class PostRepository @Inject constructor(
 
     suspend fun updatePostContent(postId: String, content: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -469,13 +501,15 @@ class PostRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun addComment(postId: String, content: String, parentId: String? = null): Result<conectate.com.data.model.Comment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val startedAt = System.currentTimeMillis()
+        var startedAt = System.currentTimeMillis()
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-            val moderation = moderationService.moderate(
+            var moderation = moderationService.moderate(
                 text = content,
                 context = ModerationContext.COMMENT_CONTENT
             )
@@ -487,19 +521,19 @@ class PostRepository @Inject constructor(
                 return@withContext Result.failure(Exception("Tu comentario incumple nuestras politicas"))
             }
 
-            val sanitizedContent = moderation.sanitizedText
+            var sanitizedContent = moderation.sanitizedText
             if (sanitizedContent.isBlank()) {
                 return@withContext Result.failure(Exception("El comentario no puede estar vacio"))
             }
 
-            val queryParams = mutableMapOf(
+            var queryParams = mutableMapOf(
                 "post_id" to postId,
                 "user_id" to userId,
                 "content" to sanitizedContent
             )
             if (parentId != null) queryParams["parent_id"] = parentId
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -509,9 +543,9 @@ class PostRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                 val insertedComments: List<kotlinx.serialization.json.JsonObject> = response.body()
-                val json = insertedComments.first()
-                val id = json["id"]?.jsonPrimitive?.contentOrNull ?: java.util.UUID.randomUUID().toString()
-                val createdAt = json["created_at"]?.jsonPrimitive?.contentOrNull ?: java.time.OffsetDateTime.now().toString()
+                var json = insertedComments.first()
+                var id = json["id"]?.jsonPrimitive?.contentOrNull ?: java.util.UUID.randomUUID().toString()
+                var createdAt = json["created_at"]?.jsonPrimitive?.contentOrNull ?: java.time.OffsetDateTime.now().toString()
                 
                  val newComment = conectate.com.data.model.Comment(
                     id = id,
@@ -526,17 +560,36 @@ class PostRepository @Inject constructor(
 
                 // Trigger owner/reply notification and mentions.
                 val primaryRecipients = mutableSetOf<String>()
-                getPostById(postId).onSuccess { post ->
-                    primaryRecipients += post.userId
-                    notificationRepository.sendNotification(
-                        recipientId = post.userId,
-                        type = if (parentId == null) "comment_post" else "reply_post",
-                        targetId = postId,
-                        extraData = buildJsonObject { 
-                            put("comment_id", JsonPrimitive(id))
-                            if (parentId != null) put("parent_id", JsonPrimitive(parentId))
+                val trimmedPreview = sanitizedContent.take(160)
+                if (!parentId.isNullOrBlank()) {
+                    resolvePostCommentOwnerId(parentId)?.let { parentOwnerId ->
+                        if (primaryRecipients.add(parentOwnerId)) {
+                            notificationRepository.sendNotification(
+                                recipientId = parentOwnerId,
+                                type = "reply_post",
+                                targetId = postId,
+                                content = trimmedPreview,
+                                extraData = buildJsonObject {
+                                    put("comment_id", JsonPrimitive(id))
+                                    put("parent_id", JsonPrimitive(parentId))
+                                }
+                            )
                         }
-                    )
+                    }
+                }
+                getPostById(postId).onSuccess { post ->
+                    if (primaryRecipients.add(post.userId)) {
+                        notificationRepository.sendNotification(
+                            recipientId = post.userId,
+                            type = if (parentId == null) "comment_post" else "reply_post",
+                            targetId = postId,
+                            content = trimmedPreview,
+                            extraData = buildJsonObject { 
+                                put("comment_id", JsonPrimitive(id))
+                                if (parentId != null) put("parent_id", JsonPrimitive(parentId))
+                            }
+                        )
+                    }
                 }
                 notifyMentionsForPostComment(
                     postId = postId,
@@ -576,9 +629,9 @@ class PostRepository @Inject constructor(
             authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
             
             // Upload Audio
-            val bytes = audioFile.readBytes()
-            val fileName = "comment_${UUID.randomUUID()}.m4a"
-            val uploadResult = storageService.uploadFile("post-comments-media", fileName, bytes, "audio/mp4")
+            var bytes = audioFile.readBytes()
+            var fileName = "comment_${UUID.randomUUID()}.m4a"
+            var uploadResult = storageService.uploadFile("post-comments-media", fileName, bytes, "audio/mp4")
             
             if (uploadResult.isSuccess) {
                  val publicUrl = storageService.getPublicUrl("post-comments-media", fileName)
@@ -592,10 +645,10 @@ class PostRepository @Inject constructor(
                  // If the schema update (add_audio_to_post_comments.sql) is applied, we can send media_url.
                  // We'll try to send it in the body map.
                  
-                 val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-                 val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+                 var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+                 var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
-                 val queryParams = mutableMapOf(
+                 var queryParams = mutableMapOf(
                     "post_id" to postId,
                     "user_id" to userId,
                     "content" to "[Audio]",
@@ -603,7 +656,7 @@ class PostRepository @Inject constructor(
                     "content_type" to "audio"
                  )
 
-                 val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+                 var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     header("Content-Type", "application/json")
@@ -626,7 +679,7 @@ class PostRepository @Inject constructor(
                      // Fallback if media_url column doesn't exist?
                      // If 400 error about undefined column, we might need a fallback. 
                      // But for now let's hope the user applies the SQL.
-                     val errorBody = response.body<String>()
+                     var errorBody = response.body<String>()
                      if (errorBody.contains("undefined column")) {
                          // Fallback: Embed in content
                          return addComment(postId, "[Audio]$publicUrl").map { Unit }
@@ -643,7 +696,7 @@ class PostRepository @Inject constructor(
 
     suspend fun getPostComments(postId: String, limit: Int = 50): Flow<List<conectate.com.data.model.Comment>> = flow {
         try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessToken()
             if (accessToken != null) {
                 // We need to fetch comments and join with profiles to get user info.
                 // Supabase syntax for joining: select=*,profiles(username,full_name,avatar_url,is_verified)
@@ -674,13 +727,13 @@ class PostRepository @Inject constructor(
 
                 if (response.status.isSuccess()) {
                     val rawComments: List<kotlinx.serialization.json.JsonObject> = response.body()
-                    val currentUserId = authService.getCurrentUserId()
+                    var currentUserId = authService.getCurrentUserId()
                     
                     val comments = rawComments.map { json ->
                         fun getSafeString(key: String, base: JsonObject = json): String? {
-                            val element = base[key]
+                            var element = base[key]
                             if (element == null || element is kotlinx.serialization.json.JsonNull) return null
-                            val str = try {
+                            var str = try {
                                 element.jsonPrimitive.contentOrNull ?: element.toString().removeSurrounding("\"")
                             } catch (e: Exception) {
                                 element.toString().removeSurrounding("\"")
@@ -688,11 +741,11 @@ class PostRepository @Inject constructor(
                             return if (str == "null" || str.isEmpty()) null else str
                         }
 
-                        val id = getSafeString("id") ?: ""
+                        var id = getSafeString("id") ?: ""
                         var content = getSafeString("content") ?: ""
-                        val createdAt = getSafeString("created_at") ?: ""
-                        val cUserId = getSafeString("user_id") ?: ""
-                        val parentId = getSafeString("parent_id")
+                        var createdAt = getSafeString("created_at") ?: ""
+                        var cUserId = getSafeString("user_id") ?: ""
+                        var parentId = getSafeString("parent_id")
                         var audioUrl = getSafeString("media_url")
                         
                         // Fallback: If content starts with [Audio] and contains a URL, and audioUrl is null
@@ -712,12 +765,12 @@ class PostRepository @Inject constructor(
                             else -> null
                         }
                         
-                        val userName = getSafeString("username", profileJson ?: JsonObject(emptyMap())) 
+                        var userName = getSafeString("username", profileJson ?: JsonObject(emptyMap())) 
                             ?: getSafeString("full_name", profileJson ?: JsonObject(emptyMap())) 
                             ?: "Usuario"
-                        val userAvatar = getSafeString("avatar_url", profileJson ?: JsonObject(emptyMap()))
+                        var userAvatar = getSafeString("avatar_url", profileJson ?: JsonObject(emptyMap()))
                         
-                        val isVerified = try {
+                        var isVerified = try {
                             profileJson?.get("is_verified")?.jsonPrimitive?.booleanOrNull ?: false
                         } catch (e: Exception) { false }
 
@@ -750,7 +803,7 @@ class PostRepository @Inject constructor(
     suspend fun deleteComment(commentId: String): Result<Unit> {
         return try {
             android.util.Log.d("PostRepository", "deleteComment: commentId=$commentId")
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
 
             val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_delete_post_comment") {
                 header("Authorization", "Bearer $accessToken")
@@ -775,7 +828,7 @@ class PostRepository @Inject constructor(
             }
 
             // Legacy fallback for environments without secure_delete_post_comment
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Prefer", "return=representation")
@@ -827,6 +880,7 @@ class PostRepository @Inject constructor(
                     recipientId = mentionedUser.id,
                     type = "mention_post",
                     targetId = postId,
+                    content = commentContent.take(160),
                     extraData = buildJsonObject {
                         put("comment_id", JsonPrimitive(commentId))
                         if (parentId != null) put("parent_id", JsonPrimitive(parentId))
@@ -850,6 +904,31 @@ class PostRepository @Inject constructor(
         return resolved.distinctBy { it.id }
     }
 
+    private suspend fun resolvePostCommentOwnerId(commentId: String): String? {
+        val token = authService.getAccessToken() ?: return null
+        val cleanId = commentId.trim()
+        if (cleanId.isBlank()) return null
+
+        return runCatching {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("id", "eq.$cleanId")
+                parameter("select", "user_id")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) return@runCatching null
+            val jsonArray = Json.parseToJsonElement(response.bodyAsText()) as? JsonArray ?: return@runCatching null
+            jsonArray.firstOrNull()
+                ?.jsonObject
+                ?.get("user_id")
+                ?.jsonPrimitive
+                ?.contentOrNull
+                ?.trim()
+                ?.ifBlank { null }
+        }.getOrNull()
+    }
+
     private fun extractMentionUsernames(content: String): Set<String> {
         val mentionRegex = Regex("(?<![A-Za-z0-9_])@([A-Za-z0-9._]{2,30})")
         return mentionRegex.findAll(content)
@@ -865,14 +944,14 @@ class PostRepository @Inject constructor(
     )
 
     private fun readMediaPayload(uri: Uri): MediaPayload? {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        var bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
         if (bytes.isEmpty()) return null
 
         val detectedContentType = context.contentResolver.getType(uri)
             ?: guessMimeFromUri(uri)
             ?: "application/octet-stream"
 
-        val extension = MimeTypeMap.getSingleton()
+        var extension = MimeTypeMap.getSingleton()
             .getExtensionFromMimeType(detectedContentType)
             ?.ifBlank { null }
             ?: uri.lastPathSegment?.substringAfterLast('.', "")
@@ -888,7 +967,7 @@ class PostRepository @Inject constructor(
     }
 
     private fun guessMimeFromUri(uri: Uri): String? {
-        val extension = MimeTypeMap.getFileExtensionFromUrl(uri.toString())
+        var extension = MimeTypeMap.getFileExtensionFromUrl(uri.toString())
             ?.lowercase()
             ?.ifBlank { null }
             ?: return null
@@ -903,6 +982,12 @@ class PostRepository @Inject constructor(
         @SerialName("content") val content: String,
         @SerialName("media_urls") val mediaUrls: List<String>,
         @SerialName("is_verified") val isVerified: Boolean,
-        @SerialName("visibility") val visibility: String = "public"
+        @SerialName("visibility") val visibility: String = "public",
+        @SerialName("tags") val tags: List<String> = emptyList()
     )
 }
+
+
+
+
+

@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import conectate.com.core.concurrency.DispatcherProvider
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.observability.AppMetrics
@@ -24,14 +25,13 @@ import conectate.com.domain.sync.CommunitySyncDataSource
 import conectate.com.domain.sync.GroupSyncDataSource
 import conectate.com.util.NetworkConnectivityObserver
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,26 +52,45 @@ class SyncManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
+    private val scope = newSafeScope("SyncManager", dispatchers.io)
     private val syncMutex = Mutex()
+    private val started = AtomicBoolean(false)
     private val lastSyncTriggerAt = AtomicLong(0L)
 
     fun start() {
+        if (!started.compareAndSet(false, true)) {
+            logger.d(TAG, "start ignored: SyncManager already initialized")
+            return }
         scheduleWorker()
         observeNetwork()
         observeSession()
     }
 
     fun triggerSync(reason: String = "manual") {
-        scheduleImmediateWorker(reason)
-
         val now = System.currentTimeMillis()
         val last = lastSyncTriggerAt.get()
-        if (now - last < MIN_TRIGGER_INTERVAL_MS) {
-            logger.d(TAG, "Skipping in-process sync; request came too soon ($reason)")
+        var normalizedReason = reason.trim().lowercase()
+        val bypassThrottle =
+            normalizedReason == "network_available" ||
+                normalizedReason.contains("reconnect") ||
+                normalizedReason.endsWith("_retry") ||
+                normalizedReason == "ui_retry"
+        if (!bypassThrottle && now - last < MIN_TRIGGER_INTERVAL_MS) {
+            logger.d(TAG, "Skipping in-process sync request came too soon ($reason)")
+            return }
+
+        if (!networkObserver.isNetworkAvailable()) {
+            logger.d(TAG, "Skipping sync trigger no internet ($reason)")
+            return }
+
+        var userId = authService.getCurrentUserId()
+        if (userId.isNullOrBlank()) {
+            logger.d(TAG, "Skipping sync trigger no authenticated user ($reason)")
             return
         }
+
         lastSyncTriggerAt.set(now)
+        scheduleImmediateWorker(reason)
 
         scope.launch {
             runCatching { syncNow(reason) }
@@ -86,11 +105,11 @@ class SyncManager @Inject constructor(
     }
 
     fun scheduleWorker() {
-        val constraints = Constraints.Builder()
+        var constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(
+        var request = PeriodicWorkRequestBuilder<SyncWorker>(
             RECURRING_SYNC_INTERVAL_MINUTES,
             TimeUnit.MINUTES
         )
@@ -119,7 +138,7 @@ class SyncManager @Inject constructor(
             return
         }
 
-        val userId = authService.getCurrentUserId()
+        var userId = authService.getCurrentUserId()
         if (userId == null) {
             logger.d(TAG, "syncNow skipped: no authenticated user ($reason)")
             return
@@ -138,13 +157,13 @@ class SyncManager @Inject constructor(
 
             val failures = mutableListOf<String>()
 
-            val retriedMessages = chatSyncDataSource.retryPendingMessages().getOrElse { error ->
+            var retriedMessages = chatSyncDataSource.retryPendingMessages().getOrElse { error ->
                 failures += "retryPendingMessages:${error.message.orEmpty()}"
                 logger.w(TAG, "retryPendingMessages failed", error)
                 0
             }
 
-            val retriedDeletes = chatSyncDataSource.retryPendingDeletes().getOrElse { error ->
+            var retriedDeletes = chatSyncDataSource.retryPendingDeletes().getOrElse { error ->
                 failures += "retryPendingDeletes:${error.message.orEmpty()}"
                 logger.w(TAG, "retryPendingDeletes failed", error)
                 0
@@ -172,7 +191,7 @@ class SyncManager @Inject constructor(
                 failures += "syncCommunities"
             }
 
-            val durationMs = System.currentTimeMillis() - startedAt
+            var durationMs = System.currentTimeMillis() - startedAt
             val success = failures.isEmpty()
 
             telemetry.track(
@@ -237,8 +256,8 @@ class SyncManager @Inject constructor(
                 )
 
                 if (connected) {
-                    // Small delay avoids race right when network transitions to validated.
-                    delay(500)
+                    // The observer already waits for a validated connection, so keep this short.
+                    delay(150)
                     triggerSync(reason = "network_available")
                 }
             }
@@ -248,7 +267,7 @@ class SyncManager @Inject constructor(
     private fun observeSession() {
         scope.launch {
             authService.observeSession().collectLatest { session ->
-                val userId = session?.user?.id?.trim()?.lowercase()
+                var userId = session?.user?.id?.trim()?.lowercase()
                 crashReporter.setUserId(userId)
 
                 if (!userId.isNullOrBlank()) {
@@ -259,11 +278,11 @@ class SyncManager @Inject constructor(
     }
 
     private fun scheduleImmediateWorker(reason: String) {
-        val constraints = Constraints.Builder()
+        var constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+        var request = OneTimeWorkRequestBuilder<SyncWorker>()
             .setInputData(workDataOf(SYNC_REASON_KEY to reason))
             .setConstraints(constraints)
             .setBackoffCriteria(
@@ -292,3 +311,6 @@ class SyncManager @Inject constructor(
         const val SYNC_REASON_KEY = "sync_reason"
     }
 }
+
+
+

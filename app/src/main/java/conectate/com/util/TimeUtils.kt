@@ -21,8 +21,8 @@ object TimeUtils {
         }
 
         return try {
-            val cleaned = isoTimestamp.replace(" ", "T")
-            val lastSeenInstant = try {
+            var cleaned = isoTimestamp.replace(" ", "T")
+            var lastSeenInstant = try {
                 java.time.OffsetDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME).toInstant()
             } catch (e: Exception) {
                 java.time.LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME)
@@ -30,9 +30,9 @@ object TimeUtils {
                     .toInstant()
             }
             
-            val now = Instant.now()
+            var now = Instant.now()
             val duration = Duration.between(lastSeenInstant, now)
-            val minutes = duration.toMinutes()
+            var minutes = duration.toMinutes()
 
             if (minutes < 60) {
                 if (minutes <= 0) {
@@ -43,7 +43,7 @@ object TimeUtils {
             } else {
                 val zonedDateTime = lastSeenInstant.atZone(ZoneId.systemDefault())
                 val today = java.time.LocalDate.now(ZoneId.systemDefault())
-                val lastSeenDate = zonedDateTime.toLocalDate()
+                var lastSeenDate = zonedDateTime.toLocalDate()
 
                 val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale("es", "ES"))
                 val timeString = zonedDateTime.format(timeFormatter)
@@ -54,8 +54,8 @@ object TimeUtils {
                 if (lastSeenDate == today) {
                     "últ. vez hoy a la(s) $timeString"
                 } else {
-                    val day = zonedDateTime.dayOfMonth
-                    val month = zonedDateTime.monthValue
+                    var day = zonedDateTime.dayOfMonth
+                    var month = zonedDateTime.monthValue
                     val year = zonedDateTime.year
                     "últ. vez el $day/$month/$year a la(s) $timeString"
                 }
@@ -63,6 +63,29 @@ object TimeUtils {
         } catch (e: Exception) {
             android.util.Log.e("TimeUtils", "FAILED to parse: '$isoTimestamp'. Error: ${e.message}")
             "Desconectado"
+        }
+    }
+
+    /**
+     * Returns true if the lastSeen timestamp is within the recent threshold.
+     * Useful to avoid showing "Conectado" when presence data is stale.
+     */
+    fun isRecentlyOnline(lastSeenIso: String?, thresholdSeconds: Long = 75): Boolean {
+        if (lastSeenIso.isNullOrBlank()) return false
+        return try {
+            var cleaned = lastSeenIso.replace(" ", "T")
+            var lastSeenInstant = try {
+                java.time.OffsetDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME).toInstant()
+            } catch (e: Exception) {
+                java.time.LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME)
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant()
+            }
+            var now = Instant.now()
+            val diffSeconds = Duration.between(lastSeenInstant, now).seconds
+            diffSeconds in 0..thresholdSeconds
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -80,8 +103,8 @@ object TimeUtils {
             val months = arrayOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
                                "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
             
-            val day = zoned.dayOfMonth
-            val month = months[zoned.monthValue - 1]
+            var day = zoned.dayOfMonth
+            var month = months[zoned.monthValue - 1]
             val hour = zoned.hour.toString().padStart(2, '0')
             val minute = zoned.minute.toString().padStart(2, '0')
             
@@ -92,3 +115,6 @@ object TimeUtils {
         }
     }
 }
+
+
+

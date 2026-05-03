@@ -20,8 +20,8 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import conectate.com.presentation.navigation.Screen
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
+
+
 fun ChangePasswordScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()
@@ -146,3 +146,8 @@ fun ChangePasswordScreen(
         }
     }
 }
+
+
+
+
+

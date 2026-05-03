@@ -11,12 +11,14 @@ data class ChatWithUserProfile(
     )
     val user: UserEntity?
 ) {
-    fun toDomainWithDetails(): conectate.com.data.model.ChatWithLastMessage {
-        val lastMessage = if (chat.last_message_preview != null) {
+    fun toDomainWithDetails(
+        lastMessageOverride: conectate.com.data.model.Message? = null
+    ): conectate.com.data.model.ChatWithLastMessage {
+        var lastMessage = lastMessageOverride ?: if (chat.last_message_preview != null) {
             conectate.com.data.model.Message(
-                id = java.util.UUID.randomUUID().toString(),
+                id = chat.last_message_id ?: java.util.UUID.randomUUID().toString(),
                 chat_id = chat.id,
-                sender_id = "", 
+                sender_id = chat.last_message_sender_id ?: "",
                 content = chat.last_message_preview,
                 content_type = "text",
                 created_at = chat.last_message_timestamp ?: "",
@@ -40,3 +42,6 @@ data class ChatWithUserProfile(
         )
     }
 }
+
+
+

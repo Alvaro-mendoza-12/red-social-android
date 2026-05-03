@@ -56,7 +56,10 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace :app:qualityGateDebug
 
       - name: Run SQL security audit
-        run: python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+        run: python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+
+      - name: Run runtime security audit
+        run: python tools/runtime_security_audit.py --root . --report build/reports/security/runtime_security_audit.md --json build/reports/security/runtime_security_audit.json --fail-threshold HIGH
 
       - name: Upload lint and test reports
         if: always()
@@ -70,6 +73,8 @@ jobs:
             app/build/test-results/testDebugUnitTest
             build/reports/security/sql_security_audit.md
             build/reports/security/sql_security_audit.json
+            build/reports/security/runtime_security_audit.md
+            build/reports/security/runtime_security_audit.json
           if-no-files-found: warn
 
   release-smoke:
@@ -113,11 +118,11 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build release smoke artifact
-        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+      - name: Build release smoke artifacts
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
 
       - name: Check performance budgets
-        run: python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+        run: python tools/performance_budget_check.py --artifacts app/build/outputs/apk/release app/build/outputs/bundle/release/app-release.aab --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
 
       - name: Upload release performance reports
         if: always()

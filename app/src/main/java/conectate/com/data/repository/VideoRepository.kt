@@ -1,17 +1,20 @@
 package conectate.com.data.repository
 
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Video
 import conectate.com.data.model.VideoComment
 import conectate.com.data.model.VideoReport
+import conectate.com.data.cache.UpstashCacheService
+import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,7 +26,12 @@ import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.filter.*
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.*
@@ -31,16 +39,24 @@ import kotlin.io.readBytes
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import conectate.com.data.supabase.StorageService
+import java.io.File
 import java.util.UUID
 import conectate.com.data.local.dao.VideoStatsDao
 import conectate.com.util.VideoUtils
+import conectate.com.util.VideoWatermarkExporter
+import conectate.com.util.VideoWatermarkDetector
 import conectate.com.data.local.dao.VideoCommentDao
 import conectate.com.data.local.entity.VideoStatsEntity
 import conectate.com.data.local.entity.VideoCommentEntity
+import conectate.com.core.observability.AppMetrics
 import io.github.jan.supabase.realtime.*
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
@@ -78,6 +94,9 @@ class VideoRepository @Inject constructor(
     private val videoCommentDao: VideoCommentDao,
     private val notificationRepository: NotificationRepository,
     private val userRepository: UserRepository,
+    private val hashtagRepository: HashtagRepository,
+    private val upstashCache: UpstashCacheService,
+    private val appMetrics: AppMetrics,
     @ApplicationContext private val context: Context
 ) {
     /**
@@ -86,12 +105,18 @@ class VideoRepository @Inject constructor(
      * Lives for the lifetime of this Singleton repository
      * Can be cancelled if needed for cleanup
      */
-    private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val repositoryScope = newSafeScope("VideoRepository", Dispatchers.IO)
+    private val commentSubscriptionsMutex = Mutex()
+    private val statsSubscriptionsMutex = Mutex()
+    private val activeCommentSubscriptionJobs = mutableMapOf<String, Job>()
+    private val activeCommentCollectors = mutableMapOf<String, Int>()
+    private val activeStatsSubscriptionJobs = mutableMapOf<String, Job>()
+    private val activeStatsCollectors = mutableMapOf<String, Int>()
 
     private fun getSafeString(key: String, base: JsonObject): String? {
-        val element = base[key]
+        var element = base[key]
         if (element == null || element is kotlinx.serialization.json.JsonNull) return null
-        val str = try {
+        var str = try {
             element.jsonPrimitive.contentOrNull ?: element.toString().removeSurrounding("\"")
         } catch (e: Exception) {
             element.toString().removeSurrounding("\"")
@@ -99,235 +124,107 @@ class VideoRepository @Inject constructor(
         return if (str == "null" || str.isEmpty()) null else str
     }
 
+    private suspend fun fetchPublicVideosPage(offset: Int, limit: Int): List<Video> {
+        var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Authorization", "Bearer ${supabaseConfig.supabaseAnonKey}")
+            parameter(
+                "select",
+                "id,user_id,user_name,user_profile_image,title,description,video_url,thumbnail_url," +
+                    "duration,views,like_count,comment_count,share_count,country,city,created_at,updated_at," +
+                    "is_public,tags,is_verified"
+            )
+            parameter("is_public", "eq.true")
+            parameter("order", "created_at.desc")
+            parameter("limit", limit)
+            parameter("offset", offset)
+        }
+
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Public video feed request failed with ${response.status.value}")
+        }
+
+        return response.body()
+    }
+
     fun getVideos(offset: Int = 0, limit: Int = 20, random: Boolean = false): Flow<List<Video>> = flow {
-        try {
-            val videosResponse = supabaseConfig.client.from("videos")
-                .select {
-                    filter {
-                        eq("is_public", true)
-                    }
-                    order("created_at", Order.DESCENDING)
-                    limit(limit.toLong())
-                    range(offset.toLong(), (offset + limit - 1).toLong())
-                }
-            
-            val rawVideos: List<Video> = videosResponse.decodeList()
-            val currentUserId = authService.getCurrentUserId()
-
-            var videos = if (rawVideos.isNotEmpty()) {
-                coroutineScope {
-                    val userIds = rawVideos.map { it.userId }.distinct()
-                    val profilesResponse = supabaseConfig.client.from("profiles")
-                        .select(Columns.list("id", "is_verified")) {
-                            filter {
-                                isIn("id", userIds)
-                            }
-                        }
-                    
-                    val profileData = try {
-                        profilesResponse.decodeList<JsonObject>()
-                    } catch (e: Exception) { emptyList<JsonObject>() }
-
-                    val verifications = profileData.associate {
-                        it["id"]?.jsonPrimitive?.contentOrNull to (it["is_verified"]?.jsonPrimitive?.booleanOrNull ?: false)
-                    }
-
-                    rawVideos.map { video ->
-                        val isV = verifications[video.userId] ?: false
-                        video.copy(isVerified = isV)
-                    }
-                }
-            } else rawVideos
-
-            if (currentUserId != null) {
-                val accessToken = authService.getAccessToken() ?: ""
-                val likedIds = getUserLikedVideoIds(accessToken, currentUserId)
-                val sharedIds = getUserSharedContentIds(currentUserId, "video")
-                val realCounts = fetchRealLikeCounts(videos.map { it.id })
-                
-                videos = videos.map { 
-                    it.copy(
-                        likedByMe = likedIds.contains(it.id),
-                        sharedByMe = sharedIds.contains(it.id),
-                        likeCount = realCounts[it.id] ?: it.likeCount
-                    ) 
-                }
-            }
-
-            if (random) {
-                videos = videos.shuffled()
-            }
-
-            emit(videos)
-        } catch (e: Exception) {
-            android.util.Log.e("VideoRepository", "Error fetching videos", e)
-            emit(emptyList()) 
-        }
-    }
-
-    private suspend fun fetchRealLikeCounts(videoIds: List<String>): Map<String, Int> {
-        if (videoIds.isEmpty()) return emptyMap()
-        return try {
-            val accessToken = authService.getAccessToken() ?: ""
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
-                header("Authorization", "Bearer $accessToken")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("video_id", "in.(${videoIds.joinToString(",")})")
-                parameter("select", "video_id")
-            }
-            if (response.status.isSuccess()) {
-                val likes: List<Map<String, String>> = response.body()
-                likes.mapNotNull { it["video_id"] }
-                    .groupBy { it }
-                    .mapValues { it.value.size }
-            } else emptyMap()
-        } catch (e: Exception) { 
-            android.util.Log.e("VideoRepository", "Error fetching real like counts", e)
-            emptyMap() 
-        }
-    }
-
-    private suspend fun getUserLikedVideoIds(accessToken: String, userId: String): Set<String> {
-        return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
-                header("Authorization", "Bearer $accessToken")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("user_id", "eq.$userId")
-                parameter("select", "video_id")
-            }
-            if (response.status.isSuccess()) {
-                val likes: List<Map<String, String>> = response.body()
-                likes.mapNotNull { it["video_id"] }.toSet()
-            } else {
-                emptySet()
-            }
-        } catch (e: Exception) {
-            emptySet()
-        }
-    }
-
-    private suspend fun getUserSharedContentIds(userId: String, contentType: String): Set<String> {
-        return try {
-             // Fetch all shares for this user, we will filter nulls in Kotlin which is safer
-            val response = supabaseConfig.client.from("shares").select(Columns.list("post_id", "video_id")) {
-                filter {
-                    eq("user_id", userId)
-                }
-            }
-            val data = response.decodeList<JsonObject>()
-            val ids = data.mapNotNull { 
-                if (contentType == "post") it["post_id"]?.jsonPrimitive?.contentOrNull
-                else it["video_id"]?.jsonPrimitive?.contentOrNull
-            }.toSet()
-            
-            android.util.Log.d("VideoRepository", "getUserSharedContentIds: Found ${ids.size} shared items for type $contentType")
-            ids
-        } catch (e: Exception) {
-            android.util.Log.e("VideoRepository", "getUserSharedContentIds: Exception", e)
-            emptySet()
-        }
-    }
-
-
-    fun getUserVideos(userId: String): Flow<List<Video>> = flow {
-        try {
-            val response = supabaseConfig.client.from("videos")
-                .select {
-                    filter {
-                        eq("user_id", userId)
-                        val currentId = authService.getCurrentUserId()
-                        if (userId != currentId) {
-                            eq("is_public", true)
-                        }
-                    }
-                    order("created_at", order = Order.DESCENDING)
-                }
-            
-            var videos: List<Video> = response.decodeList()
-            val currentUserId = authService.getCurrentUserId()
-            if (currentUserId != null) {
-                val accessToken = authService.getAccessToken() ?: ""
-                val likedIds = getUserLikedVideoIds(accessToken, currentUserId)
-                val sharedIds = getUserSharedContentIds(currentUserId, "video")
-                val realCounts = fetchRealLikeCounts(videos.map { it.id })
-
-                videos = videos.map { 
-                    it.copy(
-                        likedByMe = likedIds.contains(it.id),
-                        sharedByMe = sharedIds.contains(it.id),
-                        likeCount = realCounts[it.id] ?: it.likeCount
-                    ) 
-                }
-            }
-            emit(videos)
-        } catch (e: Exception) {
-            android.util.Log.e("VideoRepository", "Error fetching user videos", e)
-            emit(emptyList())
-        }
-    }
-
-    fun getSharedVideos(userId: String): Flow<List<Video>> = callbackFlow<List<Video>> {
-        val channel = supabaseConfig.client.realtime.channel("shared_videos_$userId")
+        val startedAt = System.currentTimeMillis()
+        val cacheKey = "videos:public:offset=$offset:limit=$limit:random=$random"
         
-        suspend fun fetchAndEmit() {
-            try {
-                val currentUserId = authService.getCurrentUserId()
-                val sharedIds = getUserSharedContentIds(userId, "video")
-                
-                if (sharedIds.isEmpty()) {
-                    trySend(emptyList<Video>())
-                    return
-                }
-
-                val response = supabaseConfig.client.from("videos").select {
-                    filter { isIn("id", sharedIds.toList()) }
-                    order("created_at", order = Order.DESCENDING)
-                }
-
-                val rawVideos: List<Video> = response.decodeList()
-                val videos = if (currentUserId != null) {
-                    rawVideos.map { it.copy(sharedByMe = true) }
-                } else rawVideos
-                
-                trySend(videos)
-            } catch (e: Exception) {
-                android.util.Log.e("VideoRepository", "Error fetching shared videos in flow", e)
-                trySend(emptyList<Video>())
-            }
-        }
-
-        // 1. Initial Fetch
-        launch { fetchAndEmit() }
-
-        // 2. Setup Realtime Listener
-        val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-            this.table = "shares"
-            this.filter = "user_id=eq.$userId"
-        }
-
-        val job = launch {
-            changes.collect {
-                fetchAndEmit()
-            }
-        }
-
-        channel.subscribe()
-
-        awaitClose {
-            job.cancel()
-            launch {
-                try {
-                    channel.unsubscribe()
-                } catch (e: Exception) {
-                    android.util.Log.e("VideoRepository", "Error in unsubscribe", e)
+        try {
+            // Intentar cache primero
+            if (offset == 0 && !random) {
+                val cached = upstashCache.get(cacheKey)
+                if (cached != null) {
+                    // TODO: deserializar JSON a List<Video>
+                    // Por ahora emitimos vacío y continuamos
+                    // emit(emptyList())
                 }
             }
+
+            var accessToken = authService.getAccessToken()
+            if (accessToken != null) {
+                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+                    header("Authorization", "Bearer $accessToken")
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    parameter("limit", limit.toString())
+                    parameter("offset", offset.toString())
+                    if (random) {
+                        // Para "random" o "for you", usar order random()
+                        parameter("order", "RANDOM()")
+                    } else {
+                        parameter("order", "created_at.desc")
+                    }
+                    parameter("select", "*")
+                    parameter("is_public", "eq.true")
+                }
+
+                if (response.status.isSuccess()) {
+                    val videos: List<Video> = response.body()
+                    
+                    // Cache primeras páginas
+                    if (offset == 0 && !random && videos.isNotEmpty()) {
+                        // val json = Json.encodeToString(videos)
+                        // upstashCache.set(cacheKey, json, 300) // 5 min
+                        appMetrics.incrementCounter("videos_cache_store")
+                    }
+
+                    appMetrics.incrementCounter(
+                        metric = "videos_fetch_success",
+                        attributes = mapOf("source" to "public", "count" to videos.size.toString())
+                    )
+                    appMetrics.recordLatency(
+                        metric = "videos_fetch",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = mapOf("source" to "public")
+                    )
+                    emit(videos)
+                } else {
+                    appMetrics.recordFailure(
+                        metric = "videos_fetch",
+                        attributes = mapOf("source" to "public", "http_status" to response.status.value.toString())
+                    )
+                    emit(emptyList())
+                }
+            } else {
+                appMetrics.recordFailure(
+                    metric = "videos_fetch",
+                    attributes = mapOf("source" to "public", "reason" to "no_token")
+                )
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("VideoRepository", "Error fetching public videos", e)
+            appMetrics.recordFailure("videos_fetch", e, mapOf("source" to "public"))
+            emit(emptyList())
         }
     }.flowOn(Dispatchers.IO)
 
+@Composable
+@Composable
     suspend fun getVideo(videoId: String): Result<Video> = withContext(Dispatchers.IO) {
         try {
-            val video = supabaseConfig.client.from("videos").select {
+            var video = supabaseConfig.client.from("videos").select {
                 filter { eq("id", videoId) }
             }.decodeList<Video>().firstOrNull() ?: throw Exception("Video not found")
 
@@ -337,8 +234,8 @@ class VideoRepository @Inject constructor(
                     filter { eq("id", video.userId) }
                 }
             
-            val isVerified = try {
-                 val data = profileResponse.decodeList<JsonObject>().firstOrNull()
+            var isVerified = try {
+                 var data = profileResponse.decodeList<JsonObject>().firstOrNull()
                  data?.get("is_verified")?.jsonPrimitive?.booleanOrNull ?: false
             } catch (e: Exception) { false }
 
@@ -352,7 +249,11 @@ class VideoRepository @Inject constructor(
 
     fun getFollowingVideos(): Flow<List<Video>> = flow {
         try {
-            val currentUserId = authService.getCurrentUserId() ?: run { emit(emptyList()); return@flow }
+            val currentUserId = authService.getCurrentUserId()
+            if (currentUserId == null) {
+                emit(emptyList())
+                return@flow
+            }
 
             val idResponse = supabaseConfig.client.from("follows")
                 .select(Columns.list("following_id")) {
@@ -362,7 +263,7 @@ class VideoRepository @Inject constructor(
                 }
             
             val followingIds = try {
-                val data = idResponse.decodeList<JsonObject>()
+                var data = idResponse.decodeList<JsonObject>()
                 data.mapNotNull { it["following_id"]?.jsonPrimitive?.contentOrNull }
             } catch(e: Exception) {
                 emptyList<String>()
@@ -379,7 +280,7 @@ class VideoRepository @Inject constructor(
                     }
                 
                 var videos: List<Video> = videoResponse.decodeList()
-                val sharedIds = getUserSharedContentIds(currentUserId, "video")
+                var sharedIds = getUserSharedContentIds(currentUserId, "video")
                 videos = videos.map { it.copy(sharedByMe = sharedIds.contains(it.id)) }
                 emit(videos)
             } else {
@@ -394,18 +295,34 @@ class VideoRepository @Inject constructor(
     suspend fun uploadVideo(
         title: String,
         description: String,
-        videoUri: VideoUriType, // Placeholder name if I can't know the exact type, but it's Uri
+        videoUri: VideoUriType,
         thumbnailUri: android.net.Uri?,
         isPublic: Boolean,
         tags: List<String>
     ): Result<String> {
         return try {
-            val userId = authService.getCurrentUserId()
+            var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("Usuario no identificado"))
             val policyAccepted = userRepository.hasAcceptedPrivacyPolicy(userId).getOrElse { false }
             if (!policyAccepted) {
                 return Result.failure(
-                    Exception("Debes aceptar las políticas de privacidad desde Configuración > Políticas de privacidad antes de subir videos.")
+                    Exception("Debes aceptar las políticas de privacidad antes de subir videos.")
+                )
+            }
+
+            // Extraer hashtags de la descripción si no se proveyeron tags
+            val finalTags = if (tags.isNotEmpty()) {
+                tags
+            } else {
+                hashtagRepository.extractHashtagsFromText(description)
+            }
+
+            val watermarkDetection = VideoWatermarkDetector.detect(context, videoUri)
+            if (watermarkDetection != null) {
+                return Result.failure(
+                    Exception(
+                        "Marca de agua detectada: ${watermarkDetection.brand}. Descarga el video sin marca de agua antes de subirlo."
+                    )
                 )
             }
 
@@ -461,45 +378,41 @@ class VideoRepository @Inject constructor(
                 }
             }
 
-            // 2.5 Fetch User Profile to get Name and Image (crucial for some DB schemas)
-            var userNameStr = ""
-            var userImageStr = ""
-            var isVerifiedVal = false
-            try {
-                val profileResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
-                    header("Authorization", "Bearer ${authService.getAccessToken()}")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    parameter("id", "eq.$userId")
-                    parameter("select", "full_name,username,avatar_url,is_verified")
-                }
-                if (profileResponse.status.isSuccess()) {
-                    val profiles: List<kotlinx.serialization.json.JsonObject> = profileResponse.body()
-                    val profile = profiles.firstOrNull()
-                    userNameStr = getSafeString("username", profile ?: JsonObject(emptyMap())) 
-                        ?: getSafeString("full_name", profile ?: JsonObject(emptyMap())) ?: ""
-                    userImageStr = getSafeString("avatar_url", profile ?: JsonObject(emptyMap())) ?: ""
-                    isVerifiedVal = profile?.get("is_verified")?.jsonPrimitive?.booleanOrNull ?: false
-                }
-            } catch (e: Exception) { e.printStackTrace() }
+            val currentProfile = userRepository.getUserById(userId).getOrNull()
+                ?: userRepository.ensureCurrentProfile().getOrNull()
+
+            val userNameStr = currentProfile?.username
+                ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.display_name
+                    ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.full_name
+                    ?.takeIf { it.isNotBlank() }
+                ?: currentProfile?.email
+                    ?.substringBefore("@")
+                    ?.takeIf { it.isNotBlank() }
+                ?: "Usuario"
+            val userImageStr = currentProfile?.avatar_url.orEmpty()
+            val isVerifiedVal = currentProfile?.is_verified ?: false
 
             // 3. Save Metadata
             // Using DTO for robust serialization
+            var videoId = UUID.randomUUID().toString()
             val videoRequest = VideoInsertRequest(
-                id = UUID.randomUUID().toString(),
+                id = videoId,
                 title = title,
                 description = description,
                 videoUrl = videoPublicUrl,
                 thumbnailUrl = thumbPublicUrl,
                 userId = userId,
                 isPublic = isPublic,
-                tags = tags,
+                tags = finalTags,
                 username = userNameStr,
                 userProfileImage = userImageStr,
                 isVerified = isVerifiedVal
             )
 
             // Insert into Supabase 'videos' table
-             val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  header("Content-Type", "application/json")
@@ -507,27 +420,122 @@ class VideoRepository @Inject constructor(
                  setBody(videoRequest)
              }
              
-             if (response.status.isSuccess()) {
-                 // 4. Increment user's post_count
-                 try {
-                     supabaseConfig.httpClient.post(
-                         "${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_post_count"
-                     ) {
-                         header("apikey", supabaseConfig.supabaseAnonKey)
-                         header("Authorization", "Bearer ${authService.getAccessToken()}")
-                         header("Content-Type", "application/json")
-                         setBody(mapOf("user_id" to userId))
-                     }
-                 } catch (e: Exception) {
-                     android.util.Log.e("VideoRepository", "Failed to increment post_count", e)
-                 }
-                 
-                 Result.success("Video publicado exitosamente")
-             } else {
-                 val errorBody = response.body<String>()
+              if (response.status.isSuccess()) {
+                  var videoId = UUID.randomUUID().toString() // Ya generado arriba en videoRequest
+                  
+                  // 4. Increment user's post_count
+                  try {
+                      supabaseConfig.httpClient.post(
+                          "${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_post_count"
+                      ) {
+                          header("apikey", supabaseConfig.supabaseAnonKey)
+                          header("Authorization", "Bearer ${authService.getAccessToken()}")
+                          header("Content-Type", "application/json")
+                          setBody(mapOf("user_id" to userId))
+                      }
+                  } catch (e: Exception) {
+                      android.util.Log.e("VideoRepository", "Failed to increment post_count", e)
+                  }
+                  
+                  // 5. Sincronizar hashtags localmente (cache) - NO bloquea UI
+                  if (finalTags.isNotEmpty()) {
+                      repositoryScope.launch {
+                          try {
+                              hashtagRepository.attachHashtagsToVideo(videoId, finalTags)
+                          } catch (e: Exception) {
+                              android.util.Log.e("VideoRepository", "Failed to sync hashtags locally", e)
+                          }
+                      }
+                  }
+                  
+                  Result.success("Video publicado exitosamente")
+              } else {
+                 var errorBody = response.body<String>()
                  Result.failure(Exception("Error guardando metadatos: ${response.status} - $errorBody"))
              }
         } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+@Composable
+@Composable
+    suspend fun downloadVideoToGallery(video: Video): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            var response = supabaseConfig.httpClient.get(video.videoUrl)
+            if (!response.status.isSuccess()) {
+                return@withContext Result.failure(
+                    Exception("No se pudo descargar el video (${response.status.value}).")
+                )
+            }
+
+            val bytes: ByteArray = response.body()
+            if (bytes.isEmpty()) {
+                return@withContext Result.failure(Exception("El video descargado está vacío."))
+            }
+
+            val sourceFile = File(context.cacheDir, "download_${System.currentTimeMillis()}.mp4")
+            sourceFile.outputStream().use { stream ->
+                stream.write(bytes)
+                stream.flush()
+            }
+
+            val watermarkedFile = VideoWatermarkExporter.exportWithBrandWatermark(
+                context = context,
+                inputFile = sourceFile,
+                userName = video.userName
+            ).getOrElse { error ->
+                sourceFile.delete()
+                return@withContext Result.failure(error)
+            }
+
+            val safeUserName = sanitizeDownloadFilePart(video.userName.ifBlank { "usuario" })
+            var filename = "Conectate_@${safeUserName}_${System.currentTimeMillis()}.mp4"
+            val relativePath = "${Environment.DIRECTORY_MOVIES}/Conectate"
+            val finalBytes = watermarkedFile.readBytes()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    put(MediaStore.MediaColumns.TITLE, "Conectate @${video.userName}")
+                    put(MediaStore.Video.Media.DESCRIPTION, "Video descargado desde Conectate | @${video.userName}")
+                }
+
+                val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return@withContext Result.failure(Exception("No se pudo crear el archivo en galería."))
+
+                resolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(finalBytes)
+                    stream.flush()
+                } ?: return@withContext Result.failure(Exception("No se pudo escribir el video descargado."))
+
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            } else {
+                val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                val conectateDir = java.io.File(moviesDir, "Conectate").apply {
+                    if (!exists()) {
+                        mkdirs()
+                    }
+                }
+                val outputFile = java.io.File(conectateDir, filename)
+                outputFile.outputStream().use { stream ->
+                    stream.write(finalBytes)
+                    stream.flush()
+                }
+            }
+
+            sourceFile.delete()
+            watermarkedFile.delete()
+
+            Result.success(filename)
+        } catch (e: Exception) {
+            android.util.Log.e("VideoRepository", "Error downloading video", e)
             Result.failure(e)
         }
     }
@@ -560,10 +568,12 @@ class VideoRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun searchVideos(query: String): Result<List<Video>> = withContext(Dispatchers.IO) {
         try {
             // Using Postgrest 'or' for Title OR Description OR Tags
-            val response = supabaseConfig.client.from("videos").select {
+            var response = supabaseConfig.client.from("videos").select {
                 filter {
                     val q = "%$query%"
                     or {
@@ -583,7 +593,7 @@ class VideoRepository @Inject constructor(
             // Enrich with verification status (consistent with getVideos)
             if (rawVideos.isEmpty()) return@withContext Result.success(emptyList())
 
-            val userIds = rawVideos.map { it.userId }.distinct()
+            var userIds = rawVideos.map { it.userId }.distinct()
             val profilesResponse = supabaseConfig.client.from("profiles")
                 .select(Columns.list("id", "is_verified")) {
                     filter { isIn("id", userIds) }
@@ -595,9 +605,9 @@ class VideoRepository @Inject constructor(
                 }
             } catch (e: Exception) { emptyMap() }
 
-            val currentUserId = authService.getCurrentUserId()
-            val likes = if (currentUserId != null) {
-                val accessToken = authService.getAccessToken() ?: ""
+            var currentUserId = authService.getCurrentUserId()
+            var likes = if (currentUserId != null) {
+                var accessToken = authService.getAccessToken() ?: ""
                 getUserLikedVideoIds(accessToken, currentUserId)
             } else emptySet()
 
@@ -617,10 +627,10 @@ class VideoRepository @Inject constructor(
 
     suspend fun getVideoById(videoId: String): Result<Video> {
         return try {
-            val accessToken = authService.getAccessToken()
+            var accessToken = authService.getAccessToken()
                 ?: return Result.failure(Exception("No access token available"))
 
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$videoId")
@@ -633,10 +643,10 @@ class VideoRepository @Inject constructor(
                     ?: return Result.failure(Exception("Video not found"))
                 
                 // Set liked and shared status
-                val currentUserId = authService.getCurrentUserId()
+                var currentUserId = authService.getCurrentUserId()
                 if (currentUserId != null) {
                     val likedIds = getUserLikedVideoIds(accessToken, currentUserId)
-                    val sharedIds = getUserSharedContentIds(currentUserId, "video")
+                    var sharedIds = getUserSharedContentIds(currentUserId, "video")
                     video = video.copy(
                         likedByMe = likedIds.contains(video.id),
                         sharedByMe = sharedIds.contains(video.id)
@@ -654,10 +664,10 @@ class VideoRepository @Inject constructor(
 
     suspend fun incrementViews(videoId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() // RPC might work with anon too if configured, but auth is safer
+            var accessToken = authService.getAccessToken() // RPC might work with anon too if configured, but auth is safer
             
             // Use RPC to bypass RLS UPDATE restriction for views
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_video_views") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_video_views") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 if (accessToken != null) {
                     header("Authorization", "Bearer $accessToken")
@@ -682,32 +692,58 @@ class VideoRepository @Inject constructor(
     }
 }
 
-    fun getCommentsFlow(videoId: String): Flow<List<VideoComment>> = kotlinx.coroutines.flow.channelFlow {
+    fun getCommentsFlow(videoId: String): Flow<List<VideoComment>> = callbackFlow {
         android.util.Log.d("VideoRepository", "getCommentsFlow called for videoId: $videoId")
-        // 1. Initial Fetch (Async)
-        launch { 
-            android.util.Log.d("VideoRepository", "Launching initial network fetch for comments")
-            refreshCommentsFromNetwork(videoId) 
+        acquireCommentSubscription(videoId)
+
+        val roomJob = launch {
+            android.util.Log.d("VideoRepository", "Starting to collect from Room for videoId: $videoId")
+            videoCommentDao.getCommentsFlow(videoId).collect { entities ->
+                android.util.Log.d("VideoRepository", "Room emitted ${entities.size} comments for videoId: $videoId")
+                trySend(entities.map { it.toDomain() })
+            }
         }
 
-        // 2. Realtime Subscription (Async)
-        launch { 
-            android.util.Log.d("VideoRepository", "Launching Realtime subscription for comments")
-            subscribeToVideoComments(videoId) 
+        awaitClose {
+            roomJob.cancel()
+            repositoryScope.launch {
+                releaseCommentSubscription(videoId)
+            }
         }
-        
-        // 3. Emit local data from Room
-        android.util.Log.d("VideoRepository", "Starting to collect from Room for videoId: $videoId")
-        videoCommentDao.getCommentsFlow(videoId).collect { entities ->
-            android.util.Log.d("VideoRepository", "Room emitted ${entities.size} comments for videoId: $videoId")
-            send(entities.map { it.toDomain() })
+    }.distinctUntilChanged()
+
+    private suspend fun acquireCommentSubscription(videoId: String) {
+        commentSubscriptionsMutex.withLock {
+            var currentCollectors = activeCommentCollectors[videoId] ?: 0
+            activeCommentCollectors[videoId] = currentCollectors + 1
+            if (currentCollectors == 0) {
+                activeCommentSubscriptionJobs[videoId] = repositoryScope.launch {
+                    refreshCommentsFromNetwork(videoId)
+                    subscribeToVideoComments(videoId)
+                }
+            }
         }
+    }
+
+    private suspend fun releaseCommentSubscription(videoId: String) {
+        var jobToCancel = commentSubscriptionsMutex.withLock {
+            var currentCollectors = activeCommentCollectors[videoId] ?: return@withLock null
+            var remainingCollectors = currentCollectors - 1
+            if (remainingCollectors > 0) {
+                activeCommentCollectors[videoId] = remainingCollectors
+                null
+            } else {
+                activeCommentCollectors.remove(videoId)
+                activeCommentSubscriptionJobs.remove(videoId)
+            }
+        }
+        jobToCancel?.cancel()
     }
 
     private suspend fun refreshCommentsFromNetwork(videoId: String) {
         try {
             android.util.Log.d("VideoRepository", "Fetching comments from network for videoId: $videoId")
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 if (authService.getAccessToken() != null) {
                     header("Authorization", "Bearer ${authService.getAccessToken()}")
@@ -719,7 +755,7 @@ class VideoRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
-                val comments = response.body<List<VideoComment>>()
+                var comments = response.body<List<VideoComment>>()
                 android.util.Log.d("VideoRepository", "Fetched ${comments.size} comments from network")
                 val entities = comments.map { VideoCommentEntity.fromDomain(it) }
                 videoCommentDao.deleteCommentsByVideo(videoId)
@@ -733,6 +769,8 @@ class VideoRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     private suspend fun subscribeToVideoComments(videoId: String) {
         android.util.Log.d("VideoRepository", "Starting Realtime subscription for video: $videoId")
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -747,14 +785,17 @@ class VideoRepository @Inject constructor(
                     this.filter = "video_id=eq.$videoId"
                 }
 
-                realtimeChannel.subscribe()
+                supabaseConfig.subscribeRealtimeChannel(
+                    channel = realtimeChannel,
+                    reason = "video-comments-$videoId"
+                )
                 android.util.Log.d("VideoRepository", "Subscribed to Realtime channel for video: $videoId")
 
                 commentFlow.collect { change ->
                     android.util.Log.d("VideoRepository", "Realtime change received: ${change::class.simpleName}")
                     when (change) {
                         is PostgresAction.Insert -> {
-                            val comment = change.decodeRecord<VideoComment>()
+                            var comment = change.decodeRecord<VideoComment>()
                             // Insert into Room
                             repositoryScope.launch {
                                 videoCommentDao.insertComment(VideoCommentEntity.fromDomain(comment))
@@ -762,7 +803,7 @@ class VideoRepository @Inject constructor(
                             }
                         }
                         is PostgresAction.Delete -> {
-                            val id = change.oldRecord["id"]?.jsonPrimitive?.contentOrNull
+                            var id = change.oldRecord["id"]?.jsonPrimitive?.contentOrNull
                             if (id != null) {
                                 repositoryScope.launch {
                                     videoCommentDao.deleteComment(id)
@@ -773,6 +814,9 @@ class VideoRepository @Inject constructor(
                         else -> {}
                     }
                 }
+            } catch (e: CancellationException) {
+                android.util.Log.d("VideoRepository", "Comments subscription cancelled for video: $videoId")
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("VideoRepository", "Error in Realtime subscription for video: $videoId", e)
                 kotlinx.coroutines.delay(3000)
@@ -790,89 +834,136 @@ class VideoRepository @Inject constructor(
         android.util.Log.d("VideoRepository", "Realtime subscription ended for video: $videoId")
     }
 
-    fun getVideoStatsFlow(videoId: String): Flow<VideoStatsEntity?> = kotlinx.coroutines.flow.channelFlow {
-        // 1. Initial Fetch
-        launch { 
-            val realLikes = getRealLikeCount(videoId)
-            val realComments = getRealCommentCount(videoId)
-            val realViews = getRealViewCount(videoId)
-            val realShares = getRealShareCount(videoId)
+    fun getVideoStatsFlow(videoId: String): Flow<VideoStatsEntity?> = callbackFlow {
+        acquireStatsSubscription(videoId)
 
-            // Update initial state
-            videoStatsDao.insertStats(
-                VideoStatsEntity(
-                    videoId = videoId,
-                    likeCount = realLikes,
-                    commentCount = realComments,
-                    viewCount = realViews,
-                    shareCount = realShares
-                )
-            )
+        val statsJob = launch {
+            videoStatsDao.getStatsFlow(videoId).collect {
+                trySend(it)
+            }
         }
 
-        // 2. Realtime Subscription (Likes & Comments)
-        launch {
-            subscribeToVideoStats(videoId)
+        awaitClose {
+            statsJob.cancel()
+            repositoryScope.launch {
+                releaseStatsSubscription(videoId)
+            }
         }
-        
-        // 3. Emit local data
-        videoStatsDao.getStatsFlow(videoId).collect {
-            send(it)
+    }.distinctUntilChanged()
+
+    private suspend fun acquireStatsSubscription(videoId: String) {
+        statsSubscriptionsMutex.withLock {
+            var currentCollectors = activeStatsCollectors[videoId] ?: 0
+            activeStatsCollectors[videoId] = currentCollectors + 1
+            if (currentCollectors == 0) {
+                activeStatsSubscriptionJobs[videoId] = repositoryScope.launch {
+                    refreshVideoStatsFromNetwork(videoId)
+                    subscribeToVideoStats(videoId)
+                }
+            }
         }
     }
 
-    private suspend fun subscribeToVideoStats(videoId: String) {
-        val channel = supabaseConfig.client.realtime.channel("video_stats_$videoId")
-        
-        try {
-            channel.subscribe()
-            
-            kotlinx.coroutines.coroutineScope {
-                // Listen for changes in 'videos' table (like_count, views, comment_count)
-                launch {
-                    val videoStatsChanges = channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
-                        this.table = "videos"
-                        this.filter = "id=eq.$videoId"
-                    }
-                    
-                    videoStatsChanges.collect { update ->
-                        val rawData = update.record
-                        val views = rawData["views"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                        val likeCount = rawData["like_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                        val commentCount = rawData["comment_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                        val shareCount = rawData["share_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                        
-                        android.util.Log.d("VideoRepository", "Stats update received for $videoId: views=$views, likes=$likeCount, shares=$shareCount")
-                        updateLocalVideoStats(videoId, views, likeCount, commentCount, shareCount)
-                    }
-                }
+    private suspend fun releaseStatsSubscription(videoId: String) {
+        var jobToCancel = statsSubscriptionsMutex.withLock {
+            var currentCollectors = activeStatsCollectors[videoId] ?: return@withLock null
+            var remainingCollectors = currentCollectors - 1
+            if (remainingCollectors > 0) {
+                activeStatsCollectors[videoId] = remainingCollectors
+                null
+            } else {
+                activeStatsCollectors.remove(videoId)
+                activeStatsSubscriptionJobs.remove(videoId)
+            }
+        }
+        jobToCancel?.cancel()
+    }
 
-                // Listen for individual likes/unlikes to trigger a refresh of the exact count
-                launch {
-                    val likeChanges = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                        this.table = "video_likes"
-                        this.filter = "video_id=eq.$videoId"
+    private suspend fun refreshVideoStatsFromNetwork(videoId: String) {
+        val realLikes = getRealLikeCount(videoId)
+        val realComments = getRealCommentCount(videoId)
+        val realViews = getRealViewCount(videoId)
+        val realShares = getRealShareCount(videoId)
+
+        videoStatsDao.insertStats(
+            VideoStatsEntity(
+                videoId = videoId,
+                likeCount = realLikes,
+                commentCount = realComments,
+                viewCount = realViews,
+                shareCount = realShares
+            )
+        )
+    }
+
+@Composable
+@Composable
+    private suspend fun subscribeToVideoStats(videoId: String) {
+        while (currentCoroutineContext().isActive) {
+            var channel = supabaseConfig.client.realtime.channel("video_stats_$videoId")
+
+            try {
+                supabaseConfig.subscribeRealtimeChannel(
+                    channel = channel,
+                    reason = "video-stats-$videoId"
+                )
+
+                kotlinx.coroutines.coroutineScope {
+                    launch {
+                        val videoStatsChanges = channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+                            this.table = "videos"
+                            this.filter = "id=eq.$videoId"
+                        }
+
+                        videoStatsChanges.collect { update ->
+                            val rawData = update.record
+                            var views = rawData["views"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                            var likeCount = rawData["like_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                            var commentCount = rawData["comment_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                            var shareCount = rawData["share_count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+
+                            android.util.Log.d("VideoRepository", "Stats update received for $videoId: views=$views, likes=$likeCount, shares=$shareCount")
+                            updateLocalVideoStats(videoId, views, likeCount, commentCount, shareCount)
+                        }
                     }
-                    
-                    likeChanges.collect { _ ->
-                        val newCount = getRealLikeCount(videoId)
-                        if (newCount >= 0) {
-                            val current = videoStatsDao.getStats(videoId) ?: VideoStatsEntity(videoId)
-                            videoStatsDao.insertStats(current.copy(likeCount = newCount))
+
+                    launch {
+                        val likeChanges = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                            this.table = "video_likes"
+                            this.filter = "video_id=eq.$videoId"
+                        }
+
+                        likeChanges.collect {
+                            var newCount = getRealLikeCount(videoId)
+                            if (newCount >= 0) {
+                                var current = videoStatsDao.getStats(videoId) ?: VideoStatsEntity(videoId)
+                                videoStatsDao.insertStats(current.copy(likeCount = newCount))
+                            }
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                android.util.Log.d(
+                    "VideoRepository",
+                    "subscribeToVideoStats cancelled for $videoId: ${e.javaClass.simpleName}"
+                )
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("VideoRepository", "Error in subscribeToVideoStats for $videoId", e)
+                delay(3000)
+                refreshVideoStatsFromNetwork(videoId)
+            } finally {
+                runCatching { channel.unsubscribe() }
+                    .onFailure { unsubscribeError ->
+                        android.util.Log.e("VideoRepository", "Error unsubscribing video stats channel for $videoId", unsubscribeError)
+                    }
             }
-        } catch (e: Exception) {
-            android.util.Log.e("VideoRepository", "Error in subscribeToVideoStats for $videoId", e)
-        } finally {
-            channel.unsubscribe()
         }
     }
 
     private suspend fun getRealLikeCount(videoId: String): Int {
          return try {
-             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
+             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  parameter("video_id", "eq.$videoId")
@@ -881,15 +972,18 @@ class VideoRepository @Inject constructor(
                  parameter("limit", "1")
              }
              if (response.status.isSuccess()) {
-                 val contentRange = response.headers["Content-Range"]
+                 var contentRange = response.headers["Content-Range"]
                  contentRange?.substringAfterLast("/")?.toIntOrNull() ?: 0
              } else 0
+         } catch (e: CancellationException) {
+             android.util.Log.d("VideoRepository", "Like count refresh cancelled for $videoId")
+             throw e
          } catch (e: Exception) { 0 }
     }
 
     private suspend fun getRealCommentCount(videoId: String): Int {
          return try {
-             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
+             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  parameter("video_id", "eq.$videoId")
@@ -898,29 +992,35 @@ class VideoRepository @Inject constructor(
                  parameter("limit", "1")
              }
              if (response.status.isSuccess()) {
-                 val contentRange = response.headers["Content-Range"]
+                 var contentRange = response.headers["Content-Range"]
                  contentRange?.substringAfterLast("/")?.toIntOrNull() ?: 0
              } else 0
+         } catch (e: CancellationException) {
+             android.util.Log.d("VideoRepository", "Comment count refresh cancelled for $videoId")
+             throw e
          } catch (e: Exception) { 0 }
     }
 
     private suspend fun getRealViewCount(videoId: String): Int {
          return try {
-             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  parameter("id", "eq.$videoId")
                  parameter("select", "views")
              }
              if (response.status.isSuccess()) {
-                 val videos = response.body<List<Map<String, Int>>>()
-                 val views = videos.firstOrNull()?.get("views") ?: 0
+                 var videos = response.body<List<Map<String, Int>>>()
+                 var views = videos.firstOrNull()?.get("views") ?: 0
                  android.util.Log.d("VideoRepository", "Fetched views for $videoId: $views")
                  views
              } else {
                  android.util.Log.e("VideoRepository", "Failed to fetch views for $videoId: ${response.status}")
                  0
              }
+         } catch (e: CancellationException) {
+             android.util.Log.d("VideoRepository", "View count refresh cancelled for $videoId")
+             throw e
          } catch (e: Exception) {
              android.util.Log.e("VideoRepository", "Exception fetching views for $videoId", e)
              0 
@@ -929,16 +1029,19 @@ class VideoRepository @Inject constructor(
 
     private suspend fun getRealShareCount(videoId: String): Int {
          return try {
-             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  parameter("id", "eq.$videoId")
                  parameter("select", "share_count")
              }
              if (response.status.isSuccess()) {
-                 val videos = response.body<List<Map<String, Int>>>()
+                 var videos = response.body<List<Map<String, Int>>>()
                  videos.firstOrNull()?.get("share_count") ?: 0
              } else 0
+         } catch (e: CancellationException) {
+             android.util.Log.d("VideoRepository", "Share count refresh cancelled for $videoId")
+             throw e
          } catch (e: Exception) { 0 }
     }
 
@@ -950,11 +1053,14 @@ class VideoRepository @Inject constructor(
         parentId: String? = null
     ): Result<Unit> {
         return try {
-            android.util.Log.d("VideoRepository", "addComment called for videoId=$videoId, content=$content")
-            val accessToken = authService.getAccessToken()
+            android.util.Log.d(
+                "VideoRepository",
+                "addComment called for videoId=$videoId, contentType=$contentType, contentLength=${content.length}"
+            )
+            var accessToken = authService.getAccessToken()
                 ?: return Result.failure(Exception("No access token available"))
 
-            val userId = authService.getCurrentUserId()
+            var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user ID available"))
 
             // Fetch User Profile for metadata
@@ -976,18 +1082,17 @@ class VideoRepository @Inject constructor(
                          ?: getSafeString("full_name", p ?: JsonObject(emptyMap()))
                          ?: "Usuario"
                      userAvatar = getSafeString("avatar_url", p ?: JsonObject(emptyMap())) ?: ""
-                     android.util.Log.d("VideoRepository", "User profile fetched: userName=$userName")
+                     android.util.Log.d("VideoRepository", "User profile fetched for video comment author")
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideoRepository", "Error fetching user profile", e)
             }
 
-            val commentId = java.util.UUID.randomUUID().toString()
+            var commentId = java.util.UUID.randomUUID().toString()
             
-            // Log exactly what we are about to send
-            android.util.Log.d("VideoRepository", "Sending comment for video: $videoId, user: $userId")
+            android.util.Log.d("VideoRepository", "Sending video comment for videoId=$videoId with commentId=$commentId")
             
-            val data = buildJsonObject {
+            var data = buildJsonObject {
                 put("id", commentId)
                 put("video_id", videoId)
                 put("user_id", userId)
@@ -1015,7 +1120,7 @@ class VideoRepository @Inject constructor(
 
             // FALLBACK: If 'content' is undefined, try 'comment' (just in case)
             if (response.status.value == 400) {
-                val errorBody = response.body<String>()
+                var errorBody = response.body<String>()
                 if (errorBody.contains("undefined column: 'content'")) {
                     android.util.Log.w("VideoRepository", "Column 'content' undefined, trying 'comment' fallback...")
                     
@@ -1048,7 +1153,7 @@ class VideoRepository @Inject constructor(
             android.util.Log.d("VideoRepository", "Supabase response status: ${response.status}")
             if (response.status.isSuccess()) {
                 val rawBody = response.body<String>()
-                android.util.Log.d("VideoRepository", "Supabase response body: $rawBody")
+                android.util.Log.d("VideoRepository", "Video comment insert succeeded for commentId=$commentId")
                 
                 try {
                     val insertedComments = Json { ignoreUnknownKeys = true; isLenient = true }.decodeFromString<List<VideoComment>>(rawBody)
@@ -1072,17 +1177,36 @@ class VideoRepository @Inject constructor(
                     
                     // Trigger owner/reply notification and mentions.
                     val primaryRecipients = mutableSetOf<String>()
-                    getVideo(videoId).onSuccess { video ->
-                        primaryRecipients += video.userId
-                        notificationRepository.sendNotification(
-                            recipientId = video.userId,
-                            type = if (parentId == null) "comment_video" else "reply_video",
-                            targetId = videoId,
-                            extraData = buildJsonObject { 
-                                put("comment_id", JsonPrimitive(commentId))
-                                if (parentId != null) put("parent_id", JsonPrimitive(parentId))
+                    val trimmedPreview = content.trim().take(160)
+                    if (!parentId.isNullOrBlank()) {
+                        resolveVideoCommentOwnerId(parentId)?.let { parentOwnerId ->
+                            if (primaryRecipients.add(parentOwnerId)) {
+                                notificationRepository.sendNotification(
+                                    recipientId = parentOwnerId,
+                                    type = "reply_video",
+                                    targetId = videoId,
+                                    content = trimmedPreview,
+                                    extraData = buildJsonObject { 
+                                        put("comment_id", JsonPrimitive(commentId))
+                                        put("parent_id", JsonPrimitive(parentId))
+                                    }
+                                )
                             }
-                        )
+                        }
+                    }
+                    getVideo(videoId).onSuccess { video ->
+                        if (primaryRecipients.add(video.userId)) {
+                            notificationRepository.sendNotification(
+                                recipientId = video.userId,
+                                type = if (parentId == null) "comment_video" else "reply_video",
+                                targetId = videoId,
+                                content = trimmedPreview,
+                                extraData = buildJsonObject { 
+                                    put("comment_id", JsonPrimitive(commentId))
+                                    if (parentId != null) put("parent_id", JsonPrimitive(parentId))
+                                }
+                            )
+                        }
                     }
                     notifyMentionsForVideoComment(
                         videoId = videoId,
@@ -1100,8 +1224,11 @@ class VideoRepository @Inject constructor(
                     Result.success(Unit)
                 }
             } else {
-                val errorBody = response.body<String>()
-                android.util.Log.e("VideoRepository", "Final Supabase error: ${response.status} - $errorBody")
+                var errorBody = response.body<String>()
+                android.util.Log.e(
+                    "VideoRepository",
+                    "Final Supabase error while adding comment: ${response.status} - ${errorBody.take(200)}"
+                )
                 Result.failure(Exception("Supabase error: ${response.status} - $errorBody"))
             }
 
@@ -1118,7 +1245,7 @@ class VideoRepository @Inject constructor(
             
             // Upload Audio
             val bytes = audioFile.readBytes()
-            val fileName = "comment_${UUID.randomUUID()}.m4a"
+            var filename = "comment_${UUID.randomUUID()}.m4a"
             android.util.Log.d("VideoRepository", "Uploading audio file: $fileName, size=${bytes.size} bytes")
             val uploadResult = storageService.uploadFile("video-comments-media", fileName, bytes, "audio/mp4")
             
@@ -1133,7 +1260,7 @@ class VideoRepository @Inject constructor(
                      mediaUrl = publicUrl
                  )
             } else {
-                val error = uploadResult.exceptionOrNull() ?: Exception("Upload failed")
+                var error = uploadResult.exceptionOrNull() ?: Exception("Upload failed")
                 android.util.Log.e("VideoRepository", "Audio upload failed: ${error.message}", error)
                 return Result.failure(error)
             }
@@ -1150,10 +1277,10 @@ class VideoRepository @Inject constructor(
 
     suspend fun deleteComment(commentId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             android.util.Log.d("VideoRepository", "Deleting comment from Supabase: $commentId")
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_delete_video_comment") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_delete_video_comment") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1166,7 +1293,7 @@ class VideoRepository @Inject constructor(
             val deletedRemotely = if (rpcResponse.status.isSuccess()) {
                 true
             } else if (missingRpc) {
-                val fallbackResponse = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
+                var fallbackResponse = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("id", "eq.$commentId")
@@ -1192,13 +1319,13 @@ class VideoRepository @Inject constructor(
 
     suspend fun likeVideo(videoId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
 
             val likeData = mapOf("video_id" to videoId, "user_id" to userId)
             
             // Insert into video_likes
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
                  header("Authorization", "Bearer $accessToken")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  header("Content-Type", "application/json") // ✅ FIX: Added missing Content-Type header
@@ -1214,7 +1341,7 @@ class VideoRepository @Inject constructor(
                 
                 Result.success(Unit)
             } else {
-                val errorBody = try { response.body<String>() } catch (e: Exception) { "" }
+                var errorBody = try { response.body<String>() } catch (e: Exception) { "" }
                 // Ignore duplicate key error (already liked)
                 if (errorBody.contains("duplicate key") || errorBody.contains("23505")) {
                     Result.success(Unit)
@@ -1227,10 +1354,10 @@ class VideoRepository @Inject constructor(
 
     suspend fun unlikeVideo(videoId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
 
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
                  header("Authorization", "Bearer $accessToken")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  header("Prefer", "return=representation")
@@ -1257,10 +1384,10 @@ class VideoRepository @Inject constructor(
 
     private suspend fun incrementLikeCount(videoId: String, delta: Int) {
          try {
-            val accessToken = authService.getAccessToken() ?: return
+            var accessToken = authService.getAccessToken() ?: return
             
             // Use RPC for atomic update (avoids race conditions)
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_like_count") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_like_count") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1297,14 +1424,14 @@ class VideoRepository @Inject constructor(
 
     suspend fun incrementShareCount(videoId: String, delta: Int): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
 
             val rpcParams = buildJsonObject {
                 put("video_id", videoId)
                 put("delta", delta)
             }
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_share_count") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_share_count") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1327,7 +1454,7 @@ class VideoRepository @Inject constructor(
                 }
                 Result.success(Unit)
             } else {
-                val error = response.bodyAsText()
+                var error = response.bodyAsText()
                 android.util.Log.e("VideoRepository", "incrementShareCount: FAILED status=${response.status}, error=$error")
                 Result.failure(Exception("Error incrementando compartidos: ${response.status.value}"))
             }
@@ -1339,9 +1466,9 @@ class VideoRepository @Inject constructor(
 
     suspend fun hasReportedVideo(videoId: String): Result<Boolean> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("video_id", "eq.$videoId")
@@ -1362,19 +1489,19 @@ class VideoRepository @Inject constructor(
 
     suspend fun submitVideoReport(videoId: String, reason: String, details: String?): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
             val normalizedReason = reason.trim()
             if (normalizedReason.isBlank()) {
                 return Result.failure(Exception("El motivo del reporte es obligatorio"))
             }
 
-            val rpcPayload = buildJsonObject {
+            var rpcPayload = buildJsonObject {
                 put("p_video_id", JsonPrimitive(videoId))
                 put("p_reason", JsonPrimitive(normalizedReason))
                 put("p_details", JsonPrimitive(details?.trim().orEmpty()))
             }
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_submit_video_report") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_submit_video_report") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1385,7 +1512,7 @@ class VideoRepository @Inject constructor(
                 return Result.success(Unit)
             }
 
-            val rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+            var rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
             if (!isMissingRpcFunction(rpcResponse.status.value, rpcError, "secure_submit_video_report")) {
                 if (rpcError.contains("SELF_REPORT_FORBIDDEN", ignoreCase = true)) {
                     return Result.failure(Exception("No puedes reportar tu propio video"))
@@ -1397,7 +1524,7 @@ class VideoRepository @Inject constructor(
             }
 
             // Fallback for projects without RPC deployed yet.
-            val video = getVideo(videoId).getOrNull() ?: return Result.failure(Exception("Video no encontrado"))
+            var video = getVideo(videoId).getOrNull() ?: return Result.failure(Exception("Video no encontrado"))
             if (video.userId == reporterId) return Result.failure(Exception("No puedes reportar tu propio video"))
 
             val reporter = userRepository.getUserById(reporterId).getOrNull()
@@ -1442,9 +1569,9 @@ class VideoRepository @Inject constructor(
 
     suspend fun getMyVideoReports(): Result<List<VideoReport>> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("reporter_id", "eq.$reporterId")
@@ -1463,8 +1590,8 @@ class VideoRepository @Inject constructor(
 
     suspend fun getAllVideoReports(): Result<List<VideoReport>> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("order", "created_at.desc")
@@ -1488,15 +1615,15 @@ class VideoRepository @Inject constructor(
         strikeApplied: Boolean? = null
     ): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
             val normalizedStatus = normalizeVideoReportStatus(newStatus)
-            val rpcPayload = buildJsonObject {
+            var rpcPayload = buildJsonObject {
                 put("p_report_id", JsonPrimitive(reportId))
                 put("p_status", JsonPrimitive(normalizedStatus))
                 actionNote?.let { put("p_action_note", JsonPrimitive(it)) }
             }
 
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_update_video_report_status") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_update_video_report_status") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1506,7 +1633,7 @@ class VideoRepository @Inject constructor(
                 return Result.success(Unit)
             }
 
-            val rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+            var rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
             if (!isMissingRpcFunction(rpcResponse.status.value, rpcError, "secure_admin_update_video_report_status")) {
                 return Result.failure(Exception("Error actualizando reporte: ${rpcResponse.status.value}"))
             }
@@ -1515,7 +1642,7 @@ class VideoRepository @Inject constructor(
             var lastFailure: Exception? = null
 
             candidateStatuses.forEach { statusCandidate ->
-                val payload = buildJsonObject {
+                var payload = buildJsonObject {
                     put("status", JsonPrimitive(statusCandidate))
                     put("reviewed_at", JsonPrimitive(java.time.OffsetDateTime.now().toString()))
                     authService.getCurrentUserId()?.let { put("reviewed_by", JsonPrimitive(it)) }
@@ -1524,7 +1651,7 @@ class VideoRepository @Inject constructor(
                     strikeApplied?.let { put("strike_applied", JsonPrimitive(it)) }
                 }
 
-                val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     header("Content-Type", "application/json")
@@ -1549,13 +1676,13 @@ class VideoRepository @Inject constructor(
         warningMessage: String = "Tu video fue reportado por incumplir las normas. Revisa y corrige para evitar sanciones."
     ): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val rpcPayload = buildJsonObject {
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var rpcPayload = buildJsonObject {
                 put("p_report_id", JsonPrimitive(report.id))
                 put("p_message", JsonPrimitive(warningMessage))
             }
 
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_warn_video_owner_from_report") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_warn_video_owner_from_report") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1565,7 +1692,7 @@ class VideoRepository @Inject constructor(
                 return Result.success(Unit)
             }
 
-            val rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+            var rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
             if (!isMissingRpcFunction(rpcResponse.status.value, rpcError, "secure_admin_warn_video_owner_from_report")) {
                 return Result.failure(Exception("No se pudo enviar advertencia (${rpcResponse.status.value})"))
             }
@@ -1609,7 +1736,7 @@ class VideoRepository @Inject constructor(
         reason: String = "Incumplimiento de normas de la comunidad",
         permanent: Boolean = false
     ): Result<String> {
-        val normalizedDuration = durationValue.coerceAtLeast(1)
+        var normalizedDuration = durationValue.coerceAtLeast(1)
         return setUserSuspension(
             userId = report.videoOwnerId,
             suspend = true,
@@ -1641,8 +1768,8 @@ class VideoRepository @Inject constructor(
         permanent: Boolean
     ): Result<String> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val normalizedDuration = durationValue.coerceAtLeast(1)
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var normalizedDuration = durationValue.coerceAtLeast(1)
             val legacyDays = toLegacyDays(normalizedDuration, durationUnit)
             val extendedRpcPayload = buildJsonObject {
                 put("p_user_id", JsonPrimitive(userId))
@@ -1658,11 +1785,11 @@ class VideoRepository @Inject constructor(
                 put("p_permanent", JsonPrimitive(permanent))
             }
 
-            val rpcResponse = callAdminSuspensionRpc(accessToken, extendedRpcPayload)
+            var rpcResponse = callAdminSuspensionRpc(accessToken, extendedRpcPayload)
 
             if (rpcResponse.status.isSuccess()) {
-                val body = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
-                val until = extractSuspendedUntil(body)
+                var body = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+                var until = extractSuspendedUntil(body)
                 if (suspend && permanent) return Result.success("PERMANENT")
                 return Result.success(until ?: "")
             }
@@ -1683,8 +1810,8 @@ class VideoRepository @Inject constructor(
                 }
                 val legacyRpcResponse = callAdminSuspensionRpc(accessToken, legacyRpcPayload)
                 if (legacyRpcResponse.status.isSuccess()) {
-                    val body = runCatching { legacyRpcResponse.bodyAsText() }.getOrDefault("")
-                    val until = extractSuspendedUntil(body)
+                    var body = runCatching { legacyRpcResponse.bodyAsText() }.getOrDefault("")
+                    var until = extractSuspendedUntil(body)
                     if (suspend && permanent) return Result.success("PERMANENT")
                     return Result.success(until ?: "")
                 }
@@ -1704,7 +1831,7 @@ class VideoRepository @Inject constructor(
             val fallbackPayload = buildJsonObject {
                 put("is_suspended", JsonPrimitive(suspend))
                 if (suspend) {
-                    val until = calculateSuspensionEndIso(
+                    var until = calculateSuspensionEndIso(
                         durationValue = normalizedDuration,
                         durationUnit = durationUnit,
                         permanent = permanent
@@ -1723,7 +1850,7 @@ class VideoRepository @Inject constructor(
                     put("suspension_reason", JsonNull)
                 }
             }
-            val fallbackResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+            var fallbackResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1731,7 +1858,7 @@ class VideoRepository @Inject constructor(
                 setBody(fallbackPayload)
             }
             if (fallbackResponse.status.isSuccess()) {
-                val until = fallbackPayload["suspended_until"]?.jsonPrimitive?.contentOrNull
+                var until = fallbackPayload["suspended_until"]?.jsonPrimitive?.contentOrNull
                 notifyUserSuspensionStatus(
                     userId = userId,
                     suspended = suspend,
@@ -1776,7 +1903,7 @@ class VideoRepository @Inject constructor(
 
     private fun requiresLegacySuspensionRpc(statusCode: Int, body: String): Boolean {
         if (statusCode != 400 && statusCode != 404) return false
-        val lower = body.lowercase()
+        var lower = body.lowercase()
         return lower.contains("p_duration_value") ||
             lower.contains("p_duration_unit") ||
             lower.contains("p_permanent") ||
@@ -1822,13 +1949,13 @@ class VideoRepository @Inject constructor(
         actionNote: String = "Video eliminado por moderación"
     ): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            val rpcPayload = buildJsonObject {
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var rpcPayload = buildJsonObject {
                 put("p_report_id", JsonPrimitive(report.id))
                 put("p_action_note", JsonPrimitive(actionNote))
             }
 
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_delete_reported_video") {
+            var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_admin_delete_reported_video") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -1839,7 +1966,7 @@ class VideoRepository @Inject constructor(
                 return Result.success(Unit)
             }
 
-            val rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
+            var rpcError = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
             if (!isMissingRpcFunction(rpcResponse.status.value, rpcError, "secure_admin_delete_reported_video")) {
                 return Result.failure(Exception("No se pudo eliminar el video (${rpcResponse.status.value})"))
             }
@@ -1856,7 +1983,7 @@ class VideoRepository @Inject constructor(
 
     private fun isMissingRpcFunction(statusCode: Int, body: String, functionName: String): Boolean {
         if (statusCode != 400 && statusCode != 404) return false
-        val lower = body.lowercase()
+        var lower = body.lowercase()
         return lower.contains(functionName.lowercase()) &&
             (lower.contains("could not find") || lower.contains("does not exist"))
     }
@@ -1864,7 +1991,7 @@ class VideoRepository @Inject constructor(
     private fun extractSuspendedUntil(body: String): String? {
         if (body.isBlank()) return null
         return runCatching {
-            val element = Json.parseToJsonElement(body)
+            var element = Json.parseToJsonElement(body)
             when (element) {
                 is JsonArray -> {
                     val obj = element.firstOrNull()?.jsonObject
@@ -1911,7 +2038,7 @@ class VideoRepository @Inject constructor(
         reason: String?,
         permanent: Boolean
     ) {
-        val content = if (suspended) {
+        var content = if (suspended) {
             val cleanReason = reason?.trim().takeUnless { it.isNullOrBlank() }
             val untilText = suspendedUntil?.replace("T", " ")?.take(16)
             if (permanent) {
@@ -1954,9 +2081,9 @@ class VideoRepository @Inject constructor(
 
     suspend fun deleteVideo(videoId: String): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
             
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$videoId")
@@ -1979,7 +2106,7 @@ class VideoRepository @Inject constructor(
         isPublic: Boolean
     ): Result<Unit> {
         return try {
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
             
             val updateBody = mapOf(
                 "title" to title,
@@ -1987,7 +2114,7 @@ class VideoRepository @Inject constructor(
                 "is_public" to isPublic
             )
             
-            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                  header("Authorization", "Bearer $accessToken")
                  header("apikey", supabaseConfig.supabaseAnonKey)
                  header("Content-Type", "application/json")
@@ -2006,7 +2133,7 @@ class VideoRepository @Inject constructor(
     }
 
     private suspend fun updateLocalVideoStats(videoId: String, views: Int, likes: Int, comments: Int, shares: Int) {
-        val current = videoStatsDao.getStats(videoId) ?: VideoStatsEntity(videoId)
+        var current = videoStatsDao.getStats(videoId) ?: VideoStatsEntity(videoId)
         videoStatsDao.insertStats(current.copy(
             viewCount = views,
             likeCount = likes,
@@ -2018,9 +2145,9 @@ class VideoRepository @Inject constructor(
 
     private suspend fun updateLocalVideoCommentCount(videoId: String, delta: Int) {
         try {
-            val currentStats = videoStatsDao.getStats(videoId)
+            var currentStats = videoStatsDao.getStats(videoId)
             if (currentStats != null) {
-                val newCount = (currentStats.commentCount + delta).coerceAtLeast(0)
+                var newCount = (currentStats.commentCount + delta).coerceAtLeast(0)
                 videoStatsDao.insertStats(currentStats.copy(commentCount = newCount))
             } 
         } catch (e: Exception) {
@@ -2030,9 +2157,9 @@ class VideoRepository @Inject constructor(
 
     private suspend fun updateLocalVideoViewCount(videoId: String, delta: Int) {
         try {
-            val currentStats = videoStatsDao.getStats(videoId)
+            var currentStats = videoStatsDao.getStats(videoId)
             if (currentStats != null) {
-                val newCount = (currentStats.viewCount + delta).coerceAtLeast(0)
+                var newCount = (currentStats.viewCount + delta).coerceAtLeast(0)
                 videoStatsDao.insertStats(currentStats.copy(viewCount = newCount))
                 android.util.Log.d("VideoRepository", "Local view count updated to $newCount for $videoId")
             }
@@ -2043,9 +2170,9 @@ class VideoRepository @Inject constructor(
 
     private suspend fun updateLocalVideoShareCount(videoId: String, delta: Int) {
         try {
-            val currentStats = videoStatsDao.getStats(videoId)
+            var currentStats = videoStatsDao.getStats(videoId)
             if (currentStats != null) {
-                val newCount = (currentStats.shareCount + delta).coerceAtLeast(0)
+                var newCount = (currentStats.shareCount + delta).coerceAtLeast(0)
                 videoStatsDao.insertStats(currentStats.copy(shareCount = newCount))
             } 
         } catch (e: Exception) {
@@ -2079,6 +2206,7 @@ class VideoRepository @Inject constructor(
                     recipientId = mentionedUser.id,
                     type = "mention_video",
                     targetId = videoId,
+                    content = commentContent.take(160),
                     extraData = buildJsonObject {
                         put("comment_id", JsonPrimitive(commentId))
                         if (parentId != null) put("parent_id", JsonPrimitive(parentId))
@@ -2102,6 +2230,36 @@ class VideoRepository @Inject constructor(
         return resolved.distinctBy { it.id }
     }
 
+    private suspend fun resolveVideoCommentOwnerId(commentId: String): String? {
+        val cleanId = commentId.trim()
+        if (cleanId.isBlank()) return null
+
+        val local = runCatching { videoCommentDao.getCommentById(cleanId) }.getOrNull()
+        if (local != null) {
+            return local.userId.trim().ifBlank { null }
+        }
+
+        var token = authService.getAccessToken() ?: return null
+        return runCatching {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("id", "eq.$cleanId")
+                parameter("select", "user_id")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) return@runCatching null
+            val jsonArray = Json.parseToJsonElement(response.bodyAsText()) as? JsonArray ?: return@runCatching null
+            jsonArray.firstOrNull()
+                ?.jsonObject
+                ?.get("user_id")
+                ?.jsonPrimitive
+                ?.contentOrNull
+                ?.trim()
+                ?.ifBlank { null }
+        }.getOrNull()
+    }
+
     private fun extractMentionUsernames(content: String): Set<String> {
         val mentionRegex = Regex("(?<![A-Za-z0-9_])@([A-Za-z0-9._]{2,30})")
         return mentionRegex.findAll(content)
@@ -2109,4 +2267,163 @@ class VideoRepository @Inject constructor(
             .filter { it.isNotBlank() }
             .toSet()
     }
+
+    private fun sanitizeDownloadFilePart(value: String): String {
+        return value
+            .trim()
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .trim('_')
+            .ifBlank { "usuario" }
+    }
+
+    fun getUserVideos(userId: String): Flow<List<Video>> = flow {
+        var cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) {
+            emit(emptyList<Video>())
+            return@flow
+        }
+
+        try {
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            val canViewPrivate = currentUserId == cleanUserId
+
+            var response = supabaseConfig.client.from("videos").select {
+                filter {
+                    eq("user_id", cleanUserId)
+                    if (!canViewPrivate) {
+                        eq("is_public", true)
+                    }
+                }
+                order("created_at", Order.DESCENDING)
+            }
+
+            val videos: List<Video> = response.decodeList()
+            emit(videos)
+        } catch (e: Exception) {
+            android.util.Log.e("VideoRepository", "Error loading user videos for $cleanUserId", e)
+            emit(emptyList<Video>())
+        }
+    }.flowOn(Dispatchers.IO)
+
+    fun getSharedVideos(userId: String): Flow<List<Video>> = flow {
+        var cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) {
+            emit(emptyList<Video>())
+            return@flow
+        }
+
+        var token = authService.getAccessToken()
+        if (token.isNullOrBlank()) {
+            emit(emptyList<Video>())
+            return@flow
+        }
+
+        try {
+            var sharedIds = getUserSharedContentIds(cleanUserId, "video", token)
+            if (sharedIds.isEmpty()) {
+                emit(emptyList<Video>())
+                return@flow
+            }
+
+            var response = supabaseConfig.client.from("videos").select {
+                filter {
+                    isIn("id", sharedIds.toList())
+                    eq("is_public", true)
+                }
+                order("created_at", Order.DESCENDING)
+            }
+
+            val videos: List<Video> = response.decodeList()
+            emit(videos.map { it.copy(sharedByMe = cleanUserId == authService.getCurrentUserId()?.trim()?.lowercase()) })
+        } catch (e: Exception) {
+            android.util.Log.e("VideoRepository", "Error loading shared videos for $cleanUserId", e)
+            emit(emptyList<Video>())
+        }
+    }.flowOn(Dispatchers.IO)
+
+@Composable
+@Composable
+    suspend fun hasPublicVideos(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                authService.getAccessToken()?.let { header("Authorization", "Bearer $it") }
+                parameter("select", "id")
+                parameter("is_public", "eq.true")
+                parameter("limit", "1")
+            }
+
+            if (!response.status.isSuccess()) {
+                return@withContext Result.failure(Exception("Failed to check public videos: ${response.status}"))
+            }
+
+            val rows: List<JsonObject> = response.body()
+            Result.success(rows.isNotEmpty())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun getUserLikedVideoIds(accessToken: String, userId: String): Set<String> {
+        if (accessToken.isBlank() || userId.isBlank()) return emptySet()
+
+        return try {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("user_id", "eq.${userId.trim().lowercase()}")
+                parameter("select", "video_id")
+            }
+
+            if (!response.status.isSuccess()) {
+                emptySet()
+            } else {
+                val data: List<JsonObject> = response.body()
+                data.mapNotNull { it["video_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase() }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    private suspend fun getUserSharedContentIds(
+        userId: String,
+        contentType: String,
+        accessToken: String? = authService.getAccessToken()
+    ): Set<String> {
+        var cleanUserId = userId.trim().lowercase()
+        var token = accessToken?.trim().orEmpty()
+        if (cleanUserId.isBlank() || token.isBlank()) return emptySet()
+
+        return try {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/shares") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("user_id", "eq.$cleanUserId")
+                parameter("select", "post_id,video_id")
+            }
+
+            if (!response.status.isSuccess()) {
+                emptySet()
+            } else {
+                val data: List<JsonObject> = response.body()
+                data.mapNotNull { row ->
+                    if (contentType == "post") {
+                        row["post_id"]?.jsonPrimitive?.contentOrNull
+                    } else {
+                        row["video_id"]?.jsonPrimitive?.contentOrNull
+                    }?.trim()?.lowercase()
+                }.filter { it.isNotBlank() }.toSet()
+            }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
 }
+
+
+
+
+

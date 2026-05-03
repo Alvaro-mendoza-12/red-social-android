@@ -18,7 +18,7 @@ import androidx.compose.ui.window.Dialog
 import conectate.com.data.model.Badge
 import conectate.com.data.model.User
 
-@Composable
+
 fun CreateBadgeDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, description: String, icon: String, color: String) -> Unit
@@ -138,7 +138,7 @@ fun CreateBadgeDialog(
                 }
 
                 if (showColorPicker) {
-                    val colors = listOf(
+                    var colors = listOf(
                         "#FFD700" to "Dorado", "#FFA500" to "Naranja",
                         "#FF6347" to "Rojo", "#FF4500" to "Rojo Oscuro",
                         "#8B00FF" to "Morado", "#1DA1F2" to "Azul",
@@ -214,7 +214,7 @@ fun CreateBadgeDialog(
     }
 }
 
-@Composable
+
 fun AssignBadgeDialog(
     user: User,
     availableBadges: List<Badge>,
@@ -278,7 +278,7 @@ fun AssignBadgeDialog(
     }
 }
 
-@Composable
+
 fun BadgeListItem(
     badge: Badge,
     onClick: () -> Unit
@@ -330,3 +330,10 @@ fun BadgeListItem(
         }
     }
 }
+
+
+
+
+
+
+

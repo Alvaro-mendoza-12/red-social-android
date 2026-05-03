@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   enqueueDeferredMutation,
   isBrowserOnline,
   isLikelyTransientError,
   runWithRetry,
 } from '../../core/reliability'
+import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import { supabase } from '../../core/supabase'
+import { useWebPreferences } from '../../core/webPreferences'
 import {
   formatDateTime,
   friendlyError,
@@ -17,18 +18,20 @@ import {
   textOf,
   type GenericRow,
 } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 import { ChatDetailPage } from './ChatDetailPage'
+import { getOrCreateDirectChat } from './directChat'
 import { RoomChatPage } from './RoomChatPage'
 
 type InboxTab = 'chats' | 'groups' | 'communities' | 'voice'
+type ConversationKind = 'chat' | 'group' | 'community' | 'voice'
 
 type ConversationItem = {
   id: string
   title: string
   subtitle: string
   updatedAt: string
-  kind: 'chat' | 'group' | 'community' | 'voice'
+  kind: ConversationKind
   avatarUrl: string
   profileId: string | null
   unreadCount: number
@@ -40,16 +43,17 @@ type ConversationItem = {
 
 type SelectedConversation = {
   id: string
-  kind: 'chat' | 'group' | 'community'
-}
-
-type ChatFolder = {
-  id: string
-  name: string
-  colorHex: string
+  kind: ConversationKind
 }
 
 type LocalReadByChat = Record<string, string>
+
+type DiscoverUserItem = {
+  profileId: string
+  title: string
+  subtitle: string
+  avatarUrl: string
+}
 
 const tabOptions: Array<{ key: InboxTab; label: string }> = [
   { key: 'chats', label: 'Chats' },
@@ -65,13 +69,6 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
   if (!clean) return '/app/profile'
   if (currentUserId && clean === currentUserId) return '/app/profile'
   return `/app/profile/${clean}`
-}
-
-function labelByKind(kind: ConversationItem['kind']): string {
-  if (kind === 'chat') return 'Chat'
-  if (kind === 'group') return 'Grupo'
-  if (kind === 'community') return 'Comunidad'
-  return 'Voz'
 }
 
 function initialsOf(name: string): string {
@@ -93,10 +90,7 @@ function readLocalReadByChat(): LocalReadByChat {
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const entries = Object.entries(parsed as Record<string, unknown>)
-      .filter(([chatId, value]) => typeof value === 'string' && Boolean(chatId.trim()))
-      .map(([chatId, value]) => [chatId.trim(), String(value)] as const)
-    return Object.fromEntries(entries)
+    return parsed as LocalReadByChat
   } catch {
     return {}
   }
@@ -124,6 +118,98 @@ function avatarFromProfile(row: GenericRow): string {
   return textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
 }
 
+function usernameFromProfile(row: GenericRow): string {
+  return textOf(row, ['username', 'user_name', 'handle'], '')
+}
+
+function profileSearchHaystack(row: GenericRow): string {
+  return [
+    textOf(row, ['display_name', 'displayName', 'full_name', 'username', 'name', 'email'], ''),
+    textOf(row, ['bio', 'about'], ''),
+    textOf(row, ['id'], ''),
+  ]
+    .join(' ')
+    .toLowerCase()
+}
+
+function sanitizeSearchInput(input: string): string {
+  return input.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+async function searchProfilesInTable(table: 'profiles' | 'profiles_public', rawQuery: string): Promise<GenericRow[]> {
+  if (!supabase) return []
+  const safeQuery = sanitizeSearchInput(rawQuery)
+  if (!safeQuery) return []
+
+  const ilikePattern = `%${safeQuery}%`
+  const columns = [
+    `display_name.ilike.${ilikePattern}`,
+    `full_name.ilike.${ilikePattern}`,
+    `username.ilike.${ilikePattern}`,
+    `name.ilike.${ilikePattern}`,
+    `email.ilike.${ilikePattern}`,
+  ].join(',')
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('*')
+    .or(columns)
+    .limit(40)
+
+  if (!error) {
+    return (data ?? []) as GenericRow[]
+  }
+
+  if (isMissingTableError(error)) {
+    return []
+  }
+
+  const fallback = await supabase.from(table).select('*').limit(300)
+  if (fallback.error) return []
+  const queryLower = safeQuery.toLowerCase()
+  return ((fallback.data ?? []) as GenericRow[]).filter((row) =>
+    profileSearchHaystack(row).includes(queryLower),
+  )
+}
+
+async function searchUsersGlobally(
+  rawQuery: string,
+  currentUserId: string,
+  existingProfileIds: Set<string>,
+): Promise<DiscoverUserItem[]> {
+  if (!supabase) return []
+  const query = sanitizeSearchInput(rawQuery).toLowerCase()
+  if (!query) return []
+
+  const rowsByTable = await Promise.all([
+    searchProfilesInTable('profiles', query),
+    searchProfilesInTable('profiles_public', query),
+  ])
+
+  const deduped = new Map<string, DiscoverUserItem>()
+  const cleanCurrentUserId = normalizeId(currentUserId)
+
+  rowsByTable.flat().forEach((row) => {
+    const profileId = normalizeId(textOf(row, ['id'], ''))
+    if (!profileId || profileId === cleanCurrentUserId || existingProfileIds.has(profileId)) return
+    if (deduped.has(profileId)) return
+
+    const title = nameFromProfile(row).trim() || 'Usuario'
+    const username = usernameFromProfile(row).trim()
+    const subtitle = username ? `@${username.replace(/^@+/, '')}` : 'Toca para iniciar chat'
+    deduped.set(profileId, {
+      profileId,
+      title,
+      subtitle,
+      avatarUrl: avatarFromProfile(row),
+    })
+  })
+
+  return Array.from(deduped.values())
+    .sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }))
+    .slice(0, 25)
+}
+
 async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: string; avatarUrl: string }>> {
   const map = new Map<string, { name: string; avatarUrl: string }>()
   if (!supabase || ids.length === 0) return map
@@ -133,7 +219,7 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
 
   const primary = await supabase.from('profiles').select('*').in('id', uniqueIds)
   if (!primary.error) {
-    ;((primary.data ?? []) as GenericRow[]).forEach((profile) => {
+    ; ((primary.data ?? []) as GenericRow[]).forEach((profile) => {
       const id = normalizeId(textOf(profile, ['id'], ''))
       if (!id) return
       map.set(id, { name: nameFromProfile(profile), avatarUrl: avatarFromProfile(profile) })
@@ -145,7 +231,7 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
     if (missingIds.length > 0) {
       const fallback = await supabase.from('profiles_public').select('*').in('id', missingIds)
       if (!fallback.error) {
-        ;((fallback.data ?? []) as GenericRow[]).forEach((profile) => {
+        ; ((fallback.data ?? []) as GenericRow[]).forEach((profile) => {
           const id = normalizeId(textOf(profile, ['id'], ''))
           if (!id) return
           map.set(id, { name: nameFromProfile(profile), avatarUrl: avatarFromProfile(profile) })
@@ -161,7 +247,7 @@ async function loadCollection(
   table: string,
   titleKeys: string[],
   subtitleKeys: string[],
-  kind: ConversationItem['kind'],
+  kind: ConversationKind,
 ): Promise<ConversationItem[]> {
   if (!supabase) return []
   const { data, error } = await supabase
@@ -180,7 +266,7 @@ async function loadCollection(
           ? `/app/messages/community/${id}`
           : table === 'voice_rooms'
             ? '/app/voice'
-          : undefined
+            : undefined
 
     return {
       id,
@@ -269,7 +355,7 @@ async function loadRoomCollectionByMembership(options: {
 
   const { data: messageRows, error: messageError } = await supabase
     .from(options.messageTable)
-    .select(`id,${options.membershipKey},content,content_type,created_at,sender_id`)
+    .select(`id, ${options.membershipKey}, content, content_type, created_at, sender_id`)
     .in(options.membershipKey, roomIds)
     .order('created_at', { ascending: false })
     .limit(800)
@@ -277,13 +363,13 @@ async function loadRoomCollectionByMembership(options: {
 
   const lastMessageByRoom = new Map<string, GenericRow>()
   const senderIds = new Set<string>()
-  ;((messageRows ?? []) as GenericRow[]).forEach((row) => {
-    const roomId = textOf(row, [options.membershipKey], '')
-    if (!roomId || lastMessageByRoom.has(roomId)) return
-    lastMessageByRoom.set(roomId, row)
-    const senderId = textOf(row, ['sender_id'], '')
-    if (senderId) senderIds.add(senderId)
-  })
+    ; ((messageRows ?? []) as GenericRow[]).forEach((row) => {
+      const roomId = textOf(row, [options.membershipKey], '')
+      if (!roomId || lastMessageByRoom.has(roomId)) return
+      lastMessageByRoom.set(roomId, row)
+      const senderId = textOf(row, ['sender_id'], '')
+      if (senderId) senderIds.add(senderId)
+    })
 
   const profileNameById = new Map<string, string>()
   if (senderIds.size > 0) {
@@ -343,23 +429,28 @@ async function loadRoomCollectionByMembership(options: {
 
 export function MessagesPage() {
   const { user } = useAuth()
+  const [webPreferences] = useWebPreferences()
   const navigate = useNavigate()
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [activeTab, setActiveTab] = useState<InboxTab>('chats')
+  const [isCompactViewport, setIsCompactViewport] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia('(max-width: 980px)').matches
+  })
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<ConversationItem[]>([])
-  const [folders, setFolders] = useState<ChatFolder[]>([])
-  const [folderNameDraft, setFolderNameDraft] = useState('')
-  const [creatingFolder, setCreatingFolder] = useState(false)
-  const [folderSelectionByChat, setFolderSelectionByChat] = useState<Record<string, string>>({})
-  const [markingAllRead, setMarkingAllRead] = useState(false)
   const [openingChatId, setOpeningChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [discoverUsers, setDiscoverUsers] = useState<DiscoverUserItem[]>([])
+  const [discoverLoading, setDiscoverLoading] = useState(false)
+  const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [localReadByChat, setLocalReadByChat] = useState<LocalReadByChat>(() => readLocalReadByChat())
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
-  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(null)
+
   const inboxCacheKey = useMemo(
     () => `messages:${user?.id ?? 'anon'}:${activeTab}`,
     [activeTab, user?.id],
@@ -369,13 +460,24 @@ export function MessagesPage() {
     () => tabOptions.find((option) => option.key === activeTab)?.label ?? 'Mensajes',
     [activeTab],
   )
+
   const normalizedSearch = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery])
+  const knownChatProfileIds = useMemo(() => {
+    const next = new Set<string>()
+    items.forEach((item) => {
+      if (item.kind !== 'chat' || !item.profileId) return
+      const id = normalizeId(item.profileId)
+      if (id) next.add(id)
+    })
+    return next
+  }, [items])
+
   const filteredItems = useMemo(() => {
     const base = normalizedSearch
       ? items.filter((item) => {
-          const haystack = `${item.title} ${item.subtitle} ${item.folders.join(' ')} ${item.id}`.toLowerCase()
-          return haystack.includes(normalizedSearch)
-        })
+        const haystack = `${item.title} ${item.subtitle} ${item.folders.join(' ')} ${item.id}`.toLowerCase()
+        return haystack.includes(normalizedSearch)
+      })
       : items
 
     if (activeTab !== 'chats' || !showUnreadOnly) {
@@ -385,51 +487,93 @@ export function MessagesPage() {
     return base.filter((item) => item.unreadCount > 0)
   }, [activeTab, items, normalizedSearch, showUnreadOnly])
 
+  const showGlobalSearchResults = activeTab === 'chats' && normalizedSearch.length >= 2
+  const showNoResultsState =
+    filteredItems.length === 0 &&
+    (!showGlobalSearchResults || (!discoverLoading && discoverUsers.length === 0 && !discoverError))
+
   useEffect(() => {
     if (activeTab !== 'chats') {
       setShowUnreadOnly(false)
+      setSearchQuery('')
     }
+    setOpenChatMenuId(null)
   }, [activeTab])
+
+  useEffect(() => {
+    if (!user || activeTab !== 'chats') {
+      setDiscoverUsers([])
+      setDiscoverLoading(false)
+      setDiscoverError(null)
+      return
+    }
+
+    if (normalizedSearch.length < 2) {
+      setDiscoverUsers([])
+      setDiscoverLoading(false)
+      setDiscoverError(null)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setDiscoverLoading(true)
+      setDiscoverError(null)
+      try {
+        const nextUsers = await searchUsersGlobally(normalizedSearch, user.id, knownChatProfileIds)
+        if (!cancelled) setDiscoverUsers(nextUsers)
+      } catch (caught) {
+        if (!cancelled) {
+          setDiscoverUsers([])
+          setDiscoverError(friendlyError(caught, 'No se pudo buscar usuarios'))
+        }
+      } finally {
+        if (!cancelled) setDiscoverLoading(false)
+      }
+    }, 240)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [activeTab, knownChatProfileIds, normalizedSearch, user])
 
   const totalUnreadChats = useMemo(
     () => items.filter((item) => item.unreadCount > 0).length,
     [items],
   )
 
-  const filteredUnreadChats = useMemo(
-    () => filteredItems.filter((item) => item.unreadCount > 0).length,
-    [filteredItems],
-  )
+  const supportsSplitLayout =
+    !isCompactViewport && (activeTab === 'chats' || activeTab === 'groups' || activeTab === 'communities')
 
-  const filteredChatsCount = useMemo(
-    () => filteredItems.length,
-    [filteredItems],
-  )
-
-  const supportsSplitLayout = activeTab === 'chats' || activeTab === 'groups' || activeTab === 'communities'
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mediaQuery = window.matchMedia('(max-width: 980px)')
+    const syncViewport = () => setIsCompactViewport(mediaQuery.matches)
+    syncViewport()
+    mediaQuery.addEventListener('change', syncViewport)
+    return () => {
+      mediaQuery.removeEventListener('change', syncViewport)
+    }
+  }, [])
 
   const selectedConversationItem = useMemo(() => {
     if (!selectedConversation) return null
-    return filteredItems.find(
+    return items.find(
       (item) => item.id === selectedConversation.id && item.kind === selectedConversation.kind,
     ) ?? null
-  }, [filteredItems, selectedConversation])
+  }, [items, selectedConversation])
 
   useEffect(() => {
     if (!supportsSplitLayout) {
       setSelectedConversation(null)
       return
     }
-    if (filteredItems.length === 0) {
+    if (!selectedConversation) return
+    if (filteredItems.length === 0 || !selectedConversationItem) {
       setSelectedConversation(null)
-      return
     }
-    if (selectedConversationItem) return
-    const first = filteredItems[0]
-    if (first.kind === 'chat' || first.kind === 'group' || first.kind === 'community') {
-      setSelectedConversation({ id: first.id, kind: first.kind })
-    }
-  }, [filteredItems, selectedConversationItem, supportsSplitLayout])
+  }, [filteredItems, selectedConversation, selectedConversationItem, supportsSplitLayout])
 
   const loadCurrentTab = useCallback(async (options?: { silent?: boolean }) => {
     if (!supabase || !user) {
@@ -457,10 +601,7 @@ export function MessagesPage() {
         const chatRows = (chatData ?? []) as GenericRow[]
         const chatIds = chatRows.map((row) => textOf(row, ['id'], '')).filter(Boolean)
 
-        const participantByChat = new Map<
-          string,
-          { isMuted: boolean; isPinned: boolean; lastReadAt: string }
-        >()
+        const participantByChat = new Map<string, { isMuted: boolean; isPinned: boolean; lastReadAt: string }>()
         if (chatIds.length > 0) {
           const { data: participantRows, error: participantError } = await supabase
             .from('chat_participants')
@@ -470,7 +611,7 @@ export function MessagesPage() {
           if (participantError) {
             if (!isMissingTableError(participantError)) throw participantError
           } else {
-            ;((participantRows ?? []) as GenericRow[]).forEach((row) => {
+            ; ((participantRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               if (!chatId) return
               participantByChat.set(chatId, {
@@ -482,100 +623,32 @@ export function MessagesPage() {
           }
         }
 
-        const folderById = new Map<string, ChatFolder>()
-        if (chatIds.length > 0) {
-          const { data: folderRows, error: folderError } = await supabase
-            .from('chat_folders')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('name', { ascending: true })
-          if (folderError) {
-            if (!isMissingTableError(folderError)) throw folderError
-          } else {
-            const mappedFolders = ((folderRows ?? []) as GenericRow[]).map((row) => ({
-              id: textOf(row, ['id'], crypto.randomUUID()),
-              name: textOf(row, ['name'], 'Carpeta'),
-              colorHex: textOf(row, ['color_hex'], ''),
-            }))
-            mappedFolders.forEach((folder) => folderById.set(folder.id, folder))
-            setFolders(mappedFolders)
-          }
-        } else {
-          setFolders([])
-        }
-
         const folderNamesByChat = new Map<string, string[]>()
-        if (chatIds.length > 0 && folderById.size > 0) {
-          const { data: folderChatRows, error: folderChatsError } = await supabase
-            .from('chat_folder_chats')
-            .select('folder_id,chat_id')
-            .in('chat_id', chatIds)
-          if (folderChatsError) {
-            if (!isMissingTableError(folderChatsError)) throw folderChatsError
-          } else {
-            ;((folderChatRows ?? []) as GenericRow[]).forEach((row) => {
-              const folderId = textOf(row, ['folder_id'], '')
-              const chatId = textOf(row, ['chat_id'], '')
-              if (!folderId || !chatId) return
-              const folderName = folderById.get(folderId)?.name
-              if (!folderName) return
-              const current = folderNamesByChat.get(chatId) ?? []
-              folderNamesByChat.set(chatId, Array.from(new Set([...current, folderName])))
-            })
-          }
-        }
-
         const cleanCurrentUserId = normalizeId(user.id)
         const otherByChat = new Map<string, string>()
+
         if (chatIds.length > 0) {
-          const { data: participantRows, error: participantRowsError } = await supabase
+          const { data: participantRows, error: pError } = await supabase
             .from('chat_participants')
             .select('chat_id,user_id')
             .in('chat_id', chatIds)
             .neq('user_id', user.id)
-          if (participantRowsError) {
-            if (!isMissingTableError(participantRowsError)) throw participantRowsError
-          } else {
-            ;((participantRows ?? []) as GenericRow[]).forEach((row) => {
+          if (pError && !isMissingTableError(pError)) throw pError
+            ; ((participantRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               const otherId = normalizeId(textOf(row, ['user_id'], ''))
               if (!chatId || !otherId || otherByChat.has(chatId)) return
               otherByChat.set(chatId, otherId)
             })
-          }
         }
 
         chatRows.forEach((row) => {
           const chatId = textOf(row, ['id'], '')
           if (!chatId || otherByChat.has(chatId)) return
-          const directOtherId = normalizeId(textOf(row, ['other_user_id', 'otherUserId', 'target_user_id'], ''))
-          if (directOtherId && directOtherId !== cleanCurrentUserId) {
-            otherByChat.set(chatId, directOtherId)
-            return
-          }
           const participants = stringArrayOf(row, ['participants']).map(normalizeId)
           const other = participants.find((id) => id !== cleanCurrentUserId)
           if (other) otherByChat.set(chatId, other)
         })
-
-        if (chatIds.length > 0) {
-          const { data: recentMessages, error: recentMessagesError } = await supabase
-            .from('messages')
-            .select('chat_id,sender_id,created_at')
-            .in('chat_id', chatIds)
-            .order('created_at', { ascending: false })
-            .limit(800)
-          if (recentMessagesError) {
-            if (!isMissingTableError(recentMessagesError)) throw recentMessagesError
-          } else {
-            ;((recentMessages ?? []) as GenericRow[]).forEach((row) => {
-              const chatId = textOf(row, ['chat_id'], '')
-              const senderId = normalizeId(textOf(row, ['sender_id'], ''))
-              if (!chatId || !senderId || senderId === cleanCurrentUserId || otherByChat.has(chatId)) return
-              otherByChat.set(chatId, senderId)
-            })
-          }
-        }
 
         const profileById = await fetchProfileMapByIds(Array.from(otherByChat.values()))
 
@@ -587,28 +660,21 @@ export function MessagesPage() {
             .in('chat_id', chatIds)
             .neq('sender_id', user.id)
           if (unreadError) throw unreadError
-          ;((unreadRows ?? []) as GenericRow[]).forEach((row) => {
-            const chatId = textOf(row, ['chat_id'], '')
-            if (!chatId) return
-            const participant = participantByChat.get(chatId)
-            const lastReadAtMillis = Math.max(
-              toMillis(participant?.lastReadAt ?? ''),
-              toMillis(localReadByChat[chatId] ?? ''),
-            )
-            const createdAtMillis = toMillis(textOf(row, ['created_at'], ''))
-            const readAt = textOf(row, ['read_at'], '')
-            const status = textOf(row, ['status'], '').toLowerCase()
-
-            if (readAt || status === 'read' || status === 'seen') {
-              return
-            }
-
-            if (lastReadAtMillis > 0 && createdAtMillis > 0 && createdAtMillis <= lastReadAtMillis) {
-              return
-            }
-
-            unreadByChat.set(chatId, (unreadByChat.get(chatId) ?? 0) + 1)
-          })
+            ; ((unreadRows ?? []) as GenericRow[]).forEach((row) => {
+              const chatId = textOf(row, ['chat_id'], '')
+              if (!chatId) return
+              const participant = participantByChat.get(chatId)
+              const lastReadAtMillis = Math.max(
+                toMillis(participant?.lastReadAt ?? ''),
+                toMillis(localReadByChat[chatId] ?? ''),
+              )
+              const createdAtMillis = toMillis(textOf(row, ['created_at'], ''))
+              const readAt = textOf(row, ['read_at'], '')
+              const status = textOf(row, ['status'], '').toLowerCase()
+              if (readAt || status === 'read' || status === 'seen') return
+              if (lastReadAtMillis > 0 && createdAtMillis > 0 && createdAtMillis <= lastReadAtMillis) return
+              unreadByChat.set(chatId, (unreadByChat.get(chatId) ?? 0) + 1)
+            })
         }
 
         const mapped = chatRows.map((row) => {
@@ -617,24 +683,14 @@ export function MessagesPage() {
           const other = otherByChat.get(id) ?? null
           const profile = other ? profileById.get(normalizeId(other)) : null
           const participant = participantByChat.get(id)
-          const fallbackName = textOf(
-            row,
-            ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'],
-            'Chat privado',
-          )
-          const fallbackAvatar = textOf(
-            row,
-            ['other_user_image', 'other_user_avatar', 'other_user_photo', 'avatar_url', 'photo_url', 'profile_image'],
-            '',
-          )
+          const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'], 'Chat privado')
+          const fallbackAvatar = textOf(row, ['other_user_image', 'other_user_avatar', 'other_user_photo', 'avatar_url', 'photo_url', 'profile_image'], '')
           return {
             id,
-            title: isGroup
-              ? textOf(row, ['group_name', 'name'], 'Grupo')
-              : profile?.name || fallbackName,
+            title: isGroup ? textOf(row, ['group_name', 'name'], 'Grupo') : profile?.name || fallbackName,
             subtitle: textOf(row, ['last_message'], 'Sin mensajes'),
             updatedAt: textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
-            kind: 'chat',
+            kind: 'chat' as const,
             avatarUrl: profile?.avatarUrl || fallbackAvatar,
             profileId: other ?? null,
             unreadCount: unreadByChat.get(id) ?? 0,
@@ -647,12 +703,11 @@ export function MessagesPage() {
 
         mapped.sort((a, b) => {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
-          return Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt))
+          return toMillis(b.updatedAt) - toMillis(a.updatedAt)
         })
         setItems(mapped)
         writeCachedValue(inboxCacheKey, mapped)
       } else if (activeTab === 'groups') {
-        setFolders([])
         const nextItems = await loadRoomCollectionByMembership({
           userId: user.id,
           membershipTable: 'group_members',
@@ -666,7 +721,6 @@ export function MessagesPage() {
         setItems(nextItems)
         writeCachedValue(inboxCacheKey, nextItems)
       } else if (activeTab === 'communities') {
-        setFolders([])
         const nextItems = await loadRoomCollectionByMembership({
           userId: user.id,
           membershipTable: 'community_members',
@@ -680,7 +734,6 @@ export function MessagesPage() {
         setItems(nextItems)
         writeCachedValue(inboxCacheKey, nextItems)
       } else {
-        setFolders([])
         const nextItems = await loadCollection('voice_rooms', ['name', 'title', 'readable_id'], ['topic'], 'voice')
         setItems(nextItems)
         writeCachedValue(inboxCacheKey, nextItems)
@@ -706,73 +759,26 @@ export function MessagesPage() {
     void loadCurrentTab({ silent: false })
   }, [inboxCacheKey, loadCurrentTab])
 
-  async function updateChatPreferences(chatId: string, nextMuted: boolean, nextPinned: boolean) {
+  const updateChatPreferences = async (chatId: string, isMuted: boolean, isPinned: boolean) => {
     if (!supabase || !user) return
     try {
       const { error: rpcError } = await supabase.rpc('secure_set_chat_preferences', {
         p_chat_id: chatId,
-        p_is_muted: nextMuted,
-        p_is_pinned: nextPinned,
+        p_is_muted: isMuted,
+        p_is_pinned: isPinned,
       })
       if (rpcError && !isMissingTableError(rpcError)) {
-        const nowIso = new Date().toISOString()
-        const { error: fallbackError } = await supabase.from('chat_participants').upsert(
-          {
-            chat_id: chatId,
-            user_id: user.id,
-            joined_at: nowIso,
-            last_read_at: nowIso,
-            is_muted: nextMuted,
-            is_pinned: nextPinned,
-          },
-          { onConflict: 'chat_id,user_id' },
-        )
-        if (fallbackError) throw fallbackError
-      }
-      await loadCurrentTab()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo actualizar mute/pin'))
-    }
-  }
-
-  async function createFolder() {
-    if (!supabase || !user || creatingFolder) return
-    const name = folderNameDraft.trim()
-    if (!name) return
-    setCreatingFolder(true)
-    setError(null)
-    try {
-      const { error: createError } = await supabase.from('chat_folders').insert({
-        user_id: user.id,
-        name,
-      })
-      if (createError) throw createError
-      setFolderNameDraft('')
-      await loadCurrentTab()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo crear carpeta'))
-    } finally {
-      setCreatingFolder(false)
-    }
-  }
-
-  async function assignChatToFolder(chatId: string) {
-    if (!supabase) return
-    const folderId = folderSelectionByChat[chatId]
-    if (!folderId) return
-    try {
-      const { error: assignError } = await supabase.from('chat_folder_chats').upsert(
-        {
-          folder_id: folderId,
+        const { error: upsertError } = await supabase.from('chat_participants').upsert({
           chat_id: chatId,
-          sort_order: 0,
-        },
-        { onConflict: 'folder_id,chat_id' },
-      )
-      if (assignError) throw assignError
-      await loadCurrentTab()
+          user_id: user.id,
+          is_muted: isMuted,
+          is_pinned: isPinned
+        }, { onConflict: 'chat_id,user_id' })
+        if (upsertError) throw upsertError
+      }
+      void loadCurrentTab({ silent: true })
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo asignar chat a carpeta'))
+      setError(friendlyError(caught, 'No se pudieron actualizar preferencias'))
     }
   }
 
@@ -789,11 +795,9 @@ export function MessagesPage() {
     setItems((current) =>
       current.map((entry) => (entry.id === cleanChatId ? { ...entry, unreadCount: 0 } : entry)),
     )
-    setSyncMessage(null)
 
     if (!isBrowserOnline()) {
       enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId })
-      setSyncMessage('Sin conexión: la lectura del chat quedó en cola de sincronización.')
       return
     }
 
@@ -803,12 +807,7 @@ export function MessagesPage() {
           await client.rpc('secure_mark_messages_delivered', { p_chat_id: cleanChatId })
           await client.rpc('secure_mark_messages_read', { p_chat_id: cleanChatId })
           await client.from('chat_participants').upsert(
-            {
-              chat_id: cleanChatId,
-              user_id: user.id,
-              joined_at: nowIso,
-              last_read_at: nowIso,
-            },
+            { chat_id: cleanChatId, user_id: user.id, last_read_at: nowIso },
             { onConflict: 'chat_id,user_id' },
           )
         },
@@ -817,96 +816,40 @@ export function MessagesPage() {
     } catch (caught) {
       if (isLikelyTransientError(caught)) {
         enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId })
-        setSyncMessage('Sincronización diferida: la lectura del chat se completará automáticamente.')
       }
-    }
-  }
-
-  async function markAllChatsAsRead() {
-    const client = supabase
-    if (!client || !user || markingAllRead || activeTab !== 'chats') return
-    const targetChatIds = items.filter((entry) => entry.unreadCount > 0).map((entry) => entry.id)
-    if (targetChatIds.length === 0) return
-    setMarkingAllRead(true)
-    setError(null)
-    setSyncMessage(null)
-    try {
-      const nowIso = new Date().toISOString()
-      setLocalReadByChat((current) => {
-        const next = { ...current }
-        targetChatIds.forEach((chatId) => {
-          next[chatId] = nowIso
-        })
-        writeLocalReadByChat(next)
-        return next
-      })
-      setItems((current) => current.map((entry) => ({ ...entry, unreadCount: 0 })))
-
-      if (!isBrowserOnline()) {
-        targetChatIds.forEach((chatId) => {
-          enqueueDeferredMutation('chat_mark_read', { chatId })
-        })
-        setSyncMessage('Sin conexión: el marcado global quedó en cola de sincronización.')
-        return
-      }
-
-      await Promise.all(
-        targetChatIds.map((chatId) =>
-          runWithRetry(
-            async () => {
-              await client.rpc('secure_mark_messages_delivered', { p_chat_id: chatId })
-              await client.rpc('secure_mark_messages_read', { p_chat_id: chatId })
-              await client.from('chat_participants').upsert(
-                {
-                  chat_id: chatId,
-                  user_id: user.id,
-                  joined_at: nowIso,
-                  last_read_at: nowIso,
-                },
-                { onConflict: 'chat_id,user_id' },
-              )
-            },
-            { maxRetries: 2, shouldRetry: isLikelyTransientError },
-          ),
-        ),
-      )
-      await loadCurrentTab()
-    } catch (caught) {
-      if (isLikelyTransientError(caught)) {
-        targetChatIds.forEach((chatId) => {
-          enqueueDeferredMutation('chat_mark_read', { chatId })
-        })
-        setSyncMessage('Sincronización diferida: el marcado global se completará automáticamente.')
-      } else {
-        setError(friendlyError(caught, 'No se pudo marcar todo como leído'))
-      }
-    } finally {
-      setMarkingAllRead(false)
-    }
-  }
-
-  async function openChatWithReadSync(chatId: string) {
-    if (!chatId || openingChatId) return
-    setOpeningChatId(chatId)
-    try {
-      await markChatAsReadBestEffort(chatId)
-      setSelectedConversation({ id: chatId, kind: 'chat' })
-    } finally {
-      setOpeningChatId(null)
     }
   }
 
   async function openConversation(item: ConversationItem) {
+    setOpenChatMenuId(null)
     if (item.kind === 'voice') {
       if (item.openPath) navigate(item.openPath)
       return
     }
     if (item.kind === 'chat') {
-      await openChatWithReadSync(item.id)
+      if (item.id && !openingChatId) {
+        setOpeningChatId(item.id)
+        try {
+          await markChatAsReadBestEffort(item.id)
+          if (supportsSplitLayout) {
+            setSelectedConversation({ id: item.id, kind: 'chat' })
+          } else if (item.openPath) {
+            navigate(item.openPath)
+          } else {
+            navigate(`/app/messages/${item.id}`)
+          }
+        } finally {
+          setOpeningChatId(null)
+        }
+      }
       return
     }
     if (item.kind === 'group' || item.kind === 'community') {
-      setSelectedConversation({ id: item.id, kind: item.kind })
+      if (supportsSplitLayout) {
+        setSelectedConversation({ id: item.id, kind: item.kind })
+      } else if (item.openPath) {
+        navigate(item.openPath)
+      }
       return
     }
     if (item.openPath) {
@@ -914,38 +857,69 @@ export function MessagesPage() {
     }
   }
 
-  useEffect(() => {
-    const client = supabase
-    if (!client || !user) return
-    if (activeTab !== 'chats') return
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null
-    const scheduleRefresh = () => {
-      if (refreshTimer) {
-        clearTimeout(refreshTimer)
-      }
-      refreshTimer = setTimeout(() => {
-        void loadCurrentTab({ silent: true })
-      }, 250)
+  async function openDiscoveredUser(item: DiscoverUserItem) {
+    if (!user || openingChatId) return
+    const cleanProfileId = normalizeId(item.profileId)
+    if (!cleanProfileId) return
+
+    const existingChat = items.find(
+      (entry) => entry.kind === 'chat' && normalizeId(entry.profileId ?? '') === cleanProfileId,
+    )
+    if (existingChat) {
+      await openConversation(existingChat)
+      return
     }
+
+    setOpeningChatId(`discover:${cleanProfileId}`)
+    try {
+      const chatId = await getOrCreateDirectChat(user.id, cleanProfileId)
+      await markChatAsReadBestEffort(chatId)
+      await loadCurrentTab({ silent: true })
+      if (supportsSplitLayout) {
+        setSelectedConversation({ id: chatId, kind: 'chat' })
+      } else {
+        navigate(`/app/messages/${chatId}`)
+      }
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo iniciar el chat'))
+    } finally {
+      setOpeningChatId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!supabase || !user) return
+    const client = supabase
+    const scheduleRefresh = () => {
+      const timer = setTimeout(() => void loadCurrentTab({ silent: true }), 2000)
+      return timer
+    }
+    let refreshTimer: ReturnType<typeof setTimeout>
     const channel = client
       .channel('conectate-web-live-messages')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages' },
-        scheduleRefresh,
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'chat_participants', filter: `user_id=eq.${user.id}` },
-        scheduleRefresh,
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
+        refreshTimer = scheduleRefresh()
+      })
       .subscribe()
-
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
       void client.removeChannel(channel)
     }
-  }, [activeTab, loadCurrentTab, user])
+  }, [loadCurrentTab, user])
+
+  useEffect(() => {
+    const closeMenuOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('.conversation-row-menu') || target.closest('.more-btn')) return
+      setOpenChatMenuId(null)
+    }
+    window.addEventListener('mousedown', closeMenuOnOutsideClick)
+    return () => {
+      window.removeEventListener('mousedown', closeMenuOnOutsideClick)
+    }
+  }, [])
 
   if (!supabase) {
     return (
@@ -956,274 +930,312 @@ export function MessagesPage() {
     )
   }
 
-  return (
-    <section className="section-stack">
-      <header className="section-header">
-        <h2>Mensajes</h2>
-        <p>Chats, grupos, comunidad y voz en la versión web.</p>
-      </header>
-      {syncing ? <small>Sincronizando mensajes...</small> : null}
-
-      {activeTab === 'chats' ? (
-        <input
-          className="text-input"
-          placeholder="Buscar conversaciones"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-        />
-      ) : null}
-
-      {activeTab === 'chats' ? (
-        <div className="row-actions">
-          <button
-            className={showUnreadOnly ? 'chip-btn active' : 'chip-btn'}
-            type="button"
-            onClick={() => setShowUnreadOnly((current) => !current)}
-          >
-            Solo no leídos ({showUnreadOnly ? filteredUnreadChats : totalUnreadChats})
-          </button>
-          <button className="ghost-btn" type="button" disabled={markingAllRead} onClick={() => void markAllChatsAsRead()}>
-            {markingAllRead ? 'Marcando...' : 'Marcar todo como leído'}
-          </button>
-          <small>{filteredChatsCount} chats visibles</small>
+  const renderConversationRow = (item: ConversationItem, isSelected = false) => (
+    <div
+      key={item.id}
+      className={
+        openChatMenuId === item.id
+          ? isSelected
+            ? 'conversation-row selected menu-open'
+            : 'conversation-row menu-open'
+          : isSelected
+            ? 'conversation-row selected'
+            : 'conversation-row'
+      }
+      onClick={() => void openConversation(item)}
+    >
+      {item.avatarUrl ? (
+        <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
+      ) : (
+        <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
+      )}
+      <div className="conversation-copy">
+        <div className="row-between">
+          {item.profileId && item.kind === 'chat' ? (
+            <Link
+              className="inline-link"
+              to={profilePathFor(item.profileId, user?.id)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.title}
+            </Link>
+          ) : (
+            <h3>{item.title}</h3>
+          )}
+          <small className="timestamp">{formatDateTime(item.updatedAt)}</small>
         </div>
-      ) : null}
-
-      {syncMessage ? (
-        <article className="surface-card">
-          <small>{syncMessage}</small>
-        </article>
-      ) : null}
-
-      <div className="chip-row">
-        {tabOptions.map((tab) => (
-          <button
-            key={tab.key}
-            className={tab.key === activeTab ? 'chip-btn active' : 'chip-btn'}
-            onClick={() => setActiveTab(tab.key)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+        <p>{item.subtitle}</p>
       </div>
-
-      {activeTab === 'chats' ? (
-        <article className="surface-card section-stack">
-          <h3>Carpetas</h3>
-          <div className="composer">
-            <input
-              className="text-input"
-              placeholder="Nombre de carpeta"
-              value={folderNameDraft}
-              onChange={(event) => setFolderNameDraft(event.target.value)}
-            />
-            <button className="ghost-btn" type="button" disabled={creatingFolder} onClick={() => void createFolder()}>
-              {creatingFolder ? 'Creando...' : 'Crear'}
+      <div className="conversation-status-col">
+        {item.unreadCount > 0 && <span className="unread-pill">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
+        {item.isPinned && <span className="icon-tiny">📌</span>}
+        {item.kind === 'chat' ? (
+          <>
+            <button
+              className="icon-btn-sm more-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpenChatMenuId((current) => (current === item.id ? null : item.id))
+              }}
+              aria-label="Opciones"
+              title="Opciones"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+              </svg>
             </button>
-          </div>
-          {folders.length > 0 ? (
-            <div className="row-actions">
-              {folders.map((folder) => (
-                <span key={folder.id} className="folder-tag">
-                  {folder.name}
-                </span>
+            {openChatMenuId === item.id ? (
+              <div className="conversation-row-menu" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateChatPreferences(item.id, item.isMuted, !item.isPinned)
+                    setOpenChatMenuId(null)
+                  }}
+                >
+                  {item.isPinned ? 'Despinear chat' : 'Pinear chat'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateChatPreferences(item.id, !item.isMuted, item.isPinned)
+                    setOpenChatMenuId(null)
+                  }}
+                >
+                  {item.isMuted ? 'Activar notificaciones' : 'Silenciar chat'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void markChatAsReadBestEffort(item.id)
+                    setOpenChatMenuId(null)
+                  }}
+                >
+                  Marcar como leído
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+
+  const renderDiscoveredUserRow = (item: DiscoverUserItem) => (
+    <button
+      key={`discover-${item.profileId}`}
+      className="conversation-row discover-row"
+      type="button"
+      onClick={() => void openDiscoveredUser(item)}
+      disabled={openingChatId === `discover:${item.profileId}`}
+    >
+      {item.avatarUrl ? (
+        <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
+      ) : (
+        <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
+      )}
+      <div className="conversation-copy">
+        <div className="row-between">
+          <h3>{item.title}</h3>
+          <small className="timestamp">Usuario</small>
+        </div>
+        <p>{item.subtitle}</p>
+      </div>
+      <div className="conversation-status-col">
+        <span className="folder-tag">Nuevo chat</span>
+      </div>
+    </button>
+  )
+
+  return (
+    <section className="section-stack messages-page">
+      {supportsSplitLayout ? (
+        <div className={webPreferences.compactInbox ? 'messages-split-layout compact-inbox-enabled' : 'messages-split-layout'}>
+          <aside className="messages-list-pane">
+            <header className="messages-inbox-head">
+              <div>
+                <h2>Mensajes</h2>
+                <p className="messages-inbox-subtitle">Chats, grupos y comunidad.</p>
+              </div>
+              <div className="row-actions messages-head-actions">
+                <button
+                  className="icon-btn-sm header-icon-btn"
+                  type="button"
+                  title="Nuevo chat"
+                  onClick={() => {
+                    if (activeTab !== 'chats') setActiveTab('chats')
+                    setSearchQuery('')
+                    searchInputRef.current?.focus()
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path
+                      d="M12 5v14M5 12h14"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  </svg>
+                </button>
+                <button
+                  className={
+                    activeTab === 'chats' && showUnreadOnly
+                      ? 'icon-btn-sm header-icon-btn active'
+                      : 'icon-btn-sm header-icon-btn'
+                  }
+                  type="button"
+                  title={activeTab === 'chats' ? 'Alternar no leídos' : 'Más opciones'}
+                  onClick={() => {
+                    if (activeTab === 'chats') {
+                      setShowUnreadOnly((current) => !current)
+                    }
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+                    <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                    <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
+            </header>
+
+            <div className="tab-pill-row messages-tab-row">
+              {tabOptions.map((tab) => (
+                <button
+                  key={tab.key}
+                  className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
+                  onClick={() => setActiveTab(tab.key)}
+                  type="button"
+                >
+                  {tab.label}
+                  {tab.key === 'chats' && totalUnreadChats > 0 && <span className="tab-dot" />}
+                </button>
               ))}
             </div>
-          ) : (
-            <small>No tienes carpetas creadas.</small>
-          )}
-        </article>
-      ) : null}
 
-      {supportsSplitLayout ? (
-        <div className="messages-split-layout">
-          <div className="messages-list-pane">
-            {loading ? (
-              <StatusView title={`Cargando ${title.toLowerCase()}`} description="Espera un momento..." />
-            ) : error ? (
-              <StatusView title="No se pudo cargar mensajes" description={error} />
-            ) : filteredItems.length === 0 ? (
-              <StatusView
-                title={`${title} vacío`}
-                description={normalizedSearch ? 'No hay resultados para tu búsqueda.' : 'No hay elementos todavía.'}
+            {activeTab === 'chats' ? (
+              <input
+                ref={searchInputRef}
+                className="text-input inbox-search-input"
+                placeholder="Buscar un chat o iniciar uno nuevo"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
               />
-            ) : (
-              <div className="list-stack">
-                {filteredItems.map((item) => {
-                  const isSelected =
-                    selectedConversation?.id === item.id &&
-                    selectedConversation?.kind === item.kind
-                  return (
-                    <div
-                      key={item.id}
-                      className={isSelected ? 'surface-card conversation-card selected' : 'surface-card conversation-card'}
-                    >
-                      <div
-                        className={item.openPath ? 'conversation-main conversation-main-clickable' : 'conversation-main'}
-                        role={item.openPath ? 'button' : undefined}
-                        tabIndex={item.openPath ? 0 : undefined}
-                        onClick={() => void openConversation(item)}
-                        onKeyDown={(event) => {
-                          if (!item.openPath) return
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            void openConversation(item)
-                          }
-                        }}
-                      >
-                        {item.avatarUrl ? (
-                          <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
-                        ) : (
-                          <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
-                        )}
-                        <div className="conversation-copy">
-                          <div className="row-between">
-                            {item.profileId && activeTab === 'chats' ? (
-                              <Link
-                                className="inline-link"
-                                to={profilePathFor(item.profileId, user?.id)}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                {item.title}
-                              </Link>
-                            ) : (
-                              <h3>{item.title}</h3>
-                            )}
-                            <small>{formatDateTime(item.updatedAt)}</small>
-                          </div>
-                          <p>{item.subtitle}</p>
-                          <div className="row-actions">
-                            <span className="folder-tag">{labelByKind(item.kind)}</span>
-                            {item.folders.map((folder) => (
-                              <span key={`${item.id}-${folder}`} className="folder-tag">
-                                {folder}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="row-actions conversation-actions">
-                        {item.isPinned ? <span className="folder-tag">Pineado</span> : null}
-                        {item.isMuted ? <span className="folder-tag">Silenciado</span> : null}
-                        {item.unreadCount > 0 ? <span className="unread-pill">{item.unreadCount}</span> : null}
-                        {activeTab === 'chats' ? (
-                          <>
-                            <button
-                              className="chip-btn"
-                              type="button"
-                              onClick={() => void updateChatPreferences(item.id, item.isMuted, !item.isPinned)}
-                            >
-                              {item.isPinned ? 'Despinear' : 'Pinear'}
-                            </button>
-                            <button
-                              className="chip-btn"
-                              type="button"
-                              onClick={() => void updateChatPreferences(item.id, !item.isMuted, item.isPinned)}
-                            >
-                              {item.isMuted ? 'Activar' : 'Silenciar'}
-                            </button>
-                            {folders.length > 0 ? (
-                              <>
-                                <select
-                                  className="text-input tiny-input"
-                                  value={folderSelectionByChat[item.id] ?? ''}
-                                  onChange={(event) =>
-                                    setFolderSelectionByChat((current) => ({
-                                      ...current,
-                                      [item.id]: event.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">Carpeta</option>
-                                  {folders.map((folder) => (
-                                    <option key={folder.id} value={folder.id}>
-                                      {folder.name}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button className="chip-btn" type="button" onClick={() => void assignChatToFolder(item.id)}>
-                                  Asignar
-                                </button>
-                              </>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {item.openPath ? (
-                          <button
-                            className="ghost-btn"
-                            type="button"
-                            disabled={openingChatId === item.id}
-                            onClick={() => void openConversation(item)}
-                          >
-                            {openingChatId === item.id ? 'Abriendo...' : isSelected ? 'Abierto' : 'Abrir'}
-                          </button>
-                        ) : null}
-                      </div>
+            ) : null}
+
+            {syncing ? <small className="sync-note">Sincronizando...</small> : null}
+
+            <div className="conversation-scroll">
+              {loading ? (
+                <StatusView title="Cargando..." description="Un momento..." />
+              ) : error ? (
+                <StatusView title="Error" description={error} />
+              ) : showNoResultsState ? (
+                <StatusView title="Sin resultados" description="No hay conversaciones para mostrar." />
+              ) : (
+                <div className="conversation-list">
+                  {filteredItems.map((item) =>
+                    renderConversationRow(
+                      item,
+                      selectedConversation?.id === item.id && selectedConversation?.kind === item.kind,
+                    ),
+                  )}
+                  {showGlobalSearchResults ? (
+                    <div className="discover-section">
+                      <small className="discover-title">Usuarios fuera de tus chats</small>
+                      {discoverLoading ? (
+                        <small className="sync-note">Buscando usuarios...</small>
+                      ) : discoverError ? (
+                        <small className="error-text">{discoverError}</small>
+                      ) : discoverUsers.length === 0 ? (
+                        <small className="sync-note">No hay más usuarios para este filtro.</small>
+                      ) : (
+                        discoverUsers.map((entry) => renderDiscoveredUserRow(entry))
+                      )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-          <div className="messages-detail-pane">
-            {loading ? (
-              <StatusView title="Cargando conversación" description="Espera un momento..." />
-            ) : error ? (
-              <StatusView title="No se pudo cargar conversación" description={error} />
-            ) : !selectedConversationItem ? (
-              <StatusView title="Selecciona una conversación" description="Elige un chat, grupo o comunidad para abrirlo aquí." />
-            ) : selectedConversationItem.kind === 'chat' ? (
-              <ChatDetailPage chatIdOverride={selectedConversationItem.id} embedded />
-            ) : selectedConversationItem.kind === 'group' ? (
-              <RoomChatPage scope="group" roomId={selectedConversationItem.id} embedded />
-            ) : (
-              <RoomChatPage scope="community" roomId={selectedConversationItem.id} embedded />
-            )}
-          </div>
-        </div>
-      ) : loading ? (
-        <StatusView title={`Cargando ${title.toLowerCase()}`} description="Espera un momento..." />
-      ) : error ? (
-        <StatusView title="No se pudo cargar mensajes" description={error} />
-      ) : filteredItems.length === 0 ? (
-        <StatusView
-          title={`${title} vacío`}
-          description={normalizedSearch ? 'No hay resultados para tu búsqueda.' : 'No hay elementos todavía.'}
-        />
-      ) : (
-        <div className="list-stack">
-          {filteredItems.map((item) => (
-            <div key={item.id} className="surface-card conversation-card">
-              <div
-                className={item.openPath ? 'conversation-main conversation-main-clickable' : 'conversation-main'}
-                role={item.openPath ? 'button' : undefined}
-                tabIndex={item.openPath ? 0 : undefined}
-                onClick={() => void openConversation(item)}
-                onKeyDown={(event) => {
-                  if (!item.openPath) return
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    void openConversation(item)
-                  }
-                }}
-              >
-                {item.avatarUrl ? (
-                  <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
-                ) : (
-                  <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
-                )}
-                <div className="conversation-copy">
-                  <div className="row-between">
-                    <h3>{item.title}</h3>
-                    <small>{formatDateTime(item.updatedAt)}</small>
-                  </div>
-                  <p>{item.subtitle}</p>
+                  ) : null}
                 </div>
-              </div>
+              )}
             </div>
-          ))}
+          </aside>
+
+          <section className="messages-detail-pane">
+            {!selectedConversationItem ? (
+              <div className="messages-empty-state">
+                <div className="messages-empty-icon">💬</div>
+                <h3>Tus mensajes</h3>
+                <p>Selecciona una conversación para empezar a chatear.</p>
+              </div>
+            ) : selectedConversationItem.kind === 'chat' ? (
+              <ChatDetailPage key={`chat-${selectedConversationItem.id}`} chatIdOverride={selectedConversationItem.id} embedded />
+            ) : (
+              <RoomChatPage
+                key={`${selectedConversationItem.kind}-${selectedConversationItem.id}`}
+                scope={selectedConversationItem.kind === 'group' ? 'group' : 'community'}
+                roomId={selectedConversationItem.id}
+                embedded
+              />
+            )}
+          </section>
         </div>
+      ) : (
+        <>
+          <header className="section-header">
+            <h2>Mensajes</h2>
+            <p>Chats, grupos y comunidad.</p>
+          </header>
+          {syncing ? <small>Sincronizando...</small> : null}
+
+          <div className="tab-pill-row">
+            {tabOptions.map((tab) => (
+              <button
+                key={tab.key}
+                className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
+                onClick={() => setActiveTab(tab.key)}
+                type="button"
+              >
+                {tab.label}
+                {tab.key === 'chats' && totalUnreadChats > 0 && <span className="tab-dot" />}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'chats' ? (
+            <input
+              className="text-input"
+              placeholder="Buscar conversaciones"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          ) : null}
+
+          {showNoResultsState ? (
+            <StatusView title="Sin resultados" description="No hay conversaciones para mostrar." />
+          ) : (
+            <div className="conversation-list mobile-conversation-list">
+              {filteredItems.map((item) => renderConversationRow(item))}
+              {showGlobalSearchResults ? (
+                <div className="discover-section">
+                  <small className="discover-title">Usuarios fuera de tus chats</small>
+                  {discoverLoading ? (
+                    <small className="sync-note">Buscando usuarios...</small>
+                  ) : discoverError ? (
+                    <small className="error-text">{discoverError}</small>
+                  ) : discoverUsers.length === 0 ? (
+                    <small className="sync-note">No hay más usuarios para este filtro.</small>
+                  ) : (
+                    discoverUsers.map((entry) => renderDiscoveredUserRow(entry))
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </>
       )}
     </section>
   )

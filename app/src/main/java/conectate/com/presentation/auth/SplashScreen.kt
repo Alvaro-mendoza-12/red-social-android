@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import conectate.com.R
 
+
+@Composable
+@Composable
 @Composable
 fun SplashScreen() {
     val infiniteTransition = rememberInfiniteTransition(label = "splash")
@@ -70,3 +73,12 @@ fun SplashScreen() {
         }
     }
 }
+
+
+
+
+
+
+
+
+

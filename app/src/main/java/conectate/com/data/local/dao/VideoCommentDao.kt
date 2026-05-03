@@ -18,6 +18,9 @@ interface VideoCommentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertComments(comments: List<VideoCommentEntity>)
 
+    @Query("SELECT * FROM video_comments WHERE id = :commentId LIMIT 1")
+    suspend fun getCommentById(commentId: String): VideoCommentEntity?
+
     @Query("DELETE FROM video_comments WHERE videoId = :videoId")
     suspend fun deleteCommentsByVideo(videoId: String)
 

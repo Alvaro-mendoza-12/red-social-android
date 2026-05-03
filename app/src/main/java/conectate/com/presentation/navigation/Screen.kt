@@ -57,6 +57,17 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
     object EditProfile : Screen("edit_profile")
     object Settings : Screen("settings")
+    object AccountSettings : Screen("account_settings")
+    object SecuritySettings : Screen("security_settings")
+    object PrivacySettings : Screen("privacy_settings")
+    object CustomizeApp : Screen("customize_app")
+    object NotificationSettings : Screen("notification_settings")
+    object ChatSettings : Screen("chat_settings")
+    object StorageSettings : Screen("storage_settings")
+    object LanguageSettings : Screen("language_settings")
+    object ThemeSettings : Screen("theme_settings")
+    object HelpSettings : Screen("help_settings")
+    object AboutSettings : Screen("about_settings")
     object ChangePassword : Screen("change_password")
     object PrivacyPolicy : Screen("privacy_policy")
     object UserProfile : Screen("user_profile/{userId}") {
@@ -137,12 +148,23 @@ sealed class Screen(val route: String) {
 
     object Notifications : Screen("notifications")
     object Ranking : Screen("ranking")
+    object CallHistory : Screen("call_history")
     object FriendRequests : Screen("friend_requests")
     
     object CreateMoment : Screen("create_moment")
     object MomentViewer : Screen("moment_viewer/{momentId}") {
         fun createRoute(momentId: String) = "moment_viewer/$momentId"
     }
+    
+    object LiveViewer : Screen("live_viewer/{streamId}") {
+        fun createRoute(streamId: String) = "live_viewer/$streamId"
+    }
+    
+    object LiveHost : Screen("live_host/{liveId}") {
+        fun createRoute(liveId: String) = "live_host/$liveId"
+    }
+    object AddAccountLogin : Screen("add_account_login")
+    object NotificationAccountBridge : Screen("notification_account_bridge")
     
     object VideoEditor : Screen("video_editor/{videoUri}") {
         fun createRoute(videoUri: android.net.Uri): String {

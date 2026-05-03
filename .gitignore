@@ -2,6 +2,9 @@
 secrets.properties
 secrets.properties.*
 !secrets.properties.example
+keystore.properties
+keystore.properties.*
+!keystore.properties.example
 *.jks
 *.keystore
 *.p12
@@ -15,6 +18,8 @@ secrets.properties.*
 *.iml
 .gradle/
 .gradle-user/
+.gradle-user-home/
+.android-user-home/
 /.qodo/
 /.backup/
 
@@ -34,7 +39,11 @@ app/local.properties
 **/captures/
 **/outputs/
 *.log
+build*.txt
+compile*.txt
 *.tmp
+*.temp
+*.broken
 hs_err_pid*.log
 replay_pid*.log
 
@@ -50,3 +59,10 @@ supabase/*firebase-adminsdk*.json
 # Runtime binaries and tools
 ngrok.exe
 ChromeSetup.exe
+tools/jdk-17/
+tools/jdk-17.zip
+
+# Local staging and deployment bundles
+.openclaw_staging_*/
+openclaw_*.zip
+signaling-server*.zip

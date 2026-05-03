@@ -69,7 +69,7 @@ fun VoiceRoomsTab(
     Column(modifier = Modifier.fillMaxSize()) {
         if (!hasAccess) {
             RestrictedAccessScreen(
-                requestStatus = requestStatus,
+                requestStatus = requestStatus ?: "",
                 onRequestAccess = { viewModel.requestAccess() },
                 onRefresh = { viewModel.refreshStatus() }
             )
@@ -184,7 +184,8 @@ fun VoiceRoomsTab(
             // Handle Search result within the UI
             LaunchedEffect(uiState) {
                 if (uiState is VoiceRoomsUiState.SearchResult) {
-                    val room = (uiState as VoiceRoomsUiState.SearchResult).room
+                    val rooms = (uiState as VoiceRoomsUiState.SearchResult).rooms
+                    val room = rooms.firstOrNull()
                     if (room != null) {
                         // Check password if private
                         if (room.isPublic || room.password == searchPassword) {

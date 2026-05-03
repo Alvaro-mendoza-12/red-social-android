@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChallengesPage } from '../challenges/ChallengesPage'
-import { FeedPage } from '../feed/FeedPage'
+import { ChallengesPage } from '../../pages/challenges/ChallengesPage'
+import { FeedPage } from '../../pages/feed/FeedPage'
 import { MomentsPage } from '../moments/MomentsPage'
 
 type SocialTab = 'posts' | 'moments' | 'challenges'
@@ -21,13 +21,33 @@ export function SocialPage() {
 
   return (
     <section className="section-stack">
-      <header className="section-header">
-        <h2>Social</h2>
-        <p>Publicaciones y momentos en un solo módulo, compartido con la app móvil.</p>
-      </header>
+      <article className="surface-card social-overview-card">
+        <div className="social-overview-head">
+          <div className="social-overview-copy">
+            <span className="brand-tag">Social</span>
+            <h2>La parte social ya no se siente como un prototipo web</h2>
+            <p>
+              Publicaciones, momentos y retos ahora comparten una cabecera más coherente con móvil,
+              acciones rápidas visibles y un contenedor pensado para escritorio y tablet.
+            </p>
+          </div>
+          <div className="row-actions social-overview-actions wrap">
+            <Link className="ghost-btn" to="/app/search">
+              Buscar
+            </Link>
+            <Link className="ghost-btn" to="/app/notifications">
+              Alertas
+            </Link>
+            <Link className="ghost-btn" to="/app/follows">
+              Seguidores
+            </Link>
+            <Link className="ghost-btn" to="/app/friend-requests">
+              Solicitudes
+            </Link>
+          </div>
+        </div>
 
-      <div className="row-between">
-        <div className="chip-row">
+        <div className="chip-row social-chip-row">
           <button
             type="button"
             className={activeTab === 'posts' ? 'chip-btn active' : 'chip-btn'}
@@ -50,21 +70,7 @@ export function SocialPage() {
             Retos
           </button>
         </div>
-        <div className="row-actions">
-          <Link className="ghost-btn" to="/app/search">
-            Buscar
-          </Link>
-          <Link className="ghost-btn" to="/app/notifications">
-            Alerts
-          </Link>
-          <Link className="ghost-btn" to="/app/follows">
-            Seguidores
-          </Link>
-          <Link className="ghost-btn" to="/app/friend-requests">
-            Solicitudes
-          </Link>
-        </div>
-      </div>
+      </article>
 
       <div className="social-shell">
         {activeTab === 'posts'

@@ -74,6 +74,8 @@ class AdvancedMessagingRepository @Inject constructor(
         private const val KEY_SCHEDULED_LOCAL = "scheduled_local_json"
         private const val KEY_AUTODESTRUCT = "autodestruct_json"
         private const val KEY_SUMMARY = "summary_json"
+        // Production hardening: do not send user message content to public translation services.
+        private const val SECURE_TRANSLATION_PROVIDER_ENABLED = false
     }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; isLenient = true }
@@ -82,15 +84,19 @@ class AdvancedMessagingRepository @Inject constructor(
     val folders: StateFlow<List<ChatFolder>> = _folders.asStateFlow()
     private val translationCache = linkedMapOf<String, ChatTranslationSettings>()
 
+    fun isSecureTranslationAvailable(): Boolean = SECURE_TRANSLATION_PROVIDER_ENABLED
+
+
+
     suspend fun refreshFolders(): Result<List<ChatFolder>> = withContext(Dispatchers.IO) {
-        val token = authService.getAccessToken() ?: return@withContext Result.success(_folders.value)
+        var token = authService.getAccessToken() ?: return@withContext Result.success(_folders.value)
         runCatching {
             val fr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,name,color_hex")
             }
             if (!fr.status.isSuccess()) return@runCatching _folders.value
-            val folders = runCatching { json.decodeFromString<List<FolderRow>>(fr.bodyAsText()) }.getOrDefault(emptyList())
+            var folders = runCatching { json.decodeFromString<List<FolderRow>>(fr.bodyAsText()) }.getOrDefault(emptyList())
 
             val lr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
@@ -108,6 +114,8 @@ class AdvancedMessagingRepository @Inject constructor(
         )
     }
 
+
+
     suspend fun createFolder(name: String, colorHex: String? = null): Result<ChatFolder> = withContext(Dispatchers.IO) {
         val clean = name.trim().replace(Regex("\\s+"), " ").take(60)
         if (clean.isBlank()) return@withContext Result.failure(Exception("Nombre requerido"))
@@ -119,8 +127,8 @@ class AdvancedMessagingRepository @Inject constructor(
         }
 
         val cleanColor = colorHex?.trim()?.ifBlank { null }
-        val token = authService.getAccessToken()
-        val userId = authService.getCurrentUserId()
+        var token = authService.getAccessToken()
+        var userId = authService.getCurrentUserId()
             ?.trim()
             ?.lowercase()
             ?.ifBlank { null }
@@ -132,7 +140,7 @@ class AdvancedMessagingRepository @Inject constructor(
                     name = clean,
                     color_hex = cleanColor
                 )
-                val merged = (_folders.value + localFolder).distinctBy { it.id }
+                var merged = (_folders.value + localFolder).distinctBy { it.id }
                 _folders.value = merged
                 persistFolders(merged)
                 return@runCatching localFolder
@@ -140,21 +148,22 @@ class AdvancedMessagingRepository @Inject constructor(
             if (userId.isNullOrBlank()) {
                 throw Exception("No se pudo identificar el usuario actual. Vuelve a iniciar sesión.")
             }
+            val resolvedUserId = userId
 
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "return=representation")
                 setBody(
                     buildJsonObject {
                         put("name", clean)
-                        userId?.let { put("user_id", it) }
+                        put("user_id", resolvedUserId)
                         cleanColor?.let { put("color_hex", it) }
                     }
                 )
             }
 
             if (!response.status.isSuccess()) {
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                var body = runCatching { response.bodyAsText() }.getOrDefault("")
                 val lowerBody = body.lowercase(Locale.US)
                 if (
                     lowerBody.contains("duplicate key") ||
@@ -166,7 +175,7 @@ class AdvancedMessagingRepository @Inject constructor(
                 if (response.status.value == 403 || lowerBody.contains("permission denied") || lowerBody.contains("policy")) {
                     val rpcFolder = tryCreateFolderViaRpc(token, clean, cleanColor)
                     if (rpcFolder != null) {
-                        val merged = (_folders.value + rpcFolder).distinctBy { it.id }
+                        var merged = (_folders.value + rpcFolder).distinctBy { it.id }
                         _folders.value = merged
                         persistFolders(merged)
                         return@runCatching rpcFolder
@@ -176,13 +185,13 @@ class AdvancedMessagingRepository @Inject constructor(
                 throw Exception("No se pudo crear carpeta (${response.status.value}).")
             }
 
-            val row = runCatching { json.decodeFromString<List<FolderRow>>(response.bodyAsText()).firstOrNull() }.getOrNull()
-            val folder = ChatFolder(
+            var row = runCatching { json.decodeFromString<List<FolderRow>>(response.bodyAsText()).firstOrNull() }.getOrNull()
+            var folder = ChatFolder(
                 id = row?.id ?: UUID.randomUUID().toString(),
                 name = row?.name ?: clean,
                 color_hex = row?.color_hex ?: cleanColor
             )
-            val merged = (_folders.value + folder).distinctBy { it.id }
+            var merged = (_folders.value + folder).distinctBy { it.id }
             _folders.value = merged
             persistFolders(merged)
             folder
@@ -195,7 +204,7 @@ class AdvancedMessagingRepository @Inject constructor(
     private fun decodeUserIdFromAccessToken(token: String?): String? {
         if (token.isNullOrBlank()) return null
         return runCatching {
-            val payload = token.split('.').getOrNull(1)?.trim().orEmpty()
+            var payload = token.split('.').getOrNull(1)?.trim().orEmpty()
             if (payload.isBlank()) return@runCatching null
             val decoded = String(
                 Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
@@ -218,7 +227,7 @@ class AdvancedMessagingRepository @Inject constructor(
     ): ChatFolder? {
         val rpcNames = listOf("secure_create_chat_folder", "secure_create_folder")
         rpcNames.forEach { rpcName ->
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/$rpcName") {
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/$rpcName") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -231,7 +240,7 @@ class AdvancedMessagingRepository @Inject constructor(
                 )
             }
             if (response.status.isSuccess()) {
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                var body = runCatching { response.bodyAsText() }.getOrDefault("")
                 parseFolderFromBody(body, folderName, colorHex)?.let { return it }
                 return ChatFolder(
                     id = UUID.randomUUID().toString(),
@@ -239,7 +248,7 @@ class AdvancedMessagingRepository @Inject constructor(
                     color_hex = colorHex
                 )
             }
-            val body = runCatching { response.bodyAsText() }.getOrDefault("")
+            var body = runCatching { response.bodyAsText() }.getOrDefault("")
             if (!isMissingRpcFunction(response.status.value, body, rpcName)) {
                 android.util.Log.w(
                     "AdvancedMessagingRepository",
@@ -256,7 +265,7 @@ class AdvancedMessagingRepository @Inject constructor(
         fallbackColor: String?
     ): ChatFolder? {
         if (body.isBlank()) return null
-        val fromList = runCatching {
+        var fromList = runCatching {
             json.decodeFromString<List<FolderRow>>(body).firstOrNull()
         }.getOrNull()
         val fromObject = if (fromList == null) {
@@ -264,7 +273,7 @@ class AdvancedMessagingRepository @Inject constructor(
         } else {
             null
         }
-        val row = fromList ?: fromObject ?: return null
+        var row = fromList ?: fromObject ?: return null
         return ChatFolder(
             id = row.id.ifBlank { UUID.randomUUID().toString() },
             name = row.name.ifBlank { fallbackName },
@@ -280,9 +289,11 @@ class AdvancedMessagingRepository @Inject constructor(
             (normalized.contains(functionName.lowercase(Locale.US)) && normalized.contains("does not exist"))
     }
 
+
+
     suspend fun addChatToFolder(folderId: String, chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanFolder = folderId.trim()
-        val cleanChat = chatId.trim().lowercase()
+        var cleanFolder = folderId.trim()
+        var cleanChat = chatId.trim().lowercase()
         if (cleanFolder.isBlank() || cleanChat.isBlank()) return@withContext Result.failure(Exception("Datos inválidos"))
         runCatching {
             _folders.value = _folders.value.map {
@@ -290,11 +301,11 @@ class AdvancedMessagingRepository @Inject constructor(
             }
             persistFolders(_folders.value)
 
-            val token = authService.getAccessToken()
+            var token = authService.getAccessToken()
             if (token.isNullOrBlank()) return@runCatching
 
-            val r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
                 parameter("on_conflict", "folder_id,chat_id")
                 setBody(buildJsonObject { put("folder_id", cleanFolder); put("chat_id", cleanChat) })
@@ -305,20 +316,22 @@ class AdvancedMessagingRepository @Inject constructor(
         }.fold(onSuccess = { Result.success(Unit) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo asignar carpeta")) })
     }
 
+
+
     suspend fun removeChatFromFolder(folderId: String, chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanFolder = folderId.trim()
-        val cleanChat = chatId.trim().lowercase()
+        var cleanFolder = folderId.trim()
+        var cleanChat = chatId.trim().lowercase()
         if (cleanFolder.isBlank() || cleanChat.isBlank()) return@withContext Result.failure(Exception("Datos inválidos"))
         runCatching {
             _folders.value = _folders.value.map { if (it.id == cleanFolder) it.copy(chat_ids = it.chat_ids.filterNot { id -> id == cleanChat }) else it }
             persistFolders(_folders.value)
 
-            val token = authService.getAccessToken()
+            var token = authService.getAccessToken()
             if (token.isNullOrBlank()) return@runCatching
 
-            val r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("folder_id", "eq.$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
+            var r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("folder_id", "eq.`$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
             }
             if (!r.status.isSuccess()) {
                 android.util.Log.w("AdvancedMessagingRepository", "removeChatFromFolder remote sync failed: ${r.status}")
@@ -326,8 +339,10 @@ class AdvancedMessagingRepository @Inject constructor(
         }.fold(onSuccess = { Result.success(Unit) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo quitar carpeta")) })
     }
 
+
+
     suspend fun deleteFolder(folderId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanFolder = folderId.trim()
+        var cleanFolder = folderId.trim()
         if (cleanFolder.isBlank()) return@withContext Result.failure(Exception("Carpeta inválida"))
 
         val previousFolders = _folders.value
@@ -335,17 +350,17 @@ class AdvancedMessagingRepository @Inject constructor(
             _folders.value = previousFolders.filterNot { it.id == cleanFolder }
             persistFolders(_folders.value)
 
-            val token = authService.getAccessToken()
+            var token = authService.getAccessToken()
             if (token.isNullOrBlank() || cleanFolder.startsWith("local-")) return@runCatching
 
-            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$cleanFolder")
             }
 
             if (!response.status.isSuccess() && response.status.value != 404) {
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
+                var body = runCatching { response.bodyAsText() }.getOrDefault("")
                 throw Exception("No se pudo eliminar carpeta (${response.status.value}). $body")
             }
         }.fold(
@@ -358,12 +373,19 @@ class AdvancedMessagingRepository @Inject constructor(
         )
     }
 
+
+
     suspend fun setChatTranslation(chatId: String, enabled: Boolean, targetLang: String?): Result<ChatTranslationSettings> = withContext(Dispatchers.IO) {
-        val cleanChat = chatId.trim().lowercase()
-        val normalizedTarget = normalizeLanguageCode(targetLang)
-        val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+        var cleanChat = chatId.trim().lowercase()
+        var normalizedTarget = normalizeLanguageCode(targetLang)
+        if (enabled && !SECURE_TRANSLATION_PROVIDER_ENABLED) {
+            return@withContext Result.failure(
+                IllegalStateException("La traducción automática no está disponible hasta configurar un proveedor privado y seguro.")
+            )
+        }
+        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         runCatching {
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("p_chat_id", cleanChat)
                 put("p_enabled", enabled)
                 if (normalizedTarget == null) {
@@ -372,26 +394,28 @@ class AdvancedMessagingRepository @Inject constructor(
                     put("p_target_lang", normalizedTarget)
                 }
             }
-            val r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_translation_settings") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
+            var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_translation_settings") {
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
                 setBody(payload)
             }
             if (!r.status.isSuccess()) throw IllegalStateException("No se pudo guardar traducción")
-            val setting = runCatching { json.decodeFromString<List<ChatTranslationSettings>>(r.bodyAsText()).firstOrNull() }.getOrNull()
+            var setting = runCatching { json.decodeFromString<List<ChatTranslationSettings>>(r.bodyAsText()).firstOrNull() }.getOrNull()
                 ?: ChatTranslationSettings(chat_id = cleanChat, enabled = enabled, target_lang = normalizedTarget)
             translationCache[cleanChat] = setting
             setting
         }.fold(onSuccess = { Result.success(it) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo guardar traducción")) })
     }
 
+
+
     suspend fun getChatTranslation(chatId: String): ChatTranslationSettings? = withContext(Dispatchers.IO) {
-        val cleanChat = chatId.trim().lowercase()
+        var cleanChat = chatId.trim().lowercase()
         if (cleanChat.isBlank()) return@withContext null
         translationCache[cleanChat]?.let { return@withContext it }
 
-        val token = authService.getAccessToken() ?: return@withContext null
+        var token = authService.getAccessToken() ?: return@withContext null
         runCatching {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_translation_settings") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_translation_settings") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "chat_id,enabled,target_lang,updated_at")
                 parameter("chat_id", "eq.$cleanChat")
@@ -406,17 +430,20 @@ class AdvancedMessagingRepository @Inject constructor(
         }.getOrNull()
     }
 
+
+
     suspend fun applyAutoTranslation(chatId: String, text: String): String = withContext(Dispatchers.IO) {
-        val cleanText = text.trim()
+        var cleanText = text.trim()
         if (cleanText.isBlank()) return@withContext cleanText
-        val cleanChat = chatId.trim().lowercase()
-        val setting = translationCache[cleanChat]
-        val targetLang = normalizeLanguageCode(setting?.target_lang)
+        if (!SECURE_TRANSLATION_PROVIDER_ENABLED) return@withContext cleanText
+        var cleanChat = chatId.trim().lowercase()
+        var setting = translationCache[cleanChat]
+        var targetLang = normalizeLanguageCode(setting?.target_lang)
         if (setting == null || !setting.enabled || targetLang == null) return@withContext cleanText
-        val sourceLang = resolveSourceLanguageCode()
+        var sourceLang = resolveSourceLanguageCode()
         if (sourceLang == targetLang) return@withContext cleanText
         runCatching {
-            val r = supabaseConfig.httpClient.get("https://api.mymemory.translated.net/get") {
+            var r = supabaseConfig.httpClient.get("https://api.mymemory.translated.net/get") {
                 parameter("q", cleanText.take(1200))
                 parameter("langpair", "$sourceLang|$targetLang")
             }
@@ -428,14 +455,17 @@ class AdvancedMessagingRepository @Inject constructor(
         }.getOrDefault(cleanText)
     }
 
+
+
     private suspend fun translateToLanguage(text: String, targetLang: String): String = withContext(Dispatchers.IO) {
-        val cleanText = text.trim()
-        val cleanLang = normalizeLanguageCode(targetLang)
+        var cleanText = text.trim()
+        var cleanLang = normalizeLanguageCode(targetLang)
         if (cleanText.isBlank() || cleanLang == null) return@withContext cleanText
-        val sourceLang = resolveSourceLanguageCode()
+        if (!SECURE_TRANSLATION_PROVIDER_ENABLED) return@withContext cleanText
+        var sourceLang = resolveSourceLanguageCode()
         if (sourceLang == cleanLang) return@withContext cleanText
         runCatching {
-            val r = supabaseConfig.httpClient.get("https://api.mymemory.translated.net/get") {
+            var r = supabaseConfig.httpClient.get("https://api.mymemory.translated.net/get") {
                 parameter("q", cleanText.take(1200))
                 parameter("langpair", "$sourceLang|$cleanLang")
             }
@@ -447,26 +477,33 @@ class AdvancedMessagingRepository @Inject constructor(
         }.getOrDefault(cleanText)
     }
 
+
+
     suspend fun scheduleMessageJob(scopeType: String, targetId: String, content: String, contentType: String = "text", mediaUrl: String? = null, scheduledForEpochMs: Long, translateTo: String? = null, selfDestructSeconds: Int? = null): Result<ScheduledMessageJob> = withContext(Dispatchers.IO) {
-        val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         val scheduledFor = Instant.ofEpochMilli(scheduledForEpochMs.coerceAtLeast(System.currentTimeMillis() + 30_000L)).toString()
-        val cleanTranslateTo = normalizeLanguageCode(translateTo)
+        var cleanTranslateTo = normalizeLanguageCode(translateTo)
+        if (cleanTranslateTo != null && !SECURE_TRANSLATION_PROVIDER_ENABLED) {
+            return@withContext Result.failure(
+                IllegalStateException("La traducción programada está deshabilitada hasta configurar un proveedor privado y seguro.")
+            )
+        }
         runCatching {
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("p_scope_type", scopeType.trim().lowercase()); put("p_target_id", targetId.trim().lowercase())
                 put("p_content", content.trim().take(4000)); put("p_content_type", contentType.ifBlank { "text" })
-                val cleanMediaUrl = mediaUrl?.trim()?.ifBlank { null }
+                var cleanMediaUrl = mediaUrl?.trim()?.ifBlank { null }
                 if (cleanMediaUrl == null) put("p_media_url", JsonNull) else put("p_media_url", cleanMediaUrl)
                 put("p_scheduled_for", scheduledFor)
                 if (cleanTranslateTo == null) put("p_translate_to", JsonNull) else put("p_translate_to", cleanTranslateTo)
                 if (selfDestructSeconds == null) put("p_self_destruct_seconds", JsonNull) else put("p_self_destruct_seconds", selfDestructSeconds)
             }
-            val r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_schedule_message_job") {
+            var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_schedule_message_job") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
                 setBody(payload)
             }
             val scheduled = if (r.status.isSuccess()) {
-                val body = r.bodyAsText()
+                var body = r.bodyAsText()
                 runCatching { json.decodeFromString<List<ScheduledMessageJob>>(body).firstOrNull() }.getOrNull()
                     ?: runCatching { json.decodeFromString<ScheduledMessageJob>(body) }.getOrNull()
                     ?: ScheduledMessageJob(
@@ -502,16 +539,18 @@ class AdvancedMessagingRepository @Inject constructor(
         }.fold(onSuccess = { Result.success(it) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo programar")) })
     }
 
+
+
     suspend fun processDueScheduledJobs(maxBatch: Int = 20): Result<Int> = withContext(Dispatchers.IO) {
         val nowMs = System.currentTimeMillis()
         val localDue = loadLocalScheduled()
             .filter { it.status == "pending" && parseIso(it.scheduled_for) <= nowMs }
             .take(maxBatch)
         val remoteDue = loadRemoteDueScheduled(maxBatch)
-        val due = (localDue + remoteDue).distinctBy { it.id }.take(maxBatch)
+        var due = (localDue + remoteDue).distinctBy { it.id }.take(maxBatch)
         if (due.isEmpty()) return@withContext Result.success(0)
-        var sent = 0
-        val keep = loadLocalScheduled().toMutableList()
+        val sent = 0
+        var keep = loadLocalScheduled().toMutableList()
         due.forEach { job ->
             val translated = if (!job.translate_to.isNullOrBlank()) {
                 translateToLanguage(job.content, job.translate_to.orEmpty())
@@ -547,13 +586,15 @@ class AdvancedMessagingRepository @Inject constructor(
         Result.success(sent)
     }
 
+
+
     suspend fun processDueAutoDestructTasks(maxBatch: Int = 30): Result<Int> = withContext(Dispatchers.IO) {
         val uid = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext Result.success(0)
         val all = loadAutoDestruct()
-        val due = all.filter { it.owner_id == uid && it.execute_at_epoch_ms <= System.currentTimeMillis() }.take(maxBatch)
+        var due = all.filter { it.owner_id == uid && it.execute_at_epoch_ms <= System.currentTimeMillis() }.take(maxBatch)
         if (due.isEmpty()) return@withContext Result.success(0)
-        val keep = all.toMutableList()
-        var deleted = 0
+        var keep = all.toMutableList()
+        val deleted = 0
         due.forEach { task ->
             val res = when (task.scope_type.trim().lowercase()) {
                 "dm" -> messageRepository.deleteMessage(task.message_id, true)
@@ -568,8 +609,10 @@ class AdvancedMessagingRepository @Inject constructor(
         Result.success(deleted)
     }
 
+
+
     suspend fun summarizeChat(chatId: String, messages: List<Message>, expectedParticipants: Int? = null): Result<ChatSummary> = withContext(Dispatchers.Default) {
-        val cleanChat = chatId.trim().lowercase()
+        var cleanChat = chatId.trim().lowercase()
         if (cleanChat.isBlank()) return@withContext Result.failure(Exception("chat inválido"))
         val visible = messages.filterNot { it.deleted_for_all }.takeLast(120)
         val textCount = visible.count { it.content_type == "text" }
@@ -584,12 +627,13 @@ class AdvancedMessagingRepository @Inject constructor(
         Result.success(summary)
     }
 
+
+
     suspend fun getCachedSummary(chatId: String): ChatSummary? = withContext(Dispatchers.IO) { loadSummaryLocal()[chatId.trim().lowercase()] }
 
     private suspend fun upsertSummaryRemote(summary: ChatSummary) {
-        val token = authService.getAccessToken() ?: return
-        supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
-            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+        var token = authService.getAccessToken() ?: return supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
+            header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
             header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
             parameter("on_conflict", "chat_id")
             setBody(buildJsonObject { put("chat_id", summary.chat_id); put("summary", summary.summary.take(1200)); put("source_message_count", summary.source_message_count); put("generated_at", summary.generated_at ?: Instant.now().toString()) })
@@ -597,10 +641,10 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private suspend fun loadRemoteDueScheduled(maxBatch: Int): List<ScheduledMessageJob> {
-        val token = authService.getAccessToken() ?: return emptyList()
+        var token = authService.getAccessToken() ?: return emptyList()
         return runCatching {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,scope_type,target_id,content,content_type,media_url,translate_to,self_destruct_seconds,scheduled_for,status,error_message,created_at,updated_at")
                 parameter("status", "eq.pending")
                 parameter("scheduled_for", "lte.${Instant.now()}")
@@ -613,10 +657,9 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private suspend fun patchRemoteScheduledStatus(jobId: String, status: String, error: String?) {
-        val token = authService.getAccessToken() ?: return
-        runCatching {
+        var token = authService.getAccessToken() ?: return runCatching {
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
                 parameter("id", "eq.$jobId")
                 setBody(
@@ -639,7 +682,7 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private fun normalizeLanguageCode(raw: String?): String? {
-        val cleaned = raw
+        var cleaned = raw
             ?.trim()
             ?.lowercase(Locale.US)
             ?.replace('_', '-')
@@ -713,22 +756,32 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private fun loadFoldersLocal(): List<ChatFolder> {
-        val raw = prefs.getString(KEY_FOLDERS, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_FOLDERS, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<ChatFolder>>(raw) }.getOrDefault(emptyList())
     }
     private fun loadLocalScheduled(): List<ScheduledMessageJob> {
-        val raw = prefs.getString(KEY_SCHEDULED_LOCAL, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_SCHEDULED_LOCAL, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<ScheduledMessageJob>>(raw) }.getOrDefault(emptyList())
     }
     private fun persistLocalScheduled(items: List<ScheduledMessageJob>) { prefs.edit().putString(KEY_SCHEDULED_LOCAL, json.encodeToString(items)).apply() }
     private fun loadAutoDestruct(): List<AutoDestructTask> {
-        val raw = prefs.getString(KEY_AUTODESTRUCT, null) ?: return emptyList()
+        var raw = prefs.getString(KEY_AUTODESTRUCT, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<AutoDestructTask>>(raw) }.getOrDefault(emptyList())
     }
     private fun persistAutoDestruct(items: List<AutoDestructTask>) { prefs.edit().putString(KEY_AUTODESTRUCT, json.encodeToString(items)).apply() }
     private fun loadSummaryLocal(): Map<String, ChatSummary> {
-        val raw = prefs.getString(KEY_SUMMARY, null) ?: return emptyMap()
+        var raw = prefs.getString(KEY_SUMMARY, null) ?: return emptyMap()
         return runCatching { json.decodeFromString<List<SummaryRow>>(raw).associate { it.chat_id to ChatSummary(it.chat_id, it.summary, it.source_message_count, it.generated_at) } }.getOrDefault(emptyMap())
     }
     private fun parseIso(iso: String?): Long = runCatching { Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
 }
+
+
+
+
+
+
+
+
+
+

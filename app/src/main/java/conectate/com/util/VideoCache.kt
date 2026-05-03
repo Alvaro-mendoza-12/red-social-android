@@ -1,14 +1,15 @@
 package conectate.com.util
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.FileDataSource
 import java.io.File
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -17,37 +18,41 @@ object VideoCache {
     private var databaseProvider: DatabaseProvider? = null
 
     @Synchronized
-    fun getInstance(context: Context): SimpleCache {
-        if (simpleCache == null) {
+    private fun getOrCreateCache(context: Context): SimpleCache? {
+        simpleCache?.let { return it }
+
+        return try {
             val cacheSize = VideoPerformanceProfiles.detect(context).cacheSizeBytes
             val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSize)
-            databaseProvider = StandaloneDatabaseProvider(context)
-            
-            // Create cache directory
-            val cacheDir = File(context.cacheDir, "media")
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs()
-            }
+            var provider = StandaloneDatabaseProvider(context)
 
-            simpleCache = SimpleCache(cacheDir, cacheEvictor, databaseProvider!!)
+            val cacheDir = File(context.cacheDir, "media").apply { mkdirs() }
+            SimpleCache(cacheDir, cacheEvictor, provider).also { cache ->
+                simpleCache = cache
+                databaseProvider = provider
+            }
+        } catch (e: Exception) {
+            Log.e("VideoCache", "Cache init failed. Falling back to non-cached DataSource.", e)
+            runCatching { simpleCache?.release() }
+            simpleCache = null
+            databaseProvider = null
+            null
         }
-        return simpleCache!!
     }
 
-    fun getCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
-        val cache = getInstance(context)
-        
-        // Upstream factory (HTTP)
+    fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            
-        // Sink (File/Cache)
-        val cacheSink = CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(httpDataSourceFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            
-        return cacheSink
+
+        var cache = getOrCreateCache(context)
+        return if (cache != null) {
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            DefaultDataSource.Factory(context, httpDataSourceFactory)
+        }
     }
 
     fun release() {
@@ -60,3 +65,6 @@ object VideoCache {
         }
     }
 }
+
+
+

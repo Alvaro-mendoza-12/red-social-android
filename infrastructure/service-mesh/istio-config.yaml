@@ -1,0 +1,544 @@
+# 🔥 CONÉCTATE SERVICE MESH CONFIGURATION - ISTIO CLOUD NATIVE
+# Configuración completa de Service Mesh con Istio para microservices
+# Implementación 100% realista con mejores prácticas cloud-native
+#
+# Características implementadas:
+# 1. Service Mesh - Malla de servicios completa
+# 2. Traffic Management - Gestión de tráfico avanzada
+# 3. Security - Seguridad mTLS y RBAC
+# 4. Observability - Observabilidad completa
+# 5. Gateway - Gateway de entrada y salida
+# 6. Virtual Services - Servicios virtuales
+# 7. Destination Rules - Reglas de destino
+# 8. Service Entries - Entradas de servicios externos
+# 9. Authorization Policies - Políticas de autorización
+# 10. Telemetry - Telemetría y métricas
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: conectate-mesh
+  labels:
+    istio-injection: enabled
+    mesh: conectate
+    environment: production
+---
+# 🔥 PEER AUTHENTICATION - Autenticación mutua TLS
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: conectate-mesh
+spec:
+  mtls:
+    mode: STRICT
+---
+# 🔥 AUTHORIZATION POLICY - Política de autorización global
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-all
+  namespace: conectate-mesh
+spec:
+  selector: {}
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/*"]
+---
+# 🔥 GATEWAY - Gateway de entrada principal
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: conectate-gateway
+  namespace: conectate-mesh
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - conectate.local
+    - api.conectate.local
+    - web.conectate.local
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - conectate.local
+    - api.conectate.local
+    - web.conectate.local
+    tls:
+      mode: SIMPLE
+      credentialName: conectate-tls
+---
+# 🔥 VIRTUAL SERVICE - API Gateway Virtual Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: conectate-api-vs
+  namespace: conectate-mesh
+spec:
+  hosts:
+  - api.conectate.local
+  gateways:
+  - conectate-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1/
+    route:
+    - destination:
+        host: conectate-api-service
+        port:
+          number: 8080
+      weight: 100
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,connect-failure,refused-stream
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+      abort:
+        percentage:
+          value: 0.001
+        httpStatus: 503
+  - match:
+    - uri:
+        prefix: /api/v2/
+    route:
+    - destination:
+        host: conectate-api-v2-service
+        port:
+          number: 8080
+      weight: 100
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,connect-failure,refused-stream
+  - match:
+    - uri:
+        prefix: /health
+    route:
+    - destination:
+        host: conectate-health-service
+        port:
+          number: 8080
+      weight: 100
+    timeout: 5s
+---
+# 🔥 VIRTUAL SERVICE - Web Gateway Virtual Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: conectate-web-vs
+  namespace: conectate-mesh
+spec:
+  hosts:
+  - web.conectate.local
+  gateways:
+  - conectate-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: conectate-web-service
+        port:
+          number: 3000
+      weight: 100
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,connect-failure,refused-stream
+    cors:
+      allowOrigin:
+      - https://conectate.local
+      - https://web.conectate.local
+      allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+      allowHeaders:
+      - Authorization
+      - Content-Type
+      - X-Requested-With
+      maxAge: 24h
+      allowCredentials: true
+---
+# 🔥 DESTINATION RULE - API Service Destination Rule
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: conectate-api-dr
+  namespace: conectate-mesh
+spec:
+  host: conectate-api-service
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+  - name: v2
+    labels:
+      version: v2
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+---
+# 🔥 DESTINATION RULE - Web Service Destination Rule
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: conectate-web-dr
+  namespace: conectate-mesh
+spec:
+  host: conectate-web-service
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# 🔥 SERVICE ENTRY - External Database Service
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-postgres
+  namespace: conectate-mesh
+spec:
+  hosts:
+  - postgres.conectate.local
+  ports:
+  - number: 5432
+    name: tcp-postgres
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# 🔥 SERVICE ENTRY - External Redis Service
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-redis
+  namespace: conectate-mesh
+spec:
+  hosts:
+  - redis.conectate.local
+  ports:
+  - number: 6379
+    name: tcp-redis
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# 🔥 SERVICE ENTRY - External ML Service
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-ml
+  namespace: conectate-mesh
+spec:
+  hosts:
+  - ml.conectate.local
+  ports:
+  - number: 8000
+    name: http-ml
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# 🔥 WORKLOAD ENTRY - External Workload Entry
+apiVersion: networking.istio.io/v1beta1
+kind: WorkloadEntry
+metadata:
+  name: postgres-workload
+  namespace: conectate-mesh
+spec:
+  address: 192.168.1.100
+  ports:
+    tcp:
+      5432
+  labels:
+    app: postgres
+    version: v1
+---
+# 🔥 WORKLOAD ENTRY - Redis Workload Entry
+apiVersion: networking.istio.io/v1beta1
+kind: WorkloadEntry
+metadata:
+  name: redis-workload
+  namespace: conectate-mesh
+spec:
+  address: 192.168.1.101
+  ports:
+    tcp:
+      6379
+  labels:
+    app: redis
+    version: v1
+---
+# 🔥 WORKLOAD ENTRY - ML Workload Entry
+apiVersion: networking.istio.io/v1beta1
+kind: WorkloadEntry
+metadata:
+  name: ml-workload
+  namespace: conectate-mesh
+spec:
+  address: 192.168.1.102
+  ports:
+    http:
+      8000
+  labels:
+    app: ml
+    version: v1
+---
+# 🔥 REQUEST AUTHENTICATION - JWT Authentication
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: conectate-mesh
+spec:
+  selector:
+    matchLabels:
+      app: conectate-api
+  jwtRules:
+  - issuer: https://auth.conectate.local
+    jwksUri: https://auth.conectate.local/.well-known/jwks.json
+    forwardOriginalToken: true
+---
+# 🔥 AUTHORIZATION POLICY - API Access Control
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-access-control
+  namespace: conectate-mesh
+spec:
+  selector:
+    matchLabels:
+      app: conectate-api
+  rules:
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.conectate.local/*"]
+  - when:
+    - key: request.auth.claims[role]
+      values: ["admin", "user", "premium"]
+  to:
+  - operation:
+      methods: ["GET", "POST", "PUT", "DELETE"]
+---
+# 🔥 AUTHORIZATION POLICY - Admin Only Access
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: admin-only
+  namespace: conectate-mesh
+spec:
+  selector:
+    matchLabels:
+      app: conectate-api
+  rules:
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.conectate.local/*"]
+  - when:
+    - key: request.auth.claims[role]
+      values: ["admin"]
+  to:
+  - operation:
+      methods: ["POST", "PUT", "DELETE"]
+      paths: ["/api/v1/admin/*"]
+---
+# 🔥 ENVIRONMENT FILTER - Environment-specific configuration
+apiVersion: networking.istio.io/v1beta1
+kind: EnvoyFilter
+metadata:
+  name: custom-filter
+  namespace: conectate-mesh
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            function envoy_on_request(request_handle)
+              -- Add custom headers
+              request_handle:headers():add("x-request-id", request_handle:headers():get("x-request-id") or "unknown")
+              request_handle:headers():add("x-start-time", os.time())
+              
+              -- Log request details
+              request_handle:logInfo("Request from " .. request_handle:headers():get("x-forwarded-for") or "unknown")
+              
+              -- Rate limiting logic
+              local client_ip = request_handle:headers():get("x-forwarded-for")
+              if client_ip and string.find(client_ip, "192.168.1.") then
+                -- Internal IP, allow higher rate
+                request_handle:headers():add("x-rate-limit", "1000")
+              else
+                -- External IP, lower rate
+                request_handle:headers():add("x-rate-limit", "100")
+              end
+            end
+            
+            function envoy_on_response(response_handle)
+              -- Add response headers
+              response_handle:headers():add("x-response-time", os.time() - tonumber(response_handle:headers():get("x-start-time") or "0"))
+              response_handle:headers():add("x-server-id", os.getenv("HOSTNAME") or "unknown")
+              
+              -- Log response details
+              response_handle:logInfo("Response status: " .. response_handle:headers():get(":status"))
+            end
+---
+# 🔥 TELEMETRY - Observability configuration
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: default
+  namespace: conectate-mesh
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        destination_service:
+          value: "destination.service.name"
+        source_workload:
+          value: "source.workload.name"
+  accessLogging:
+  - providers:
+    - name: envoy
+    - name: otel
+  tracing:
+  - providers:
+    - name: jaeger
+    sampling:
+      custom:
+        type: probabilistic
+        value: "100"
+---
+# 🔥 SIDECAR - Custom sidecar configuration
+apiVersion: v1
+kind: Pod
+metadata:
+  name: conectate-api-pod
+  namespace: conectate-mesh
+  labels:
+    app: conectate-api
+    version: v1
+spec:
+  containers:
+  - name: conectate-api
+    image: conectate/api:latest
+    ports:
+    - containerPort: 8080
+    env:
+    - name: DATABASE_URL
+      value: "postgresql://user:pass@postgres.conectate.local:5432/conectate"
+    - name: REDIS_URL
+      value: "redis://redis.conectate.local:6379"
+    - name: ML_SERVICE_URL
+      value: "http://ml.conectate.local:8000"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+  - name: istio-proxy
+    image: istio/proxyv2:latest
+    ports:
+    - containerPort: 15090
+      name: http-envoy-prom
+      protocol: TCP
+    env:
+    - name: PILOT_TRACE_SAMPLING
+      value: "100"
+    - name: PILOT_HTTP10
+      value: "1"
+    - name: ISTIO_META_ROUTER_MODE
+      value: "standard"
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"

@@ -1,0 +1,48 @@
+# Only files listed here are allowed in the production/staging deploy path.
+# Historical, diagnostic, permissive or superseded SQL must stay outside this manifest.
+
+sql/migrations/add_presence_visibility_columns.sql
+sql/migrations/supabase_live_streaming_schema_2026.sql
+sql/migrations/supabase_live_streaming_hashtags_2026.sql
+sql/migrations/supabase_live_streaming_stats_2026.sql
+sql/migrations/supabase_phase2_feed_observability_moderation_media_2026.sql
+
+sql/hotfixes/supabase_hotfix_account_suspension_backend_gate_2026.sql
+sql/hotfixes/supabase_hotfix_admin_video_moderation_actions_2026.sql
+sql/hotfixes/supabase_hotfix_avatars_50mb_2026.sql
+sql/hotfixes/supabase_hotfix_chat_folders_case_insensitive_unique_2026.sql
+sql/hotfixes/supabase_hotfix_chat_preferences_mute_pin_2026.sql
+sql/hotfixes/supabase_hotfix_group_community_reactions_forwarding_2026.sql
+sql/hotfixes/supabase_hotfix_group_community_receipts_polls_2026.sql
+sql/hotfixes/supabase_hotfix_guard_rate_limit_window_start_minimal_2026.sql
+sql/hotfixes/supabase_hotfix_message_reactions_forwarding_2026.sql
+sql/hotfixes/supabase_hotfix_phase3_stickers_viewonce_scheduler_folders_2026.sql
+sql/hotfixes/supabase_hotfix_poll_vote_ambiguous_2026.sql
+sql/hotfixes/supabase_hotfix_privacy_policy_acceptance_2026.sql
+sql/hotfixes/supabase_hotfix_profile_login_aliases_2026.sql
+sql/hotfixes/supabase_hotfix_profile_login_emails_global_unique_2026.sql
+sql/hotfixes/supabase_hotfix_profiles_suspension_columns_2026.sql
+sql/hotfixes/supabase_hotfix_secure_notifications_read_rpc_2026.sql
+sql/hotfixes/supabase_hotfix_signup_profile_flow_2026.sql
+sql/hotfixes/supabase_hotfix_web_login_pairings_2026.sql
+sql/hotfixes/supabase_hotfix_video_reports_admin_2026.sql
+sql/hotfixes/supabase_hotfix_video_report_repeat_suspension_2026.sql
+sql/hotfixes/supabase_hotfix_view_once_race_guard_2026.sql
+
+# Core Database Schema (corrected for RLS conflicts)
+sql/migrations/database_schema.sql
+
+# Hashtags System
+sql/migrations/20260425_hashtags_fulltext_search_2026.sql
+sql/migrations/20260425_hashtag_triggers_2026.sql
+sql/migrations/20260425_hashtag_rpcs_2026.sql
+
+# Monetization System
+sql/migrations/20260425_virtual_gifts_wallet_2026.sql
+sql/migrations/20260425_wallet_gifts_rpcs_2026.sql
+
+# Security Fixes
+sql/security/fix_storage_policies_restrictive_2026-04-25.sql
+
+# Additional hotfixes must be listed explicitly here.
+# Wildcards break the SQL audit/deploy tooling and are intentionally disallowed.

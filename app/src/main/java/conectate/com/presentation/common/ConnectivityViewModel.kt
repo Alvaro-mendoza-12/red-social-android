@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 
-@HiltViewModel
-class ConnectivityViewModel @Inject constructor(
+
+class ConnectivityViewModel  constructor(
     networkObserver: NetworkConnectivityObserver,
     private val syncManager: SyncManager
 ) : ViewModel() {
@@ -26,4 +26,8 @@ class ConnectivityViewModel @Inject constructor(
         syncManager.triggerSync(reason)
     }
 }
+
+
+
+
 

@@ -30,10 +30,12 @@ class ShareRepository @Inject constructor(
     private val supabase: SupabaseConfig,
     private val authService: AuthService
 ) {
+@Composable
+@Composable
     suspend fun shareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             
             val shareData = buildJsonObject {
                 put("user_id", userId)
@@ -41,7 +43,7 @@ class ShareRepository @Inject constructor(
                 else put("video_id", targetId)
             }
             
-            val response = supabase.httpClient.post("${supabase.supabaseUrl}/rest/v1/shares") {
+            var response = supabase.httpClient.post("${supabase.supabaseUrl}/rest/v1/shares") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabase.supabaseAnonKey)
                 header("Content-Type", "application/json")
@@ -67,12 +69,14 @@ class ShareRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun unshareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
-            val accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             
-            val response = supabase.httpClient.delete("${supabase.supabaseUrl}/rest/v1/shares") {
+            var response = supabase.httpClient.delete("${supabase.supabaseUrl}/rest/v1/shares") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabase.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
@@ -93,9 +97,11 @@ class ShareRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun isShared(userId: String, contentType: String, targetId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val response = supabase.client.from("shares").select {
+            var response = supabase.client.from("shares").select {
                 filter {
                     eq("user_id", userId)
                     if (contentType == "post") eq("post_id", targetId)
@@ -109,3 +115,8 @@ class ShareRepository @Inject constructor(
         }
     }
 }
+
+
+
+
+

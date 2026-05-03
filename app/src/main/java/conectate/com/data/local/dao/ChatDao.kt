@@ -6,7 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import conectate.com.data.local.entity.ChatEntity
 import conectate.com.data.local.entity.ChatWithUserProfile
+import conectate.com.data.model.ChatWithLastMessage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 @Dao
 interface ChatDao {
@@ -28,12 +30,30 @@ interface ChatDao {
     @androidx.room.Transaction
     @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_pinned DESC, last_message_at DESC")
     fun getAllChatsFlow(): Flow<List<ChatWithUserProfile>>
+
+    @androidx.room.Transaction
+    @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_pinned DESC, last_message_at DESC")
+    suspend fun getAllChatsWithUsers(): List<ChatWithUserProfile>
+
+    suspend fun getAllChatsWithLastMessage(): List<ChatWithLastMessage> =
+        getAllChatsWithUsers().map { it.toDomainWithDetails() }
+
+    fun observeAllChatsWithLastMessage(): Flow<List<ChatWithLastMessage>> =
+        getAllChatsFlow().map { chats -> chats.map { it.toDomainWithDetails() } }
     
     @Query("UPDATE chats SET unread_count = 0 WHERE id = :chatId")
     suspend fun markAsRead(chatId: String)
 
+    suspend fun markChatAsRead(chatId: String) {
+        markAsRead(chatId)
+    }
+
     @Query("UPDATE chats SET last_message_preview = :content, last_message_timestamp = :timestamp, last_message_at = :timestamp, is_deleted = 0 WHERE id = :chatId")
     suspend fun updateLastMessage(chatId: String, content: String, timestamp: String)
+
+    suspend fun updateChat(chat: ChatEntity) {
+        insertChat(chat)
+    }
 
     @Query("UPDATE chats SET unread_count = unread_count + 1 WHERE id = :chatId")
     suspend fun incrementUnreadCount(chatId: String)

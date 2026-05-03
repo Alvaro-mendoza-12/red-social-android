@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   type DeferredMutation,
   flushDeferredMutations,
@@ -8,24 +8,39 @@ import {
 } from '../core/reliability'
 import { supabase } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
-import { useAuth } from '../features/auth/AuthProvider'
+import { useAuth } from '../core/auth/AuthProvider'
+import { ModernSidebar } from '../components/modern/Layout/ModernSidebar'
+import { ModernHeader } from '../components/modern/Layout/ModernHeader'
+import { ModernNavigation } from '../components/modern/Layout/ModernNavigation'
+import { cn } from '../core/utils/cn'
 
 type NavIconName =
   | 'social'
   | 'videos'
   | 'messages'
   | 'profile'
+  | 'voice'
+  | 'search'
+  | 'notifications'
+  | 'settings'
 
-const navItems = [
+const primaryNavItems = [
   { to: '/app/messages', label: 'Mensajes', icon: 'messages' as NavIconName },
   { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
   { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
   { to: '/app/profile', label: 'Perfil', icon: 'profile' as NavIconName },
 ]
 
+const secondaryNavItems = [
+  { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
+  { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
+  { to: '/app/notifications', label: 'Notificaciones', icon: 'notifications' as NavIconName },
+  { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
+]
+
 const localReadStorageKey = 'conectate-web-chat-last-read'
 const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
-const mobileNavItems = navItems
+const mobileNavItems = primaryNavItems
 
 function isMissingFunctionError(error: unknown): boolean {
   const message =
@@ -111,17 +126,82 @@ function ShellIcon({ name }: { name: NavIconName }) {
       </svg>
     )
   }
+  if (name === 'voice') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5a3 3 0 013 3v4a3 3 0 11-6 0V8a3 3 0 013-3zM6 11v1a6 6 0 0012 0v-1M12 18v3" />
+      </svg>
+    )
+  }
+  if (name === 'search') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M11 4a7 7 0 105.2 11.7L20 19.5" />
+      </svg>
+    )
+  }
+  if (name === 'notifications') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 16h12l-1.2-1.8a4 4 0 01-.8-2.2V10a4 4 0 10-8 0v2a4 4 0 01-.8 2.2L6 16zM10 18a2 2 0 004 0" />
+      </svg>
+    )
+  }
+  if (name === 'settings') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM4.5 12l1.8-.7.4-1.1-1-1.6 1.8-1.8 1.6 1 .1-.1 1.1-.4L12 4.5l1.7.8 1.1.4.1.1 1.6-1 1.8 1.8-1 1.6.4 1.1 1.8.7-.8 2-1.8.7-.4 1.1 1 1.6-1.8 1.8-1.6-1-.1.1-1.1.4L12 19.5l-1.7-.8-1.1-.4-.1-.1-1.6 1-1.8-1.8 1-1.6-.4-1.1-1.8-.7z" />
+      </svg>
+    )
+  }
   return null
 }
 
 export function AppLayout() {
   const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [currentView, setCurrentView] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [isOnline, setIsOnline] = useState(isBrowserOnline())
   const [pendingDeferredMutations, setPendingDeferredMutations] = useState(getDeferredMutationCount())
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
   const [sidebarAvatarUrl, setSidebarAvatarUrl] = useState('')
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setCurrentView('mobile')
+      } else if (window.innerWidth < 1024) {
+        setCurrentView('tablet')
+      } else {
+        setCurrentView('desktop')
+      }
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  const handleMenuClick = useCallback(() => {
+    setSidebarOpen(!sidebarOpen)
+  }, [sidebarOpen])
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false)
+  }, [])
+
+  const isMobileView = currentView === 'mobile'
+  const isTabletView = currentView === 'tablet'
+  const isDesktopView = currentView === 'desktop'
+
+  // Determine if we should show modern layout or legacy layout
+  const useModernLayout = true // Force modern layout
 
   const loadShellCounters = useCallback(async () => {
     const client = supabase
@@ -451,13 +531,18 @@ export function AppLayout() {
         </button>
 
         <div className={isNavCollapsed ? 'brand-block rail-brand' : 'brand-block row-between'}>
-          <div>
-            <p className="brand-tag">{isNavCollapsed ? 'C' : 'Conectate'}</p>
-            {!isNavCollapsed ? <h1>Web</h1> : null}
-          </div>
+          <Link to="/app/messages" className={isNavCollapsed ? 'brand-link compact' : 'brand-link'}>
+            <img src="/conectate-logo.svg" alt="Conectate" className="brand-logo" />
+            {!isNavCollapsed ? (
+              <span className="brand-copy">
+                <strong>Conectate</strong>
+                <small>Web</small>
+              </span>
+            ) : null}
+          </Link>
         </div>
         <nav>
-          {navItems.map((item) => (
+          {primaryNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -480,6 +565,33 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
+        <div className={isNavCollapsed ? 'nav-section-label rail-hidden' : 'nav-section-label'}>
+          Explorar
+        </div>
+        <nav>
+          {secondaryNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+              title={isNavCollapsed ? item.label : undefined}
+            >
+              <span className="nav-item-inner">
+                <span className="nav-item-label">
+                  <span className="nav-icon">
+                    <ShellIcon name={item.icon} />
+                  </span>
+                  {!isNavCollapsed ? <span>{item.label}</span> : null}
+                </span>
+                {item.to === '/app/notifications' && navBadgeByPath['/app/social'] > 0
+                  ? isNavCollapsed
+                    ? <span className="nav-dot" />
+                    : <span className="nav-counter">{navBadgeByPath['/app/social'] > 99 ? '99+' : navBadgeByPath['/app/social']}</span>
+                  : null}
+              </span>
+            </NavLink>
+          ))}
+        </nav>
 
         <div className="left-nav-footer">
           <Link className="rail-profile-link" to="/app/profile" title="Perfil">
@@ -492,6 +604,26 @@ export function AppLayout() {
             )}
             {!isNavCollapsed ? <span>Mi perfil</span> : null}
           </Link>
+          <button
+            className="rail-logout-btn"
+            type="button"
+            onClick={() => void signOut()}
+            title="Cerrar sesión"
+          >
+            <span className="nav-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M17 16l4-4-4-4M21 12H9M13 16a9 9 0 110-8"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </span>
+            {!isNavCollapsed ? <span>Cerrar sesión</span> : null}
+          </button>
         </div>
       </aside>
 
@@ -505,16 +637,6 @@ export function AppLayout() {
             Sincronizando {pendingDeferredMutations} acciones pendientes...
           </div>
         ) : null}
-
-        <header className="app-header">
-          <div>
-            <p className="header-label">Sesión activa</p>
-            <strong>{user?.email ?? 'Usuario'}</strong>
-          </div>
-          <button className="ghost-btn" onClick={() => void signOut()}>
-            Cerrar sesión
-          </button>
-        </header>
 
         <main className="content-pane">
           <Outlet />

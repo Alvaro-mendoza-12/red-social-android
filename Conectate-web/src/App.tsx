@@ -1,19 +1,19 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { StatusView } from './components/StatusView'
-import { LoginPage } from './features/auth/LoginPage'
-import { RegisterPage } from './features/auth/RegisterPage'
-import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './features/auth/AuthProvider'
+import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/AuthProvider'
+import { LoginPage } from './pages/auth/LoginPage'
+import { RegisterPage } from './pages/auth/RegisterPage'
 import { AppLayout } from './layout/AppLayout'
 
 const PostDetailPage = lazy(() =>
-  import('./features/feed/PostDetailPage').then((module) => ({ default: module.PostDetailPage })),
+  import('./pages/feed/PostDetailPage').then((module) => ({ default: module.PostDetailPage })),
 )
 const MomentsViewerPage = lazy(() =>
   import('./features/moments/MomentsViewerPage').then((module) => ({ default: module.MomentsViewerPage })),
 )
 const ChallengesRankingPage = lazy(() =>
-  import('./features/challenges/ChallengesRankingPage').then((module) => ({
+  import('./pages/challenges/ChallengesRankingPage').then((module) => ({
     default: module.ChallengesRankingPage,
   })),
 )
@@ -73,7 +73,7 @@ const AccountSettingsPage = lazy(() =>
   })),
 )
 const AdminModerationPage = lazy(() =>
-  import('./features/admin/AdminModerationPage').then((module) => ({
+  import('./pages/admin/AdminModerationPage').then((module) => ({
     default: module.AdminModerationPage,
   })),
 )

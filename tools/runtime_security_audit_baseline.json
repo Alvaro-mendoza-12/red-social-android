@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-04-25",
+  "description": "Baseline for runtime security audit - files and patterns allowed in production",
+  "allowed_findings": [
+    {
+      "id": "RUNTIME-001",
+      "severity": "HIGH",
+      "rule": "secrets_properties_committed",
+      "subject": "secrets.properties with SUPABASE_ANON_KEY",
+      "status": "allowed",
+      "justification": "Supabase anon key is public client-side credential; service_role key must NOT be committed",
+      "file": "secrets.properties",
+      "added_at": "2026-04-25"
+    },
+    {
+      "id": "RUNTIME-002",
+      "severity": "MEDIUM",
+      "rule": "google_services_json_committed",
+      "subject": "google-services.json committed",
+      "status": "allowed",
+      "justification": "Firebase configuration file is designed to be committed per Firebase docs",
+      "files": [
+        "google-services.json",
+        "app/google-services.json"
+      ],
+      "added_at": "2026-04-25"
+    },
+    {
+      "id": "RUNTIME-003",
+      "severity": "MEDIUM",
+      "rule": "keystore_properties_ignored",
+      "subject": "keystore.properties in .gitignore",
+      "status": "verified",
+      "justification": "Signing credentials properly excluded from version control",
+      "added_at": "2026-04-25"
+    }
+  ],
+  "signaling_server": {
+    "authenticateSocketConnection": true,
+    "enforceHttpRateLimit": true,
+    "cors_wildcard_allowed": false,
+    "allowed_origins_configured": true,
+    "status": "hardened"
+  },
+  "backup_rules": {
+    "theme_prefs_included": true,
+    "messages_preferences_included": true,
+    "app_prefs_included": true,
+    "sensitive_prefs_excluded": [
+      "auth_cache.xml",
+      "account_switch_secure_prefs.xml",
+      "notification_repository_cache.xml",
+      "privacy_policy_cache.xml",
+      "user_cache.xml"
+    ],
+    "status": "compliant"
+  }
+}

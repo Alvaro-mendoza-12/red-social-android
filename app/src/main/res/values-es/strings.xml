@@ -14,13 +14,31 @@
     <string name="country">País</string>
     <string name="city">Ciudad</string>
     <string name="already_have_account">¿Ya tienes cuenta?</string>
-
-    <!-- Storage Disabled Messages -->
-    <string name="storage_disabled_title">Función no disponible</string>
-    <string name="storage_disabled_message">Esta función requiere Firebase Storage (Plan Blaze). Por favor contacta al administrador para habilitar esta funcionalidad.</string>
-    <string name="storage_disabled_images">No se pueden enviar imágenes sin Storage configurado</string>
-    <string name="storage_disabled_videos">No se pueden enviar videos sin Storage configurado</string>
-    <string name="storage_disabled_audio">No se pueden enviar audios sin Storage configurado</string>
-    <string name="storage_disabled_profile">No se pueden cambiar fotos de perfil sin Storage configurado</string>
-    <string name="storage_disabled_upload">No se pueden subir videos sin Storage configurado</string>
+    <string name="live_overlay_title">Chat en vivo</string>
+    <string name="live_overlay_title_default">Live activo</string>
+    <string name="live_overlay_subtitle">Chat flotante en vivo</string>
+    <string name="live_overlay_status">LIVE • %1$d espectadores</string>
+    <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
+    <string name="live_overlay_bubble_status">LIVE\n%1$d</string>
+    <string name="live_overlay_bubble_description">Abrir chat flotante del live</string>
+    <string name="live_overlay_minimize">Minimizar chat flotante</string>
+    <string name="live_overlay_close">Cerrar chat flotante</string>
+    <string name="live_overlay_empty">Sin mensajes aún</string>
+    <string name="live_overlay_user_fallback">Usuario</string>
+    <string name="live_overlay_comment_format">%1$s: %2$s</string>
+    <string name="message_attachment_share">Compartir</string>
+    <string name="message_attachment_image">Imagen</string>
+    <string name="message_attachment_video">Video</string>
+    <string name="message_attachment_audio">Audio</string>
+    <string name="message_attachment_audio_file">Audio (Archivo)</string>
+    <string name="message_attachment_document">Documento</string>
+    <string name="message_attachment_gif">GIF</string>
+    <string name="message_attachment_sticker">Sticker</string>
+    <string name="message_attachment_sticker_packs">Sticker Pro (packs)</string>
+    <string name="message_attachment_view_once_image">Foto ver una vez</string>
+    <string name="message_attachment_view_once_video">Video ver una vez</string>
+    <string name="message_attachment_contact">Contacto</string>
+    <string name="message_attachment_location">Ubicación</string>
+    <string name="message_attachment_schedule_text">Programar texto</string>
+    <string name="message_attachment_poll">Encuesta</string>
 </resources>

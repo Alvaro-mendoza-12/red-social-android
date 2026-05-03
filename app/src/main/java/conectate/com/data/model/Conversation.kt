@@ -7,5 +7,7 @@ data class Conversation(
     val lastMessageTimestamp: String? = null,
     val lastMessageSenderId: String = "",
     val unreadCount: Map<String, Int> = emptyMap(),
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val isArchived: Boolean = false,
+    val name: String? = null
 )

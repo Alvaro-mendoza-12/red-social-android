@@ -99,6 +99,7 @@ Deliverables:
 - [x] RLS and RPC permission audit checklist for all messaging/media functions.
 - [ ] Rate limit + abuse signatures audit and monitoring dashboard.
 - [x] SQL static security audit + CI gating with baseline and report artifacts.
+- [x] Release-manifest SQL gate to keep deployable scripts separated from legacy inventory debt.
 - [ ] Secrets hygiene (rotation policy, CI secret usage audit).
 
 Acceptance criteria:
@@ -152,7 +153,9 @@ Acceptance criteria:
 - Local quality gate (bash):
   - `./tools/quality_gate.sh`
 - SQL security audit:
-  - `python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH`
+  - `python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH`
+- Historical SQL inventory:
+  - `python tools/security_sql_audit.py --root . --report build/reports/security/sql_security_inventory.md --json build/reports/security/sql_security_inventory.json --fail-threshold HIGH`
 - Performance budget check:
   - `python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json`
 - CI gate task:

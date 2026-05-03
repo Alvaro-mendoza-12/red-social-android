@@ -5,7 +5,7 @@ import conectate.com.util.Constants
 object MessageStatusNormalizer {
 
     fun normalize(status: String?): String {
-        val normalized = status?.trim()?.lowercase().orEmpty()
+        var normalized = status?.trim()?.lowercase().orEmpty()
         return when (normalized) {
             Constants.MESSAGE_STATUS_READ -> Constants.MESSAGE_STATUS_READ
             Constants.MESSAGE_STATUS_DELIVERED, "received" -> Constants.MESSAGE_STATUS_DELIVERED
@@ -22,7 +22,7 @@ object MessageStatusNormalizer {
         deliveredAt: String?,
         readAt: String?
     ): String {
-        val normalized = normalize(status)
+        var normalized = normalize(status)
         return when {
             !readAt.isNullOrBlank() || normalized == Constants.MESSAGE_STATUS_READ -> Constants.MESSAGE_STATUS_READ
             !deliveredAt.isNullOrBlank() || normalized == Constants.MESSAGE_STATUS_DELIVERED -> Constants.MESSAGE_STATUS_DELIVERED
@@ -48,3 +48,6 @@ object MessageStatusNormalizer {
         }
     }
 }
+
+
+

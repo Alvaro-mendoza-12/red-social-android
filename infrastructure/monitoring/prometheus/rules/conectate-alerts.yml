@@ -1,0 +1,464 @@
+# 🔥 CONÉCTATE ALERTING RULES - ENTERPRISE PRODUCTION READY
+# Reglas de alerta basadas en SLOs y SLAs con mejores prácticas
+# Implementación 100% realista con alertas específicas y accionables
+
+groups:
+  # 🔥 INFRASTRUCTURE ALERTS - Alertas de infraestructura
+  - name: conectate.infrastructure
+    interval: 30s
+    rules:
+      # 🔥 HIGH CPU USAGE - Alto uso de CPU
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }} for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/cpu-high"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 CRITICAL CPU USAGE - Uso crítico de CPU
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }} for more than 2 minutes"
+          runbook_url: "https://conectate.runbooks.com/cpu-critical"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 HIGH MEMORY USAGE - Alto uso de memoria
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }} for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/memory-high"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 CRITICAL MEMORY USAGE - Uso crítico de memoria
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }} for more than 2 minutes"
+          runbook_url: "https://conectate.runbooks.com/memory-critical"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 DISK SPACE LOW - Espacio en disco bajo
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value }}% on {{ $labels.device }} ({{ $labels.instance }}) for more than 10 minutes"
+          runbook_url: "https://conectate.runbooks.com/disk-low"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 DISK SPACE CRITICAL - Espacio en disco crítico
+      - alert: DiskSpaceCritical
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value }}% on {{ $labels.device }} ({{ $labels.instance }}) for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/disk-critical"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      # 🔥 NODE DOWN - Nodo caído
+      - alert: NodeDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Node {{ $labels.instance }} is down"
+          description: "Node {{ $labels.instance }} has been down for more than 1 minute"
+          runbook_url: "https://conectate.runbooks.com/node-down"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+  # 🔥 APPLICATION ALERTS - Alertas de aplicación
+  - name: conectate.application
+    interval: 30s
+    rules:
+      # 🔥 HIGH ERROR RATE - Alta tasa de errores
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 5
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "High error rate on {{ $labels.instance }}"
+          description: "Error rate is {{ $value }}% on {{ $labels.instance }} for more than 3 minutes"
+          runbook_url: "https://conectate.runbooks.com/error-rate-high"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+      # 🔥 CRITICAL ERROR RATE - Tasa de errores crítica
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 10
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "Critical error rate on {{ $labels.instance }}"
+          description: "Error rate is {{ $value }}% on {{ $labels.instance }} for more than 1 minute"
+          runbook_url: "https://conectate.runbooks.com/error-rate-critical"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+      # 🔥 HIGH RESPONSE TIME - Tiempo de respuesta alto
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "High response time on {{ $labels.instance }}"
+          description: "95th percentile response time is {{ $value }}s on {{ $labels.instance }} for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/response-time-high"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+      # 🔥 CRITICAL RESPONSE TIME - Tiempo de respuesta crítico
+      - alert: CriticalResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "Critical response time on {{ $labels.instance }}"
+          description: "95th percentile response time is {{ $value }}s on {{ $labels.instance }} for more than 2 minutes"
+          runbook_url: "https://conectate.runbooks.com/response-time-critical"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+      # 🔥 LOW THROUGHPUT - Bajo throughput
+      - alert: LowThroughput
+        expr: rate(http_requests_total[5m]) < 10
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "Low throughput on {{ $labels.instance }}"
+          description: "Request rate is {{ $value }} req/s on {{ $labels.instance }} for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/throughput-low"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+      # 🔥 APPLICATION DOWN - Aplicación caída
+      - alert: ApplicationDown
+        expr: up{job="conectate-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: conectate-api
+        annotations:
+          summary: "Application {{ $labels.instance }} is down"
+          description: "Application {{ $labels.instance }} has been down for more than 1 minute"
+          runbook_url: "https://conectate.runbooks.com/application-down"
+          dashboard_url: "https://grafana.conectate.local/d/api-metrics"
+
+  # 🔥 DATABASE ALERTS - Alertas de base de datos
+  - name: conectate.database
+    interval: 30s
+    rules:
+      # 🔥 POSTGRES CONNECTIONS HIGH - Altas conexiones PostgreSQL
+      - alert: PostgresConnectionsHigh
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+          service: postgres
+        annotations:
+          summary: "High PostgreSQL connections"
+          description: "PostgreSQL connections are {{ $value }}% of maximum"
+          runbook_url: "https://conectate.runbooks.com/postgres-connections-high"
+          dashboard_url: "https://grafana.conectate.local/d/postgres-metrics"
+
+      # 🔥 POSTGRES SLOW QUERIES - Consultas lentas PostgreSQL
+      - alert: PostgresSlowQueries
+        expr: rate(pg_stat_statements_mean_time_seconds[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+          service: postgres
+        annotations:
+          summary: "PostgreSQL slow queries detected"
+          description: "Average query time is {{ $value }}s for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/postgres-slow-queries"
+          dashboard_url: "https://grafana.conectate.local/d/postgres-metrics"
+
+      # 🔥 REDIS MEMORY HIGH - Alta memoria Redis
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+          service: redis
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is {{ $value }}% of maximum"
+          runbook_url: "https://conectate.runbooks.com/redis-memory-high"
+          dashboard_url: "https://grafana.conectate.local/d/redis-metrics"
+
+      # 🔥 REDIS CONNECTIONS HIGH - Altas conexiones Redis
+      - alert: RedisConnectionsHigh
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+          service: redis
+        annotations:
+          summary: "High Redis connections"
+          description: "Redis has {{ $value }} connected clients"
+          runbook_url: "https://conectate.runbooks.com/redis-connections-high"
+          dashboard_url: "https://grafana.conectate.local/d/redis-metrics"
+
+  # 🔥 KUBERNETES ALERTS - Alertas de Kubernetes
+  - name: conectate.kubernetes
+    interval: 30s
+    rules:
+      # 🔥 POD CRASH LOOPING - Pod en crash loop
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: kubernetes
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been restarting {{ $value }} times in the last 15 minutes"
+          runbook_url: "https://conectate.runbooks.com/pod-crash-looping"
+          dashboard_url: "https://grafana.conectate.local/d/kubernetes-metrics"
+
+      # 🔥 POD NOT READY - Pod no ready
+      - alert: PodNotReady
+        expr: kube_pod_status_ready{condition="true"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: kubernetes
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not ready for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/pod-not-ready"
+          dashboard_url: "https://grafana.conectate.local/d/kubernetes-metrics"
+
+      # 🔥 NODE NOT READY - Node no ready
+      - alert: NodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          service: kubernetes
+        annotations:
+          summary: "Node {{ $labels.node }} is not ready"
+          description: "Node {{ $labels.node }} has been not ready for more than 5 minutes"
+          runbook_url: "https://conectate.runbooks.com/node-not-ready"
+          dashboard_url: "https://grafana.conectate.local/d/kubernetes-metrics"
+
+      # 🔥 HIGH POD RESTARTS - Altos reinicios de pod
+      - alert: HighPodRestarts
+        expr: kube_pod_container_status_restarts_total > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: kubernetes
+        annotations:
+          summary: "High pod restarts"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times"
+          runbook_url: "https://conectate.runbooks.com/pod-restarts-high"
+          dashboard_url: "https://grafana.conectate.local/d/kubernetes-metrics"
+
+  # 🔥 SECURITY ALERTS - Alertas de seguridad
+  - name: conectate.security
+    interval: 30s
+    rules:
+      # 🔥 HIGH FAILED LOGIN RATE - Alta tasa de logins fallidos
+      - alert: HighFailedLoginRate
+        expr: rate(auth_failed_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+          service: auth
+        annotations:
+          summary: "High failed login rate"
+          description: "Failed login rate is {{ $value }} attempts/minute for more than 2 minutes"
+          runbook_url: "https://conectate.runbooks.com/failed-login-high"
+          dashboard_url: "https://grafana.conectate.local/d/security-metrics"
+
+      # 🔥 SUSPICIOUS ACTIVITY - Actividad sospechosa
+      - alert: SuspiciousActivity
+        expr: rate(suspicious_requests_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+          service: security
+        annotations:
+          summary: "Suspicious activity detected"
+          description: "Suspicious request rate is {{ $value }} requests/minute for more than 1 minute"
+          runbook_url: "https://conectate.runbooks.com/suspicious-activity"
+          dashboard_url: "https://grafana.conectate.local/d/security-metrics"
+
+      # 🔥 CERTIFICATE EXPIRING SOON - Certificado expirando pronto
+      - alert: CertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 7
+        for: 0s
+        labels:
+          severity: warning
+          team: security
+          service: ssl
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          runbook_url: "https://conectate.runbooks.com/certificate-expiring"
+          dashboard_url: "https://grafana.conectate.local/d/security-metrics"
+
+  # 🔥 BUSINESS METRICS ALERTS - Alertas de métricas de negocio
+  - name: conectate.business
+    interval: 60s
+    rules:
+      # 🔥 LOW USER REGISTRATION - Bajo registro de usuarios
+      - alert: LowUserRegistration
+        expr: rate(user_registrations_total[1h]) < 5
+        for: 30m
+        labels:
+          severity: warning
+          team: product
+          service: business
+        annotations:
+          summary: "Low user registration rate"
+          description: "User registration rate is {{ $value }} registrations/hour for more than 30 minutes"
+          runbook_url: "https://conectate.runbooks.com/user-registration-low"
+          dashboard_url: "https://grafana.conectate.local/d/business-metrics"
+
+      # 🔥 LOW ACTIVE USERS - Bajos usuarios activos
+      - alert: LowActiveUsers
+        expr: active_users_total < 1000
+        for: 15m
+        labels:
+          severity: warning
+          team: product
+          service: business
+        annotations:
+          summary: "Low active users count"
+          description: "Active users count is {{ $value }} for more than 15 minutes"
+          runbook_url: "https://conectate.runbooks.com/active-users-low"
+          dashboard_url: "https://grafana.conectate.local/d/business-metrics"
+
+      # 🔥 HIGH CHURN RATE - Alta tasa de churn
+      - alert: HighChurnRate
+        expr: rate(user_churn_total[1h]) / rate(user_registrations_total[1h]) * 100 > 20
+        for: 1h
+        labels:
+          severity: warning
+          team: product
+          service: business
+        annotations:
+          summary: "High churn rate"
+          description: "Churn rate is {{ $value }}% for more than 1 hour"
+          runbook_url: "https://conectate.runbooks.com/churn-rate-high"
+          dashboard_url: "https://grafana.conectate.local/d/business-metrics"
+
+  # 🔥 SLO ALERTS - Alertas de SLOs
+  - name: conectate.slo
+    interval: 30s
+    rules:
+      # 🔥 API AVAILABILITY SLO BREACH - Incumplimiento SLO de disponibilidad API
+      - alert: APIAvailabilitySLOBreach
+        expr: |
+          (
+            sum(rate(http_requests_total{job="conectate-api",status!~"5.."}[5m])) /
+            sum(rate(http_requests_total{job="conectate-api"}[5m]))
+          ) * 100 < 99.9
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          service: conectate-api
+          slo: availability
+        annotations:
+          summary: "API Availability SLO breach"
+          description: "API availability is {{ $value }}%, below SLO target of 99.9%"
+          runbook_url: "https://conectate.runbooks.com/slo-availability-breach"
+          dashboard_url: "https://grafana.conectate.local/d/slo-metrics"
+
+      # 🔥 API LATENCY SLO BREACH - Incumplimiento SLO de latencia API
+      - alert: APILatencySLOBreach
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="conectate-api"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: conectate-api
+          slo: latency
+        annotations:
+          summary: "API Latency SLO breach"
+          description: "API 95th percentile latency is {{ $value }}s, above SLO target of 0.5s"
+          runbook_url: "https://conectate.runbooks.com/slo-latency-breach"
+          dashboard_url: "https://grafana.conectate.local/d/slo-metrics"
+
+      # 🔥 ERROR BUDGET BURN RATE - Quema de presupuesto de errores
+      - alert: ErrorBudgetBurnRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="conectate-api",status=~"5.."}[5m])) /
+            sum(rate(http_requests_total{job="conectate-api"}[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: conectate-api
+          slo: error-budget
+        annotations:
+          summary: "Error budget burn rate too high"
+          description: "Error budget burn rate is {{ $value | humanizePercentage }}, will exhaust error budget in less than 30 days"
+          runbook_url: "https://conectate.runbooks.com/error-budget-burn"
+          dashboard_url: "https://grafana.conectate.local/d/slo-metrics"

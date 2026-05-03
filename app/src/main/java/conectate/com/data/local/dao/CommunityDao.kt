@@ -6,11 +6,24 @@ import conectate.com.data.local.entity.CommunityMemberEntity
 import conectate.com.data.local.entity.CommunityMessageEntity
 import kotlinx.coroutines.flow.Flow
 
+data class CommunityUnreadCountRow(
+    val communityId: String,
+    val unreadCount: Int
+)
+
 @Dao
 interface CommunityDao {
     // COMMUNITIES
     @Query("SELECT * FROM communities WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     fun getAllCommunitiesFlow(): Flow<List<CommunityEntity>>
+
+    @Query(
+        "SELECT communities.* FROM communities " +
+            "INNER JOIN community_members ON community_members.community_id = communities.id " +
+            "WHERE communities.is_deleted = 0 AND community_members.user_id = :userId " +
+            "ORDER BY COALESCE(communities.last_message_at, communities.created_at) DESC"
+    )
+    fun getCommunitiesForUserFlow(userId: String): Flow<List<CommunityEntity>>
 
     @Query("SELECT * FROM communities WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     suspend fun getAllCommunitiesSync(): List<CommunityEntity>
@@ -58,10 +71,28 @@ interface CommunityDao {
     @Query("DELETE FROM community_members WHERE community_id = :communityId AND user_id = :userId")
     suspend fun removeMember(communityId: String, userId: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id = :communityId AND user_id = :userId)")
+    @Query(
+        "SELECT EXISTS(" +
+            "SELECT 1 FROM community_members " +
+            "INNER JOIN communities ON communities.id = community_members.community_id " +
+            "WHERE community_members.community_id = :communityId " +
+            "AND community_members.user_id = :userId " +
+            "AND communities.is_deleted = 0 " +
+            "AND communities.is_member = 1" +
+        ")"
+    )
     fun isUserMemberFlow(communityId: String, userId: String): Flow<Boolean>
 
-    @Query("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id = :communityId AND user_id = :userId)")
+    @Query(
+        "SELECT EXISTS(" +
+            "SELECT 1 FROM community_members " +
+            "INNER JOIN communities ON communities.id = community_members.community_id " +
+            "WHERE community_members.community_id = :communityId " +
+            "AND community_members.user_id = :userId " +
+            "AND communities.is_deleted = 0 " +
+            "AND communities.is_member = 1" +
+        ")"
+    )
     suspend fun isUserMemberSync(communityId: String, userId: String): Boolean
 
     @Query("DELETE FROM community_members WHERE user_id = :userId")
@@ -79,6 +110,9 @@ interface CommunityDao {
     // MESSAGES
     @Query("SELECT * FROM community_messages WHERE community_id = :communityId ORDER BY created_at ASC")
     fun getMessagesFlow(communityId: String): Flow<List<CommunityMessageEntity>>
+
+    @Query("SELECT * FROM community_messages WHERE community_id = :communityId ORDER BY created_at ASC")
+    suspend fun getMessagesSync(communityId: String): List<CommunityMessageEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<CommunityMessageEntity>)
@@ -128,6 +162,15 @@ interface CommunityDao {
             "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')"
     )
     suspend fun countUnreadIncoming(communityId: String, currentUserId: String): Int
+
+    @Query(
+        "SELECT community_id AS communityId, COUNT(*) AS unreadCount " +
+            "FROM community_messages " +
+            "WHERE sender_id != :currentUserId " +
+            "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received') " +
+            "GROUP BY community_id"
+    )
+    suspend fun getUnreadCountRows(currentUserId: String): List<CommunityUnreadCountRow>
 
     @Query(
         "UPDATE community_messages " +

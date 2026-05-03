@@ -1,0 +1,363 @@
+package conectate.com.presentation.messages
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.AdminBadge
+import conectate.com.presentation.components.isUserAdmin
+import java.util.*
+
+@Composable
+fun ConversationItem(
+    conversation: ChatWithLastMessage,
+    currentUserId: String,
+    onClick: () -> Unit,
+    onMute: () -> Unit = {},
+    onPin: () -> Unit = {},
+    onBlock: () -> Unit = {},
+    onManageFolders: (() -> Unit)? = null,
+    onDelete: () -> Unit = {},
+    onReport: () -> Unit = {}
+) {
+    val otherUserName = if (conversation.chat.is_group) {
+        conversation.chat.group_name ?: "Grupo"
+    } else {
+        conversation.chat.nickname ?: conversation.otherUserName ?: "Usuario"
+    }
+    val otherUserProfileImage = if (conversation.chat.is_group) conversation.chat.group_image else conversation.otherUserImage ?: ""
+    val unreadCount = conversation.unreadCount
+    var showMenu by remember { mutableStateOf(false) }
+
+    val formattedTime = remember(conversation.lastMessage?.created_at, conversation.chat.last_message_at) {
+        val timestamp = conversation.lastMessage?.created_at ?: conversation.chat.last_message_at
+        timestamp?.let { ts ->
+            formatTimestampSmart(ts)
+        } ?: ""
+    }
+
+    val lastMessage = conversation.lastMessage
+    val isFromMe = lastMessage?.sender_id == currentUserId
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProfileImage(
+            imageUrl = otherUserProfileImage,
+            size = 52.dp,
+            showBorder = false,
+            isVerified = if (conversation.chat.is_group) false else conversation.otherUserVerified
+        )
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = otherUserName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!conversation.chat.is_group && (conversation.otherUserIsAdmin || isUserAdmin(conversation.otherUserName))) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        AdminBadge(showVerifiedLine = false)
+                    }
+                    if (!conversation.chat.is_group && conversation.otherUserVerified) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Verificado",
+                            tint = Color(0xFF1DA1F2),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (conversation.chat.is_pinned) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Chat fijado",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = formattedTime,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (unreadCount > 0) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(2.dp))
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isFromMe) {
+                    val statusIcon = when(lastMessage?.status) {
+                        "read" -> Icons.Default.DoneAll
+                        "received" -> Icons.Default.DoneAll
+                        "sent" -> Icons.Default.Done
+                        else -> Icons.Default.AccessTime
+                    }
+                    val statusTint = if (lastMessage?.status == "read") Color(0xFF34B7F1) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    
+                    Icon(
+                        imageVector = statusIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = statusTint
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                
+                if (lastMessage?.content_type != "text" && lastMessage != null) {
+                    val typeIcon = when(lastMessage.content_type) {
+                        "image" -> Icons.Default.PhotoCamera
+                        "video" -> Icons.Default.Videocam
+                        "audio" -> Icons.Default.Mic
+                        else -> null
+                    }
+                    if (typeIcon != null) {
+                        Icon(
+                            imageVector = typeIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                }
+
+                val displayText = when(lastMessage?.content_type) {
+                    "image" -> "Foto"
+                    "video" -> "Video"
+                    "audio" -> "Audio"
+                    else -> lastMessage?.content ?: ""
+                }
+                
+                Text(
+                    text = displayText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (conversation.chat.is_muted) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.VolumeOff,
+                        contentDescription = "Chat silenciado",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                    )
+                }
+                
+                if (unreadCount > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .background(Color(0xFFE53935), CircleShape)
+                            .height(20.dp)
+                            .widthIn(min = 20.dp)
+                            .padding(horizontal = 6.dp)
+                    ) {
+                        Text(
+                            text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+        
+        Box {
+            IconButton(onClick = { showMenu = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Opciones",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_muted) "Activar notificaciones" else "Silenciar") },
+                    onClick = {
+                        showMenu = false
+                        onMute()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (conversation.chat.is_muted) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                            contentDescription = null
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_pinned) "Desfijar" else "Fijar arriba") },
+                    onClick = {
+                        showMenu = false
+                        onPin()
+                    },
+                    leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) }
+                )
+                if (onManageFolders != null) {
+                    DropdownMenuItem(
+                        text = { Text("Añadir a carpeta") },
+                        onClick = {
+                            showMenu = false
+                            onManageFolders()
+                        },
+                        leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Eliminar") },
+                    onClick = { 
+                        showMenu = false
+                        onDelete()
+                    },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Reportar") },
+                    onClick = { 
+                        showMenu = false
+                        onReport()
+                    },
+                    leadingIcon = { Icon(Icons.Default.Report, contentDescription = null) }
+                )
+            }
+        }
+    }
+}
+
+private fun formatTimestampSmart(isoString: String): String {
+    return try {
+        if (isoString.isBlank()) return ""
+        
+        // Robust parsing matching Message model for consistency
+        val cleaned = isoString.trim()
+            .replace(" ", "T")
+            .let { if (!it.contains("Z") && !it.contains("+") && it.length > 10) "${it}Z" else it }
+
+        val instant = try {
+            java.time.Instant.parse(cleaned)
+        } catch (e: Exception) {
+            try {
+                if (cleaned.contains("Z") || cleaned.contains("+")) {
+                    java.time.OffsetDateTime.parse(cleaned).toInstant()
+                } else {
+                    java.time.LocalDateTime.parse(cleaned.substringBefore("Z")).toInstant(java.time.ZoneOffset.UTC)
+                }
+            } catch (e2: Exception) { null }
+        } ?: return ""
+
+        val localDateTime = java.time.LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault())
+        val now = java.time.LocalDateTime.now()
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("hh:mm a", Locale.getDefault())
+        when {
+            localDateTime.toLocalDate() == now.toLocalDate() -> localDateTime.format(formatter)
+            localDateTime.toLocalDate() == now.toLocalDate().minusDays(1) -> "Ayer"
+            localDateTime.isAfter(now.minusDays(7)) -> {
+                val dayFormat = java.time.format.DateTimeFormatter.ofPattern("EEEE", Locale("es", "ES"))
+                localDateTime.format(dayFormat).replaceFirstChar { it.uppercase() }
+            }
+            else -> localDateTime.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yy", Locale.getDefault()))
+        }
+    } catch (e: Exception) { "" }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConversationItemWithSwipe(
+    conversation: ChatWithLastMessage,
+    currentUserId: String,
+    onClick: () -> Unit,
+    onMute: () -> Unit,
+    onPin: () -> Unit,
+    onBlock: () -> Unit,
+    onManageFolders: (() -> Unit)? = null,
+    onDelete: () -> Unit,
+    onReport: () -> Unit
+) {
+    val dismissState = rememberDismissState(
+        confirmValueChange = { value ->
+            if (value == DismissValue.DismissedToStart) {
+                onDelete()
+                true
+            } else false
+        }
+    )
+    SwipeToDismiss(
+        state = dismissState,
+        directions = setOf(DismissDirection.EndToStart),
+        background = {
+            val isSwiping = dismissState.dismissDirection == DismissDirection.EndToStart
+            val color = if (isSwiping) Color.Red else Color.Transparent
+            Box(
+                modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (isSwiping) {
+                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
+                }
+            }
+        },
+        dismissContent = {
+           ConversationItem(
+               conversation = conversation,
+               currentUserId = currentUserId,
+               onClick = onClick,
+               onMute = onMute,
+               onPin = onPin,
+               onBlock = onBlock,
+               onManageFolders = onManageFolders,
+               onDelete = onDelete,
+               onReport = onReport
+           )
+        }
+    )
+}

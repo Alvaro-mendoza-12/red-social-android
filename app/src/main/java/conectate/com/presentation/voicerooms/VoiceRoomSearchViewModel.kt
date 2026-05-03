@@ -2,34 +2,44 @@ package conectate.com.presentation.voicerooms
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import conectate.com.data.model.VoiceRoom
-import conectate.com.data.repository.VoiceRoomRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class VoiceRoomSearchViewModel @Inject constructor(
-    private val repository: VoiceRoomRepository
-) : ViewModel() {
-
+class VoiceRoomSearchViewModel @Inject constructor() : ViewModel() {
     private val _query = MutableStateFlow("")
-    val query = _query.asStateFlow()
+    val query: StateFlow<String> = _query.asStateFlow()
 
-    val searchResults: StateFlow<List<VoiceRoom>> = repository.activeRooms
-        .combine(_query) { rooms, query ->
-            if (query.isBlank()) {
-                emptyList()
-            } else {
-                rooms.filter { room ->
-                    room.name.contains(query, ignoreCase = true) ||
-                    (room.readableId?.equals(query, ignoreCase = true) == true)
-                }
-            }
+    private val _searchResults = MutableStateFlow<List<conectate.com.data.model.VoiceRoom>>(emptyList())
+    val searchResults: StateFlow<List<conectate.com.data.model.VoiceRoom>> = _searchResults.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            @OptIn(FlowPreview::class)
+            _query
+                .debounce(300)
+                .filter { it.isNotBlank() }
+                .distinctUntilChanged()
+                .collect { q -> performSearch(q) }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
 
     fun onQueryChange(newQuery: String) {
         _query.value = newQuery
+        if (newQuery.isBlank()) {
+            _searchResults.value = emptyList()
+        }
+    }
+
+    private suspend fun performSearch(query: String) {
+        _searchResults.value = emptyList()
     }
 }

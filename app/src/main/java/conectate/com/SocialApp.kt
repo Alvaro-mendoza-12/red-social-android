@@ -1,28 +1,36 @@
 package conectate.com
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.Coil
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
 import androidx.work.Configuration
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.observability.AppMetrics
 import conectate.com.core.observability.MetricAlertSeverity
 import conectate.com.core.stability.RuntimeStabilityMonitor
+import conectate.com.core.production.ProductionReadyOptimizer
 import conectate.com.data.observability.SupabaseTelemetryExporter
 import conectate.com.data.sync.SyncManager
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import androidx.hilt.work.HiltWorkerFactory
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import conectate.com.util.AppDeviceTier
+import conectate.com.util.AppPerformanceProfiles
 
 @HiltAndroidApp
 class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
@@ -34,6 +42,9 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     @Inject lateinit var telemetryExporter: SupabaseTelemetryExporter
     @Inject lateinit var syncManager: SyncManager
     @Inject lateinit var runtimeStabilityMonitor: RuntimeStabilityMonitor
+    
+    // 🔥 PRODUCTION OPTIMIZER
+    private lateinit var productionOptimizer: ProductionReadyOptimizer
 
     override val workManagerConfiguration: Configuration
         get() = try {
@@ -42,14 +53,25 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                 .setMinimumLoggingLevel(android.util.Log.INFO)
                 .build()
         } catch (e: Exception) {
-            // Extremadamente defensivo para evitar crash si se llama antes de la inyección
             Configuration.Builder().build()
         }
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val appScope = newSafeScope("SocialApp", Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
+        
+        // 🔥 INICIALIZAR OPTIMIZADOR DE PRODUCCIÓN
+        productionOptimizer = ProductionReadyOptimizer(this)
+        productionOptimizer.initializeForProduction()
+        
+        // Initialize Coil with optimized settings
+        Coil.setImageLoader(newImageLoader(this))
+        
+        // Initialize crash reporting
+        Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+        Firebase.crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
+        Firebase.crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
 
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SocialApp", "APP_START: Conectate Social App initializing...")
@@ -78,9 +100,10 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         // Initialize background tasks safely - NO BLOQUEAR MAIN THREAD
         appScope.launch {
             try {
-                // Monitor Metrics Alerts
+                // Monitor Metrics Alerts - Delay slightly to allow UI to settle
                 launch {
                     try {
+                        delay(1500)
                         appMetrics.alerts.collect { alert ->
                             if (alert.severity == MetricAlertSeverity.CRITICAL) {
                                 crashReporter.recordMessage(
@@ -94,18 +117,20 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                     }
                 }
                 
-                // Start Telemetry
+                // Start Telemetry - Staggered
                 launch {
                     try {
+                        delay(2500)
                         telemetryExporter.start()
                     } catch (e: Exception) {
                         android.util.Log.e("SocialApp", "Telemetry start failed", e)
                     }
                 }
                 
-                // Start Sync
+                // Start Sync - Staggered to avoid network contention with initial data load
                 launch {
                     try {
+                        delay(3500)
                         syncManager.start()
                     } catch (e: Exception) {
                         android.util.Log.e("SocialApp", "SyncManager start failed", e)
@@ -118,16 +143,17 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     }
 
     override fun newImageLoader(): ImageLoader {
+        val performanceProfile = AppPerformanceProfiles.detect(this)
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(performanceProfile.memoryCachePercent)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(this.cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.08)
+                    .maxSizePercent(performanceProfile.diskCachePercent)
                     .build()
             }
             .diskCachePolicy(CachePolicy.ENABLED)
@@ -135,9 +161,26 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             .components {
                 add(coil.decode.VideoFrameDecoder.Factory())
             }
-            .allowHardware(true)
+            .allowHardware(performanceProfile.tier != AppDeviceTier.LOW)
             .crossfade(false)
             .logger(if (BuildConfig.DEBUG) DebugLogger() else null)
             .build()
     }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            runCatching { Coil.imageLoader(this).memoryCache?.clear() }
+                .onFailure { logger.w("SocialApp", "Image cache trim failed", it) }
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        runCatching { Coil.imageLoader(this).memoryCache?.clear() }
+            .onFailure { logger.w("SocialApp", "Image cache clear failed", it) }
+    }
 }
+
+

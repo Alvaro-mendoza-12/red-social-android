@@ -378,34 +378,34 @@ fun VoiceRoomActiveScreen(
  else if (fullScreenParticipantId != null) {
                     val p = participants.find { it.id == fullScreenParticipantId }
                     if (p != null) {
-                        FullScreenParticipantView(
-                             participant = p,
-                             remoteVideoTracks = remoteVideoTracks,
-                             localVideoTrack = localVideoTrack,
-                             localVideoMode = videoMode,
-                             eglBaseContext = viewModel.getEglBaseContext(),
-                             currentUserId = currentUserId,
-                             onFullscreenToggle = { viewModel.toggleFullScreen(null) }
-                        )
+                FullScreenParticipantView(
+                     participant = p,
+                     remoteVideoTracks = remoteVideoTracks,
+                     localVideoTrack = localVideoTrack,
+                     localVideoMode = videoMode,
+                     eglBaseContext = viewModel.getEglBaseContext(),
+                     currentUserId = currentUserId ?: "",
+                     onFullscreenToggle = { viewModel.toggleFullScreen(null) }
+                )
                     } else {
                         viewModel.toggleFullScreen(null)
                     }
                 } else if (hasRealVideo) {
                     // Video Grid Layout
-                    VideoGridLayout(
-                        participants = participants,
-                        remoteVideoTracks = remoteVideoTracks,
-                        peerConnectionStates = peerConnectionStates,
-                        signalingStates = signalingStates,
-                        sharingStates = sharingStates,
-                        debugInfo = debugInfo,
-                        localVideoTrack = localVideoTrack,
-                        localVideoMode = videoMode,
-                        eglBaseContext = viewModel.getEglBaseContext(),
-                        currentUserId = currentUserId,
-                        onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) },
-                        onFullscreenToggle = { id -> viewModel.toggleFullScreen(id) }
-                    )
+                VideoGridLayout(
+                    participants = participants,
+                    remoteVideoTracks = remoteVideoTracks,
+                    peerConnectionStates = peerConnectionStates,
+                    signalingStates = signalingStates,
+                    sharingStates = sharingStates,
+                    debugInfo = debugInfo,
+                    localVideoTrack = localVideoTrack,
+                    localVideoMode = videoMode,
+                    eglBaseContext = viewModel.getEglBaseContext(),
+                    currentUserId = currentUserId ?: "",
+                    onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) },
+                    onFullscreenToggle = { id -> viewModel.toggleFullScreen(id) }
+                )
                 } else {
                     // Audio Only Grid
                     AudioOnlyLayout(
@@ -537,12 +537,12 @@ fun PasswordPromptDialog(
 
 @Composable
 fun VideoGridLayout(
-    participants: List<Participant>,
+    participants: List<conectate.com.data.model.VoiceParticipant>,
     remoteVideoTracks: Map<String, VideoTrack>,
-    peerConnectionStates: Map<String, org.webrtc.PeerConnection.IceConnectionState>,
-    signalingStates: Map<String, org.webrtc.PeerConnection.SignalingState>,
-    sharingStates: Map<String, Pair<Boolean, Boolean>>,
-    debugInfo: Map<String, String>,
+    peerConnectionStates: Map<String, String>,
+    signalingStates: Map<String, String>,
+    sharingStates: Map<String, Boolean>,
+    debugInfo: String?,
     localVideoTrack: VideoTrack?,
     localVideoMode: VoiceRoomRepository.VideoMode,
     eglBaseContext: org.webrtc.EglBase.Context?,
@@ -561,8 +561,7 @@ fun VideoGridLayout(
              val isLocal = participant.id == currentUserId 
              
              // Logic: Show video only if track is present AND the peer is actively sharing
-             val sharing = sharingStates[participant.socketId] ?: Pair(false, false)
-             val isRemoteSharing = sharing.first || sharing.second
+             val isRemoteSharing = sharingStates[participant.socketId] == true
              
              val track = if (isLocal) {
                  if (localVideoMode != VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
@@ -600,49 +599,46 @@ fun VideoGridLayout(
                                  modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                              )
                              
-                             if (!isLocal) {
-                                 val state = peerConnectionStates[participant.socketId]
-                                 if (state != null) {
-                                     Spacer(modifier = Modifier.width(4.dp))
-                                     Box(modifier = Modifier
-                                         .size(8.dp)
-                                         .background(
-                                             when (state) {
-                                                 org.webrtc.PeerConnection.IceConnectionState.CONNECTED,
-                                                 org.webrtc.PeerConnection.IceConnectionState.COMPLETED -> Color.Green
-                                                 org.webrtc.PeerConnection.IceConnectionState.FAILED,
-                                                 org.webrtc.PeerConnection.IceConnectionState.DISCONNECTED -> Color.Red
-                                                 else -> Color.Yellow
-                                             }, 
-                                             CircleShape
-                                         )
-                                     )
-                                 }
-                                 }
-                                 
-                                 // DEBUG OVERLAY
-                                 Column(Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                                     val sig = signalingStates[participant.socketId]
-                                     val dbg = debugInfo[participant.socketId]
-                                     if (sig != null) {
-                                         Text(text = "Sig: $sig", color = Color.Green, style = MaterialTheme.typography.labelSmall)
-                                     }
-                                     if (dbg != null) {
-                                         Text(text = dbg, color = Color.Cyan, style = MaterialTheme.typography.labelSmall, lineHeight = 10.sp)
-                                     }
-                                 }
+                              if (!isLocal) {
+                                  val state = peerConnectionStates[participant.socketId]
+                                  if (state != null) {
+                                      Spacer(modifier = Modifier.width(4.dp))
+                                      Box(modifier = Modifier
+                                          .size(8.dp)
+                                          .background(
+                                              when (state) {
+                                                  "CONNECTED", "COMPLETED" -> Color.Green
+                                                  "FAILED", "DISCONNECTED" -> Color.Red
+                                                  else -> Color.Yellow
+                                              }, 
+                                              CircleShape
+                                          )
+                                      )
+                                  }
+                              }
+                                  
+                              // DEBUG OVERLAY
+                              Column(Modifier.align(Alignment.TopStart).padding(4.dp)) {
+                                  val sig = signalingStates[participant.socketId]
+                                  if (sig != null) {
+                                      Text(text = "Sig: $sig", color = Color.Green, style = MaterialTheme.typography.labelSmall)
+                                  }
+                                  if (debugInfo != null) {
+                                      Text(text = debugInfo, color = Color.Cyan, style = MaterialTheme.typography.labelSmall, lineHeight = 10.sp)
+                                  }
+                              }
                              }
                          }
                      }
-                 } else {
-                     ParticipantCard(
-                         participant = participant,
-                         connectionState = peerConnectionStates[participant.socketId],
-                         signalingState = signalingStates[participant.socketId],
-                         debugInfo = debugInfo[participant.socketId],
-                         onVolumeChange = { vol -> onVolumeChange(participant.socketId, vol) }
-                     )
-                 }
+                  } else {
+                      ParticipantCard(
+                          participant = participant,
+                          connectionState = peerConnectionStates[participant.socketId],
+                          signalingState = signalingStates[participant.socketId],
+                          debugInfo = debugInfo,
+                          onVolumeChange = { vol -> onVolumeChange(participant.socketId, vol) }
+                      )
+                  }
               }
          }
     }
@@ -675,10 +671,10 @@ fun VideoRenderer(
 
 @Composable
 fun AudioOnlyLayout(
-    participants: List<Participant>,
-    peerConnectionStates: Map<String, org.webrtc.PeerConnection.IceConnectionState>? = null,
-    signalingStates: Map<String, org.webrtc.PeerConnection.SignalingState>? = null,
-    debugInfo: Map<String, String>? = null,
+    participants: List<conectate.com.data.model.VoiceParticipant>,
+    peerConnectionStates: Map<String, String>? = null,
+    signalingStates: Map<String, String>? = null,
+    debugInfo: String? = null,
     onVolumeChange: (String, Float) -> Unit
 ) {
     LazyVerticalGrid(
@@ -689,23 +685,23 @@ fun AudioOnlyLayout(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        gridItems(participants) { participant ->
-             ParticipantCard(
-                 participant = participant,
-                 connectionState = peerConnectionStates?.get(participant.socketId),
-                 signalingState = signalingStates?.get(participant.socketId),
-                 debugInfo = debugInfo?.get(participant.socketId),
-                 onVolumeChange = { vol -> onVolumeChange(participant.socketId, vol) }
-             )
-        }
+         gridItems(participants) { participant ->
+              ParticipantCard(
+                  participant = participant,
+                  connectionState = peerConnectionStates?.get(participant.socketId),
+                  signalingState = signalingStates?.get(participant.socketId),
+                  debugInfo = debugInfo,
+                  onVolumeChange = { vol -> onVolumeChange(participant.socketId, vol) }
+              )
+         }
     }
 }
 
 @Composable
 fun ParticipantCard(
-    participant: Participant,
-    connectionState: org.webrtc.PeerConnection.IceConnectionState? = null,
-    signalingState: org.webrtc.PeerConnection.SignalingState? = null,
+    participant: conectate.com.data.model.VoiceParticipant,
+    connectionState: String? = null,
+    signalingState: String? = null,
     debugInfo: String? = null,
     onVolumeChange: (Float) -> Unit = {}
 ) {
@@ -766,15 +762,14 @@ fun ParticipantCard(
         if (connectionState != null) {
             Text(
                 text = when(connectionState) {
-                     org.webrtc.PeerConnection.IceConnectionState.CONNECTED -> "Conectado"
-                     org.webrtc.PeerConnection.IceConnectionState.FAILED -> "Error Conexión"
-                     else -> connectionState.toString()
+                     "CONNECTED" -> "Conectado"
+                     "FAILED" -> "Error Conexión"
+                     else -> connectionState
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = when (connectionState) {
-                     org.webrtc.PeerConnection.IceConnectionState.CONNECTED,
-                     org.webrtc.PeerConnection.IceConnectionState.COMPLETED -> Color.Green
-                     org.webrtc.PeerConnection.IceConnectionState.FAILED -> Color.Red
+                     "CONNECTED", "COMPLETED" -> Color.Green
+                     "FAILED" -> Color.Red
                      else -> Color.Yellow
                  }
             )
@@ -1123,7 +1118,7 @@ fun EditRoomDialog(
 }
 
 @Composable
-fun ParticipantCinemaCard(participant: Participant) {
+fun ParticipantCinemaCard(participant: conectate.com.data.model.VoiceParticipant) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(60.dp)
@@ -1155,7 +1150,7 @@ fun ParticipantCinemaCard(participant: Participant) {
 
 @Composable
 fun ParticipantVideoBubble(
-    participant: Participant,
+    participant: conectate.com.data.model.VoiceParticipant,
     track: org.webrtc.VideoTrack,
     eglBaseContext: org.webrtc.EglBase.Context?
 ) {
@@ -1472,7 +1467,7 @@ fun InviteFriendBottomSheet(
 
 @Composable
 fun InviteUserItem(
-    user: conectate.com.data.model.User,
+    user: UserInvite,
     onInvite: () -> Unit
 ) {
     Surface(
@@ -1487,7 +1482,7 @@ fun InviteUserItem(
         ) {
             // Profile Image
             CircularProfileImage(
-                imageUrl = user.avatar_url, // Adjusted for correct field name in User model
+                imageUrl = user.avatarUrl,
                 size = 40.dp,
                 showBorder = false
             )
@@ -1500,13 +1495,6 @@ fun InviteUserItem(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
-                user.username?.let {
-                    Text(
-                        text = "@$it",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
 
             Button(
@@ -1524,7 +1512,7 @@ fun InviteUserItem(
 
 @Composable
 fun FullScreenParticipantView(
-    participant: Participant,
+    participant: conectate.com.data.model.VoiceParticipant,
     remoteVideoTracks: Map<String, org.webrtc.VideoTrack>,
     localVideoTrack: org.webrtc.VideoTrack?,
     localVideoMode: conectate.com.data.repository.VoiceRoomRepository.VideoMode,

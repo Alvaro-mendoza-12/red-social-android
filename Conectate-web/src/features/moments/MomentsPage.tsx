@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
 
 function inferMomentMediaType(file: File): 'image' | 'video' {

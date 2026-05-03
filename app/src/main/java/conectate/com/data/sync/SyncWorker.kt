@@ -15,7 +15,7 @@ class SyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        val reason = inputData.getString(SyncManager.SYNC_REASON_KEY) ?: "worker"
+        var reason = inputData.getString(SyncManager.SYNC_REASON_KEY) ?: "worker"
         return try {
             syncManager.syncNow(reason = reason)
             Result.success()
@@ -28,3 +28,6 @@ class SyncWorker @AssistedInject constructor(
         }
     }
 }
+
+
+

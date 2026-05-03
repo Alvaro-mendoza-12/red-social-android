@@ -93,3 +93,5 @@ data class CommunityWithLastMessage(
     val lastMessage: CommunityMessage? = null,
     val unreadCount: Int = 0
 )
+
+

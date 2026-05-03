@@ -43,10 +43,10 @@ class FriendRepository @Inject constructor(
 
     suspend fun getFriendStatus(targetUserId: String): Result<FriendStatus> {
         return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
             // Check if I sent a request or we are friends
-            val sentResponse = supabaseConfig.httpClient.get(
+            var sentResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -59,13 +59,13 @@ class FriendRepository @Inject constructor(
             if (sentResponse.status.isSuccess()) {
                 val sentRequests: List<FriendRequest> = sentResponse.body()
                 if (sentRequests.isNotEmpty()) {
-                    val req = sentRequests.first()
+                    var req = sentRequests.first()
                     return Result.success(if (req.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_SENT)
                 }
             }
             
             // Check if I received a request
-            val receivedResponse = supabaseConfig.httpClient.get(
+            var receivedResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -78,7 +78,7 @@ class FriendRepository @Inject constructor(
             if (receivedResponse.status.isSuccess()) {
                 val receivedRequests: List<FriendRequest> = receivedResponse.body()
                 if (receivedRequests.isNotEmpty()) {
-                    val req = receivedRequests.first()
+                    var req = receivedRequests.first()
                     return Result.success(if (req.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_RECEIVED)
                 }
             }
@@ -91,7 +91,7 @@ class FriendRepository @Inject constructor(
 
     suspend fun sendFriendRequest(targetUserId: String): Result<Unit> {
         return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
             val requestData = CreateFriendRequest(
                 senderId = currentUserId,
@@ -99,7 +99,7 @@ class FriendRepository @Inject constructor(
                 status = "pending"
             )
             
-            val response = supabaseConfig.httpClient.post(
+            var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -126,9 +126,9 @@ class FriendRepository @Inject constructor(
 
     suspend fun acceptFriendRequest(senderId: String): Result<Unit> {
          return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
-            val response = supabaseConfig.httpClient.patch(
+            var response = supabaseConfig.httpClient.patch(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -140,6 +140,17 @@ class FriendRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
+                notificationRepository.sendNotification(
+                    recipientId = senderId,
+                    type = "friend_request_accepted",
+                    targetId = currentUserId
+                ).onFailure { error ->
+                    android.util.Log.w(
+                        "FriendRepository",
+                        "Friend request accepted but acceptance notification failed",
+                        error
+                    )
+                }
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to accept request: ${response.status}"))
@@ -151,11 +162,11 @@ class FriendRepository @Inject constructor(
 
     suspend fun getRecentFriends(limit: Int = 10): Result<List<Pair<User, String>>> {
          return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
             // Fetch friends sorted by updated_at desc
             // We need to fetch relationships first
-             val sentResponse = supabaseConfig.httpClient.get(
+             var sentResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -167,7 +178,7 @@ class FriendRepository @Inject constructor(
                  parameter("select", "receiver_id,updated_at")
             }
             
-            val receivedResponse = supabaseConfig.httpClient.get(
+            var receivedResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -183,12 +194,24 @@ class FriendRepository @Inject constructor(
             
             if (sentResponse.status.isSuccess()) {
                 val sent: List<Map<String, String>> = sentResponse.body()
-                sent.forEach { friendsMap[it["receiver_id"]!!] = it["updated_at"]!! }
+                sent.forEach { row ->
+                    var id = row["receiver_id"]?.trim().orEmpty()
+                    var updatedAt = row["updated_at"]?.trim().orEmpty()
+                    if (id.isNotBlank() && updatedAt.isNotBlank()) {
+                        friendsMap[id] = updatedAt
+                    }
+                }
             }
             
             if (receivedResponse.status.isSuccess()) {
                 val received: List<Map<String, String>> = receivedResponse.body()
-                received.forEach { friendsMap[it["sender_id"]!!] = it["updated_at"]!! }
+                received.forEach { row ->
+                    var id = row["sender_id"]?.trim().orEmpty()
+                    var updatedAt = row["updated_at"]?.trim().orEmpty()
+                    if (id.isNotBlank() && updatedAt.isNotBlank()) {
+                        friendsMap[id] = updatedAt
+                    }
+                }
             }
             
             if (friendsMap.isEmpty()) return Result.success(emptyList())
@@ -196,7 +219,7 @@ class FriendRepository @Inject constructor(
             val sortedIds = friendsMap.entries.sortedByDescending { it.value }.take(limit).map { it.key }
             
              // Fetch profiles
-            val usersResponse = supabaseConfig.httpClient.get(
+            var usersResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -221,9 +244,9 @@ class FriendRepository @Inject constructor(
     
     suspend fun rejectFriendRequest(senderId: String): Result<Unit> {
          return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
-            val response = supabaseConfig.httpClient.delete(
+            var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -244,7 +267,7 @@ class FriendRepository @Inject constructor(
 
     suspend fun unfriendUser(targetUserId: String): Result<Unit> {
         return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
             // Delete calls where I am sender or receiver
             // Supabase DELETE with OR condition is tricky without RPC, but RLS allows user to delete ANY row they are part of.
@@ -282,9 +305,9 @@ class FriendRepository @Inject constructor(
     
     suspend fun cancelFriendRequest(targetUserId: String): Result<Unit> {
          return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
-            val response = supabaseConfig.httpClient.delete(
+            var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -306,10 +329,10 @@ class FriendRepository @Inject constructor(
 
     suspend fun getPendingRequests(): Result<List<User>> {
         return try {
-            val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             
             // 1. Get sender_ids from pending requests
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -327,7 +350,7 @@ class FriendRepository @Inject constructor(
             if (senderIds.isEmpty()) return Result.success(emptyList())
             
             // 2. Fetch profiles for these senders
-            val usersResponse = supabaseConfig.httpClient.get(
+            var usersResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -350,7 +373,7 @@ class FriendRepository @Inject constructor(
             // Friends are where (sender=userId AND status=accepted) OR (receiver=userId AND status=accepted)
             
             // 1. Where I am sender
-            val sentResponse = supabaseConfig.httpClient.get(
+            var sentResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -361,7 +384,7 @@ class FriendRepository @Inject constructor(
             }
             
             // 2. Where I am receiver
-            val receivedResponse = supabaseConfig.httpClient.get(
+            var receivedResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
             ) {
                  header("apikey", supabaseConfig.supabaseAnonKey)
@@ -386,7 +409,7 @@ class FriendRepository @Inject constructor(
             if (friendIds.isEmpty()) return Result.success(emptyList())
             
             // Fetch profiles
-            val usersResponse = supabaseConfig.httpClient.get(
+            var usersResponse = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -404,3 +427,6 @@ class FriendRepository @Inject constructor(
         }
     }
 }
+
+
+

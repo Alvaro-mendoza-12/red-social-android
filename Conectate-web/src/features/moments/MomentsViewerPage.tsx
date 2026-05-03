@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat, sendDirectMessage } from '../messages/directChat'
 import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
 

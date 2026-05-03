@@ -9,7 +9,7 @@ import {
 } from '../../core/reliability'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 
 type NotificationItem = {
   id: string

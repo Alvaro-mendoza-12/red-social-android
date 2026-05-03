@@ -2,7 +2,16 @@ package conectate.com.data.model
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
-import java.time.LocalDateTime
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import java.time.Instant
 
 @Serializable
@@ -26,6 +35,8 @@ data class User(
     val last_name_change: String? = null,
     val is_private: Boolean = false,
     val profile_visibility: String = "everyone",
+    @SerialName("last_seen_visibility") val last_seen_visibility: String = "everyone",
+    @SerialName("online_status_visibility") val online_status_visibility: String = "everyone",
     val is_admin: Boolean = false,
     val voice_access_granted: Boolean = false,
     val is_verified: Boolean = false,
@@ -39,6 +50,7 @@ data class User(
     val badges: List<Badge>? = null,
     val is_online: Boolean = false,
     @SerialName("last_seen") val lastSeen: String? = null,
+    @Serializable(with = NullableDoubleAsZeroSerializer::class)
     val balance: Double = 0.0,
     @SerialName("created_at") val created_at: String = "",
     @SerialName("updated_at") val updated_at: String = ""
@@ -88,3 +100,29 @@ data class User(
     val effectiveSuspensionEndDate: String?
         get() = suspension_end_date?.takeIf { it.isNotBlank() } ?: suspended_until
 }
+
+object NullableDoubleAsZeroSerializer : KSerializer<Double> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("NullableDoubleAsZeroSerializer", PrimitiveKind.DOUBLE)
+
+    override fun deserialize(decoder: Decoder): Double {
+        val jsonDecoder = decoder as? JsonDecoder ?: return decoder.decodeDouble()
+        val element = jsonDecoder.decodeJsonElement()
+
+        if (element is JsonNull) {
+            return 0.0
+        }
+
+        val primitive = element as? JsonPrimitive ?: return 0.0
+
+        return primitive.doubleOrNull
+            ?: primitive.content.toDoubleOrNull()
+            ?: 0.0
+    }
+
+    override fun serialize(encoder: Encoder, value: Double) {
+        encoder.encodeDouble(value)
+    }
+}
+
+

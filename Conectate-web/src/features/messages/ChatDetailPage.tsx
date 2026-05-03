@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
@@ -9,7 +9,7 @@ import {
   textOf,
   type GenericRow,
 } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 
 type ChatMessage = {
   id: string
@@ -83,6 +83,14 @@ type SendMessageInput = {
   forwardedFromUserId?: string | null
 }
 
+type PendingAttachment = {
+  id: string
+  file: File
+  contentType: 'image' | 'video' | 'audio' | 'file'
+  previewUrl: string
+  caption: string
+}
+
 function inferContentType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
   if (file.type.startsWith('video/')) return 'video'
@@ -152,17 +160,50 @@ function mineDeliveryState(
   return 'sent'
 }
 
-function currentBrowserLocation(): Promise<GeolocationPosition> {
-  if (typeof navigator === 'undefined' || !navigator.geolocation) {
-    throw new Error('GEOLOCATION_NOT_AVAILABLE')
+function reactionCount(reactions: Record<string, string[]>, emoji: string): number {
+  return reactions[emoji]?.length ?? 0
+}
+
+function previewUrlForFile(file: File): string {
+  if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    return URL.createObjectURL(file)
   }
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => resolve(position),
-      (error) => reject(error),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-    )
-  })
+  return ''
+}
+
+function formatFileSize(sizeInBytes: number): string {
+  if (sizeInBytes < 1024) return `${sizeInBytes} B`
+  if (sizeInBytes < 1024 * 1024) return `${Math.round(sizeInBytes / 1024)} KB`
+  return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function dayKeyOf(value: string): string {
+  if (!value) return 'sin-fecha'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return `${parsed.getFullYear()}-${parsed.getMonth()}-${parsed.getDate()}`
+}
+
+function formatConversationDay(value: string): string {
+  if (!value) return 'Sin fecha'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  const now = new Date()
+  const todayKey = dayKeyOf(now.toISOString())
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const dayKey = dayKeyOf(parsed.toISOString())
+
+  if (dayKey === todayKey) return 'Hoy'
+  if (dayKey === dayKeyOf(yesterday.toISOString())) return 'Ayer'
+
+  const includeYear = parsed.getFullYear() !== now.getFullYear()
+  return new Intl.DateTimeFormat('es-CO', {
+    day: 'numeric',
+    month: 'long',
+    year: includeYear ? 'numeric' : undefined,
+  }).format(parsed)
 }
 
 function mapMessage(row: GenericRow): ChatMessage {
@@ -211,18 +252,6 @@ function mapSticker(row: GenericRow): StickerItem {
   }
 }
 
-function mapScheduledJob(row: GenericRow): ScheduledJob {
-  return {
-    id: textOf(row, ['id'], crypto.randomUUID()),
-    content: textOf(row, ['content'], ''),
-    scheduledFor: textOf(row, ['scheduled_for'], ''),
-    status: textOf(row, ['status'], 'pending'),
-  }
-}
-
-function reactionCount(reactions: Record<string, string[]>, emoji: string): number {
-  return reactions[emoji]?.length ?? 0
-}
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
   const clean = profileId.trim()
@@ -253,26 +282,28 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [replyToId, setReplyToId] = useState<string | null>(null)
-  const [sharingLocation, setSharingLocation] = useState(false)
-  const [sendingContact, setSendingContact] = useState(false)
-  const [contactName, setContactName] = useState('')
-  const [contactPhone, setContactPhone] = useState('')
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [showMessageSearch, setShowMessageSearch] = useState(false)
+  const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [showQuickShare, setShowQuickShare] = useState(false)
+  const [replyToId, setReplyToId] = useState<string | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState('Si\nNo')
+  const [showPollComposer, setShowPollComposer] = useState(false)
   const [pollAllowsMultiple, setPollAllowsMultiple] = useState(false)
   const [creatingPoll, setCreatingPoll] = useState(false)
   const [scheduledDraft, setScheduledDraft] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
+  const [showScheduleComposer, setShowScheduleComposer] = useState(false)
   const [scheduling, setScheduling] = useState(false)
-  const [scheduledJobs, setScheduledJobs] = useState<ScheduledJob[]>([])
   const [showStickers, setShowStickers] = useState(false)
   const [stickers, setStickers] = useState<StickerItem[]>([])
   const [stickerQuery, setStickerQuery] = useState('')
-  const [loadingStickers, setLoadingStickers] = useState(false)
+  const [scheduledJobs, setScheduledJobs] = useState<ScheduledJob[]>([])
   const [pollStatesById, setPollStatesById] = useState<Record<string, PollState[]>>({})
   const [consumedViewOnce, setConsumedViewOnce] = useState<Record<string, true>>({})
   const [otherParticipant, setOtherParticipant] = useState<OtherParticipantState | null>(null)
@@ -283,19 +314,248 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     targetLang: 'es',
   })
   const [savingSettings, setSavingSettings] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const threadRef = useRef<HTMLElement | null>(null)
+  const messageSearchInputRef = useRef<HTMLInputElement | null>(null)
+  const shouldStickToBottomRef = useRef(true)
+  const forceScrollToBottomRef = useRef(true)
+  const pendingInitialBottomSnapRef = useRef(true)
+  const pendingAttachmentsRef = useRef<PendingAttachment[]>([])
+  const audioRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
+  const normalizedMessageSearch = useMemo(() => messageSearchQuery.trim().toLowerCase(), [messageSearchQuery])
+  const filteredMessages = useMemo(() => {
+    if (!normalizedMessageSearch) return messages
+    return messages.filter((message) => {
+      const haystack = `${message.content} ${message.contentType} ${message.mediaUrl}`.toLowerCase()
+      return haystack.includes(normalizedMessageSearch)
+    })
+  }, [messages, normalizedMessageSearch])
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const composerText = editingMessageId ? editingDraft : draft
   const deviceId = useMemo(() => {
     const storageKey = 'conectate-web-device-id'
-    const existing = localStorage.getItem(storageKey)
-    if (existing && existing.trim().length > 0) return existing
-    const generated = crypto.randomUUID()
-    localStorage.setItem(storageKey, generated)
-    return generated
+    const fallbackId = () => {
+      try {
+        return crypto.randomUUID()
+      } catch {
+        return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      }
+    }
+    try {
+      const existing = localStorage.getItem(storageKey)
+      if (existing && existing.trim().length > 0) return existing
+      const generated = fallbackId()
+      localStorage.setItem(storageKey, generated)
+      return generated
+    } catch {
+      return fallbackId()
+    }
   }, [])
+
+  const upsertMessageInState = useCallback((nextMessage: ChatMessage) => {
+    setMessages((current) => {
+      const index = current.findIndex((entry) => entry.id === nextMessage.id)
+      if (index === -1) {
+        return [...current, nextMessage].sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
+      }
+      const next = [...current]
+      next[index] = nextMessage
+      next.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
+      return next
+    })
+  }, [])
+
+  const removeMessageFromState = useCallback((messageId: string) => {
+    if (!messageId) return
+    setMessages((current) => current.filter((entry) => entry.id !== messageId))
+    setConsumedViewOnce((current) => {
+      if (!current[messageId]) return current
+      const next = { ...current }
+      delete next[messageId]
+      return next
+    })
+  }, [])
+
+  const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const thread = threadRef.current
+    if (!thread) return
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    thread.scrollTo({ top: thread.scrollHeight, behavior })
+  }, [])
+
+  const handleThreadScroll = useCallback(() => {
+    const thread = threadRef.current
+    if (!thread) return
+    const distanceToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight
+    const isNearBottom = distanceToBottom < 120
+    shouldStickToBottomRef.current = isNearBottom
+    setShowScrollToBottom(!isNearBottom && messages.length > 0)
+  }, [messages.length])
+
+  const queueAttachmentFiles = useCallback((input: FileList | File[] | null) => {
+    if (!input || input.length === 0) return
+    const files = Array.from(input).filter((entry) => entry.size > 0)
+    if (files.length === 0) return
+    setPendingAttachments((current) => [
+      ...current,
+      ...files.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        contentType: inferContentType(file),
+        previewUrl: previewUrlForFile(file),
+        caption: '',
+      })),
+    ])
+  }, [])
+
+  const stopAudioStream = useCallback(() => {
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop())
+    audioStreamRef.current = null
+  }, [])
+
+  const toggleAudioRecording = useCallback(async () => {
+    const activeRecorder = audioRecorderRef.current
+    if (activeRecorder && activeRecorder.state !== 'inactive') {
+      activeRecorder.stop()
+      return
+    }
+    if (
+      typeof window === 'undefined' ||
+      typeof MediaRecorder === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioStreamRef.current = stream
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+      const supportedMimeType = mimeCandidates.find((candidate) => {
+        try {
+          return MediaRecorder.isTypeSupported(candidate)
+        } catch {
+          return false
+        }
+      })
+      const recorder = supportedMimeType
+        ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+        : new MediaRecorder(stream)
+      audioChunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+      recorder.onstop = () => {
+        const blobType = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(audioChunksRef.current, { type: blobType })
+        audioChunksRef.current = []
+        audioRecorderRef.current = null
+        stopAudioStream()
+        setIsRecordingAudio(false)
+        if (blob.size === 0) return
+        const extension = blobType.includes('ogg') ? 'ogg' : 'webm'
+        const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blobType })
+        queueAttachmentFiles([file])
+      }
+      recorder.onerror = () => {
+        audioChunksRef.current = []
+        audioRecorderRef.current = null
+        stopAudioStream()
+        setIsRecordingAudio(false)
+      }
+      recorder.start(250)
+      audioRecorderRef.current = recorder
+      setIsRecordingAudio(true)
+    } catch {
+      audioChunksRef.current = []
+      audioRecorderRef.current = null
+      stopAudioStream()
+      setIsRecordingAudio(false)
+    }
+  }, [queueAttachmentFiles, stopAudioStream])
+
+  const updatePendingAttachmentCaption = useCallback((attachmentId: string, caption: string) => {
+    setPendingAttachments((current) =>
+      current.map((entry) => (entry.id === attachmentId ? { ...entry, caption } : entry)),
+    )
+  }, [])
+
+  const removePendingAttachment = useCallback((attachmentId: string) => {
+    setPendingAttachments((current) => {
+      const target = current.find((entry) => entry.id === attachmentId)
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return current.filter((entry) => entry.id !== attachmentId)
+    })
+  }, [])
+
+  const clearPendingAttachments = useCallback(() => {
+    setPendingAttachments((current) => {
+      current.forEach((entry) => {
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      })
+      return []
+    })
+  }, [])
+
+  const handleDropZoneDragOver = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setDragActive(true)
+  }, [])
+
+  const handleDropZoneDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDragActive(false)
+  }, [])
+
+  const handleDropZoneDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setDragActive(false)
+      queueAttachmentFiles(event.dataTransfer.files)
+    },
+    [queueAttachmentFiles],
+  )
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments
+  }, [pendingAttachments])
+
+  useEffect(() => {
+    return () => {
+      pendingAttachmentsRef.current.forEach((entry) => {
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      const recorder = audioRecorderRef.current
+      if (recorder) {
+        recorder.ondataavailable = null
+        recorder.onstop = null
+        recorder.onerror = null
+        if (recorder.state !== 'inactive') {
+          recorder.stop()
+        }
+      }
+      audioRecorderRef.current = null
+      audioChunksRef.current = []
+      stopAudioStream()
+    }
+  }, [stopAudioStream])
 
   const loadPollStates = useCallback(async (rows: ChatMessage[]) => {
     if (!supabase) return
@@ -318,6 +578,38 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
     setPollStatesById(Object.fromEntries(entries))
   }, [])
+
+  const refreshPollState = useCallback(async (pollId: string) => {
+    if (!supabase || !pollId) return
+    const { data, error } = await supabase.rpc('secure_get_poll_state', { p_poll_id: pollId })
+    if (error) return
+    const mapped = ((data ?? []) as GenericRow[]).map(mapPollState)
+    setPollStatesById((current) => ({ ...current, [pollId]: mapped }))
+  }, [])
+
+  const refreshMessageById = useCallback(
+    async (messageId: string) => {
+      if (!supabase || !messageId || !cleanChatId) return
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('chat_id', cleanChatId)
+        .eq('id', messageId)
+        .limit(1)
+      if (error) return
+      const row = ((data ?? []) as GenericRow[])[0]
+      if (!row) {
+        removeMessageFromState(messageId)
+        return
+      }
+      const mapped = mapMessage(row)
+      upsertMessageInState(mapped)
+      if (mapped.pollId) {
+        void refreshPollState(mapped.pollId)
+      }
+    },
+    [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState],
+  )
 
   const loadConsumedViewOnce = useCallback(
     async (rows: ChatMessage[]) => {
@@ -346,6 +638,21 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     },
     [user],
   )
+
+  const refreshScheduledJobs = useCallback(async () => {
+    if (!supabase || !cleanChatId) return
+    try {
+      const { data, error: jobsError } = await supabase.rpc('secure_get_chat_scheduled_jobs', {
+        p_scope_type: 'dm',
+        p_target_id: cleanChatId,
+      })
+      if (jobsError) throw jobsError
+      setScheduledJobs((data ?? []) as ScheduledJob[])
+    } catch (caught) {
+      console.error('Error loading scheduled jobs:', caught)
+    }
+  }, [cleanChatId])
+
 
   const markAsDeliveredAndRead = useCallback(async () => {
     if (!supabase || !user || !cleanChatId) return
@@ -428,30 +735,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
   }, [cleanChatId, user])
 
-  const loadScheduledJobs = useCallback(async () => {
-    if (!supabase || !user || !cleanChatId) return
-    try {
-      const { data, error: jobsError } = await supabase
-        .from('scheduled_message_jobs')
-        .select('*')
-        .eq('owner_id', user.id)
-        .eq('scope_type', 'dm')
-        .eq('target_id', cleanChatId)
-        .order('scheduled_for', { ascending: true })
-        .limit(20)
-      if (jobsError) {
-        if (isMissingTableError(jobsError)) return
-        throw jobsError
-      }
-      setScheduledJobs(((data ?? []) as GenericRow[]).map(mapScheduledJob))
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar mensajes programados'))
-    }
-  }, [cleanChatId, user])
-
   const loadChat = useCallback(async () => {
+    const loadSequence = ++loadSequenceRef.current
+    const isStaleLoad = () => loadSequenceRef.current !== loadSequence
     if (!supabase || !user || !cleanChatId) {
-      setLoading(false)
+      if (!isStaleLoad()) {
+        setLoading(false)
+      }
       return
     }
 
@@ -468,9 +758,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
       const chatRow = ((chats ?? []) as GenericRow[])[0]
       if (!chatRow) {
-        setError('No tienes acceso a este chat o no existe.')
-        setMessages([])
-        setLoading(false)
+        if (!isStaleLoad()) {
+          setError('No tienes acceso a este chat o no existe.')
+          setMessages([])
+          setLoading(false)
+        }
         return
       }
 
@@ -496,16 +788,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         const displayName = textOf(profile ?? {}, ['displayName', 'display_name', 'username'], 'Chat privado')
         const avatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
         const participant = ((participantRows ?? []) as GenericRow[])[0]
-        setTitle(displayName)
-        setOtherParticipant({
-          id: otherId,
-          name: displayName,
-          avatarUrl,
-          lastReadAt: textOf(participant ?? {}, ['last_read_at'], ''),
-        })
+        if (!isStaleLoad()) {
+          setTitle(displayName)
+          setOtherParticipant({
+            id: otherId,
+            name: displayName,
+            avatarUrl,
+            lastReadAt: textOf(participant ?? {}, ['last_read_at'], ''),
+          })
+        }
       } else {
-        setTitle('Chat privado')
-        setOtherParticipant(null)
+        if (!isStaleLoad()) {
+          setTitle('Chat privado')
+          setOtherParticipant(null)
+        }
       }
 
       const { data: messageRows, error: msgError } = await supabase
@@ -517,6 +813,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       if (msgError) throw msgError
 
       const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapMessage)
+      if (isStaleLoad()) return
       setMessages(mappedMessages)
       await Promise.all([
         loadPollStates(mappedMessages),
@@ -524,15 +821,59 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         markAsDeliveredAndRead(),
       ])
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar la conversación'))
+      if (!isStaleLoad()) {
+        setError(friendlyError(caught, 'No se pudo cargar la conversación'))
+      }
     } finally {
-      setLoading(false)
+      if (!isStaleLoad()) {
+        setLoading(false)
+      }
     }
   }, [cleanChatId, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, user])
 
   useEffect(() => {
     void loadChat()
   }, [loadChat])
+
+  useEffect(() => {
+    forceScrollToBottomRef.current = true
+    pendingInitialBottomSnapRef.current = true
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    setShowMessageSearch(false)
+    setMessageSearchQuery('')
+  }, [cleanChatId])
+
+  useEffect(() => {
+    if (loading || showMessageSearch) return
+    if (!messages.length && !forceScrollToBottomRef.current) return
+    const shouldScroll = forceScrollToBottomRef.current || shouldStickToBottomRef.current
+    if (!shouldScroll) return
+    const behavior: ScrollBehavior = forceScrollToBottomRef.current ? 'auto' : 'smooth'
+    const frame = window.requestAnimationFrame(() => {
+      scrollThreadToBottom(behavior)
+      forceScrollToBottomRef.current = false
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loading, messages, scrollThreadToBottom, showMessageSearch])
+
+  useEffect(() => {
+    if (loading || !pendingInitialBottomSnapRef.current) return
+    const snapToBottom = () => scrollThreadToBottom('auto')
+    const frame = window.requestAnimationFrame(snapToBottom)
+    const timer = window.setTimeout(snapToBottom, 180)
+    pendingInitialBottomSnapRef.current = false
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [loading, scrollThreadToBottom])
+
+  useEffect(() => {
+    if (!showMessageSearch) return
+    const frame = window.requestAnimationFrame(() => messageSearchInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [showMessageSearch])
 
   useEffect(() => {
     if (!cleanChatId || !user) return
@@ -553,8 +894,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   useEffect(() => {
     void loadChatSettings()
-    void loadScheduledJobs()
-  }, [loadChatSettings, loadScheduledJobs])
+    void refreshScheduledJobs()
+  }, [loadChatSettings, refreshScheduledJobs])
 
   useEffect(() => {
     const client = supabase
@@ -564,22 +905,44 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages', filter: `chat_id=eq.${cleanChatId}` },
-        () => {
-          void loadChat()
+        (payload) => {
+          const row = ((payload.eventType === 'DELETE' ? payload.old : payload.new) ?? {}) as GenericRow
+          const messageId = textOf(row, ['id'], '')
+          if (!messageId) return
+          if (payload.eventType === 'DELETE') {
+            removeMessageFromState(messageId)
+            return
+          }
+          const mapped = mapMessage(row)
+          upsertMessageInState(mapped)
+          if (mapped.pollId) {
+            void refreshPollState(mapped.pollId)
+          }
         },
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'message_poll_votes' },
-        () => {
-          void loadChat()
+        (payload) => {
+          const row = ((payload.eventType === 'DELETE' ? payload.old : payload.new) ?? {}) as GenericRow
+          const pollId = textOf(row, ['poll_id'], '')
+          if (!pollId) return
+          void refreshPollState(pollId)
         },
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'chat_participants', filter: `chat_id=eq.${cleanChatId}` },
-        () => {
-          void loadChat()
+        (payload) => {
+          const row = ((payload.eventType === 'DELETE' ? payload.old : payload.new) ?? {}) as GenericRow
+          const participantId = textOf(row, ['user_id'], '')
+          if (!participantId || participantId === user.id) return
+          const lastReadAt = textOf(row, ['last_read_at'], '')
+          if (!lastReadAt) return
+          setOtherParticipant((current) => {
+            if (!current || current.id !== participantId) return current
+            return { ...current, lastReadAt }
+          })
         },
       )
       .subscribe()
@@ -587,7 +950,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return () => {
       void client.removeChannel(channel)
     }
-  }, [cleanChatId, loadChat, user])
+  }, [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState, user])
 
   async function sendMessage(input: SendMessageInput) {
     if (!supabase || !user || !cleanChatId) return
@@ -627,14 +990,47 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       .eq('id', cleanChatId)
   }
 
+  async function sendPendingAttachments(textFallback: string) {
+    if (!supabase || !user || !cleanChatId || pendingAttachments.length === 0) return
+    const queued = [...pendingAttachments]
+    setUploading(true)
+    try {
+      for (let index = 0; index < queued.length; index += 1) {
+        const attachment = queued[index]
+        const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const filePath = `dm/${user.id}/${Date.now()}_${index}_${safeName}`
+        const { error: uploadError } = await supabase.storage
+          .from('chat-media')
+          .upload(filePath, attachment.file, { contentType: attachment.file.type || undefined })
+        if (uploadError) throw uploadError
+        const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath)
+        const caption =
+          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+        await sendMessage({
+          content: caption,
+          mediaUrl: data.publicUrl,
+          contentType: attachment.contentType,
+          mediaSize: attachment.file.size,
+          replyToId: index === 0 ? replyToId : null,
+        })
+        setPendingAttachments((current) => current.filter((entry) => entry.id !== attachment.id))
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+      }
+      setReplyToId(null)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) return
-    const text = composerText.trim()
-    if (!text || sending) return
+    const text = (editingMessageId ? editingDraft : draft).trim()
+    if ((!text && pendingAttachments.length === 0) || sending || uploading) return
     setSending(true)
     try {
       if (editingMessageId) {
+        if (!text) return
         const nowIso = new Date().toISOString()
         const { error: editError } = await supabase
           .from('messages')
@@ -643,14 +1039,24 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           .eq('chat_id', cleanChatId)
           .eq('sender_id', user?.id ?? '')
         if (editError) throw editError
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === editingMessageId
+              ? { ...entry, content: text, isEdited: true, updatedAt: nowIso }
+              : entry,
+          ),
+        )
         setEditingMessageId(null)
         setEditingDraft('')
+        setDraft('')
+      } else if (pendingAttachments.length > 0) {
+        await sendPendingAttachments(text)
+        setDraft('')
       } else {
         await sendMessage({ content: text, replyToId })
         setReplyToId(null)
+        setDraft('')
       }
-      setDraft('')
-      await loadChat()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
     } finally {
@@ -658,110 +1064,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
   }
 
-  async function handleAttachFile(file: File | null) {
-    if (!supabase || !user || !cleanChatId || !file) return
-    setUploading(true)
-    try {
-      const contentType = inferContentType(file)
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = `dm/${user.id}/${Date.now()}_${safeName}`
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(filePath, file, { contentType: file.type || undefined })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath)
-      await sendMessage({
-        content: file.name,
-        mediaUrl: data.publicUrl,
-        contentType,
-        mediaSize: file.size,
-        replyToId,
-      })
-      setReplyToId(null)
-      await loadChat()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo subir el archivo'))
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleAttachViewOnceFile(file: File | null) {
-    if (!supabase || !user || !cleanChatId || !file) return
-    setUploading(true)
-    try {
-      const contentType = inferContentType(file)
-      if (contentType !== 'image' && contentType !== 'video') {
-        throw new Error('View-once solo permite imagen o video')
-      }
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = `view-once/${user.id}/${Date.now()}_${safeName}`
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(filePath, file, { contentType: file.type || undefined })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath)
-      await sendMessage({
-        content: file.name,
-        mediaUrl: data.publicUrl,
-        contentType: contentType === 'image' ? 'view_once_image' : 'view_once_video',
-        mediaSize: file.size,
-        replyToId,
-      })
-      setReplyToId(null)
-      await loadChat()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo enviar view-once'))
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function shareCurrentLocation() {
-    if (!supabase || !user || !cleanChatId || sharingLocation) return
-    setSharingLocation(true)
-    setError(null)
-    try {
-      const position = await currentBrowserLocation()
-      const latitude = position.coords.latitude
-      const longitude = position.coords.longitude
-      const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`
-      await sendMessage({
-        content: `Ubicacion: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-        contentType: 'location',
-        mediaUrl: mapUrl,
-      })
-      await loadChat()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo compartir ubicacion'))
-    } finally {
-      setSharingLocation(false)
-    }
-  }
-
-  async function shareContactCard() {
-    if (!supabase || !user || !cleanChatId || sendingContact) return
-    const name = contactName.trim()
-    const phone = contactPhone.trim()
-    if (!name || !phone) {
-      setError('Completa nombre y telefono para enviar contacto')
-      return
-    }
-    setSendingContact(true)
-    setError(null)
-    try {
-      await sendMessage({
-        content: `${name} · ${phone}`,
-        contentType: 'contact',
-      })
-      setContactName('')
-      setContactPhone('')
-      await loadChat()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo compartir contacto'))
-    } finally {
-      setSendingContact(false)
-    }
+  function handleAttachFile(input: FileList | File[] | null) {
+    queueAttachmentFiles(input)
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -774,7 +1078,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       setError(friendlyError(reactionError, 'No se pudo reaccionar'))
       return
     }
-    await loadChat()
+    await refreshMessageById(messageId)
   }
 
   async function sendForwardedMessage(source: ChatMessage) {
@@ -787,7 +1091,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         forwardedFromMessageId: source.id,
         forwardedFromUserId: source.senderId,
       })
-      await loadChat()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo reenviar'))
     }
@@ -803,7 +1106,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         .eq('id', message.id)
         .eq('sender_id', user.id)
       if (deleteError) throw deleteError
-      await loadChat()
+      setMessages((current) =>
+        current.map((entry) =>
+          entry.id === message.id
+            ? { ...entry, deletedForAll: true, content: '', mediaUrl: '', updatedAt: nowIso }
+            : entry,
+        ),
+      )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo borrar para todos'))
     }
@@ -818,7 +1127,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         .update({ deleted_by: nextDeletedBy, updated_at: new Date().toISOString() })
         .eq('id', message.id)
       if (deleteError) throw deleteError
-      await loadChat()
+      setMessages((current) =>
+        current.map((entry) =>
+          entry.id === message.id ? { ...entry, deletedBy: nextDeletedBy } : entry,
+        ),
+      )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo borrar para mi'))
     }
@@ -850,7 +1163,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       setPollQuestion('')
       setPollOptions('Si\nNo')
       setPollAllowsMultiple(false)
-      await loadChat()
+      setShowPollComposer(false)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
@@ -899,31 +1212,19 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function loadStickers(query: string) {
     if (!supabase) return
-    setLoadingStickers(true)
     try {
-      const { data, error: stickerError } = await supabase.rpc('secure_search_stickers', {
-        p_query: query,
-        p_limit: 30,
-      })
-      if (stickerError) throw stickerError
-      setStickers(((data ?? []) as GenericRow[]).map(mapSticker).filter((item) => item.stickerId.length > 0))
+      // setLoadingStickers(true)
+      const { data, error } = await supabase
+        .from('stickers')
+        .select('*')
+        .ilike('title', `%${query}%`)
+        .limit(20)
+      if (error) throw error
+      setStickers(((data ?? []) as GenericRow[]).map(mapSticker))
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar stickers'))
+      setError(friendlyError(caught, 'No se pudieron cargar stickers'))
     } finally {
-      setLoadingStickers(false)
-    }
-  }
-
-  async function toggleStickerFavorite(stickerId: string) {
-    if (!supabase) return
-    try {
-      const { error: favoriteError } = await supabase.rpc('secure_toggle_sticker_favorite', {
-        p_sticker_id: stickerId,
-      })
-      if (favoriteError) throw favoriteError
-      await loadStickers(stickerQuery)
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo actualizar favorito'))
+      // setLoadingStickers(false)
     }
   }
 
@@ -936,7 +1237,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         replyToId,
       })
       setReplyToId(null)
-      await loadChat()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar sticker'))
     }
@@ -967,7 +1267,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       if (scheduleError) throw scheduleError
       setScheduledDraft('')
       setScheduledAt('')
-      await loadScheduledJobs()
+      await refreshScheduledJobs()
+      setShowScheduleComposer(false)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo programar mensaje'))
     } finally {
@@ -975,19 +1276,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
   }
 
-  async function cancelScheduledJob(jobId: string) {
-    if (!supabase) return
-    try {
-      const { error: cancelError } = await supabase
-        .from('scheduled_message_jobs')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-        .eq('id', jobId)
-      if (cancelError) throw cancelError
-      await loadScheduledJobs()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cancelar mensaje programado'))
-    }
-  }
+
 
   async function saveChatPreferences(nextMuted: boolean, nextPinned: boolean) {
     if (!supabase || !user || !cleanChatId || savingSettings) return
@@ -1077,222 +1366,211 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     )
   }
 
-  return (
-    <section className={embedded ? 'section-stack chat-detail-embedded' : 'section-stack'}>
-      <div className="row-between">
-        {!embedded ? (
-          <Link to="/app/messages" className="inline-link">
-            ← Volver
-          </Link>
-        ) : null}
-        {otherParticipant ? (
-          <Link className="identity-link compact" to={profilePathFor(otherParticipant.id, user?.id)}>
-            {otherParticipant.avatarUrl ? (
-              <img src={otherParticipant.avatarUrl} alt={otherParticipant.name} className="avatar-sm" />
-            ) : (
-              <span className="avatar-sm avatar-fallback">{initialsOf(otherParticipant.name)}</span>
-            )}
-            <span>{otherParticipant.name}</span>
-          </Link>
-        ) : (
-          <h2>{title}</h2>
-        )}
-      </div>
+  const rootClassName = [
+    embedded ? 'section-stack chat-detail-embedded' : 'section-stack',
+    dragActive ? 'chat-drop-active' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
-      <article className="surface-card section-stack">
+  return (
+    <section
+      className={rootClassName}
+      onDragOver={handleDropZoneDragOver}
+      onDragLeave={handleDropZoneDragLeave}
+      onDrop={handleDropZoneDrop}
+    >
+      {dragActive ? (
+        <div className="chat-drop-overlay">
+          <strong>Suelta tus archivos aquí</strong>
+          <small>Imágenes, videos, audios y documentos</small>
+        </div>
+      ) : null}
+      <div className="chat-header-row row-between shadow-sm">
         <div className="row-actions">
+          {!embedded ? (
+            <Link to="/app/messages" className="icon-btn-sm" title="Volver">
+              ←
+            </Link>
+          ) : null}
+          {otherParticipant ? (
+            <Link className="identity-link compact" to={profilePathFor(otherParticipant.id, user?.id)}>
+              {otherParticipant.avatarUrl ? (
+                <img src={otherParticipant.avatarUrl} alt={otherParticipant.name} className="avatar-sm" />
+              ) : (
+                <span className="avatar-sm avatar-fallback">{initialsOf(otherParticipant.name)}</span>
+              )}
+              <div className="col-stack-tight">
+                <strong>{otherParticipant.name}</strong>
+                <small className="online-status">En línea</small>
+              </div>
+            </Link>
+          ) : (
+            <h2>{title}</h2>
+          )}
+        </div>
+        <div className="row-actions chat-head-actions">
           <button
+            className={showMessageSearch ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
-            className={settings.isPinned ? 'chip-btn active' : 'chip-btn'}
-            disabled={savingSettings}
-            onClick={() => void saveChatPreferences(settings.isMuted, !settings.isPinned)}
-          >
-            {settings.isPinned ? 'Despinear' : 'Pinear'}
-          </button>
-          <button
-            type="button"
-            className={settings.isMuted ? 'chip-btn active' : 'chip-btn'}
-            disabled={savingSettings}
-            onClick={() => void saveChatPreferences(!settings.isMuted, settings.isPinned)}
-          >
-            {settings.isMuted ? 'Quitar silencio' : 'Silenciar'}
-          </button>
-          <button
-            type="button"
-            className={showStickers ? 'chip-btn active' : 'chip-btn'}
+            title="Buscar"
             onClick={() => {
-              const next = !showStickers
-              setShowStickers(next)
-              if (next) void loadStickers(stickerQuery)
+              setShowMessageSearch((current) => !current)
+              if (showMessageSearch) {
+                setMessageSearchQuery('')
+              } else {
+                setShowQuickShare(false)
+              }
             }}
           >
-            Stickers
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor" /></svg>
+          </button>
+          <button
+            className={showQuickShare ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
+            type="button"
+            title="Menú"
+            onClick={() => setShowQuickShare((c) => !c)}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+              <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+            </svg>
           </button>
         </div>
-        <div className="composer">
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={settings.translateEnabled}
-              onChange={(event) =>
-                setSettings((current) => ({ ...current, translateEnabled: event.target.checked }))
-              }
-            />
-            Traduccion automatica
-          </label>
+      </div>
+
+      {showMessageSearch ? (
+        <div className="chat-search-row">
           <input
-            className="text-input tiny-input"
-            placeholder="Idioma (es, en...)"
-            value={settings.targetLang}
-            onChange={(event) =>
-              setSettings((current) => ({ ...current, targetLang: event.target.value }))
-            }
+            ref={messageSearchInputRef}
+            className="text-input chat-search-input"
+            placeholder="Buscar en este chat..."
+            value={messageSearchQuery}
+            onChange={(event) => setMessageSearchQuery(event.target.value)}
           />
-          <button className="ghost-btn" type="button" disabled={savingSettings} onClick={() => void saveTranslationSettings()}>
-            Guardar
+          {normalizedMessageSearch ? (
+            <small className="chat-search-count">
+              {filteredMessages.length} resultado{filteredMessages.length === 1 ? '' : 's'}
+            </small>
+          ) : null}
+          <button
+            className="mini-action-btn"
+            type="button"
+            onClick={() => {
+              setShowMessageSearch(false)
+              setMessageSearchQuery('')
+            }}
+          >
+            Cerrar
           </button>
         </div>
-      </article>
-
-      <article className="surface-card section-stack">
-        <div className="row-between">
-          <h3>Compartir rapido</h3>
-          <button className={showQuickShare ? 'chip-btn active' : 'chip-btn'} type="button" onClick={() => setShowQuickShare((current) => !current)}>
-            {showQuickShare ? 'Ocultar' : 'Mostrar'}
-          </button>
-        </div>
-        {showQuickShare ? (
-          <div className="section-stack">
-            <div className="composer">
-              <input
-                className="text-input"
-                placeholder="Nombre contacto"
-                value={contactName}
-                onChange={(event) => setContactName(event.target.value)}
-              />
-              <input
-                className="text-input tiny-input"
-                placeholder="Telefono"
-                value={contactPhone}
-                onChange={(event) => setContactPhone(event.target.value)}
-              />
-              <button className="ghost-btn" type="button" disabled={sendingContact} onClick={() => void shareContactCard()}>
-                {sendingContact ? 'Enviando...' : 'Enviar contacto'}
-              </button>
-            </div>
-            <button className="ghost-btn" type="button" disabled={sharingLocation} onClick={() => void shareCurrentLocation()}>
-              {sharingLocation ? 'Compartiendo ubicacion...' : 'Compartir ubicacion'}
-            </button>
-          </div>
-        ) : null}
-      </article>
-
-      <article className="surface-card section-stack">
-        <h3>Encuesta</h3>
-        <input
-          className="text-input"
-          placeholder="Pregunta"
-          value={pollQuestion}
-          onChange={(event) => setPollQuestion(event.target.value)}
-        />
-        <textarea
-          className="text-input textarea-input"
-          rows={3}
-          value={pollOptions}
-          onChange={(event) => setPollOptions(event.target.value)}
-        />
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={pollAllowsMultiple}
-            onChange={(event) => setPollAllowsMultiple(event.target.checked)}
-          />
-          Permitir multiples
-        </label>
-        <button className="ghost-btn" type="button" disabled={creatingPoll} onClick={() => void createChatPoll()}>
-          {creatingPoll ? 'Creando...' : 'Crear encuesta'}
-        </button>
-      </article>
-
-      <article className="surface-card section-stack">
-        <h3>Programar mensaje</h3>
-        <div className="composer">
-          <input
-            className="text-input"
-            placeholder="Mensaje..."
-            value={scheduledDraft}
-            onChange={(event) => setScheduledDraft(event.target.value)}
-          />
-          <input
-            className="text-input tiny-input"
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(event) => setScheduledAt(event.target.value)}
-          />
-          <button className="ghost-btn" type="button" disabled={scheduling} onClick={() => void scheduleMessage()}>
-            {scheduling ? 'Programando...' : 'Programar'}
-          </button>
-        </div>
-        {scheduledJobs.length > 0 ? (
-          <div className="list-stack">
-            {scheduledJobs.map((job) => (
-              <div key={job.id} className="surface-subcard row-between">
-                <div>
-                  <strong>{job.content}</strong>
-                  <small>
-                    {formatDateTime(job.scheduledFor)} · {job.status}
-                  </small>
-                </div>
-                {job.status === 'pending' ? (
-                  <button className="ghost-btn" type="button" onClick={() => void cancelScheduledJob(job.id)}>
-                    Cancelar
-                  </button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </article>
-
-      {showStickers ? (
-        <article className="surface-card section-stack">
-          <div className="composer">
-            <input
-              className="text-input"
-              placeholder="Buscar stickers..."
-              value={stickerQuery}
-              onChange={(event) => setStickerQuery(event.target.value)}
-            />
-            <button className="ghost-btn" type="button" onClick={() => void loadStickers(stickerQuery)}>
-              Buscar
-            </button>
-          </div>
-          {loadingStickers ? <small>Cargando...</small> : null}
-          <div className="sticker-grid">
-            {stickers.map((sticker) => (
-              <article key={sticker.stickerId} className="surface-subcard section-stack">
-                {sticker.mediaUrl ? <img src={sticker.mediaUrl} alt={sticker.title} className="sticker-preview" /> : null}
-                <strong>{sticker.title}</strong>
-                <div className="row-actions">
-                  <button className="ghost-btn" type="button" onClick={() => void sendSticker(sticker)}>
-                    Enviar
-                  </button>
-                  <button
-                    className={sticker.isFavorite ? 'chip-btn active' : 'chip-btn'}
-                    type="button"
-                    onClick={() => void toggleStickerFavorite(sticker.stickerId)}
-                  >
-                    {sticker.isFavorite ? '★' : '☆'}
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </article>
       ) : null}
 
-      <section className="chat-thread">
-        {messages.map((message) => {
+      {showQuickShare ? (
+        <div className="chat-tools-overlay fade-in">
+          <article className="surface-card section-stack shadow-lg">
+            <div className="row-between">
+              <h3>Herramientas de Chat</h3>
+              <button className="icon-btn-sm" onClick={() => setShowQuickShare(false)}>✕</button>
+            </div>
+
+            <div className="grid-2-col">
+              <section className="tool-section">
+                <h4>Preferencias</h4>
+                <div className="row-actions wrap">
+                  <button
+                    className={settings.isPinned ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => void saveChatPreferences(settings.isMuted, !settings.isPinned)}
+                  >
+                    {settings.isPinned ? 'Despinear' : 'Pinear'}
+                  </button>
+                  <button
+                    className={settings.isMuted ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => void saveChatPreferences(!settings.isMuted, settings.isPinned)}
+                  >
+                    {settings.isMuted ? 'Notificaciones' : 'Silenciar'}
+                  </button>
+                </div>
+              </section>
+
+              <section className="tool-section">
+                <h4>Traducción</h4>
+                <div className="composer mini-composer">
+                  <input
+                    className="text-input tiny-input"
+                    placeholder="Idioma (es, en...)"
+                    value={settings.targetLang}
+                    onChange={(e) => setSettings(s => ({ ...s, targetLang: e.target.value }))}
+                  />
+                  <button className="ghost-btn-sm" onClick={() => void saveTranslationSettings()}>OK</button>
+                </div>
+              </section>
+            </div>
+
+            <div className="grid-2-col">
+              <section className="tool-section">
+                <h4>Encuesta</h4>
+                <button className="ghost-btn-sm w-full" onClick={() => setShowPollComposer((current) => !current)}>
+                  {showPollComposer ? 'Cancelar' : 'Nueva encuesta'}
+                </button>
+                {showPollComposer && (
+                  <div className="section-stack mt-2">
+                    <input className="text-input tiny-input" placeholder="Pregunta" value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} />
+                    <button className="primary-btn-sm" onClick={() => void createChatPoll()}>
+                      {creatingPoll ? 'Creando...' : 'Crear'}
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              <section className="tool-section">
+                <h4>Programar</h4>
+                <button className="ghost-btn-sm w-full" onClick={() => setShowScheduleComposer((current) => !current)}>
+                  {showScheduleComposer ? 'Cancelar' : 'Programar mensaje'}
+                </button>
+                {showScheduleComposer && (
+                  <div className="section-stack mt-2">
+                    <input className="text-input tiny-input" type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
+                    <input className="text-input tiny-input" placeholder="Mensaje programado..." value={scheduledDraft} onChange={(e) => setScheduledDraft(e.target.value)} />
+                    <button className="primary-btn-sm" onClick={() => void scheduleMessage()}>
+                      {scheduling ? 'Programando...' : 'Programar'}
+                    </button>
+                    {scheduledJobs.length > 0 ? (
+                      <div className="list-stack">
+                        {scheduledJobs.slice(0, 5).map((job) => (
+                          <div key={job.id} className="surface-subcard">
+                            <small>
+                              {job.content || 'Mensaje'} · {formatDateTime(job.scheduledFor)} · {job.status}
+                            </small>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <small className="muted-line">Sin mensajes programados</small>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      <div className="chat-thread-shell">
+        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
+          {filteredMessages.length === 0 && normalizedMessageSearch ? (
+            <div className="chat-search-empty">
+              <small className="muted-line">No hay mensajes para ese filtro.</small>
+            </div>
+          ) : filteredMessages.length === 0 ? (
+            <div className="chat-search-empty">
+              <small className="muted-line">Todavía no hay mensajes en este chat.</small>
+            </div>
+          ) : filteredMessages.map((message, index) => {
+          const previousMessage = index > 0 ? filteredMessages[index - 1] : null
+          const showDaySeparator =
+            !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
 
@@ -1311,147 +1589,165 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
 
           return (
-            <article key={message.id} className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
-              {message.isForwarded ? <small>Reenviado</small> : null}
-              {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
-
-              {message.deletedForAll ? (
-                <p className="muted-line">Mensaje eliminado para todos</p>
-              ) : message.contentType === 'poll' && pollRows.length > 0 ? (
-                <div className="poll-stack">
-                  <strong>{pollMeta?.question || message.content}</strong>
-                  {pollRows.map((option) => (
-                    <button
-                      key={option.optionId}
-                      type="button"
-                      className={option.votedByMe ? 'poll-option active' : 'poll-option'}
-                      disabled={option.isClosed}
-                      onClick={() =>
-                        void votePollOption(message.pollId ?? '', option.optionId, !option.votedByMe)
-                      }
-                    >
-                      <span>{option.optionText}</span>
-                      <span>{option.voteCount}</span>
-                    </button>
-                  ))}
-                  <small>
-                    {pollMeta?.totalVotes ?? 0} votos · {pollMeta?.allowsMultiple ? 'Multiple' : 'Unica'}
-                  </small>
-                </div>
-              ) : (
-                <>
-                  {message.contentType === 'location' ? (
-                    <>
-                      {message.content ? <p>{message.content}</p> : null}
-                      {message.mediaUrl ? (
-                        <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
-                          Abrir ubicacion en mapa
-                        </a>
-                      ) : null}
-                    </>
-                  ) : message.contentType === 'contact' ? (
-                    <p>Contacto: {message.content}</p>
-                  ) : (
-                    <>{message.content ? <p>{message.content}</p> : null}</>
-                  )}
-                  {message.mediaUrl && message.contentType === 'sticker' ? (
-                    <img src={message.mediaUrl} alt={message.content || 'Sticker'} className="sticker-preview" />
-                  ) : null}
-                  {message.mediaUrl && isViewOnceType(message.contentType) ? (
-                    consumed ? (
-                      <small>Contenido view-once ya consumido.</small>
-                    ) : (
-                      <button className="ghost-btn" type="button" onClick={() => void consumeViewOnce(message)}>
-                        Ver una vez
-                      </button>
-                    )
-                  ) : null}
-                  {message.mediaUrl &&
-                  message.contentType !== 'sticker' &&
-                  message.contentType !== 'location' &&
-                  !isViewOnceType(message.contentType) ? (
-                    <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
-                      Abrir archivo
-                    </a>
-                  ) : null}
-                </>
-              )}
-
-              <div className="reaction-row">
-                {['👍', '❤️', '😂'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    className="reaction-chip"
-                    onClick={() => void toggleReaction(message.id, emoji)}
-                  >
-                    {emoji} {reactionCount(message.reactions, emoji)}
-                  </button>
-                ))}
-              </div>
-
-              {!message.deletedForAll ? (
-                <div className="row-actions">
-                  <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
-                    Responder
-                  </button>
-                  <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
-                    Reenviar
-                  </button>
-                  {mine && message.contentType === 'text' ? (
-                    <button
-                      className="mini-action-btn"
-                      type="button"
-                      onClick={() => {
-                        setEditingMessageId(message.id)
-                        setEditingDraft(message.content)
-                      }}
-                    >
-                      Editar
-                    </button>
-                  ) : null}
-                  {mine ? (
-                    <button className="mini-action-btn danger" type="button" onClick={() => void deleteMessageForAll(message)}>
-                      Borrar todos
-                    </button>
-                  ) : null}
-                  <button className="mini-action-btn" type="button" onClick={() => void deleteMessageForMe(message)}>
-                    Borrar mi vista
-                  </button>
+            <Fragment key={message.id}>
+              {showDaySeparator ? (
+                <div className="chat-day-separator">
+                  <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
+              <article className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
+                {message.isForwarded ? <small>Reenviado</small> : null}
+                {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
 
-              <small className="message-meta">
-                {formatDateTime(message.createdAt)}
-                {message.isEdited ? ' · editado' : ''}
-                {mine ? (
-                  <span className={`message-status ${deliveryState}`}>
-                    {deliveryState === 'sent'
-                      ? '✓ Enviado'
-                      : deliveryState === 'delivered'
-                        ? '✓✓ Entregado'
-                        : `✓✓ Leido${
-                            readByOther
-                              ? ` por ${otherParticipant?.name ?? 'contacto'}${
-                                  otherParticipant?.lastReadAt
-                                    ? ` ${formatDateTime(otherParticipant.lastReadAt)}`
-                                    : ''
-                                }`
-                              : ''
-                          }`}
-                  </span>
+                {message.deletedForAll ? (
+                  <p className="muted-line">Mensaje eliminado para todos</p>
+                ) : message.contentType === 'poll' && pollRows.length > 0 ? (
+                  <div className="poll-stack">
+                    <strong>{pollMeta?.question || message.content}</strong>
+                    {pollRows.map((option) => (
+                      <button
+                        key={option.optionId}
+                        type="button"
+                        className={option.votedByMe ? 'poll-option active' : 'poll-option'}
+                        disabled={option.isClosed}
+                        onClick={() =>
+                          void votePollOption(message.pollId ?? '', option.optionId, !option.votedByMe)
+                        }
+                      >
+                        <span>{option.optionText}</span>
+                        <span>{option.voteCount}</span>
+                      </button>
+                    ))}
+                    <small>
+                      {pollMeta?.totalVotes ?? 0} votos · {pollMeta?.allowsMultiple ? 'Multiple' : 'Unica'}
+                    </small>
+                  </div>
                 ) : (
                   <>
-                    {' · '}
-                    {message.status}
-                    {message.readAt ? ' · leido' : message.deliveredAt ? ' · entregado' : ''}
+                    {message.contentType === 'location' ? (
+                      <>
+                        {message.content ? <p>{message.content}</p> : null}
+                        {message.mediaUrl ? (
+                          <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
+                            Abrir ubicacion en mapa
+                          </a>
+                        ) : null}
+                      </>
+                    ) : message.contentType === 'contact' ? (
+                      <p>Contacto: {message.content}</p>
+                    ) : (
+                      <>{message.content ? <p>{message.content}</p> : null}</>
+                    )}
+                    {message.mediaUrl && message.contentType === 'sticker' ? (
+                      <img src={message.mediaUrl} alt={message.content || 'Sticker'} className="sticker-preview" />
+                    ) : null}
+                    {message.mediaUrl && message.contentType === 'audio' ? (
+                      <audio className="chat-audio-player" controls preload="metadata" src={message.mediaUrl}>
+                        Tu navegador no soporta audio embebido.
+                      </audio>
+                    ) : null}
+                    {message.mediaUrl && isViewOnceType(message.contentType) ? (
+                      consumed ? (
+                        <small>Contenido view-once ya consumido.</small>
+                      ) : (
+                        <button className="ghost-btn" type="button" onClick={() => void consumeViewOnce(message)}>
+                          Ver una vez
+                        </button>
+                      )
+                    ) : null}
+                    {message.mediaUrl &&
+                      message.contentType !== 'sticker' &&
+                      message.contentType !== 'location' &&
+                      message.contentType !== 'audio' &&
+                      !isViewOnceType(message.contentType) ? (
+                      <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
+                        Abrir archivo
+                      </a>
+                    ) : null}
                   </>
                 )}
-              </small>
-            </article>
+
+                <div className="reaction-row">
+                  {['👍', '❤️', '😂'].map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="reaction-chip"
+                      onClick={() => void toggleReaction(message.id, emoji)}
+                    >
+                      {emoji} {reactionCount(message.reactions, emoji)}
+                    </button>
+                  ))}
+                </div>
+
+                {!message.deletedForAll ? (
+                  <div className="row-actions">
+                    <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
+                      Responder
+                    </button>
+                    <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
+                      Reenviar
+                    </button>
+                    {mine && message.contentType === 'text' ? (
+                      <button
+                        className="mini-action-btn"
+                        type="button"
+                        onClick={() => {
+                          setEditingMessageId(message.id)
+                          setEditingDraft(message.content)
+                        }}
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                    {mine ? (
+                      <button className="mini-action-btn danger" type="button" onClick={() => void deleteMessageForAll(message)}>
+                        Borrar todos
+                      </button>
+                    ) : null}
+                    <button className="mini-action-btn" type="button" onClick={() => void deleteMessageForMe(message)}>
+                      Borrar mi vista
+                    </button>
+                  </div>
+                ) : null}
+
+                <small className="message-meta">
+                  {formatDateTime(message.createdAt)}
+                  {message.isEdited ? ' · editado' : ''}
+                  {mine ? (
+                    <span className={`message-status ${deliveryState}`}>
+                      {deliveryState === 'sent'
+                        ? '✓ Enviado'
+                        : deliveryState === 'delivered'
+                          ? '✓✓ Entregado'
+                          : `✓✓ Leido${readByOther
+                            ? ` por ${otherParticipant?.name ?? 'contacto'}${otherParticipant?.lastReadAt
+                              ? ` ${formatDateTime(otherParticipant.lastReadAt)}`
+                              : ''
+                            }`
+                            : ''
+                          }`}
+                    </span>
+                  ) : (
+                    <>
+                      {' · '}
+                      {message.status}
+                      {message.readAt ? ' · leido' : message.deliveredAt ? ' · entregado' : ''}
+                    </>
+                  )}
+                </small>
+              </article>
+            </Fragment>
           )
         })}
-      </section>
+          <div className="chat-thread-bottom-anchor" />
+        </section>
+        {showScrollToBottom ? (
+          <button className="chat-scroll-bottom-btn" type="button" onClick={() => scrollThreadToBottom('smooth')}>
+            Ultimo ↓
+          </button>
+        ) : null}
+      </div>
 
       {replyToMessage ? (
         <div className="surface-subcard row-between">
@@ -1478,48 +1774,134 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         </div>
       ) : null}
 
-      <form className="composer" onSubmit={handleSend}>
+      {showStickers ? (
+        <div className="stickers-tray fade-in">
+          <div className="row-between p-2">
+            <input
+              className="text-input tiny-input flex-1"
+              placeholder="Buscar stickers..."
+              value={stickerQuery}
+              onChange={(e) => {
+                setStickerQuery(e.target.value)
+                void loadStickers(e.target.value)
+              }}
+            />
+            <button className="icon-btn-sm" onClick={() => setShowStickers(false)}>✕</button>
+          </div>
+          <div className="sticker-grid-compact">
+            {stickers.map((sticker) => (
+              <button key={sticker.stickerId} className="sticker-item-btn" onClick={() => void sendSticker(sticker)}>
+                <img src={sticker.mediaUrl} alt={sticker.title} />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {pendingAttachments.length > 0 ? (
+        <section className="attachment-draft-tray fade-in">
+          <div className="row-between">
+            <strong>Adjuntos ({pendingAttachments.length})</strong>
+            <small className="muted-line">Se enviarán juntos al tocar enviar</small>
+            <button className="mini-action-btn" type="button" onClick={clearPendingAttachments}>
+              Limpiar
+            </button>
+          </div>
+          <div className="attachment-draft-grid">
+            {pendingAttachments.map((attachment) => (
+              <article key={attachment.id} className="attachment-draft-item">
+                {attachment.previewUrl ? (
+                  attachment.contentType === 'video' ? (
+                    <video className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
+                  ) : (
+                    <img className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
+                  )
+                ) : (
+                  <div className="attachment-preview attachment-preview-fallback">
+                    <span>{attachment.contentType === 'audio' ? 'Audio' : 'Archivo'}</span>
+                  </div>
+                )}
+                <div className="attachment-draft-body">
+                  <div className="attachment-draft-meta">
+                    <strong>{attachment.file.name}</strong>
+                    <small>{formatFileSize(attachment.file.size)}</small>
+                  </div>
+                  <input
+                    className="text-input tiny-input"
+                    placeholder="Texto opcional para este archivo"
+                    value={attachment.caption}
+                    onChange={(event) =>
+                      updatePendingAttachmentCaption(attachment.id, event.target.value)
+                    }
+                  />
+                </div>
+                <button
+                  className="mini-action-btn attachment-remove-btn"
+                  type="button"
+                  onClick={() => removePendingAttachment(attachment.id)}
+                >
+                  Quitar
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+        <button
+          className="icon-btn"
+          type="button"
+          onClick={() => setShowStickers((c) => !c)}
+          title="Stickers"
+        >
+          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" fill="currentColor" /></svg>
+        </button>
+
+        <label className="icon-btn clickable">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
+          <input
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              const files = event.target.files
+              handleAttachFile(files)
+              event.currentTarget.value = ''
+            }}
+          />
+        </label>
+
+        <button
+          className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}
+          type="button"
+          title={isRecordingAudio ? 'Detener grabación' : 'Grabar audio'}
+          onClick={() => void toggleAudioRecording()}
+        >
+          {isRecordingAudio ? (
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <rect x="7" y="7" width="10" height="10" rx="2.2" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zm5 9a1 1 0 112 0 7 7 0 01-6 6.93V21h3a1 1 0 110 2H8a1 1 0 110-2h3v-2.07A7 7 0 015 12a1 1 0 112 0 5 5 0 0010 0z" fill="currentColor" />
+            </svg>
+          )}
+        </button>
+
         <input
-          className="text-input"
+          className="text-input chat-input-field"
           placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
           value={composerText}
           onChange={(event) => (editingMessageId ? setEditingDraft(event.target.value) : setDraft(event.target.value))}
         />
-        <label className="ghost-btn file-pick-btn">
-          Adjuntar
-          <input
-            type="file"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null
-              void handleAttachFile(file)
-              event.currentTarget.value = ''
-            }}
-          />
-        </label>
-        <label className="ghost-btn file-pick-btn">
-          View-once
-          <input
-            type="file"
-            hidden
-            accept="image/*,video/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null
-              void handleAttachViewOnceFile(file)
-              event.currentTarget.value = ''
-            }}
-          />
-        </label>
-        <button className="primary-btn" type="submit" disabled={sending || uploading}>
-          {sending
-            ? editingMessageId
-              ? 'Guardando...'
-              : 'Enviando...'
-            : uploading
-              ? 'Subiendo...'
-              : editingMessageId
-                ? 'Guardar'
-                : 'Enviar'}
+
+        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>
+          {sending || uploading ? (
+            '...'
+          ) : (
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor" /></svg>
+          )}
         </button>
       </form>
     </section>

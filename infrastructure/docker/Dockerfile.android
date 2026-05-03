@@ -1,0 +1,178 @@
+# 🔥 CONÉCTATE ANDROID DOCKERFILE - ENTERPRISE PRODUCTION READY
+# Basado en mejores prácticas oficiales de Docker y Android
+# Optimizado para CI/CD y producción escalable
+
+# Multi-stage build para optimización de tamaño y seguridad
+FROM ubuntu:22.04 AS base
+
+# 🔥 SECURITY: Non-root user y minimal packages
+LABEL maintainer="Conectate Enterprise <dev@conectate.com>"
+LABEL version="1.0.0"
+LABEL description="Conectate Android Production Build Environment"
+
+# Environment variables para seguridad y configuración
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    TZ=UTC \
+    JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    GRADLE_USER_HOME=/root/.gradle \
+    NDK_VERSION=25.2.9519653 \
+    CMAKE_VERSION=3.22.1 \
+    BUILD_TOOLS_VERSION=33.0.2 \
+    COMPILE_SDK_VERSION=33 \
+    TARGET_SDK_VERSION=33 \
+    MIN_SDK_VERSION=24
+
+# 🔥 SECURITY: Actualización y paquetes mínimos necesarios
+RUN set -eux && \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        # Core dependencies
+        curl \
+        wget \
+        unzip \
+        zip \
+        git \
+        openssh-client \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        # Java 17 para Android
+        openjdk-17-jdk \
+        # Build tools
+        build-essential \
+        cmake \
+        ninja-build \
+        pkg-config \
+        python3 \
+        python3-pip \
+        # Graphics libraries
+        libx11-dev \
+        libgl1-mesa-dev \
+        libglu1-mesa-dev \
+        # Utilities
+        file \
+        && \
+    # 🔥 SECURITY: Limpieza de caché y paquetes no necesarios
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# 🔥 ANDROID SDK INSTALLATION - Instalación oficial
+FROM base AS android-sdk
+
+# Download command line tools
+RUN set -eux && \
+    mkdir -p /opt && \
+    cd /opt && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O commandlinetools.zip && \
+    unzip -q commandlinetools.zip && \
+    rm commandlinetools.zip && \
+    mkdir -p $ANDROID_HOME/cmdline-tools/latest && \
+    mv cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/ && \
+    ln -s $ANDROID_HOME/cmdline-tools/latest/bin $ANDROID_HOME/bin
+
+# Install Android SDK components
+RUN set -eux && \
+    yes | $ANDROID_HOME/bin/sdkmanager --licenses && \
+    $ANDROID_HOME/bin/sdkmanager "platform-tools" "platforms;android-$COMPILE_SDK_VERSION" "build-tools;$BUILD_TOOLS_VERSION" && \
+    $ANDROID_HOME/bin/sdkmanager "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+
+# 🔥 GRADLE CONFIGURATION - Optimización enterprise
+FROM android-sdk AS gradle-build
+
+# Download Gradle
+ENV GRADLE_VERSION=8.2
+RUN set -eux && \
+    mkdir -p /opt/gradle && \
+    cd /opt/gradle && \
+    wget -q https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip -O gradle.zip && \
+    unzip -q gradle.zip && \
+    rm gradle.zip && \
+    ln -s /opt/gradle/gradle-$GRADLE_VERSION/bin/gradle /usr/local/bin/gradle
+
+# Gradle configuration para optimización
+RUN mkdir -p $GRADLE_USER_HOME && \
+    echo 'org.gradle.daemon=false' >> $GRADLE_USER_HOME/gradle.properties && \
+    echo 'org.gradle.configureondemand=true' >> $GRADLE_USER_HOME/gradle.properties && \
+    echo 'org.gradle.parallel=true' >> $GRADLE_USER_HOME/gradle.properties && \
+    echo 'org.gradle.jvmargs=-Xmx4g -XX:MaxPermSize=512m' >> $GRADLE_USER_HOME/gradle.properties && \
+    echo 'android.useAndroidX=true' >> $GRADLE_USER_HOME/gradle.properties && \
+    echo 'android.enableJetifier=true' >> $GRADLE_USER_HOME/gradle.properties
+
+# 🔥 PRODUCTION BUILD STAGE - Stage final optimizado
+FROM gradle-build AS production
+
+# 🔥 SECURITY: Creación de usuario no-root
+RUN groupadd -r builder && \
+    useradd -r -g builder -d /home/builder -s /bin/bash builder && \
+    mkdir -p /home/builder && \
+    chown -R builder:builder /home/builder && \
+    chmod 755 /home/builder
+
+# Copiar configuración de Gradle cache optimizada
+COPY --chown=builder:builder infrastructure/gradle/ /home/builder/.gradle/
+
+# Set working directory
+WORKDIR /app
+
+# 🔥 BUILD OPTIMIZATION: Cache de dependencias
+COPY --chown=builder:builder app/build.gradle app/settings.gradle ./
+COPY --chown=builder:builder app/gradle ./gradle
+
+# Download dependencies (cache layer)
+RUN gradle --no-daemon dependencies || true
+
+# Copy source code
+COPY --chown=builder:builder app/src ./src
+COPY --chown=builder:builder app/proguard-rules.pro ./
+
+# 🔥 SECURITY: Cambiar a usuario no-root
+USER builder
+
+# Build application con optimizaciones
+RUN gradle --no-daemon \
+    -Pandroid.injected.signing.store.file=/tmp/keystore.jks \
+    -Pandroid.injected.signing.store.password=store_password \
+    -Pandroid.injected.signing.key.alias=key_alias \
+    -Pandroid.injected.signing.key.password=key_password \
+    assembleRelease \
+    && \
+    cp app/build/outputs/apk/release/app-release.apk /tmp/conectate.apk
+
+# 🔥 FINAL IMAGE - Imagen minimal para deployment
+FROM openjdk:17-jre-slim AS final
+
+# 🔥 SECURITY: Non-root user
+RUN groupadd -r conectate && \
+    useradd -r -g conectate -d /app -s /bin/bash conectate && \
+    mkdir -p /app && \
+    chown -R conectate:conectate /app
+
+WORKDIR /app
+
+# Copiar APK construido
+COPY --from=production --chown=conectate:conectate /tmp/conectate.apk ./
+
+# Copiar scripts de deployment
+COPY --chown=conectate:conectate infrastructure/scripts/ ./scripts/
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD test -f conectate.apk && echo "APK exists and is accessible" || exit 1
+
+USER conectate
+
+# Metadata
+LABEL app.name="conectate-android" \
+      app.version="1.0.0" \
+      app.build-date=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+      app.vcs-ref=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+      app.license="MIT"
+
+# Default command
+CMD ["./scripts/deploy.sh"]

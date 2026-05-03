@@ -1,0 +1,7 @@
+voice.srv1495648.hstgr.cloud {
+    encode gzip zstd
+
+    # Proxy every HTTP route to the signaling server, not only /socket.io.
+    # This keeps /health and /turn-credentials reachable in production.
+    reverse_proxy 127.0.0.1:3001
+}

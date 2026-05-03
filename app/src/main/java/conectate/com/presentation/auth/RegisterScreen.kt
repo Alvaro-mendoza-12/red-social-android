@@ -34,8 +34,8 @@ import coil.compose.rememberAsyncImagePainter
 import conectate.com.R
 import conectate.com.presentation.navigation.Screen
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
+
+
 fun RegisterScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()
@@ -53,7 +53,6 @@ fun RegisterScreen(
     var showCountryDropdown by remember { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
-    val isLoggedIn by viewModel.isUserLoggedIn.collectAsState()
     
     // Lista de países (principales de América Latina)
     val countries = listOf(
@@ -73,18 +72,11 @@ fun RegisterScreen(
         profileImageUri = uri
     }
     
-    // Navigate to login after successful registration (not auto-login)
-    LaunchedEffect(authState) {
-        if (authState is AuthState.Success) {
-            navController.navigate("login") {
-                popUpTo("register") { inclusive = true }
-            }
-        }
-    }
-    
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -189,7 +181,7 @@ fun RegisterScreen(
                 Icon(imageVector = Icons.Default.Lock, contentDescription = null)
             },
             trailingIcon = {
-                val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                var image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(imageVector = image, contentDescription = null)
                 }
@@ -214,7 +206,7 @@ fun RegisterScreen(
                 Icon(imageVector = Icons.Default.Lock, contentDescription = null)
             },
             trailingIcon = {
-                val image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                var image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                     Icon(imageVector = image, contentDescription = null)
                 }
@@ -367,3 +359,10 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
+
+
+
+
+
+
+

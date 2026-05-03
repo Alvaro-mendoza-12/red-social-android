@@ -18,8 +18,8 @@ sealed class AdminUserUiState {
     data class Error(val message: String) : AdminUserUiState()
 }
 
-@HiltViewModel
-class AdminUserPanelViewModel @Inject constructor(
+
+class AdminUserPanelViewModel  constructor(
     private val userRepository: UserRepository
 ) : ViewModel() {
 
@@ -75,3 +75,9 @@ class AdminUserPanelViewModel @Inject constructor(
         }
     }
 }
+
+
+
+
+
+

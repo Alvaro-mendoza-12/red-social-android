@@ -26,8 +26,8 @@ import coil.compose.AsyncImage
 import conectate.com.data.model.User
 import java.text.DecimalFormat
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
+
+
 fun AdminUserPanelScreen(
     navController: NavController,
     viewModel: AdminUserPanelViewModel = hiltViewModel()
@@ -118,8 +118,7 @@ fun AdminUserPanelScreen(
     }
 
     // Balance Edit Dialog
-    if (showBalanceDialog != null) {
-        val user = showBalanceDialog!!
+    showBalanceDialog?.let { user ->
         var balanceText by remember { mutableStateOf(user.balance.toString()) }
 
         AlertDialog(
@@ -158,6 +157,7 @@ fun AdminUserPanelScreen(
         )
     }
 }
+
 
 @Composable
 fun UserAdminCard(
@@ -228,3 +228,10 @@ fun UserAdminCard(
         }
     }
 }
+
+
+
+
+
+
+

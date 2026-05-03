@@ -1,0 +1,788 @@
+# 🔥 CONÉCTATE SERVICE MESH CONFIGURATION - LINKERD LIGHTWEIGHT
+# Configuración completa de Service Mesh con Linkerd para microservices
+# Implementación 100% realista con mejores prácticas cloud-native
+#
+# Características implementadas:
+# 1. Service Mesh - Malla de servicios ligera
+# 2. Traffic Management - Gestión de tráfico avanzada
+# 3. Security - Seguridad mTLS automática
+# 4. Observability - Observabilidad completa
+# 5. Service Profiles - Perfiles de servicio
+# 6. Traffic Split - División de tráfico
+# 7. Failover - Failover automático
+# 8. Timeout - Configuración de timeouts
+# 9. Retry - Configuración de reintentos
+# 10. Telemetry - Telemetría y métricas
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: conectate-linkerd
+  labels:
+    linkerd.io/inject: enabled
+    mesh: conectate
+    environment: production
+---
+# 🔥 SERVICE PROFILE - API Service Profile
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: conectate-api-service
+  namespace: conectate-linkerd
+spec:
+  routes:
+  - name: health-check
+    condition:
+      method: GET
+      pathRegex: /health
+    isRetryable: true
+    timeout: 5s
+  - name: get-users
+    condition:
+      method: GET
+      pathRegex: /api/v1/users
+    isRetryable: true
+    timeout: 10s
+  - name: create-user
+    condition:
+      method: POST
+      pathRegex: /api/v1/users
+    isRetryable: false
+    timeout: 15s
+  - name: update-user
+    condition:
+      method: PUT
+      pathRegex: /api/v1/users/.*
+    isRetryable: true
+    timeout: 15s
+  - name: delete-user
+    condition:
+      method: DELETE
+      pathRegex: /api/v1/users/.*
+    isRetryable: false
+    timeout: 10s
+  - name: ml-prediction
+    condition:
+      method: POST
+      pathRegex: /api/v1/ml/predict
+    isRetryable: true
+    timeout: 30s
+  retryBudget:
+    retryRatio: 0.2
+    minRetriesPerSecond: 10
+    ttl: 10s
+---
+# 🔥 SERVICE PROFILE - Web Service Profile
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: conectate-web-service
+  namespace: conectate-linkerd
+spec:
+  routes:
+  - name: home-page
+    condition:
+      method: GET
+      pathRegex: /
+    isRetryable: true
+    timeout: 10s
+  - name: static-assets
+    condition:
+      method: GET
+      pathRegex: /static/.*
+    isRetryable: true
+    timeout: 5s
+  - name: api-proxy
+    condition:
+      method: GET|POST|PUT|DELETE
+      pathRegex: /api/.*
+    isRetryable: true
+    timeout: 30s
+  retryBudget:
+    retryRatio: 0.1
+    minRetriesPerSecond: 5
+    ttl: 5s
+---
+# 🔥 SERVICE PROFILE - ML Service Profile
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: conectate-ml-service
+  namespace: conectate-linkerd
+spec:
+  routes:
+  - name: model-prediction
+    condition:
+      method: POST
+      pathRegex: /predict
+    isRetryable: true
+    timeout: 60s
+  - name: model-training
+    condition:
+      method: POST
+      pathRegex: /train
+    isRetryable: false
+    timeout: 300s
+  - name: model-status
+    condition:
+      method: GET
+      pathRegex: /status
+    isRetryable: true
+    timeout: 10s
+  retryBudget:
+    retryRatio: 0.05
+    minRetriesPerSecond: 2
+    ttl: 10s
+---
+# 🔥 TRAFFIC SPLIT - API Version Split
+apiVersion: split.smi-spec.io/v1alpha4
+kind: TrafficSplit
+metadata:
+  name: conectate-api-split
+  namespace: conectate-linkerd
+spec:
+  service: conectate-api-service
+  backends:
+  - service: conectate-api-v1-service
+    weight: 80
+  - service: conectate-api-v2-service
+    weight: 20
+---
+# 🔥 TRAFFIC SPLIT - Web Version Split
+apiVersion: split.smi-spec.io/v1alpha4
+kind: TrafficSplit
+metadata:
+  name: conectate-web-split
+  namespace: conectate-linkerd
+spec:
+  service: conectate-web-service
+  backends:
+  - service: conectate-web-v1-service
+    weight: 90
+  - service: conectate-web-v2-service
+    weight: 10
+---
+# 🔥 TRAFFIC SPLIT - ML Service Split
+apiVersion: split.smi-spec.io/v1alpha4
+kind: TrafficSplit
+metadata:
+  name: conectate-ml-split
+  namespace: conectate-linkerd
+spec:
+  service: conectate-ml-service
+  backends:
+  - service: conectate-ml-v1-service
+    weight: 70
+  - service: conectate-ml-v2-service
+    weight: 30
+---
+# 🔥 HTTP ROUTE - API Routing
+apiVersion: specs.smi-spec.io/v1alpha4
+kind: HTTPRouteGroup
+metadata:
+  name: conectate-api-routes
+  namespace: conectate-linkerd
+spec:
+  matches:
+  - name: health-check
+    pathRegex: /health
+    methods:
+    - GET
+  - name: user-routes
+    pathRegex: /api/v1/users.*
+    methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+  - name: ml-routes
+    pathRegex: /api/v1/ml.*
+    methods:
+    - GET
+    - POST
+  - name: content-routes
+    pathRegex: /api/v1/content.*
+    methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+---
+# 🔥 HTTP ROUTE - Web Routing
+apiVersion: specs.smi-spec.io/v1alpha4
+kind: HTTPRouteGroup
+metadata:
+  name: conectate-web-routes
+  namespace: conectate-linkerd
+spec:
+  matches:
+  - name: home-page
+    pathRegex: /
+    methods:
+    - GET
+  - name: static-assets
+    pathRegex: /static/.*
+    methods:
+    - GET
+  - name: api-proxy
+    pathRegex: /api/.*
+    methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+---
+# 🔥 TCP ROUTE - Database Routing
+apiVersion: specs.smi-spec.io/v1alpha4
+kind: TCPRoute
+metadata:
+  name: conectate-db-routes
+  namespace: conectate-linkerd
+spec:
+  matches:
+  - name: postgres-routing
+    port: 5432
+  - name: redis-routing
+    port: 6379
+---
+# 🔥 SERVER - API Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-api-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-api
+    version: v1
+spec:
+  selector:
+    app: conectate-api
+    version: v1
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+# 🔥 SERVER - API V2 Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-api-v2-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-api
+    version: v2
+spec:
+  selector:
+    app: conectate-api
+    version: v2
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+# 🔥 SERVER - Web Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-web-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-web
+    version: v1
+spec:
+  selector:
+    app: conectate-web
+    version: v1
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+---
+# 🔥 SERVER - Web V2 Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-web-v2-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-web
+    version: v2
+spec:
+  selector:
+    app: conectate-web
+    version: v2
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+---
+# 🔥 SERVER - ML Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-ml-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-ml
+    version: v1
+spec:
+  selector:
+    app: conectate-ml
+    version: v1
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+# 🔥 SERVER - ML V2 Server Definition
+apiVersion: v1
+kind: Service
+metadata:
+  name: conectate-ml-v2-service
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-ml
+    version: v2
+spec:
+  selector:
+    app: conectate-ml
+    version: v2
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+# 🔥 DEPLOYMENT - API V1 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-api-v1
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: conectate-api
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: conectate-api
+        version: v1
+    spec:
+      containers:
+      - name: conectate-api
+        image: conectate/api:v1.0.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://user:pass@postgres.conectate.local:5432/conectate"
+        - name: REDIS_URL
+          value: "redis://redis.conectate.local:6379"
+        - name: ML_SERVICE_URL
+          value: "http://conectate-ml-service.conectate-linkerd.svc.cluster.local:8000"
+        - name: SERVICE_VERSION
+          value: "v1"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+# 🔥 DEPLOYMENT - API V2 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-api-v2
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-api
+    version: v2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: conectate-api
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: conectate-api
+        version: v2
+    spec:
+      containers:
+      - name: conectate-api
+        image: conectate/api:v2.0.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://user:pass@postgres.conectate.local:5432/conectate"
+        - name: REDIS_URL
+          value: "redis://redis.conectate.local:6379"
+        - name: ML_SERVICE_URL
+          value: "http://conectate-ml-service.conectate-linkerd.svc.cluster.local:8000"
+        - name: SERVICE_VERSION
+          value: "v2"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+# 🔥 DEPLOYMENT - Web V1 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-web-v1
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-web
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: conectate-web
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: conectate-web
+        version: v1
+    spec:
+      containers:
+      - name: conectate-web
+        image: conectate/web:v1.0.0
+        ports:
+        - containerPort: 3000
+        env:
+        - name: API_URL
+          value: "http://conectate-api-service.conectate-linkerd.svc.cluster.local:8080"
+        - name: SERVICE_VERSION
+          value: "v1"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+# 🔥 DEPLOYMENT - Web V2 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-web-v2
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-web
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: conectate-web
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: conectate-web
+        version: v2
+    spec:
+      containers:
+      - name: conectate-web
+        image: conectate/web:v2.0.0
+        ports:
+        - containerPort: 3000
+        env:
+        - name: API_URL
+          value: "http://conectate-api-service.conectate-linkerd.svc.cluster.local:8080"
+        - name: SERVICE_VERSION
+          value: "v2"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+# 🔥 DEPLOYMENT - ML V1 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-ml-v1
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-ml
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: conectate-ml
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: conectate-ml
+        version: v1
+    spec:
+      containers:
+      - name: conectate-ml
+        image: conectate/ml:v1.0.0
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL_PATH
+          value: "/models/conectate-model-v1.pkl"
+        - name: SERVICE_VERSION
+          value: "v1"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1000m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+---
+# 🔥 DEPLOYMENT - ML V2 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conectate-ml-v2
+  namespace: conectate-linkerd
+  labels:
+    app: conectate-ml
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: conectate-ml
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: conectate-ml
+        version: v2
+    spec:
+      containers:
+      - name: conectate-ml
+        image: conectate/ml:v2.0.0
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL_PATH
+          value: "/models/conectate-model-v2.pkl"
+        - name: SERVICE_VERSION
+          value: "v2"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1000m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+---
+# 🔥 HORIZONTAL POD AUTOSCALER - API HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conectate-api-hpa
+  namespace: conectate-linkerd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conectate-api-v1
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+---
+# 🔥 HORIZONTAL POD AUTOSCALER - Web HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conectate-web-hpa
+  namespace: conectate-linkerd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conectate-web-v1
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+---
+# 🔥 HORIZONTAL POD AUTOSCALER - ML HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conectate-ml-hpa
+  namespace: conectate-linkerd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conectate-ml-v1
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

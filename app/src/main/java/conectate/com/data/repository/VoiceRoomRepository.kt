@@ -1,11 +1,18 @@
 package conectate.com.data.repository
 
+import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
+import conectate.com.core.concurrency.nextRetryDelayMs
+import conectate.com.core.concurrency.newSafeScope
+import conectate.com.core.crash.CrashReporter
+import conectate.com.core.observability.AppMetrics
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.*
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.content.Context
@@ -23,29 +30,98 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import io.socket.client.IO
+import io.socket.client.Manager
 import io.socket.client.Socket
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import org.webrtc.VideoTrack
+import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.attachBearerToken
+import conectate.com.util.AppPerformanceProfiles
+
+enum class VoiceConnectionState(val label: String) {
+    IDLE("Sin sala"),
+    CONNECTING("Conectando"),
+    CONNECTED("Conectado"),
+    RECOVERING_AUDIO("Recuperando audio"),
+    RECONNECTING("Reconectando"),
+    ERROR("Error")
+}
 
 @Singleton
 class VoiceRoomRepository @Inject constructor(
     @ApplicationContext val context: Context,
     private val supabaseConfig: SupabaseConfig,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val appMetrics: AppMetrics,
+    private val crashReporter: CrashReporter
 ) {
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val json = Json { ignoreUnknownKeys = true }
+    private fun extractJsonPayload(args: Array<Any>): JSONObject? {
+        var first = args.firstOrNull() ?: return null
+        return first as? JSONObject
+    }
+
+    private fun extractSocketIdPayload(args: Array<Any>): String {
+        var first = args.firstOrNull()
+        return when (first) {
+            is String -> first.trim()
+            is JSONObject -> first.optString("socketId").trim()
+            else -> ""
+        }
+    }
+
+    private companion object {
+        private const val DEFAULT_ROOM_CAPACITY = 50
+        private const val SOCKET_RECONNECT_ATTEMPTS = 10
+        private const val SOCKET_RECONNECT_DELAY_MS = 1_000L
+        private const val SOCKET_RECONNECT_DELAY_MAX_MS = 12_000L
+        private const val SUBSCRIPTION_RETRY_INITIAL_MS = 2_000L
+        private const val SUBSCRIPTION_RETRY_MAX_MS = 30_000L
+        private const val SUBSCRIPTION_RESTART_GRACE_MS = 1_000L
+        private const val AUDIO_RECOVERY_ATTEMPTS = 4
+        private const val AUDIO_RECOVERY_DELAY_MS = 275L
+    }
+
+    private data class PendingSocketRoomEvent(
+        val roomId: String,
+        val event: String,
+        val payload: String
+    )
+
+    private val scope = newSafeScope("VoiceRoomRepository", Dispatchers.IO)
+    private var json = Json { ignoreUnknownKeys = true }
+    private val httpClient = OkHttpClient()
+    private val jsonMediaType = "application/json charset=utf-8".toMediaTypeOrNull()
+    private val performanceProfile by lazy(LazyThreadSafetyMode.NONE) {
+        AppPerformanceProfiles.detect(context)
+    }
 
     // WebRTC & Realtime
     private var webRTCManager: WebRTCManager? = null
     private var roomChannel: RealtimeChannel? = null
     private var socket: Socket? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioRecoveryJob: Job? = null
+    private val pendingSocketRoomEvents = mutableListOf<PendingSocketRoomEvent>()
+    private var pendingConnectMetricName: String? = null
+    private var pendingConnectStartedAtMs: Long? = null
+    private var reconnectFailureCount = 0
     
-    // URL de ngrok proporcionada por el usuario
-    private val SIGNALING_URL = "https://susana-unsharing-unclearly.ngrok-free.dev" 
+    // VPS signaling server (Socket.IO over HTTPS)
+    private val SIGNALING_URL = SignalingConfig.VOICE_URL
     
     // Exposed for notification navigation
-    fun getCurrentRoomId(): String? = currentRoomId
-    private var currentRoomId: String? = null
+    fun getCurrentRoomId(): String? = activeRoomId
+    fun getCurrentUserId(): String? = authService.getCurrentUserId()
+    private val _currentRoomId = MutableStateFlow<String?>(null)
+    private var activeRoomId: String?
+        get() = _currentRoomId.value
+        set(value) {
+            _currentRoomId.value = value
+        }
     
     private val _activeRooms = MutableStateFlow<List<VoiceRoom>>(emptyList())
     val activeRooms = _activeRooms.asStateFlow()
@@ -53,7 +129,7 @@ class VoiceRoomRepository @Inject constructor(
     private val _currentRoom = MutableStateFlow<VoiceRoom?>(null)
     val currentRoom = _currentRoom.asStateFlow()
 
-    private val _currentParticipants = MutableStateFlow<List<conectate.com.data.model.VoiceParticipant>>(emptyList())
+    private val _currentParticipants = MutableStateFlow<List<VoiceParticipant>>(emptyList())
     val currentParticipants = _currentParticipants.asStateFlow()
 
     private val _remoteVideoTracks = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
@@ -74,17 +150,266 @@ class VoiceRoomRepository @Inject constructor(
     // NEW: Track who is sharing camera or screen
     // Map<SocketId, Pair<isCameraSharing, isScreenSharing>>
     private val _sharingStates = MutableStateFlow<Map<String, Pair<Boolean, Boolean>>>(emptyMap())
-    val sharingStates = _sharingStates.asStateFlow()
+    var sharingStates = _sharingStates.asStateFlow()
 
     private val _incomingMessages = MutableSharedFlow<conectate.com.presentation.voicerooms.ChatMessage>()
     val incomingMessages = _incomingMessages.asSharedFlow()
 
     private val _incomingReactions = MutableSharedFlow<conectate.com.presentation.voicerooms.ReactionEvent>()
     val incomingReactions = _incomingReactions.asSharedFlow()
+
+    private val _connectionState = MutableStateFlow(VoiceConnectionState.IDLE)
+    var connectionState = _connectionState.asStateFlow()
+
+    private val _lastConnectionError = MutableStateFlow<String?>(null)
+    val lastConnectionError = _lastConnectionError.asStateFlow()
     
     // CRITICAL: Single source of truth for video mode
     enum class VideoMode { NONE, CAMERA, SCREEN }
     private val _currentVideoMode = MutableStateFlow(VideoMode.NONE) 
+
+    private val baseSessionState: Flow<VoiceSessionState> = combine(
+        _currentRoomId,
+        _currentRoom,
+        _currentParticipants,
+        _currentVideoMode,
+        _connectionState
+    ) { roomId, room, participants, videoMode, connectionState ->
+        var resolvedRoomId = roomId ?: room?.id?.takeIf { it.isNotBlank() }
+        var participantCount = maxOf(room?.participantCount ?: 0, participants.size)
+        val normalizedRoom = room?.let(::normalizeRoomForUi)?.copy(participantCount = participantCount)
+        VoiceSessionState(
+            roomId = resolvedRoomId,
+            room = normalizedRoom,
+            roomName = normalizedRoom?.name?.takeIf { it.isNotBlank() } ?: "Sala de Voz",
+            readableId = normalizedRoom?.readableId,
+            participantCount = participantCount,
+            isMuted = isSelfMuted(participants),
+            isConnected = !resolvedRoomId.isNullOrBlank(),
+            videoMode = videoMode,
+            connectionState = connectionState
+        )
+    }
+
+    val sessionState: StateFlow<VoiceSessionState> = combine(
+        baseSessionState,
+        _lastConnectionError
+    ) { session, lastConnectionError ->
+        session.copy(connectionError = lastConnectionError)
+    }.stateIn(scope, SharingStarted.Eagerly, VoiceSessionState())
+
+    private fun isSelfMuted(participants: List<VoiceParticipant> = _currentParticipants.value): Boolean {
+        var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        if (currentUserId.isBlank()) return false
+        return participants.any { participant ->
+            participant.id.trim().lowercase() == currentUserId && participant.isMuted
+        }
+    }
+
+    private fun updateConnectionState(
+        state: VoiceConnectionState,
+        errorMessage: String? = null
+    ) {
+        _connectionState.value = state
+        _lastConnectionError.value = if (state == VoiceConnectionState.ERROR) {
+            errorMessage
+        } else {
+            null
+        }
+    }
+
+    private fun currentMetricAttributes(
+        reason: String? = null,
+        roomId: String? = activeRoomId
+    ): Map<String, String> {
+        var resolvedRoomId = roomId
+            ?: sessionState.value.roomId
+            ?: _currentRoom.value?.id
+            ?: ""
+        var videoMode = _currentVideoMode.value.name.lowercase()
+        var isSocketConnected = (socket?.connected() == true).toString()
+        val hasActiveSession = sessionState.value.hasActiveSession.toString()
+        return buildMap {
+            put("roomId", resolvedRoomId.ifBlank { "none" })
+            put("videoMode", videoMode)
+            put("hasActiveSession", hasActiveSession)
+            put("socketConnected", isSocketConnected)
+            reason?.takeIf { it.isNotBlank() }?.let { put("audioRecoveryReason", it) }
+        }
+    }
+
+    private fun matchesActiveRoom(roomId: String): Boolean {
+        val normalized = roomId.trim().lowercase()
+        if (normalized.isBlank()) return false
+        val session = sessionState.value
+        return listOfNotNull(
+            activeRoomId,
+            session.roomId,
+            session.room?.id,
+            session.room?.readableId,
+            _currentRoom.value?.id,
+            _currentRoom.value?.readableId
+        ).any { candidate ->
+            candidate.trim().lowercase() == normalized
+        }
+    }
+
+    fun hasActiveSessionFor(roomId: String): Boolean {
+        return sessionState.value.hasActiveSession && matchesActiveRoom(roomId)
+    }
+
+    suspend fun attachToActiveSession(
+        roomId: String,
+        reason: String = "screen_attach"
+    ): Result<VoiceRoom?> = withContext(Dispatchers.IO) {
+        if (!hasActiveSessionFor(roomId)) {
+            return@withContext Result.failure(IllegalStateException("No hay una sala activa compatible para adjuntar."))
+        }
+
+        appMetrics.incrementCounter(
+            metric = "voice_room_attach",
+            attributes = currentMetricAttributes(reason = reason, roomId = roomId)
+        )
+        pendingConnectMetricName = "voice_room_attach"
+        pendingConnectStartedAtMs = System.currentTimeMillis()
+
+        val attachedRoom = _currentRoom.value ?: getRoomById(roomId).getOrNull()?.let(::normalizeRoomForUi)
+        if (attachedRoom != null) {
+            _currentRoom.value = attachedRoom
+            activeRoomId = attachedRoom.id
+        }
+        restoreActiveSession(reason)
+        Result.success(_currentRoom.value)
+    }
+
+    private fun prepareVoiceAudioSession(forceMicUnmute: Boolean = true) {
+        var audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                var request = audioFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(audioAttributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        android.util.Log.d("VoiceRoomRepository", "Audio focus changed: $focusChange")
+                    }
+                    .build()
+                audioFocusRequest = request
+                audioManager.requestAudioFocus(request)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_VOICE_CALL,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+            }
+
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            if (forceMicUnmute) {
+                audioManager.isMicrophoneMute = false
+            }
+            forceSpeakerOutput(audioManager)
+        } catch (e: Exception) {
+            android.util.Log.w("VoiceRoomRepository", "Failed to prepare voice audio session", e)
+        }
+    }
+
+    private fun reinforceAudioAfterVideoTransition(
+        reason: String,
+        attempts: Int = AUDIO_RECOVERY_ATTEMPTS,
+        delayMs: Long = AUDIO_RECOVERY_DELAY_MS
+    ) {
+        audioRecoveryJob?.cancel()
+        audioRecoveryJob = scope.launch {
+            updateConnectionState(VoiceConnectionState.RECOVERING_AUDIO)
+            appMetrics.incrementCounter(
+                metric = "voice_audio_recovery",
+                attributes = currentMetricAttributes(reason = reason)
+            )
+
+            var recovered = false
+            var lastFailure: Throwable? = null
+            for (index in 0 until attempts.coerceAtLeast(1)) {
+                runCatching {
+                    prepareVoiceAudioSession(forceMicUnmute = true)
+                    webRTCManager?.ensureLocalTracks()
+                    webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+                    webRTCManager?.setAudioEnabled(!isSelfMuted())
+                    if (socket?.connected() == true) {
+                        emitCurrentMediaState()
+                        flushPendingRoomSocketEvents()
+                    }
+                    recovered = webRTCManager?.isHealthy() != false
+                }.onFailure { error ->
+                    lastFailure = error
+                    crashReporter.recordException(
+                        throwable = error,
+                        extra = currentMetricAttributes(reason = reason)
+                    )
+                }
+
+                if (recovered || index >= attempts - 1) {
+                    break
+                }
+                delay(delayMs)
+            }
+
+            if (recovered) {
+                updateConnectionState(
+                    if (socket?.connected() == true) {
+                        VoiceConnectionState.CONNECTED
+                    } else {
+                        VoiceConnectionState.RECONNECTING
+                    }
+                )
+            } else {
+                var message = lastFailure?.message?.takeIf { it.isNotBlank() }
+                    ?: "No pudimos recuperar el audio de la sala."
+                appMetrics.recordFailure(
+                    metric = "voice_audio_recovery",
+                    throwable = lastFailure,
+                    attributes = currentMetricAttributes(reason = reason)
+                )
+                updateConnectionState(VoiceConnectionState.ERROR, message)
+            }
+            android.util.Log.d("VoiceRoomRepository", "Audio reinforcement complete after $reason")
+        }
+    }
+
+    fun restoreActiveSession(reason: String) {
+        if (!sessionState.value.hasActiveSession && activeRoomId.isNullOrBlank()) return
+        reinforceAudioAfterVideoTransition(reason = reason)
+    }
+
+    private fun releaseVoiceAudioSession() {
+        var audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            android.util.Log.d("VoiceRoomRepository", "Releasing voice audio session (Mode: ${audioManager.mode})")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { 
+                    val result = audioManager.abandonAudioFocusRequest(it)
+                    android.util.Log.d("VoiceRoomRepository", "Abandon audio focus result: $result")
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(null)
+            }
+            audioManager.isMicrophoneMute = false
+            // v25.0: Delayed mode reset to ensure WebRTC has fully detached from hardware
+            scope.launch {
+                delay(300)
+                audioManager.mode = AudioManager.MODE_NORMAL
+                android.util.Log.d("VoiceRoomRepository", "Audio mode reset to NORMAL")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("VoiceRoomRepository", "Failed to release voice audio session", e)
+        }
+    }
 
     private fun forceSpeakerOutput(audioManager: AudioManager) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -109,13 +434,175 @@ class VoiceRoomRepository @Inject constructor(
     private val _cinemaSync = MutableSharedFlow<CinemaSyncEvent>()
     val cinemaSync = _cinemaSync.asSharedFlow()
 
+    private fun currentSocketId(): String = socket?.id()?.trim().orEmpty()
+
+    private fun <T> rekeyWithCurrentParticipants(source: Map<String, T>): Map<String, T> {
+        if (source.isEmpty()) return emptyMap()
+
+        var participants = _currentParticipants.value
+        val participantsBySocket = participants
+            .mapNotNull { participant ->
+                var socketId = participant.socketId.trim()
+                if (socketId.isBlank()) null else socketId to participant
+            }
+            .toMap()
+        val participantsByUserId = participants
+            .mapNotNull { participant ->
+                var userId = participant.id.trim().lowercase()
+                if (userId.isBlank()) null else userId to participant
+            }
+            .toMap()
+
+        val rebound = LinkedHashMap<String, T>(source.size * 2)
+        source.forEach { (rawKey, value) ->
+            val cleanKey = rawKey.trim()
+            if (cleanKey.isBlank()) return@forEach
+
+            rebound[cleanKey] = value
+
+            var participant = participantsBySocket[cleanKey]
+                ?: participantsByUserId[cleanKey.lowercase()]
+
+            participant?.let {
+                val socketAlias = it.socketId.trim()
+                val userAlias = it.id.trim().lowercase()
+                if (socketAlias.isNotBlank()) rebound[socketAlias] = value
+                if (userAlias.isNotBlank()) rebound[userAlias] = value
+            }
+        }
+
+        return rebound
+    }
+
+    private fun refreshParticipantAliases() {
+        _remoteVideoTracks.value = rekeyWithCurrentParticipants(_remoteVideoTracks.value)
+        _peerConnectionStates.value = rekeyWithCurrentParticipants(_peerConnectionStates.value)
+        _signalingStates.value = rekeyWithCurrentParticipants(_signalingStates.value)
+        _debugInfo.value = rekeyWithCurrentParticipants(_debugInfo.value)
+        _sharingStates.value = rekeyWithCurrentParticipants(_sharingStates.value)
+    }
+
+    private fun updateSharingState(
+        socketId: String?,
+        userId: String?,
+        isCameraSharing: Boolean,
+        isScreenSharing: Boolean
+    ) {
+        var state = isCameraSharing to isScreenSharing
+        val updated = _sharingStates.value.toMutableMap()
+
+        val normalizedSocketId = socketId?.trim().orEmpty()
+        if (normalizedSocketId.isNotBlank()) {
+            updated[normalizedSocketId] = state
+        }
+
+        var normalizedUserId = userId?.trim()?.lowercase().orEmpty()
+        if (normalizedUserId.isNotBlank()) {
+            updated[normalizedUserId] = state
+        }
+
+        _sharingStates.value = updated
+        refreshParticipantAliases()
+    }
+
+    private fun emitCurrentMediaState() {
+        socket?.emit("media-status", org.json.JSONObject().apply {
+            put("roomId", activeRoomId)
+            put("socketId", currentSocketId())
+            put("userId", authService.getCurrentUserId())
+            put("isCameraSharing", _currentVideoMode.value == VideoMode.CAMERA)
+            put("isScreenSharing", _currentVideoMode.value == VideoMode.SCREEN)
+        })
+    }
+
+    private fun broadcastCurrentMediaState(repeatCount: Int = 1, intervalMs: Long = 0L) {
+        scope.launch {
+            repeat(repeatCount.coerceAtLeast(1)) { attempt ->
+                emitCurrentMediaState()
+                if (attempt < repeatCount - 1 && intervalMs > 0L) {
+                    delay(intervalMs)
+                }
+            }
+        }
+    }
+
+    private fun emitOrQueueRoomSocketEvent(
+        roomId: String?,
+        event: String,
+        payloadBuilder: JSONObject.() -> Unit
+    ) {
+        var normalizedRoomId = roomId?.trim().orEmpty()
+        if (normalizedRoomId.isBlank()) return
+
+        var payload = JSONObject().apply(payloadBuilder)
+        var socketRef = socket
+        if (socketRef?.connected() == true) {
+            socketRef.emit(event, payload)
+            return
+        }
+
+        synchronized(pendingSocketRoomEvents) {
+            pendingSocketRoomEvents += PendingSocketRoomEvent(
+                roomId = normalizedRoomId,
+                event = event,
+                payload = payload.toString()
+            )
+        }
+    }
+
+    private fun flushPendingRoomSocketEvents(roomId: String? = activeRoomId) {
+        var normalizedRoomId = roomId?.trim().orEmpty()
+        if (normalizedRoomId.isBlank()) return
+
+        var socketRef = socket
+        if (socketRef?.connected() != true) return
+
+        val readyEvents = synchronized(pendingSocketRoomEvents) {
+            val matches = pendingSocketRoomEvents.filter { pending ->
+                pending.roomId.equals(normalizedRoomId, ignoreCase = true)
+            }
+            pendingSocketRoomEvents.removeAll(matches.toSet())
+            matches
+        }
+
+        readyEvents.forEach { pending ->
+            runCatching {
+                socketRef.emit(pending.event, JSONObject(pending.payload))
+            }.onFailure { error ->
+                android.util.Log.w(
+                    "VoiceRoomRepository",
+                    "Failed to flush queued room event ${pending.event} for ${pending.roomId}",
+                    error
+                )
+            }
+        }
+    }
+
+    private fun reinforceVideoPublishing() {
+        scope.launch {
+            delay(450)
+            if (_currentVideoMode.value != VideoMode.NONE) {
+                webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+                emitCurrentMediaState()
+            }
+
+            delay(900)
+            if (_currentVideoMode.value != VideoMode.NONE) {
+                webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+                emitCurrentMediaState()
+            }
+        }
+    }
+
     // v16.0: Universal Link Resolver
     data class CinemaResolvedItem(val url: String, val title: String, val error: String? = null)
     private val pendingResolutions = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<CinemaResolvedItem>>()
 
+
+
     suspend fun resolveUniversalLink(url: String): CinemaResolvedItem = withContext(Dispatchers.IO) {
         val requestId = UUID.randomUUID().toString()
-        val deferred = CompletableDeferred<CinemaResolvedItem>()
+        var deferred = CompletableDeferred<CinemaResolvedItem>()
         pendingResolutions[requestId] = deferred
         
         try {
@@ -134,6 +621,65 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
+    suspend fun resolveCinemaItem(item: conectate.com.presentation.voicerooms.ContentItem): CinemaResolvedItem =
+        withContext(Dispatchers.IO) {
+            val accessToken = authService.getAccessTokenAwait()?.trim().orEmpty()
+            if (accessToken.isBlank()) {
+                return@withContext CinemaResolvedItem(
+                    url = "",
+                    title = item.title,
+                    error = "No hay una sesión autenticada para resolver contenido premium."
+                )
+            }
+
+            var payload = JSONObject().apply {
+                put("title", item.title)
+                put("provider", item.provider)
+                put("providerId", item.providerId)
+            }
+
+            var request = Request.Builder()
+                .url(SignalingConfig.CINEMA_RESOLVE_URL)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    var json = JSONObject(body.ifBlank { "{}" })
+                    val resolvedUrl = json.optString("stream_url").trim()
+                    val resolvedTitle = json.optString("title").ifBlank { item.title }
+                    var error = json.optString("error").ifBlank {
+                        if (response.isSuccessful && resolvedUrl.isNotBlank()) {
+                            ""
+                        } else {
+                            "El servidor no pudo resolver este contenido premium."
+                        }
+                    }
+
+                    if (!response.isSuccessful || resolvedUrl.isBlank()) {
+                        return@withContext CinemaResolvedItem(
+                            url = "",
+                            title = resolvedTitle,
+                            error = error
+                        )
+                    }
+
+                    CinemaResolvedItem(
+                        url = resolvedUrl,
+                        title = resolvedTitle
+                    )
+                }
+            } catch (e: Exception) {
+                CinemaResolvedItem(
+                    url = "",
+                    title = item.title,
+                    error = "Error de conexión con el resolver premium: ${e.message}"
+                )
+            }
+        }
+
 
     // v7.2-MVP: Relaxed Sync Pulse (5 seconds for stability/efficiency)
     private val SYNC_PULSE_INTERVAL = 5000L
@@ -147,20 +693,77 @@ class VoiceRoomRepository @Inject constructor(
 
     fun getActiveRooms(): Flow<List<VoiceRoom>> = activeRooms
 
-    suspend fun refreshRooms() {
+    private fun normalizeRoomForUi(room: VoiceRoom): VoiceRoom {
+        return room.copy(
+            maxParticipants = room.maxParticipants.coerceAtLeast(DEFAULT_ROOM_CAPACITY)
+        )
+    }
+
+    private fun isHiddenEphemeralRoom(
+        room: VoiceRoom,
+        currentUserId: String?
+    ): Boolean {
+        var normalizedUserId = currentUserId?.trim()?.lowercase().orEmpty()
+        if (normalizedUserId.isBlank()) return false
+        var normalizedRoomId = room.id.trim().lowercase()
+        val normalizedCurrentRoomId = activeRoomId?.trim()?.lowercase()
+        var normalizedName = room.name.trim().lowercase()
+        return !room.isPublic &&
+            room.participantCount == 0 &&
+            room.creatorId.trim().lowercase() == normalizedUserId &&
+            normalizedRoomId != normalizedCurrentRoomId &&
+            (normalizedName == "llamada privada" || normalizedName == "sala privada")
+    }
+
+    private fun shouldShowRoomInLobby(
+        room: VoiceRoom,
+        currentUserId: String?
+    ): Boolean {
+        if (!room.isActive) return false
+        if (isHiddenEphemeralRoom(room, currentUserId)) return false
+        if (room.isPublic) return true
+        var normalizedUserId = currentUserId?.trim()?.lowercase().orEmpty()
+        if (normalizedUserId.isBlank()) return false
+        return room.creatorId.trim().lowercase() == normalizedUserId
+    }
+
+    suspend fun refreshRooms(): Result<List<VoiceRoom>> {
         try {
-            val rooms = supabaseConfig.client.postgrest["voice_rooms"].select {
-                filter { eq("is_active", true) }
-            }.decodeList<VoiceRoom>()
-            _activeRooms.value = rooms
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var rooms = supabaseConfig.client.postgrest["voice_rooms"].select {
+                filter {
+                    eq("is_active", true)
+                    if (!currentUserId.isNullOrBlank()) {
+                        or {
+                            eq("is_public", true)
+                            eq("creator_id", currentUserId)
+                        }
+                    } else {
+                        eq("is_public", true)
+                    }
+                }
+            }.decodeList<VoiceRoom>().map(::normalizeRoomForUi)
+            val visibleRooms = rooms.filter { shouldShowRoomInLobby(it, currentUserId) }
+            _activeRooms.value = visibleRooms
+
+            val normalizedActiveRoomId = activeRoomId?.trim()?.lowercase()
+            if (!normalizedActiveRoomId.isNullOrBlank()) {
+                _currentRoom.value = rooms.firstOrNull { it.id.trim().lowercase() == normalizedActiveRoomId }
+                    ?: getRoomById(normalizedActiveRoomId).getOrNull()?.let(::normalizeRoomForUi)
+                    ?: _currentRoom.value
+            }
+            return Result.success(visibleRooms)
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "Error refreshing rooms", e)
+            return Result.failure(e)
         }
     }
 
+
+
     suspend fun getRoomById(id: String): Result<VoiceRoom> = withContext(Dispatchers.IO) {
         try {
-            val room = supabaseConfig.client.postgrest["voice_rooms"].select {
+            var room = supabaseConfig.client.postgrest["voice_rooms"].select {
                 filter { eq("readable_id", id) } // Try to find by readable_id first
             }.decodeSingleOrNull<VoiceRoom>() 
                 ?: supabaseConfig.client.postgrest["voice_rooms"].select {
@@ -177,14 +780,16 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun createRoom(name: String, description: String?, isPublic: Boolean, password: String?): Result<VoiceRoom> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             // We can rely on DB to generate ID, or generate here. Let's let DB handle readable_id via trigger.
             // But we need UUID for the object.
-            val roomId = UUID.randomUUID().toString()
+            var roomId = UUID.randomUUID().toString()
             
-            val room = VoiceRoom(
+            var room = VoiceRoom(
                 id = roomId,
                 name = name,
                 description = description ?: "",
@@ -199,6 +804,18 @@ class VoiceRoomRepository @Inject constructor(
             
             // Re-fetch to get the generated readableID
             val createdRoom = getRoomById(roomId).getOrNull() ?: room
+            var normalizedUserId = userId.trim().lowercase()
+            val visibleRoom = createdRoom.copy(
+                creatorId = createdRoom.creatorId.ifBlank { normalizedUserId }
+            ).let(::normalizeRoomForUi)
+            if (shouldShowRoomInLobby(visibleRoom, normalizedUserId)) {
+                _activeRooms.update { current ->
+                    listOf(visibleRoom) + current.filterNot { existing ->
+                        existing.id.trim().lowercase() == visibleRoom.id.trim().lowercase()
+                    }
+                }
+            }
+            scope.launch { refreshRooms() }
             
             // Artificial delay to prevent race condition on client double-tap
             delay(500)
@@ -218,19 +835,30 @@ class VoiceRoomRepository @Inject constructor(
         webRTCManager?.getRemoteAudioLevels(callback) ?: callback(emptyMap())
     }
 
+
+
     suspend fun joinRoom(roomId: String, userId: String, displayName: String, avatarUrl: String? = null, signalingRoomId: String? = null) = withContext(Dispatchers.IO) {
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
-        
-        val signalRoom = roomId 
-        val isSocketConnected = socket?.connected() == true
+        pendingConnectMetricName = "voice_room_join"
+        pendingConnectStartedAtMs = System.currentTimeMillis()
+        reconnectFailureCount = 0
+        updateConnectionState(VoiceConnectionState.CONNECTING)
+        appMetrics.incrementCounter(
+            metric = "voice_room_join_attempt",
+            attributes = currentMetricAttributes(roomId = roomId)
+        )
+
+        val signalRoom = roomId
+        val roomLookupId = signalingRoomId?.takeIf { it.isNotBlank() } ?: roomId
+        var isSocketConnected = socket?.connected() == true
         val isWebResHealthy = webRTCManager?.isHealthy() == true
-        val isReentry = (currentRoomId == signalRoom && isSocketConnected && isWebResHealthy)
+        val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
         
         if (isReentry) {
             android.util.Log.w("VoiceRoomRepository", "♻️ RE-ENTRY DETECTED: Already in room $signalRoom. Skipping reset.")
             
             // Ensure self exists in participants (UI sync)
-            val self = conectate.com.data.model.VoiceParticipant(
+            var self = conectate.com.data.model.VoiceParticipant(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
@@ -240,23 +868,14 @@ class VoiceRoomRepository @Inject constructor(
                 _currentParticipants.value = _currentParticipants.value + self
             }
             
-            // Re-request audio focus to ensure it's not stolen
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val audioAttributes = android.media.AudioAttributes.Builder()
-                .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-            val focusRequest = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(audioAttributes)
-                .setAcceptsDelayedFocusGain(true)
-                .setOnAudioFocusChangeListener { focusChange ->
-                    android.util.Log.d("VoiceRoomRepository", "Audio focus changed: $focusChange")
-                }
-                .build()
-            am.requestAudioFocus(focusRequest)
-            am.mode = AudioManager.MODE_IN_COMMUNICATION
-            forceSpeakerOutput(am)
-            
+            prepareVoiceAudioSession(forceMicUnmute = true)
+            webRTCManager?.ensureLocalTracks()
+            webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+            updateConnectionState(VoiceConnectionState.CONNECTED)
+            appMetrics.incrementCounter(
+                metric = "voice_room_rejoin_preserved",
+                attributes = currentMetricAttributes(roomId = roomId)
+            )
             android.util.Log.w("VoiceRoomRepository", "📍 RE-ENTRY completed: Session preserved")
             return@withContext
         } else if (socket?.connected() == true) {
@@ -267,12 +886,12 @@ class VoiceRoomRepository @Inject constructor(
              kotlinx.coroutines.delay(200)
         }
         
-        currentRoomId = signalRoom 
+        activeRoomId = signalRoom 
         
         // Sync currentRoom object for UI tracking
         scope.launch {
-            getRoomById(signalRoom).getOrNull()?.let { room ->
-                _currentRoom.value = room
+            getRoomById(roomLookupId).getOrNull()?.let { room ->
+                _currentRoom.value = normalizeRoomForUi(room)
             }
         }
 
@@ -284,10 +903,12 @@ class VoiceRoomRepository @Inject constructor(
                     delay(1000) // v22.0: Increased guard delay to 1s to ensure Audio Hardware is fully released by OS
                 } catch (e: Exception) {
                     android.util.Log.e("VoiceRoomRepository", "Warning during cleanup: ${e.message}")
+                    crashReporter.recordException(
+                        throwable = e,
+                        extra = currentMetricAttributes(roomId = roomId)
+                    )
                 }
             }
-
-            val finalRoomId = roomId 
 
             // v21.0: Reverting seamless re-entry due to "Zombie Session" issues (Audio/Chat loss).
             // We will fallback to a clean reconnection cycle to safeguard functionality.
@@ -297,7 +918,7 @@ class VoiceRoomRepository @Inject constructor(
             try {
                 if (webRTCManager == null) {
                     android.util.Log.i("VoiceRoomRepository", "Creating NEW WebRTCManager instance")
-                    initializeWebRTC(roomId, userId)
+                    initializeWebRTC(userId)
                 } else {
                     android.util.Log.w("VoiceRoomRepository", "♻️ DIFFERENT SESSION OR STALE: Forcing media engine REBIRTH")
                     webRTCManager?.hardReset()
@@ -305,36 +926,26 @@ class VoiceRoomRepository @Inject constructor(
                 }
                 
                 webRTCManager?.ensureLocalTracks() // v7.2.5: Recreate tracks if disposed
+                webRTCManager?.setRemoteAudioPlaybackEnabled(true)
                 webRTCManager?.setCurrentUser(userId, "")
-                
-                
-                // Reinforce Audio Mode & Request Audio Focus
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                
-                val audioAttributes = android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
 
-                val focusRequest = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(audioAttributes)
-                    .setAcceptsDelayedFocusGain(true)
-                    .setOnAudioFocusChangeListener { focusChange ->
-                        android.util.Log.d("VoiceRoomRepository", "Audio focus changed: $focusChange")
-                    }
-                    .build()
-                
-                am.requestAudioFocus(focusRequest)
-
-                am.mode = AudioManager.MODE_IN_COMMUNICATION
-                forceSpeakerOutput(am)
+                prepareVoiceAudioSession(forceMicUnmute = true)
                 android.util.Log.d("VoiceRoomRepository", "✅ Audio mode set to COMM + Focus Requested")
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "❌ WebRTC Re-init failed: ${e.message}")
+                crashReporter.recordException(
+                    throwable = e,
+                    extra = currentMetricAttributes(roomId = roomId)
+                )
+                appMetrics.recordFailure(
+                    metric = "voice_room_join_reinit",
+                    throwable = e,
+                    attributes = currentMetricAttributes(roomId = roomId)
+                )
             }
 
             // Add self to participants
-            val self = conectate.com.data.model.VoiceParticipant(
+            var self = conectate.com.data.model.VoiceParticipant(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
@@ -350,8 +961,12 @@ class VoiceRoomRepository @Inject constructor(
             try {
                 android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
                 roomChannel = supabaseConfig.client.channel("room:$roomId")
-                roomChannel?.subscribe()
-                incrementParticipantCount(finalRoomId)
+                roomChannel?.let {
+                    supabaseConfig.subscribeRealtimeChannel(
+                        channel = it,
+                        reason = "voice-room-$roomId"
+                    )
+                }
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "⚠️ Supabase Realtime Subscription Error (Proceeding anyway): ${e.message}")
             }
@@ -371,6 +986,19 @@ class VoiceRoomRepository @Inject constructor(
             android.util.Log.w("VoiceRoomRepository", "📍 joinRoom END: Setup complete")
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error joining room", e)
+            updateConnectionState(
+                VoiceConnectionState.ERROR,
+                e.message?.takeIf { it.isNotBlank() } ?: "No pudimos abrir esta sala de voz."
+            )
+            crashReporter.recordException(
+                throwable = e,
+                extra = currentMetricAttributes(roomId = roomId)
+            )
+            appMetrics.recordFailure(
+                metric = "voice_room_join",
+                throwable = e,
+                attributes = currentMetricAttributes(roomId = roomId)
+            )
             e.printStackTrace()
         }
     }
@@ -387,80 +1015,120 @@ class VoiceRoomRepository @Inject constructor(
             val options = IO.Options().apply {
                 forceNew = true
                 reconnection = true
-                timeout = 10000 
+                reconnectionAttempts = SOCKET_RECONNECT_ATTEMPTS
+                reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
+                reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
+                timeout = 10000
+                attachBearerToken(authService.getAccessToken())
             }
             android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $SIGNALING_URL")
             socket = IO.socket(SIGNALING_URL, options)
 
             socket?.on(Socket.EVENT_CONNECT) {
-                val sid = socket?.id() ?: ""
+                var sid = socket?.id() ?: ""
                 android.util.Log.w("VoiceRoomRepository", "✅ SIGNALING CONNECTED: $sid. Joining room: $roomId")
-                
+                reconnectFailureCount = 0
+                updateConnectionState(VoiceConnectionState.CONNECTED)
+                pendingConnectStartedAtMs?.let { startedAt ->
+                    appMetrics.recordLatency(
+                        metric = pendingConnectMetricName ?: "voice_room_connect",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = currentMetricAttributes(roomId = roomId)
+                    )
+                }
+                pendingConnectMetricName = null
+                pendingConnectStartedAtMs = null
+
                 webRTCManager?.setCurrentUser(userId, sid)
+                webRTCManager?.refreshManagedIceServers(force = true)
+                webRTCManager?.ensureLocalTracks()
+                webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+                prepareVoiceAudioSession(forceMicUnmute = true)
                 
                 // Merge self with updated Socket ID
                 _currentParticipants.update { current ->
-                    val self = current.find { it.id == userId } ?: conectate.com.data.model.VoiceParticipant(id = userId, name = name, socketId = sid)
+                    var self = current.find { it.id == userId } ?: conectate.com.data.model.VoiceParticipant(id = userId, name = name, socketId = sid)
                     (current.filterNot { it.id == userId } + self.copy(socketId = sid)).distinctBy { it.socketId }
                 }
+                refreshParticipantAliases()
                 
                 socket?.emit("join-room", org.json.JSONObject().apply {
-                    put("roomId", roomId.trim()); put("userId", userId.trim()); put("name", name); put("avatarUrl", avatarUrl ?: "")
+                    put("roomId", roomId.trim())
+                    put("userId", userId.trim())
+                    put("name", name)
+                    put("avatarUrl", avatarUrl ?: "")
                 })
+
+                scope.launch {
+                    delay(275)
+                    flushPendingRoomSocketEvents(roomId)
+                    restoreActiveSession("socket_connect")
+                }
             }
 
             socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                android.util.Log.e("VoiceRoomRepository", "❌ Socket connect error: ${args[0]}")
+                val errorMessage = args.firstOrNull()?.toString().orEmpty().ifBlank { "Socket connect error" }
+                android.util.Log.e("VoiceRoomRepository", "❌ Socket connect error: $errorMessage")
+                reconnectFailureCount += 1
+                updateConnectionState(VoiceConnectionState.RECONNECTING)
+                var error = IllegalStateException(errorMessage)
+                appMetrics.recordFailure(
+                    metric = "voice_socket_connect_error",
+                    throwable = error,
+                    attributes = currentMetricAttributes(roomId = roomId)
+                )
             }
 
             socket?.on(Socket.EVENT_DISCONNECT) {
                 android.util.Log.e("VoiceRoomRepository", "🔌 SIGNALING DISCONNECTED")
+                if (!activeRoomId.isNullOrBlank()) {
+                    updateConnectionState(VoiceConnectionState.RECONNECTING)
+                    appMetrics.incrementCounter(
+                        metric = "voice_socket_disconnect",
+                        attributes = currentMetricAttributes(roomId = roomId)
+                    )
+                }
             }
 
             socket?.on("user-joined") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sid = data.getString("socketId")
-                val uid = data.getString("userId")
-                android.util.Log.i("VoiceRoomRepository", "👤 Remote User Joined: ${data.getString("name")} ($uid) via $sid")
+                var data = extractJsonPayload(args) ?: return@on
+                var sid = data.optString("socketId").trim()
+                var uid = data.optString("userId").trim()
+                if (sid.isBlank() || uid.isBlank()) return@on
+                val displayName = data.optString("name", "Invitado")
+                android.util.Log.i("VoiceRoomRepository", "👤 Remote User Joined: $displayName ($uid) via $sid")
                 
                 _currentParticipants.update { current ->
-                    val p = conectate.com.data.model.VoiceParticipant(
+                    var p = conectate.com.data.model.VoiceParticipant(
                         id = uid, 
-                        name = data.getString("name"), 
+                        name = displayName, 
                         avatarUrl = data.optString("avatarUrl"), 
                         socketId = sid
                     )
                     (current.filterNot { it.socketId == sid || it.id == uid } + p).distinctBy { it.socketId }
                 }
+                refreshParticipantAliases()
                 
                 webRTCManager?.onUserJoined(sid, uid)
 
                 // v5.0 SINGULARITY: 3-Pulse Resonance
                 // Ensures newcomer sees our media even if connection is settling
                 if (_currentVideoMode.value != VideoMode.NONE) {
-                    scope.launch {
-                        repeat(3) { i ->
-                            android.util.Log.d("VoiceRoomRepository", "Resonance Pulse ${i+1}/3 for newcomer: $sid")
-                            socket?.emit("media-status", org.json.JSONObject().apply {
-                                put("roomId", roomId)
-                                put("isCameraSharing", _currentVideoMode.value == VideoMode.CAMERA)
-                                put("isScreenSharing", _currentVideoMode.value == VideoMode.SCREEN)
-                                put("userId", authService.getCurrentUserId())
-                            })
-                            delay(1000) // 1s spacing between pulses
-                        }
-                    }
+                    android.util.Log.d("VoiceRoomRepository", "Resonance Pulse scheduled for newcomer: $sid")
+                    broadcastCurrentMediaState(repeatCount = 3, intervalMs = 1000)
+                    reinforceVideoPublishing()
                 }
             }
             
             socket?.on("user-left") { args ->
-                val socketId = args[0] as String
+                var socketId = extractSocketIdPayload(args)
+                if (socketId.isBlank()) return@on
                 android.util.Log.d("VoiceRoomRepository", "Socket user-left: $socketId")
                 
                 // v7.2-MVP: Host Disconnect Safety
                 val leavingParticipant = _currentParticipants.value.find { it.socketId == socketId }
                 scope.launch {
-                    val room = currentRoomId?.let { getRoomById(it).getOrNull() }
+                    var room = activeRoomId?.let { getRoomById(it).getOrNull() }
                     if (room != null && leavingParticipant?.id == room.creatorId) {
                         android.util.Log.i("VoiceRoomRepo", "Host left. Closing cinema.")
                         emitCinemaState(room.id, CinemaState(isCinemaMode = false))
@@ -470,66 +1138,101 @@ class VoiceRoomRepository @Inject constructor(
                 val currentList = _currentParticipants.value.toMutableList()
                 currentList.removeIf { it.socketId == socketId }
                 _currentParticipants.value = currentList
+                refreshParticipantAliases()
                 
                 // CRITICAL: Clean up
                 webRTCManager?.onUserLeft(socketId)
             }
 
             socket?.on("current-participants") { args ->
-                val participantsJson = args[0] as org.json.JSONArray
+                val participantsJson = args.firstOrNull() as? org.json.JSONArray ?: return@on
                 android.util.Log.i("VoiceRoomRepository", "📋 Received Participant List: ${participantsJson.length()} users in room $roomId")
                 
                 val selfId = authService.getCurrentUserId()
-                _currentParticipants.update { current ->
-                    val newList = current.toMutableList()
-                    val newSharingStates = _sharingStates.value.toMutableMap()
-                    
-                    for (i in 0 until participantsJson.length()) {
-                        val p = participantsJson.getJSONObject(i)
-                        val sid = p.getString("socketId"); val uid = p.getString("userId")
-                        
-                        if (uid != selfId) {
-                            val participant = conectate.com.data.model.VoiceParticipant(
-                                id = uid, 
-                                name = p.getString("name"), 
-                                avatarUrl = p.optString("avatarUrl"), 
-                                socketId = sid
-                            )
-                            
-                            // Extract initial sharing state for visibility
-                            val isCam = p.optBoolean("isCameraSharing", false)
-                            val isScreen = p.optBoolean("isScreenSharing", false)
-                            newSharingStates[sid] = Pair(isCam, isScreen)
-                            
-                            if (newList.none { it.socketId == sid }) {
-                                newList.add(participant)
-                                webRTCManager?.onUserJoined(sid, uid)
-                            }
+                val current = _currentParticipants.value
+                val currentSocketIds = current
+                    .map { it.socketId.trim() }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+                val selfParticipant = current.firstOrNull { it.id == selfId }
+                val remoteParticipants = mutableListOf<conectate.com.data.model.VoiceParticipant>()
+                val rebuiltSharingStates = mutableMapOf<String, Pair<Boolean, Boolean>>()
+                val pendingNewSockets = mutableListOf<Pair<String, String>>()
+
+                for (i in 0 until participantsJson.length()) {
+                    var p = participantsJson.optJSONObject(i) ?: continue
+                    var sid = p.optString("socketId").trim()
+                    var uid = p.optString("userId").trim()
+                    if (sid.isBlank() || uid.isBlank()) continue
+                    val participantName = p.optString("name", "Invitado")
+
+                    if (uid != selfId) {
+                        remoteParticipants += conectate.com.data.model.VoiceParticipant(
+                            id = uid,
+                            name = participantName,
+                            avatarUrl = p.optString("avatarUrl"),
+                            socketId = sid
+                        )
+
+                        val sharingState = p.optBoolean("isCameraSharing", false) to
+                            p.optBoolean("isScreenSharing", false)
+                        rebuiltSharingStates[sid.trim()] = sharingState
+                        rebuiltSharingStates[uid.trim().lowercase()] = sharingState
+
+                        if (sid.isNotBlank() && sid !in currentSocketIds) {
+                            pendingNewSockets += sid to uid
                         }
                     }
-                    _sharingStates.value = newSharingStates
-                    newList.distinctBy { it.socketId }
                 }
+
+                _sharingStates.value = rebuiltSharingStates
+                _currentParticipants.value = buildList {
+                    selfParticipant?.let(::add)
+                    addAll(
+                        remoteParticipants.distinctBy { participant ->
+                            participant.id.trim().lowercase().ifBlank { participant.socketId.trim() }
+                        }
+                    )
+                }
+                refreshParticipantAliases()
+                pendingNewSockets.forEach { (sid, uid) ->
+                    webRTCManager?.onUserJoined(sid, uid)
+                }
+                flushPendingRoomSocketEvents(roomId)
             }
 
             socket?.on("media-status") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sid = if (args.size > 1) args[1] as String else ""
+                var data = extractJsonPayload(args) ?: return@on
+                var sid = when {
+                    args.size > 1 && args[1] is String -> args[1] as String
+                    data.has("socketId") -> data.optString("socketId", "")
+                    data.has("sender") -> data.optString("sender", "")
+                    data.has("userId") -> {
+                        var senderUserId = data.optString("userId", "")
+                        _currentParticipants.value.firstOrNull { it.id == senderUserId }?.socketId.orEmpty()
+                    }
+                    else -> ""
+                }
                 if (sid.isNotEmpty()) {
                     val isCamera = data.optBoolean("isCameraSharing", false)
-                    val isScreen = data.optBoolean("isScreenSharing", false)
-                    
-                    val map = _sharingStates.value.toMutableMap()
-                    map[sid] = Pair(isCamera, isScreen)
-                    _sharingStates.value = map
+                    var isScreen = data.optBoolean("isScreenSharing", false)
+                    var senderUserId = data.optString("userId", "")
+
+                    updateSharingState(
+                        socketId = sid,
+                        userId = senderUserId,
+                        isCameraSharing = isCamera,
+                        isScreenSharing = isScreen
+                    )
                     android.util.Log.d("VoiceRoomRepository", "🎥 Media status update for $sid: cam=$isCamera, screen=$isScreen")
                 }
             }
 
             socket?.on("mute-state") { args ->
-                val data = args[0] as org.json.JSONObject
-                val uid = data.getString("userId")
-                val isMuted = data.getBoolean("isMuted")
+                var data = extractJsonPayload(args) ?: return@on
+                var uid = data.optString("userId").trim()
+                if (uid.isBlank()) return@on
+                var isMuted = data.optBoolean("isMuted", false)
                 android.util.Log.d("VoiceRoomRepository", "🔇 Remote Mute State ($uid): $isMuted")
                 
                 _currentParticipants.update { current ->
@@ -538,76 +1241,95 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("offer") { args ->
-                val data = args[0] as org.json.JSONObject
-                val senderSocketId = data.getString("sender") 
+                var data = extractJsonPayload(args) ?: return@on
+                val senderSocketId = data.optString("sender").trim()
+                if (senderSocketId.isBlank()) return@on
                 // CRITICAL FIX: Read userId directly from payload to avoid race condition with participant list
-                val senderUserId = if (data.has("userId")) data.getString("userId") else {
+                var senderUserId = if (data.has("userId")) data.optString("userId") else {
                     _currentParticipants.value.find { it.socketId == senderSocketId }?.id ?: ""
                 }
-                
-                val offerSdp = data.getJSONObject("offer").getString("sdp")
+                val offerSdp = data.optJSONObject("offer")?.optString("sdp").orEmpty()
+                if (offerSdp.isBlank()) return@on
                 webRTCManager?.onOfferReceived(senderSocketId, senderUserId, offerSdp)
             }
 
             socket?.on("answer") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sender = data.getString("sender")
-                val answerSdp = data.getJSONObject("answer").getString("sdp")
-                webRTCManager?.onAnswerReceived(sender, answerSdp)
+                var data = extractJsonPayload(args) ?: return@on
+                var sender = data.optString("sender").trim()
+                if (sender.isBlank()) return@on
+                var senderUserId = if (data.has("userId")) data.optString("userId") else {
+                    _currentParticipants.value.find { it.socketId == sender }?.id ?: ""
+                }
+                val answerSdp = data.optJSONObject("answer")?.optString("sdp").orEmpty()
+                if (answerSdp.isBlank()) return@on
+                webRTCManager?.onAnswerReceived(sender, answerSdp, senderUserId)
             }
 
             socket?.on("ice-candidate") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sender = data.getString("sender")
-                val candidate = data.getJSONObject("candidate")
-                webRTCManager?.onIceCandidateReceived(sender, candidate)
+                var data = extractJsonPayload(args) ?: return@on
+                var sender = data.optString("sender").trim()
+                if (sender.isBlank()) return@on
+                var senderUserId = if (data.has("userId")) data.optString("userId") else {
+                    _currentParticipants.value.find { it.socketId == sender }?.id ?: ""
+                }
+                val candidate = data.optJSONObject("candidate") ?: return@on
+                webRTCManager?.onIceCandidateReceived(sender, candidate, senderUserId)
             }
 
             socket?.on("chat-message") { args ->
-                 val data = args[0] as org.json.JSONObject
+                 var data = extractJsonPayload(args) ?: return@on
+                 var userIdPayload = data.optString("userId").trim()
+                 val userNamePayload = data.optString("userName").trim()
+                 val textPayload = data.optString("text").trim()
+                 if (userIdPayload.isBlank() || textPayload.isBlank()) return@on
                  val msg = conectate.com.presentation.voicerooms.ChatMessage(
-                    userId = data.getString("userId"),
-                    userName = data.getString("userName"),
-                    text = data.getString("text")
+                    userId = userIdPayload,
+                    userName = userNamePayload.ifBlank { "Usuario" },
+                    text = textPayload
                 )
                 scope.launch { _incomingMessages.emit(msg) }
             }
 
             socket?.on("reaction") { args ->
-                val data = args[0] as org.json.JSONObject
+                var data = extractJsonPayload(args) ?: return@on
+                var userIdPayload = data.optString("userId").trim()
+                val emojiPayload = data.optString("emoji").trim()
+                if (userIdPayload.isBlank() || emojiPayload.isBlank()) return@on
                 val reaction = conectate.com.presentation.voicerooms.ReactionEvent(
-                    userId = data.getString("userId"),
-                    emoji = data.getString("emoji")
+                    id = data.optString("reactionId").ifBlank { data.optString("id") },
+                    userId = userIdPayload,
+                    emoji = emojiPayload
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
             }
 
             socket?.on("speaking-status") { args ->
-                val data = args[0] as org.json.JSONObject
-                val speakerId = data.getString("userId")
-                val isSpeaking = data.getBoolean("isSpeaking")
+                var data = extractJsonPayload(args) ?: return@on
+                val speakerId = data.optString("userId").trim()
+                if (speakerId.isBlank()) return@on
+                var isSpeaking = data.optBoolean("isSpeaking", false)
                 _currentParticipants.value = _currentParticipants.value.map {
                     if (it.id == speakerId) it.copy(isSpeaking = isSpeaking) else it
                 }
             }
 
             socket?.on("cinema-state") { args ->
-                val data = args[0] as org.json.JSONObject
-                val state = CinemaState(
-                    isCinemaMode = data.getBoolean("isCinemaMode"),
+                var data = extractJsonPayload(args) ?: return@on
+                var state = CinemaState(
+                    isCinemaMode = data.optBoolean("isCinemaMode", false),
                     videoUrl = if (data.has("videoUrl")) data.getString("videoUrl") else null,
                     videoTitle = if (data.has("videoTitle")) data.getString("videoTitle") else null,
-                    isPlaying = if (data.has("isPlaying")) data.getBoolean("isPlaying") else false,
-                    currentPosition = if (data.has("currentPosition")) data.getLong("currentPosition") else 0L
+                    isPlaying = if (data.has("isPlaying")) data.optBoolean("isPlaying", false) else false,
+                    currentPosition = if (data.has("currentPosition")) data.optLong("currentPosition", 0L) else 0L
                 )
                 scope.launch { _cinemaState.value = state }
             }
 
             socket?.on("cinema-sync") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sync = CinemaSyncEvent(
-                    isPlaying = data.getBoolean("isPlaying"),
-                    currentPosition = data.getLong("currentPosition")
+                var data = extractJsonPayload(args) ?: return@on
+                var sync = CinemaSyncEvent(
+                    isPlaying = data.optBoolean("isPlaying", false),
+                    currentPosition = data.optLong("currentPosition", 0L)
                 )
                 scope.launch { _cinemaSync.emit(sync) }
             }
@@ -615,9 +1337,10 @@ class VoiceRoomRepository @Inject constructor(
 
 
             socket?.on("link-resolved") { args ->
-                val data = args[0] as org.json.JSONObject
-                val reqId = data.getString("requestId")
-                val deferred = pendingResolutions.remove(reqId)
+                var data = extractJsonPayload(args) ?: return@on
+                val reqId = data.optString("requestId").trim()
+                if (reqId.isBlank()) return@on
+                var deferred = pendingResolutions.remove(reqId)
                 if (deferred != null) {
                     if (data.has("error")) {
                          deferred.complete(CinemaResolvedItem("", "", data.getString("error")))
@@ -631,30 +1354,75 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("cinema-control") { args ->
-                val data = args[0] as org.json.JSONObject
-                val sync = CinemaSyncEvent(
-                    isPlaying = if (data.has("isPlaying")) data.getBoolean("isPlaying") else true,
-                    currentPosition = data.getLong("position"),
-                    action = data.getString("action")
+                var data = extractJsonPayload(args) ?: return@on
+                var sync = CinemaSyncEvent(
+                    isPlaying = if (data.has("isPlaying")) data.optBoolean("isPlaying", true) else true,
+                    currentPosition = data.optLong("position", 0L),
+                    action = data.optString("action").ifBlank { null }
                 )
                 scope.launch { _cinemaSync.emit(sync) }
             }
 
-            socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                android.util.Log.e("VoiceRoomRepository", "Socket connect error: ${args[0]}")
+            socket?.io()?.on(Manager.EVENT_RECONNECT_ATTEMPT) {
+                if (!activeRoomId.isNullOrBlank()) {
+                    reconnectFailureCount += 1
+                    updateConnectionState(VoiceConnectionState.RECONNECTING)
+                    appMetrics.incrementCounter(
+                        metric = "voice_socket_reconnect_attempt",
+                        attributes = currentMetricAttributes(roomId = roomId)
+                    )
+                }
+            }
+
+            socket?.io()?.on(Manager.EVENT_RECONNECT) {
+                reconnectFailureCount = 0
+                updateConnectionState(VoiceConnectionState.CONNECTED)
+                appMetrics.incrementCounter(
+                    metric = "voice_socket_reconnect_success",
+                    attributes = currentMetricAttributes(roomId = roomId)
+                )
+                restoreActiveSession("socket_reconnect")
+            }
+
+            socket?.io()?.on(Manager.EVENT_RECONNECT_ERROR) { args ->
+                var error = IllegalStateException(args.firstOrNull()?.toString().orEmpty().ifBlank { "Reconnect error" })
+                appMetrics.recordFailure(
+                    metric = "voice_socket_reconnect_error",
+                    throwable = error,
+                    attributes = currentMetricAttributes(roomId = roomId)
+                )
+                updateConnectionState(VoiceConnectionState.RECONNECTING)
+            }
+
+            socket?.io()?.on(Manager.EVENT_RECONNECT_FAILED) {
+                var message = "No pudimos reconectar la sala de voz."
+                updateConnectionState(VoiceConnectionState.ERROR, message)
+                appMetrics.recordFailure(
+                    metric = "voice_socket_reconnect_failed",
+                    throwable = IllegalStateException(message),
+                    attributes = currentMetricAttributes(roomId = roomId)
+                )
             }
 
             socket?.connect()
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "Failed to setup Socket.io", e)
+            updateConnectionState(
+                VoiceConnectionState.ERROR,
+                e.message?.takeIf { it.isNotBlank() } ?: "No pudimos iniciar la señalización de voz."
+            )
+            crashReporter.recordException(
+                throwable = e,
+                extra = currentMetricAttributes(roomId = roomId)
+            )
         }
     }
 
     // Signaling Hooks called by Repository
-    private fun initializeWebRTC(roomId: String, userId: String) {
-        val events = object : conectate.com.data.webrtc.SignalingEvents {
+    private fun initializeWebRTC(userId: String) {
+        var events = object : conectate.com.data.webrtc.SignalingEvents {
             override fun onSendOffer(targetSocketId: String, offer: org.json.JSONObject) {
-                val data = org.json.JSONObject().apply {
+                var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("offer", offer)
                     put("userId", userId) // CRITICAL: Send ID for polite check
@@ -663,31 +1431,38 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             override fun onSendAnswer(targetSocketId: String, answer: org.json.JSONObject) {
-                val data = org.json.JSONObject().apply {
+                var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("answer", answer)
+                    put("userId", userId)
                 }
                 socket?.emit("answer", data)
             }
 
             override fun onSendIceCandidate(targetSocketId: String, candidate: org.json.JSONObject) {
-                val data = org.json.JSONObject().apply {
+                var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("candidate", candidate)
+                    put("userId", userId)
                 }
                 socket?.emit("ice-candidate", data)
             }
         }
         
-        webRTCManager = WebRTCManager(context, events)
+        webRTCManager = WebRTCManager(
+            context = context,
+            signalingEvents = events,
+            accessTokenProvider = { authService.getAccessToken() }
+        )
         // INITIAL IDENTITY SET
         webRTCManager?.setCurrentUser(userId, "")
+        webRTCManager?.refreshManagedIceServers()
         
         // Collect video tracks
         scope.launch {
             webRTCManager?.remoteVideoTracks?.collect { tracks ->
                 android.util.Log.d("VoiceRoomRepository", "Remote video tracks updated: Count=${tracks.size}, Keys=${tracks.keys}")
-                _remoteVideoTracks.value = tracks
+                _remoteVideoTracks.value = rekeyWithCurrentParticipants(tracks)
             }
         }
         
@@ -700,120 +1475,154 @@ class VoiceRoomRepository @Inject constructor(
         
         scope.launch {
             webRTCManager?.peerConnectionStates?.collect { states ->
-                _peerConnectionStates.value = states
+                _peerConnectionStates.value = rekeyWithCurrentParticipants(states)
             }
         }
         
         scope.launch {
             webRTCManager?.signalingStates?.collect { states ->
-                _signalingStates.value = states
+                _signalingStates.value = rekeyWithCurrentParticipants(states)
             }
         }
 
         scope.launch {
             webRTCManager?.debugInfo?.collect { info ->
-                _debugInfo.value = info
+                _debugInfo.value = rekeyWithCurrentParticipants(info)
             }
         }
     }
 
     fun toggleCameraSharing(isSharing: Boolean) {
-        socket?.emit("media-status", org.json.JSONObject().apply {
-            put("roomId", currentRoomId)
-            put("isCameraSharing", isSharing)
-            put("isScreenSharing", _currentVideoMode.value == VideoMode.SCREEN)
-        })
+        _currentVideoMode.value = if (isSharing) VideoMode.CAMERA else VideoMode.NONE
+        emitCurrentMediaState()
     }
 
     fun toggleScreenSharing(isSharing: Boolean) {
-        socket?.emit("media-status", org.json.JSONObject().apply {
-            put("roomId", currentRoomId)
-            put("isCameraSharing", _currentVideoMode.value == VideoMode.CAMERA)
-            put("isScreenSharing", isSharing)
-            put("userId", authService.getCurrentUserId())
-        })
+        _currentVideoMode.value = if (isSharing) VideoMode.SCREEN else VideoMode.NONE
+        emitCurrentMediaState()
     }
 
     fun startScreenCapture(intent: android.content.Intent) {
-        webRTCManager?.startVideo(isScreen = true, intent = intent)
+        appMetrics.incrementCounter(
+            metric = "voice_video_transition",
+            attributes = currentMetricAttributes(reason = "screen_share_start") + ("targetMode" to "screen")
+        )
+        prepareVoiceAudioSession(forceMicUnmute = true)
+        webRTCManager?.ensureLocalTracks()
+        webRTCManager?.setAudioEnabled(!isSelfMuted())
+        webRTCManager?.startVideo(
+            isScreen = true,
+            intent = intent,
+            targetWidth = performanceProfile.voiceScreenWidth,
+            targetHeight = performanceProfile.voiceScreenHeight,
+            targetFps = performanceProfile.voiceScreenFps
+        )
         _currentVideoMode.value = VideoMode.SCREEN
-        // Notify others
-        socket?.emit("media-status", org.json.JSONObject().apply {
-            put("roomId", currentRoomId)
-            put("isCameraSharing", false)
-            put("isScreenSharing", true)
-            put("userId", authService.getCurrentUserId())
-        })
+        webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+        broadcastCurrentMediaState(
+            repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
+            intervalMs = 700
+        )
+        reinforceVideoPublishing()
+        reinforceAudioAfterVideoTransition("screen-share-start")
     }
 
     fun startCameraCapture(isFront: Boolean = true) {
-        webRTCManager?.startVideo(isScreen = false, isFront = isFront)
+        appMetrics.incrementCounter(
+            metric = "voice_video_transition",
+            attributes = currentMetricAttributes(reason = "camera_start") + ("targetMode" to "camera")
+        )
+        prepareVoiceAudioSession(forceMicUnmute = true)
+        webRTCManager?.ensureLocalTracks()
+        webRTCManager?.setAudioEnabled(!isSelfMuted())
+        webRTCManager?.startVideo(
+            isScreen = false,
+            isFront = isFront,
+            targetWidth = performanceProfile.voiceCameraWidth,
+            targetHeight = performanceProfile.voiceCameraHeight,
+            targetFps = performanceProfile.voiceCameraFps
+        )
         _currentVideoMode.value = VideoMode.CAMERA
-        // Notify others
-        socket?.emit("media-status", org.json.JSONObject().apply {
-            put("roomId", currentRoomId)
-            put("isCameraSharing", true)
-            put("isScreenSharing", false)
-            put("userId", authService.getCurrentUserId())
-        })
+        webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+        broadcastCurrentMediaState(
+            repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
+            intervalMs = 700
+        )
+        reinforceVideoPublishing()
+        reinforceAudioAfterVideoTransition("camera-share-start")
     }
 
     fun stopVideo() {
         android.util.Log.d("VoiceRoomRepo", "Stopping local video/screen share")
+        appMetrics.incrementCounter(
+            metric = "voice_video_transition",
+            attributes = currentMetricAttributes(reason = "video_stop") + ("targetMode" to "none")
+        )
         webRTCManager?.stopVideo()
         _currentVideoMode.value = VideoMode.NONE
-        // Notify others
-        socket?.emit("media-status", org.json.JSONObject().apply {
-            put("roomId", currentRoomId)
-            put("isCameraSharing", false)
-            put("isScreenSharing", false)
-            put("userId", authService.getCurrentUserId())
-        })
+        broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
+        reinforceAudioAfterVideoTransition("video-stop")
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
+
+
     suspend fun leaveRoom(roomId: String? = null) = withContext(Dispatchers.IO + NonCancellable) {
         try {
-            val actualRoomId = roomId ?: currentRoomId
-            android.util.Log.d("VoiceRoomRepository", "Leaving room: $actualRoomId")
+            val actualRoomId = roomId ?: activeRoomId
+            android.util.Log.w("VoiceRoomRepository", "📍 leaveRoom START: $actualRoomId")
+            audioRecoveryJob?.cancel()
+            pendingConnectMetricName = null
+            pendingConnectStartedAtMs = null
+            reconnectFailureCount = 0
 
-            // 1. Disconnect Socket and Realtime FIRST to avoid incoming signal processing
-            socket?.disconnect()
-            socket?.off()
+            // 1. Disconnect Signaling FIRST to prevent new negotiation during teardown
+            socket?.let {
+                it.off()
+                it.disconnect()
+            }
             socket = null
 
             roomChannel?.unsubscribe()
             roomChannel = null
 
-            // 2. Update DB while we still have data
-            if (actualRoomId != null) {
-                try {
-                    decrementParticipantCount(actualRoomId)
-                    delay(50)
-                } catch (e: Exception) { }
+            // 2. Clear WebRTC State Safely
+            try {
+                webRTCManager?.hardReset()
+            } catch (e: Exception) {
+                android.util.Log.e("VoiceRoomRepository", "Error resetting WebRTC: ${e.message}")
             }
 
-            // 3. Purge media state but KEEP factory alive for rapid re-entry
-            // v6.0: Changed destroy() to hardReset() to avoid hardware driver locks.
-            webRTCManager?.hardReset()
-            // webRTCManager = null // Keep instance alive for warm launch next time
-
-            // 4. Reset UI state & Cinema State
+            // 3. Reset UI State
             _currentParticipants.value = emptyList()
             _remoteVideoTracks.value = emptyMap()
             _peerConnectionStates.value = emptyMap()
+            _signalingStates.value = emptyMap()
             _sharingStates.value = emptyMap()
+            _debugInfo.value = emptyMap()
             _currentVideoMode.value = VideoMode.NONE
             _localVideoTrack.value = null
-            _cinemaState.value = null // Clear cinema state
-            _cinemaSync.resetReplayCache() // Purge sync events
+            _cinemaState.value = null
+            _cinemaSync.resetReplayCache()
             _currentRoom.value = null
+            
+            synchronized(pendingSocketRoomEvents) {
+                pendingSocketRoomEvents.clear()
+            }
 
-            currentRoomId = null
-            android.util.Log.d("VoiceRoomRepository", "Cleanup complete")
-            Unit
+            activeRoomId = null
+            updateConnectionState(VoiceConnectionState.IDLE)
+            
+            // 4. Release Audio with Safety Delay
+            releaseVoiceAudioSession()
+            
+            android.util.Log.w("VoiceRoomRepository", "📍 leaveRoom END: Cleanup complete")
         } catch (e: Exception) {
-            android.util.Log.e("VoiceRoomRepository", "Error leaving room: ${e.message}")
+            android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error leaving room: ${e.message}")
+            crashReporter.recordException(
+                throwable = e,
+                extra = currentMetricAttributes(roomId = roomId)
+            )
         }
     }
 
@@ -825,28 +1634,26 @@ class VoiceRoomRepository @Inject constructor(
             if (it.id == authService.getCurrentUserId()) it.copy(isMuted = isMuted) else it
         }
         
-        // 2. HARDWARE MUTE (System Level) -> This is the nuclear option
-        try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            audioManager.isMicrophoneMute = isMuted
-            android.util.Log.w("VoiceRoomRepository", "System Microphone Mute set to: ${audioManager.isMicrophoneMute}")
-        } catch (e: Exception) {
-            android.util.Log.e("VoiceRoomRepository", "Failed to set System Mic Mute", e)
+        if (!isMuted) {
+            prepareVoiceAudioSession(forceMicUnmute = true)
+            webRTCManager?.ensureLocalTracks()
         }
 
-        // 3. WebRTC Track Disable (Redundancy)
+        // 2. WebRTC Track Disable (without muting the whole device mic)
         webRTCManager?.setAudioEnabled(!isMuted)
         
-        // 4. Broadcast mute state
+        // 3. Broadcast mute state
         scope.launch {
              socket?.emit("mute-state", org.json.JSONObject().apply {
-                put("roomId", currentRoomId ?: "")
+                put("roomId", activeRoomId ?: "")
                 put("userId", authService.getCurrentUserId() ?: "")
                 put("isMuted", isMuted)
              })
         }
     }
     
+
+
     fun getEglBaseContext(): org.webrtc.EglBase.Context? {
         return webRTCManager?.getEglBaseContext()
     }
@@ -871,94 +1678,81 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun deleteRoom(roomId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val previousRooms = _activeRooms.value
         try {
+            var normalizedRoomId = roomId.trim().lowercase()
+            _activeRooms.update { current ->
+                current.filterNot { it.id.trim().lowercase() == normalizedRoomId }
+            }
             supabaseConfig.client.postgrest["voice_rooms"].delete {
                 filter { eq("id", roomId) }
             }
+            if (activeRoomId?.trim()?.lowercase() == normalizedRoomId) {
+                leaveRoom(roomId)
+            } else {
+                scope.launch { refreshRooms() }
+            }
             Result.success(Unit)
         } catch (e: Exception) {
+            android.util.Log.e("VoiceRoomRepository", "Error deleting room $roomId", e)
+            _activeRooms.value = previousRooms
             Result.failure(e)
         }
     }
 
-    private suspend fun subscribeToVoiceRooms() {
-        try {
-            val channel = supabaseConfig.client.channel("voice-rooms-global")
-            val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                table = "voice_rooms"
-            }
 
-            scope.launch {
-                changes.collect { change ->
+
+    private suspend fun subscribeToVoiceRooms() {
+        var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
+        while (currentCoroutineContext().isActive) {
+            var channel: RealtimeChannel? = null
+            var shouldBackoff = false
+            try {
+                channel = supabaseConfig.client.channel("voice-rooms-global")
+                val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                    table = "voice_rooms"
+                }
+
+                supabaseConfig.subscribeRealtimeChannel(
+                    channel = channel,
+                    reason = "voice-rooms-global"
+                )
+                retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
+                changes.collect {
                     refreshRooms()
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                shouldBackoff = true
+                android.util.Log.e("VoiceRoomRepository", "Voice rooms realtime subscription failed retrying", e)
+            } finally {
+                if (channel != null) {
+                    try {
+                        channel.unsubscribe()
+                    } catch (_: Exception) { }
+                }
             }
-            channel.subscribe()
-        } catch (e: Exception) {
-            delay(5000)
-            subscribeToVoiceRooms()
+            if (!currentCoroutineContext().isActive) break
+
+            if (shouldBackoff) {
+                delay(retryDelayMs)
+                retryDelayMs = nextRetryDelayMs(retryDelayMs, SUBSCRIPTION_RETRY_MAX_MS)
+            } else {
+                delay(SUBSCRIPTION_RESTART_GRACE_MS)
+            }
         }
     }
     
-    private suspend fun incrementParticipantCount(roomId: String) {
-        try {
-            android.util.Log.d("VoiceRoomRepository", "Incrementing participant count for room: $roomId")
-            // Cast to UUID explicitly to avoid ambiguity with overloaded functions
-            supabaseConfig.client.postgrest.rpc("increment_participant_count", buildJsonObject {
-                put("room_id", roomId) // Supabase will handle UUID casting
-            })
-            android.util.Log.d("VoiceRoomRepository", "Successfully incremented participant count")
-            
-            // Force immediate refresh to update UI
-            refreshRooms()
-            android.util.Log.d("VoiceRoomRepository", "Triggered room list refresh after increment")
-        } catch (e: Exception) {
-           android.util.Log.e("VoiceRoomRepository", "Failed to increment participant count for $roomId", e)
-           android.util.Log.e("VoiceRoomRepository", "Error details: ${e.message}")
-        }
-    }
-
-    private suspend fun decrementParticipantCount(roomId: String) {
-        var attempts = 0
-        val maxAttempts = 3
-        
-        while (attempts < maxAttempts) {
-            try {
-                attempts++
-                android.util.Log.d("VoiceRoomRepository", "Decrementing participant count for room: $roomId (attempt $attempts/$maxAttempts)")
-                
-                // Cast to UUID explicitly to avoid ambiguity with overloaded functions
-                supabaseConfig.client.postgrest.rpc("decrement_participant_count", buildJsonObject {
-                    put("room_id", roomId) // Supabase will handle UUID casting
-                })
-                
-                android.util.Log.d("VoiceRoomRepository", "Successfully decremented participant count")
-                
-                // Force immediate refresh to update UI
-                refreshRooms()
-                android.util.Log.d("VoiceRoomRepository", "Triggered room list refresh after decrement")
-                break
-                
-            } catch (e: Exception) {
-                android.util.Log.e("VoiceRoomRepository", "Failed to decrement participant count for $roomId (attempt $attempts/$maxAttempts)", e)
-                android.util.Log.e("VoiceRoomRepository", "Error details: ${e.message}")
-                
-                if (attempts < maxAttempts) {
-                    delay(500) // Wait before retry
-                } else {
-                    android.util.Log.e("VoiceRoomRepository", "All decrement attempts failed, giving up")
-                }
-            }
-        }
-    }
-
     // Invitations
     private val _incomingInvitation = MutableStateFlow<Invitation?>(null)
     val incomingInvitation = _incomingInvitation.asStateFlow()
 
     suspend fun subscribeToInvitations(userId: String) {
-        val channelName = "user:$userId"
+        var channelName = "user:$userId"
         android.util.Log.d("VoiceRoomRepo", "=== SUBSCRIBING TO INVITATIONS ===")
         android.util.Log.d("VoiceRoomRepo", "User ID: $userId")
         android.util.Log.d("VoiceRoomRepo", "Channel: $channelName")
@@ -974,7 +1768,7 @@ class VoiceRoomRepository @Inject constructor(
                     
                     val inviterName = payload["inviterName"].toString().replace("\"", "")
                     val roomName = payload["roomName"].toString().replace("\"", "")
-                    val roomId = payload["roomId"].toString().replace("\"", "")
+                    var roomId = payload["roomId"].toString().replace("\"", "")
                     
                     android.util.Log.d("VoiceRoomRepo", "Parsed - Inviter: $inviterName, Room: $roomName, ID: $roomId")
                     
@@ -997,7 +1791,10 @@ class VoiceRoomRepository @Inject constructor(
         }
         
         android.util.Log.d("VoiceRoomRepo", "Subscribing to channel...")
-        userChannel.subscribe()
+        supabaseConfig.subscribeRealtimeChannel(
+            channel = userChannel,
+            reason = "voice-user-$userId"
+        )
         android.util.Log.d("VoiceRoomRepo", "=== SUBSCRIPTION ACTIVE ===")
     }
 
@@ -1008,13 +1805,17 @@ class VoiceRoomRepository @Inject constructor(
              android.util.Log.d("VoiceRoomRepo", "Room: $roomName ($roomId)")
              android.util.Log.d("VoiceRoomRepo", "Inviter: $inviterName")
              
-             val channelName = "user:$targetUserId"
+             var channelName = "user:$targetUserId"
              android.util.Log.d("VoiceRoomRepo", "Creating channel: $channelName")
              val targetChannel = supabaseConfig.client.channel(channelName)
              
              // Ensure we are subscribed before broadcasting
              android.util.Log.d("VoiceRoomRepo", "Subscribing to channel...")
-             targetChannel.subscribe(blockUntilSubscribed = true)
+             supabaseConfig.subscribeRealtimeChannel(
+                 channel = targetChannel,
+                 reason = "voice-invite-$targetUserId",
+                 blockUntilSubscribed = true
+             )
              android.util.Log.d("VoiceRoomRepo", "Channel subscribed successfully")
              
              // Use JsonObject for proper serialization
@@ -1030,8 +1831,8 @@ class VoiceRoomRepository @Inject constructor(
                  message = invitationData
              )
              
-             android.util.Log.d("VoiceRoomRepo", "Broadcast sent, waiting 2s for propagation...")
-             delay(2000) // Increased delay for better reliability
+             // Small delay to reduce risk of the channel closing before the broadcast is flushed
+             delay(200)
              
              android.util.Log.d("VoiceRoomRepo", "Unsubscribing from channel")
              targetChannel.unsubscribe()
@@ -1047,22 +1848,30 @@ class VoiceRoomRepository @Inject constructor(
         _incomingInvitation.value = null
     }
 
+
+
     suspend fun sendMessage(message: conectate.com.presentation.voicerooms.ChatMessage) = withContext(Dispatchers.IO) {
-        socket?.emit("chat-message", org.json.JSONObject().apply {
-            put("roomId", currentRoomId ?: "")
+        emitOrQueueRoomSocketEvent(activeRoomId, "chat-message") {
+            put("roomId", activeRoomId ?: "")
             put("userId", message.userId)
             put("userName", message.userName)
             put("text", message.text)
-        })
+        }
     }
 
+
+
     suspend fun sendReaction(reaction: conectate.com.presentation.voicerooms.ReactionEvent) = withContext(Dispatchers.IO) {
-        socket?.emit("reaction", org.json.JSONObject().apply {
-            put("roomId", currentRoomId ?: "")
+        val reactionId = reaction.id.ifBlank { UUID.randomUUID().toString() }
+        emitOrQueueRoomSocketEvent(activeRoomId, "reaction") {
+            put("roomId", activeRoomId ?: "")
             put("userId", reaction.userId)
             put("emoji", reaction.emoji)
-        })
+            put("reactionId", reactionId)
+        }
     }
+
+
     suspend fun updateRoom(roomId: String, name: String, isPublic: Boolean, password: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val updateData = mutableMapOf<String, Any>(
@@ -1083,8 +1892,6 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun emitCinemaState(roomId: String, state: CinemaState) {
-        val userId = authService.getCurrentUserId() ?: return
-        
         // v7.2.4: Update local state IMMEDIATELY so Creator sees the change without waiting for broadcast
         _cinemaState.value = state
         
@@ -1092,7 +1899,7 @@ class VoiceRoomRepository @Inject constructor(
         scope.launch {
             // we trust the ViewModel to have checked hostId for the UI part, 
             // but we'll do a quick check here against current roomId if we have it
-            if (currentRoomId != roomId) return@launch
+            if (activeRoomId != roomId) return@launch
 
             // 1. Alert others via Socket (Instant)
             try {
@@ -1126,7 +1933,6 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun emitCinemaSync(roomId: String, isPlaying: Boolean, position: Long) {
-        val userId = authService.getCurrentUserId() ?: return
         scope.launch {
             // v7.2.3: Defensive check to avoid signaling storms
             if (roomChannel == null) return@launch 
@@ -1144,17 +1950,17 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun sendMessage(roomId: String, message: String) {
-        val userId = authService.getCurrentUserId() ?: return
+        var userId = authService.getCurrentUserId() ?: return
         // v23.0: Restoring chat functionality with fresh socket reference
         scope.launch {
             try {
-                android.util.Log.d("VoiceRoomRepo", "📤 Sending message: $message")
-                socket?.emit("chat-message", org.json.JSONObject().apply {
+                android.util.Log.d("VoiceRoomRepo", "Sending room message to $roomId with length=${message.length}")
+                emitOrQueueRoomSocketEvent(roomId, "chat-message") {
                     put("roomId", roomId)
                     put("userId", userId)
                     put("userName", _currentParticipants.value.find { it.id == userId }?.name ?: "User")
                     put("text", message)
-                })
+                }
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepo", "Failed to send message", e)
             }
@@ -1162,14 +1968,15 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun sendReaction(roomId: String, emoji: String) {
-        val userId = authService.getCurrentUserId() ?: return
+        var userId = authService.getCurrentUserId() ?: return
         scope.launch {
             try {
-                socket?.emit("reaction", org.json.JSONObject().apply {
+                emitOrQueueRoomSocketEvent(roomId, "reaction") {
                     put("roomId", roomId)
                     put("userId", userId)
                     put("emoji", emoji)
-                })
+                    put("reactionId", UUID.randomUUID().toString())
+                }
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepo", "Failed to send reaction", e)
             }
@@ -1177,7 +1984,6 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun emitCinemaControl(roomId: String, action: String, position: Long) {
-        val userId = authService.getCurrentUserId() ?: return
         scope.launch {
             // v7.2.3: Force IO and defensive checks
             if (roomId.isEmpty()) return@launch
@@ -1213,3 +2019,26 @@ data class CinemaSyncEvent(
     val currentPosition: Long,
     val action: String? = null
 )
+
+data class VoiceSessionState(
+    val roomId: String? = null,
+    val room: VoiceRoom? = null,
+    val roomName: String = "Sala de Voz",
+    val readableId: String? = null,
+    val participantCount: Int = 0,
+    val isMuted: Boolean = false,
+    val isConnected: Boolean = false,
+    val videoMode: VoiceRoomRepository.VideoMode = VoiceRoomRepository.VideoMode.NONE,
+    val connectionState: VoiceConnectionState = VoiceConnectionState.IDLE,
+    val connectionError: String? = null
+) {
+    val hasActiveSession: Boolean
+        get() = isConnected
+}
+
+
+
+
+
+
+

@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.NotificationManager
 import android.app.NotificationChannel
 import conectate.com.BuildConfig
+import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.messaging.MessageStatusNormalizer
 import conectate.com.core.moderation.ContentModerationService
 import conectate.com.core.moderation.ModerationContext
@@ -15,6 +16,25 @@ import conectate.com.core.security.GuardedAction
 import conectate.com.core.security.GuardOutcome
 import conectate.com.core.security.InputSecurityPolicy
 import conectate.com.core.security.OperationGuard
+import conectate.com.data.repository.collection.CollectionAdminRemoteStore
+import conectate.com.data.repository.collection.CollectionCreationRemoteStore
+import conectate.com.data.repository.collection.CollectionDeleteRetrySupport
+import conectate.com.data.repository.collection.CollectionGovernanceSupport
+import conectate.com.data.repository.collection.CollectionMediaStore
+import conectate.com.data.repository.collection.CollectionMessageEngagementStore
+import conectate.com.data.repository.collection.CollectionMemberProfileStore
+import conectate.com.data.repository.collection.CollectionMessageForwardingSupport
+import conectate.com.data.repository.collection.CollectionMembershipMutationSupport
+import conectate.com.data.repository.collection.CollectionMessageSyncSupport
+import conectate.com.data.repository.collection.CollectionPendingMessageRemoteStore
+import conectate.com.data.repository.collection.CollectionPendingMessageRetrySupport
+import conectate.com.data.repository.collection.CollectionMessageReceiptRemoteStore
+import conectate.com.data.repository.collection.CollectionPollMessageRemoteStore
+import conectate.com.data.repository.collection.CollectionPollStore
+import conectate.com.data.repository.collection.CollectionRepositorySupport
+import conectate.com.data.repository.collection.CollectionSyncSupport
+import conectate.com.data.repository.collection.bindCollectionRealtimeAuthLifecycle
+import conectate.com.data.repository.collection.launchCollectionRealtimeLoop
 import conectate.com.data.local.dao.GroupDao
 import conectate.com.data.local.entity.GroupEntity
 import conectate.com.data.local.entity.GroupMemberEntity
@@ -30,9 +50,14 @@ import conectate.com.data.model.GroupWithLastMessage
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.domain.sync.GroupSyncDataSource
+import conectate.com.util.ChatSoundPlayer
+import conectate.com.util.buildCallEventPreview
+import conectate.com.util.buildConversationBackgroundPreview
+import conectate.com.util.ConversationNotificationPrefs
+import conectate.com.util.isCallEventContentType
+import conectate.com.util.MessageNotificationFactory
+import conectate.com.util.MessageNotificationPayload
 import dagger.hilt.android.qualifiers.ApplicationContext
-import io.github.jan.supabase.gotrue.SessionStatus
-import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.*
@@ -48,10 +73,9 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -63,7 +87,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CancellationException
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -92,69 +115,80 @@ class GroupRepository @Inject constructor(
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
     private val operationGuard: OperationGuard,
+    private val chatSoundPlayer: ChatSoundPlayer,
     @ApplicationContext private val context: Context
 ) : GroupSyncDataSource {
     private val maxForwardTargetsPerBatch = 20
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val json = Json { ignoreUnknownKeys = true }
+    private var scope = newSafeScope("GroupRepository", Dispatchers.IO)
+    private var json = Json { ignoreUnknownKeys = true }
     private val transientNetworkRetryCodes = listOf("timeout", "timed out", "connection", "network", "502", "503", "504")
+    private val collectionAdminRemoteStore = CollectionAdminRemoteStore(supabaseConfig)
+    private val collectionCreationRemoteStore = CollectionCreationRemoteStore(supabaseConfig)
+    private val collectionMediaStore = CollectionMediaStore(storageService)
+    private val collectionMessageEngagementStore = CollectionMessageEngagementStore(supabaseConfig, json)
+    private val collectionMemberProfileStore = CollectionMemberProfileStore(supabaseConfig)
+    private val collectionMessageReceiptRemoteStore = CollectionMessageReceiptRemoteStore(supabaseConfig)
+    private val collectionPollMessageRemoteStore = CollectionPollMessageRemoteStore(supabaseConfig, authService, json)
+    private val collectionPollStore = CollectionPollStore(supabaseConfig, authService, json)
+    private val collectionPendingMessageRemoteStore = CollectionPendingMessageRemoteStore(supabaseConfig, authService)
+    private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
+
+    private fun currentSessionUserId(): String? =
+        SessionWriteGuard.normalizeAccountId(authService.getCurrentUserId())
+
+    private fun captureSessionSnapshot(expectedUserId: String? = currentSessionUserId()): SessionWriteGuard.Snapshot =
+        sessionWriteGuard.capture(expectedUserId)
+
+    private fun isSessionSnapshotValid(
+        snapshot: SessionWriteGuard.Snapshot,
+        source: String
+    ): Boolean {
+        val valid = sessionWriteGuard.isValid(snapshot)
+        if (!valid) {
+            android.util.Log.w(
+                "GroupRepository",
+                "Discarding stale session write from $source. expected=${snapshot.accountId}, active=${currentSessionUserId()}"
+            )
+        }
+        return valid
+    }
 
     init {
-        // [FIX] SINGLE POINT OF TRUTH for session/realtime initialization
-        scope.launch {
-            // Immediate check for existing session
-            val currentSession = supabaseConfig.client.auth.currentSessionOrNull()
-            if (currentSession != null) {
-                val userId = currentSession.user?.id
-                android.util.Log.d("GroupRepository", "[GOD] Initial Session found ($userId). Starting listeners...")
-                startRealtimeSubscriptions(userId ?: "")
-                
-                // Show Proof of Life Log (Debug only - No Toast)
-                android.util.Log.d("GroupRepository", "🟢 [G-REALTIME] Sistema Iniciado")
-            }
-
-            // Listen for future changes
-            supabaseConfig.client.auth.sessionStatus.collect { status ->
-                android.util.Log.d("GroupRepository", "[GOD] sessionStatus update: ${status::class.simpleName}")
-                if (status is io.github.jan.supabase.gotrue.SessionStatus.Authenticated) {
-                    val userId = status.session.user?.id
-                    android.util.Log.d("GroupRepository", "[GOD] User authenticated ($userId). Starting listeners...")
-                    startRealtimeSubscriptions(userId ?: "")
-                } else if (status is io.github.jan.supabase.gotrue.SessionStatus.NotAuthenticated) {
-                    android.util.Log.d("GroupRepository", "[GOD] User not authenticated. Stopping listeners...")
-                    stopRealtimeSubscriptions()
-                }
-            }
-        }
+        bindCollectionRealtimeAuthLifecycle(
+            scope = scope,
+            supabaseConfig = supabaseConfig,
+            logTag = "GroupRepository",
+            logPrefix = "[GOD]",
+            readyLog = "🟢 [G-REALTIME] Sistema Iniciado",
+            onAuthenticated = ::startRealtimeSubscriptions,
+            onNotAuthenticated = ::stopRealtimeSubscriptions
+        )
     }
 
     private var realtimeJob: Job? = null
     private var groupListenerJob: Job? = null
     private var subscribedGroupIds: Set<String> = emptySet()
+    private val activeGroupMessageJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     private fun startRealtimeSubscriptions(userId: String) {
         if (userId.isBlank()) return
         
         realtimeJob?.cancel()
-        realtimeJob = scope.launch {
-            // [CRITICAL] Force a sync first to ensure we know our groups before subscribing
-            syncGroups()
-            retryPendingGroupMessages()
-            
-            // Recalculate joined group IDs to filter Realtime
-            val myGroups = groupDao.getAllGroupsSync().filter { it.is_member }.map { it.id.trim().lowercase() }.toSet()
-            subscribedGroupIds = myGroups
-
-            launch {
-                while (isActive) {
-                    delay(45_000)
-                    retryPendingGroupMessages()
-                }
-            }
-            
-            android.util.Log.d("GroupRepository", "🚀 [REALTIME] Starting subscriptions for ${myGroups.size} groups")
-            subscribeToGroupChanges(userId, myGroups.toList())
-        }
+        realtimeJob = scope.launchCollectionRealtimeLoop(
+            userId = userId,
+            logTag = "GroupRepository",
+            collectionLabelPlural = "groups",
+            syncAction = ::syncGroups,
+            retryPendingAction = { retryPendingGroupMessages() },
+            loadSubscribedIds = {
+                groupDao.getAllGroupsSync()
+                    .filter { it.is_member }
+                    .map { it.id.trim().lowercase() }
+                    .toSet()
+            },
+            onSubscribedIdsChanged = { subscribedGroupIds = it },
+            subscribeAction = ::subscribeToGroupChanges
+        )
     }
 
     private fun stopRealtimeSubscriptions() {
@@ -164,6 +198,18 @@ class GroupRepository @Inject constructor(
         groupListenerJob = null
         android.util.Log.d("GroupRepository", "[GOD] Realtime subscriptions stopped")
 
+    }
+
+    fun clearData() {
+        android.util.Log.w("GroupRepository", "CLEAR DATA: Purging in-memory group state...")
+        sessionWriteGuard.invalidate()
+        stopRealtimeSubscriptions()
+        subscribedGroupIds = emptySet()
+        currentOpenedGroupId = null
+        activeGroupMessageJobs.values.forEach { it.cancel() }
+        activeGroupMessageJobs.clear()
+        _activeGroupMessages.clear()
+        _lastDirectUpdate.value = 0L
     }
 
     // --- STATE ---
@@ -181,10 +227,10 @@ class GroupRepository @Inject constructor(
     fun setActiveGroup(groupId: String?) {
         currentOpenedGroupId = groupId?.trim()?.lowercase()
         if (groupId != null) {
-            val cleanId = groupId.trim().lowercase()
+            var cleanId = groupId.trim().lowercase()
             // Clear system notifications for this group
             try {
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                var notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(cleanId.hashCode())
             } catch (e: Exception) {
                 android.util.Log.e("GroupRepository", "Error clearing notification", e)
@@ -209,14 +255,14 @@ class GroupRepository @Inject constructor(
                     var retryCount = 0
                     while (isActive) {
                         try {
-                            val client = supabaseConfig.client
-                            val cleanUserId = userId.trim().lowercase()
-                            val channelName = "groups-messages-$cleanUserId"
-                            val channel = client.channel(channelName)
+                            var client = supabaseConfig.client
+                            var cleanUserId = userId.trim().lowercase()
+                            var channelName = "groups-messages-$cleanUserId"
+                            var channel = client.channel(channelName)
                             
                             // [REALTIME FIX] Filter by current joined IDs if possible to reduce noise, 
                             // but RLS should handle it.
-                            val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                            var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                                 table = "group_messages"
                             }
 
@@ -226,19 +272,22 @@ class GroupRepository @Inject constructor(
                                     android.util.Log.d("GroupRepository", "📡 [REALTIME-MSG] Change received: $change")
                                     when (change) {
                                         is PostgresAction.Insert -> {
-                                            val msg = json.decodeFromJsonElement<GroupMessage>(change.record)
-                                            handleIncomingMessage(msg)
+                                            var msg = json.decodeFromJsonElement<GroupMessage>(change.record)
+                                            handleIncomingMessage(msg, cleanUserId)
                                         }
                                         is PostgresAction.Update -> {
-                                            val msg = json.decodeFromJsonElement<GroupMessage>(change.record)
-                                            handleIncomingGroupUpdate(msg)
+                                            var msg = json.decodeFromJsonElement<GroupMessage>(change.record)
+                                            handleIncomingGroupUpdate(msg, cleanUserId)
                                         }
                                         else -> {}
                                     }
                                 }.launchIn(this)
                                 
                                 launch {
-                                    channel.subscribe()
+                                    supabaseConfig.subscribeRealtimeChannel(
+                                        channel = channel,
+                                        reason = "group-messages-$userId"
+                                    )
                                     android.util.Log.d("GroupRepository", "🔥 [REALTIME] Subscribed to MESSAGES Flow for ${groupIds.size} groups")
                                     appMetrics.incrementCounter(
                                         metric = "group_realtime_subscribe_success",
@@ -287,12 +336,12 @@ class GroupRepository @Inject constructor(
                 var retryCount = 0
                 while (isActive) {
                     try {
-                        val client = supabaseConfig.client
-                        val cleanUserId = userId.trim().lowercase()
-                        val channelName = "groups-members-$cleanUserId"
-                        val channel = client.channel(channelName)
+                        var client = supabaseConfig.client
+                        var cleanUserId = userId.trim().lowercase()
+                        var channelName = "groups-members-$cleanUserId"
+                        var channel = client.channel(channelName)
                         
-                        val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                        var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                             table = "group_members"
                             this.filter = "user_id=eq.$cleanUserId"
                         }
@@ -302,11 +351,11 @@ class GroupRepository @Inject constructor(
                             changes.onEach { change: PostgresAction ->
                                 android.util.Log.d("GroupRepository", "👥 Membership changed ($change). Syncing and Refreshing Realtime...")
                                 
-                                val normalizedUserId = userId.trim().lowercase()
+                                var normalizedUserId = userId.trim().lowercase()
                                 when (change) {
                                     is PostgresAction.Insert -> {
                                         try {
-                                            val member = json.decodeFromJsonElement<GroupMember>(change.record)
+                                            var member = json.decodeFromJsonElement<GroupMember>(change.record)
                                             groupDao.insertMembers(listOf(GroupMemberEntity(member.group_id.trim().lowercase(), member.user_id.trim().lowercase(), member.role, member.joined_at)))
                                         } catch (e: Exception) {
                                             android.util.Log.e("GroupRepository", "Error decoding member insert", e)
@@ -314,7 +363,7 @@ class GroupRepository @Inject constructor(
                                     }
                                     is PostgresAction.Update -> {
                                         try {
-                                            val member = json.decodeFromJsonElement<GroupMember>(change.record)
+                                            var member = json.decodeFromJsonElement<GroupMember>(change.record)
                                             val cleanGId = member.group_id.trim().lowercase()
                                             val cleanUId = member.user_id.trim().lowercase()
                                             android.util.Log.i("GroupRepository", "🔄 [ROLE-UPDATE] User $cleanUId in $cleanGId is now ${member.role}")
@@ -324,8 +373,8 @@ class GroupRepository @Inject constructor(
                                         }
                                     }
                                     is PostgresAction.Delete -> {
-                                        val oldData = change.oldRecord
-                                        val gId = oldData["group_id"]?.jsonPrimitive?.contentOrNull
+                                        var oldData = change.oldRecord
+                                        var gId = oldData["group_id"]?.jsonPrimitive?.contentOrNull
                                         if (gId != null) {
                                             groupDao.removeMember(gId.trim().lowercase(), normalizedUserId)
                                         }
@@ -333,7 +382,7 @@ class GroupRepository @Inject constructor(
                                     else -> {}
                                 }
 
-                                val result = syncGroups()
+                                var result = syncGroups()
                                 if (result.isSuccess) {
                                     val newIds = groupDao.getAllGroupsSync().filter { it.is_member }.map { it.id.trim().lowercase() }.toSet()
                                     if (newIds != subscribedGroupIds) {
@@ -344,7 +393,10 @@ class GroupRepository @Inject constructor(
                             }.launchIn(this)
                             
                             launch {
-                                channel.subscribe()
+                                supabaseConfig.subscribeRealtimeChannel(
+                                    channel = channel,
+                                    reason = "group-members-$userId"
+                                )
                                 android.util.Log.d("GroupRepository", "🔥 [REALTIME] Subscribed to MEMBERS updates")
                                 retryCount = 0
                                 channel.status.collect { status ->
@@ -369,12 +421,12 @@ class GroupRepository @Inject constructor(
                 var retryCount = 0
                 while (isActive) {
                     try {
-                        val client = supabaseConfig.client
-                        val cleanUserId = userId.trim().lowercase()
-                        val channelName = "groups-meta-$cleanUserId"
-                        val channel = client.channel(channelName)
+                        var client = supabaseConfig.client
+                        var cleanUserId = userId.trim().lowercase()
+                        var channelName = "groups-meta-$cleanUserId"
+                        var channel = client.channel(channelName)
                         
-                        val changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                        var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                             table = "groups"
                         }
 
@@ -385,11 +437,11 @@ class GroupRepository @Inject constructor(
                                 when (change) {
                                     is PostgresAction.Update -> {
                                         try {
-                                            val group = json.decodeFromJsonElement<conectate.com.data.model.Group>(change.record)
-                                            val cleanGroupId = group.id.trim().lowercase()
+                                            var group = json.decodeFromJsonElement<conectate.com.data.model.Group>(change.record)
+                                            var cleanGroupId = group.id.trim().lowercase()
                                             
                                             // Only update if we are members or have it locally
-                                            val local = groupDao.getGroupById(cleanGroupId)
+                                            var local = groupDao.getGroupById(cleanGroupId)
                                             android.util.Log.i("GroupRepository", "📝 [META-UPDATE] Group ${group.name} updated. OnlyAdmins=${group.only_admins_can_talk}")
                                             if (local != null) {
                                                 groupDao.upsertGroup(GroupEntity.fromDomain(
@@ -402,8 +454,8 @@ class GroupRepository @Inject constructor(
                                         }
                                     }
                                     is PostgresAction.Delete -> {
-                                        val oldData = change.oldRecord
-                                        val gId = oldData["id"]?.jsonPrimitive?.contentOrNull
+                                        var oldData = change.oldRecord
+                                        var gId = oldData["id"]?.jsonPrimitive?.contentOrNull
                                         if (gId != null) {
                                             groupDao.deleteGroup(gId.trim().lowercase())
                                         }
@@ -412,7 +464,10 @@ class GroupRepository @Inject constructor(
                                 }
                             }.launchIn(this)
                             launch {
-                                channel.subscribe()
+                                supabaseConfig.subscribeRealtimeChannel(
+                                    channel = channel,
+                                    reason = "group-meta-$userId"
+                                )
                                 android.util.Log.d("GroupRepository", "🔥 [REALTIME] Subscribed to GROUPS META updates")
                                 retryCount = 0
                                 channel.status.collect { status ->
@@ -437,9 +492,14 @@ class GroupRepository @Inject constructor(
 
     // Note: No explicit locking needed - Dispatcher.IO coroutines are single-threaded per context
     
-    suspend fun handleIncomingMessage(msg: GroupMessage) {
+    suspend fun handleIncomingMessage(
+        msg: GroupMessage,
+        sessionUserId: String? = currentSessionUserId()
+    ) {
+        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         withContext(Dispatchers.IO) {
-            val cleanId = msg.group_id.trim().lowercase()
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-start:${msg.group_id}")) return@withContext
+            var cleanId = msg.group_id.trim().lowercase()
             android.util.Log.i("GroupRepository", "📡 [REALTIME-INCOMING] Received msg=${msg.id} content='${msg.content.take(20)}' group=$cleanId")
             
             try {
@@ -468,7 +528,7 @@ class GroupRepository @Inject constructor(
                     android.util.Log.d("GroupRepository", "📩 [MSG-VALID] Content='${msg.content.take(50)}...', Sender=${msg.sender_id}, Group=$cleanId")
 
                     // 4. Persistir Mensaje (Room)
-                    val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                    var currentUserId = sessionSnapshot.accountId
                     
                     if (currentUserId != null && msg.sender_id.trim().lowercase() != currentUserId) {
                         scope.launch { markMessageAsDelivered(cleanId, msg.id) }
@@ -480,27 +540,19 @@ class GroupRepository @Inject constructor(
                         msg.copy(reply_to = reply)
                     } else msg.copy(group_id = cleanId) // Ensure clean ID
 
-                    // Hydrate sender name if missing
-                    val hydratedMsg = if (normalizedMsg.sender_name.isNullOrBlank()) {
-                        try {
-                            val senderProfile = userRepository.getUserById(normalizedMsg.sender_id).getOrNull()
-                            val displayName = senderProfile?.displayName?.ifBlank { senderProfile.username } 
-                                ?: senderProfile?.username ?: "Usuario"
-                            normalizedMsg.copy(sender_name = displayName)
-                        } catch (e: Exception) {
-                            normalizedMsg
-                        }
-                    } else normalizedMsg
+                    val hydratedMsg = hydrateGroupMessage(normalizedMsg)
 
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-db:$cleanId")) return@withContext
                     groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(hydratedMsg)))
                     android.util.Log.d("GroupRepository", "💾 [DB-SAVE] Mensaje ${msg.id} guardado en Room DB")
                     
                     // 5. Actualizar Flow Activo (Chat Screen)
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-flow:$cleanId")) return@withContext
                     updateGroupMessageInFlow(cleanId, hydratedMsg)
                     android.util.Log.d("GroupRepository", "🔄 [FLOW-UPDATE] Flow actualizado para $cleanId")
                     
                     // 6. Actualizar Metadatos del Grupo (Lista de Chats) y Notificar
-                    val cleanSenderId = msg.sender_id.trim().lowercase()
+                    var cleanSenderId = msg.sender_id.trim().lowercase()
                     val isMyMessage = cleanSenderId == currentUserId
                     
                     if (!isMyMessage) {
@@ -509,22 +561,31 @@ class GroupRepository @Inject constructor(
                         
                         if (!isGroupCurrentlyOpen) {
                             android.util.Log.d("GroupRepository", "🔔 [UNREAD+1] Incrementando contador para $cleanId (grupo cerrado)")
+                            if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-unread:$cleanId")) return@withContext
                             groupDao.incrementUnreadCount(cleanId)
-                            showNotification(msg, localGroup.name)
+                            if (!isCallEventContentType(msg.content_type)) {
+                                showNotification(msg, localGroup.name)
+                            }
                         } else {
                             android.util.Log.d("GroupRepository", "👁️ [UNREAD-SKIP] Grupo $cleanId está abierto. NO incrementar contador.")
+                            if (!isCallEventContentType(msg.content_type)) {
+                                chatSoundPlayer.playReceive()
+                            }
                         }
                     } else {
                         android.util.Log.d("GroupRepository", "✍️ [MY-MSG] Mensaje enviado por mí. No incrementar unread.")
                     }
                     
                     // Actualizar last_message siempre (para todos los mensajes, incluso los míos)
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-metadata:$cleanId")) return@withContext
                     groupDao.updateMetadata(cleanId, 
-                        when(msg.content_type) {
+                        buildConversationBackgroundPreview(msg.content_type, msg.content)
+                            ?: buildCallEventPreview(msg.content_type, msg.content)
+                            ?: when(msg.content_type) {
                             "text" -> msg.content
                             "poll" -> "📊 ${msg.content}"
                             else -> "Archivo multimedia"
-                        }, 
+                        },
                         msg.created_at
                     )
                     
@@ -536,13 +597,18 @@ class GroupRepository @Inject constructor(
         }
     }
 
-    private suspend fun handleIncomingGroupUpdate(msg: GroupMessage) {
+    private suspend fun handleIncomingGroupUpdate(
+        msg: GroupMessage,
+        sessionUserId: String? = currentSessionUserId()
+    ) {
+        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         withContext(Dispatchers.IO) {
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-update-start:${msg.id}")) return@withContext
             try {
-                val existing = groupDao.getMessageById(msg.id)
+                var existing = groupDao.getMessageById(msg.id)
                 if (existing != null) {
                     val currentDomain = existing.toDomain()
-                    val mergedReceipt = mergeGroupReceiptState(
+                    var mergedReceipt = mergeGroupReceiptState(
                         currentStatus = currentDomain.status,
                         currentDeliveredAt = currentDomain.delivered_at,
                         currentReadAt = currentDomain.read_at,
@@ -564,7 +630,9 @@ class GroupRepository @Inject constructor(
                         read_at = mergedReceipt.readAt
                     )
                     
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-update-before-db:${msg.id}")) return@withContext
                     groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(finalMsg)))
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-update-before-flow:${msg.id}")) return@withContext
                     updateGroupMessageInFlow(finalMsg.group_id, finalMsg)
                     android.util.Log.d("GroupRepository", "✏️ [UPDATE] Mensaje actualizado: ${msg.id}")
                 }
@@ -613,9 +681,9 @@ class GroupRepository @Inject constructor(
         incomingDeliveredAt: String?,
         incomingReadAt: String?
     ): GroupReceiptMergeResult {
-        val current = normalizeGroupReceiptStatus(currentStatus)
-        val incoming = normalizeGroupReceiptStatus(incomingStatus)
-        var mergedReadAt = incomingReadAt ?: currentReadAt
+        var current = normalizeGroupReceiptStatus(currentStatus)
+        var incoming = normalizeGroupReceiptStatus(incomingStatus)
+        val mergedReadAt = incomingReadAt ?: currentReadAt
         var mergedDeliveredAt = incomingDeliveredAt ?: currentDeliveredAt
 
         val candidate = when {
@@ -623,7 +691,7 @@ class GroupRepository @Inject constructor(
             !mergedDeliveredAt.isNullOrBlank() || incoming == "delivered" -> "delivered"
             else -> incoming
         }
-        val finalStatus = if (groupReceiptRank(candidate) >= groupReceiptRank(current)) candidate else current
+        var finalStatus = if (groupReceiptRank(candidate) >= groupReceiptRank(current)) candidate else current
         if (finalStatus == "read" && mergedDeliveredAt.isNullOrBlank()) {
             mergedDeliveredAt = mergedReadAt
         }
@@ -633,63 +701,41 @@ class GroupRepository @Inject constructor(
     // --- NOTIFICATIONS (SYSTEM) ---
     
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+@Composable
     private suspend fun showNotification(msg: GroupMessage, groupName: String) {
         withContext(Dispatchers.Main) {
             try {
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                
-                // CRITICAL: Use unique channel ID for groups (different from 1-to-1 and communities)
-                val channelId = "group_messages_channel_v2"
-                
-                val channel = android.app.NotificationChannel(
-                    channelId,
-                    "Mensajes de Grupos",
-                    android.app.NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Notificaciones de mensajes en grupos"
-                    enableVibration(true)
-                    enableLights(true)
-                    lightColor = android.graphics.Color.RED
-                    setShowBadge(true)
-                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                var cleanId = msg.group_id.trim().lowercase()
+                if (ConversationNotificationPrefs(context).isMuted("group", cleanId)) {
+                    android.util.Log.d("GroupRepository", "🔕 [NOTIFICATION] Group $cleanId muted locally. Skipping notification.")
+                    return@withContext
                 }
-                notificationManager.createNotificationChannel(channel)
-                android.util.Log.d("GroupRepository", "🔔 [NOTIFICATION] Channel created/verified: $channelId")
 
-                val intent = android.content.Intent(context, conectate.com.MainActivity::class.java).apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    putExtra("chat_id", msg.group_id)
-                    putExtra("group_id", msg.group_id)
-                    putExtra("is_group", true)
-                    putExtra("target_type", "group")
-                    putExtra("type", "new_message")
-                }
-                val pendingIntent = android.app.PendingIntent.getActivity(
-                    context, 
-                    msg.group_id.hashCode(), 
-                    intent, 
-                    android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                var notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                var channelId = "group_messages_channel_v2"
+                val previewText = buildConversationBackgroundPreview(msg.content_type, msg.content)
+                    ?: buildCallEventPreview(msg.content_type, msg.content)
+                    ?: if (msg.content_type == "text") msg.content else "📎 Multimedia"
+                val notification = MessageNotificationFactory.build(
+                    context = context,
+                    payload = MessageNotificationPayload(
+                        channelId = channelId,
+                        channelName = "Mensajes de Grupos",
+                        channelDescription = "Notificaciones de mensajes en grupos",
+                        conversationId = cleanId,
+                        targetType = "group",
+                        conversationTitle = groupName,
+                        senderName = msg.sender_name ?: "Alguien",
+                        messageBody = previewText,
+                        notificationId = cleanId.hashCode(),
+                        senderId = msg.sender_id,
+                        messageId = msg.id,
+                        isGroupConversation = true
+                    )
                 )
 
-                val contentText = "${msg.sender_name ?: "Alguien"}: ${if(msg.content_type == "text") msg.content else "📎 Multimedia"}"
-
-                val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
-                    .setSmallIcon(conectate.com.R.drawable.ic_notification)
-                    .setContentTitle(groupName)
-                    .setContentText(contentText)
-                    .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(contentText))
-                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX) // MAXIMUM priority
-                    .setCategory(androidx.core.app.NotificationCompat.CATEGORY_MESSAGE)
-                    .setAutoCancel(true)
-                    .setContentIntent(pendingIntent)
-                    .setGroup("GROUP_MESSAGES") // Group all group messages together
-                    .setGroupSummary(false) // Individual notifications, not summary
-                    .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
-                    .setVibrate(longArrayOf(0, 250, 250, 250))
-                    .setDefaults(android.app.Notification.DEFAULT_ALL)
-                    .build()
-
-                notificationManager.notify(msg.group_id.hashCode(), notification)
+                notificationManager.notify(cleanId.hashCode(), notification)
                 android.util.Log.d("GroupRepository", "🔔 [NOTIFICATION] Sent notification for group $groupName, messageId=${msg.id}")
             } catch (e: Exception) {
                 android.util.Log.e("GroupRepository", "❌ [NOTIFICATION] Failed to show notification", e)
@@ -703,16 +749,32 @@ class GroupRepository @Inject constructor(
      * Devuelve el flujo de grupos locales, ordenados por actividad reciente.
      * Combina Room con un trigger manual si es necesario.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getGroupsFlow(): Flow<List<GroupWithLastMessage>> {
-        return groupDao.getAllGroupsFlow()
+        return authService.observeSession()
+            .map { session ->
+                session?.user?.id?.trim()?.lowercase()
+                    ?: authService.getCurrentUserId()?.trim()?.lowercase()
+            }
             .distinctUntilChanged()
-            .map { entities ->
-                entities.map { entity ->
-                    GroupWithLastMessage(
-                        group = entity.toDomain(),
-                        unreadCount = entity.unread_count
-                    )
-                }.sortedByDescending { it.group.last_message_at }
+            .flatMapLatest { activeUserId ->
+                if (activeUserId.isNullOrBlank()) {
+                    flowOf(emptyList())
+                } else {
+                    groupDao.getGroupsForUserFlow(activeUserId)
+                        .distinctUntilChanged()
+                        .map { entities ->
+                            entities
+                                .filter { it.is_member && !it.is_deleted }
+                                .map { entity ->
+                                    GroupWithLastMessage(
+                                        group = entity.toDomain(),
+                                        unreadCount = entity.unread_count
+                                    )
+                                }
+                                .sortedByDescending { it.group.last_message_at }
+                        }
+                }
             }
             .flowOn(Dispatchers.IO)
     }
@@ -720,10 +782,12 @@ class GroupRepository @Inject constructor(
     /**
      * Obtiene un grupo por su ID (Optimizado).
      */
+@Composable
+@Composable
     suspend fun getGroupById(id: String): Group? = withContext(Dispatchers.IO) {
-        val cleanId = id.trim().lowercase()
-        val group = groupDao.getGroupById(cleanId)?.toDomain() ?: try {
-            val remote = supabaseConfig.client.postgrest["groups"].select {
+        var cleanId = id.trim().lowercase()
+        var group = groupDao.getGroupById(cleanId)?.toDomain() ?: try {
+            var remote = supabaseConfig.client.postgrest["groups"].select {
                 filter { 
                     eq("id", cleanId)
                     eq("is_deleted", false)
@@ -741,12 +805,12 @@ class GroupRepository @Inject constructor(
     }
 
     fun getGroupFlow(id: String): Flow<Group?> {
-        val cleanId = id.trim().lowercase()
+        var cleanId = id.trim().lowercase()
         return groupDao.getGroupByIdFlow(cleanId).map { it?.toDomain() }
     }
 
     fun getGroupByIdFlow(groupId: String): Flow<conectate.com.data.local.entity.GroupEntity?> {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         return groupDao.getGroupByIdFlow(cleanId)
     }
 
@@ -758,27 +822,178 @@ class GroupRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
     
+@Composable
+@Composable
+    suspend fun getCachedMessages(groupId: String): List<GroupMessage> = withContext(Dispatchers.IO) {
+        var cleanId = groupId.trim().lowercase()
+        if (cleanId.isBlank()) return@withContext emptyList()
+        var localMessages = groupDao.getMessagesSync(cleanId).map { it.toDomain() }
+        unifyGroupMessages(localMessages, currentSessionUserId())
+    }
+
     fun getMessagesFlow(groupId: String): Flow<List<GroupMessage>> {
-        val cleanId = groupId.trim().lowercase()
-        val currentUserId = authService.getCurrentUserId()
+        var cleanId = groupId.trim().lowercase()
         
         return _activeGroupMessages.getOrPut(cleanId) {
             val state = MutableStateFlow<List<GroupMessage>>(emptyList())
             
             // 1. Room Collection
-            scope.launch {
+            activeGroupMessageJobs[cleanId]?.cancel()
+            activeGroupMessageJobs[cleanId] = scope.launch {
                 groupDao.getMessagesFlow(cleanId)
                     .distinctUntilChanged()
                     .collect { entities ->
-                        val localMessages = entities.map { it.toDomain() }
-                        state.update { current -> unifyGroupMessages(localMessages + current, currentUserId) }
+                        var localMessages = entities.map { it.toDomain() }
+                        val activeUserId = currentSessionUserId()
+                        state.update { current -> unifyGroupMessages(localMessages + current, activeUserId) }
                     }
             }
             // 2. Initial Sync
-            scope.launch { syncGroupMessages(cleanId) }
+            scope.launch { syncGroupMessages(cleanId, currentSessionUserId()) }
             
             state
         }
+    }
+
+    private fun sanitizeMemberSenderName(value: String?): String? =
+        value?.trim()?.takeIf { it.isNotBlank() && !it.equals("Usuario", ignoreCase = true) }
+
+    private fun sanitizeMemberSenderImage(value: String?): String? =
+        value?.trim()?.takeIf { it.isNotBlank() }
+
+    private suspend fun hydrateGroupMessages(messages: List<GroupMessage>): List<GroupMessage> {
+        if (messages.isEmpty()) return emptyList()
+
+        val normalizedMessages = messages.map { message ->
+            message.copy(
+                group_id = message.group_id.trim().lowercase(),
+                sender_id = message.sender_id.trim().lowercase()
+            )
+        }
+        var profileMap = collectionMemberProfileStore.loadProfiles(normalizedMessages.map { it.sender_id })
+
+        return normalizedMessages.map { message ->
+            var profile = profileMap[message.sender_id]
+            val senderName = sanitizeMemberSenderName(message.sender_name)
+                ?: sanitizeMemberSenderName(profile?.userName)
+            val senderImage = sanitizeMemberSenderImage(message.sender_image)
+                ?: sanitizeMemberSenderImage(profile?.userImage)
+
+            message.copy(
+                sender_name = senderName ?: message.sender_name,
+                sender_image = senderImage ?: message.sender_image
+            )
+        }
+    }
+
+    private suspend fun hydrateGroupMessage(message: GroupMessage): GroupMessage =
+        hydrateGroupMessages(listOf(message)).firstOrNull() ?: message
+
+    private data class GroupReceiptState(
+        val deliveredAt: String?,
+        val readAt: String?
+    )
+
+    private suspend fun fetchGroupReceiptStates(
+        groupId: String,
+        currentUserId: String
+    ): Map<String, GroupReceiptState> {
+        var token = authService.getAccessToken()?.trim().orEmpty()
+        var cleanGroupId = groupId.trim().lowercase()
+        var cleanUserId = currentUserId.trim().lowercase()
+        if (token.isBlank() || cleanGroupId.isBlank() || cleanUserId.isBlank()) {
+            return emptyMap()
+        }
+
+        return runCatching {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/group_message_receipts") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("select", "message_id,delivered_at,read_at")
+                parameter("group_id", "eq.$cleanGroupId")
+                parameter("user_id", "eq.$cleanUserId")
+            }
+            if (!response.status.isSuccess()) {
+                return@runCatching emptyMap()
+            }
+            response.body<List<JsonObject>>().mapNotNull { row ->
+                var messageId = row["message_id"]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.trim()
+                    ?.lowercase()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                messageId to GroupReceiptState(
+                    deliveredAt = row["delivered_at"]?.jsonPrimitive?.contentOrNull?.trim()?.ifBlank { null },
+                    readAt = row["read_at"]?.jsonPrimitive?.contentOrNull?.trim()?.ifBlank { null }
+                )
+            }.toMap()
+        }.onFailure {
+            android.util.Log.w("GroupRepository", "Failed to fetch receipt states for group $cleanGroupId", it)
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun applyGroupReceiptState(
+        message: GroupMessage,
+        receipt: GroupReceiptState?,
+        currentUserId: String
+    ): GroupMessage {
+        if (receipt == null) return message
+        if (message.sender_id.trim().lowercase() == currentUserId.trim().lowercase()) return message
+
+        var mergedReceipt = mergeGroupReceiptState(
+            currentStatus = message.status,
+            currentDeliveredAt = message.delivered_at,
+            currentReadAt = message.read_at,
+            incomingStatus = when {
+                !receipt.readAt.isNullOrBlank() -> "read"
+                !receipt.deliveredAt.isNullOrBlank() -> "delivered"
+                else -> message.status
+            },
+            incomingDeliveredAt = receipt.deliveredAt,
+            incomingReadAt = receipt.readAt
+        )
+
+        return message.copy(
+            status = mergedReceipt.status,
+            delivered_at = mergedReceipt.deliveredAt,
+            read_at = mergedReceipt.readAt
+        )
+    }
+
+    private fun mergeSyncedGroupMessageWithLocalState(
+        incoming: GroupMessage,
+        local: GroupMessage?
+    ): GroupMessage {
+        local ?: return incoming
+        var mergedReceipt = mergeGroupReceiptState(
+            currentStatus = local.status,
+            currentDeliveredAt = local.delivered_at,
+            currentReadAt = local.read_at,
+            incomingStatus = incoming.status,
+            incomingDeliveredAt = incoming.delivered_at,
+            incomingReadAt = incoming.read_at
+        )
+        return incoming.copy(
+            sender_name = sanitizeMemberSenderName(incoming.sender_name)
+                ?: sanitizeMemberSenderName(local.sender_name)
+                ?: incoming.sender_name,
+            sender_image = sanitizeMemberSenderImage(incoming.sender_image)
+                ?: sanitizeMemberSenderImage(local.sender_image)
+                ?: incoming.sender_image,
+            reply_to = incoming.reply_to ?: local.reply_to,
+            is_edited = incoming.is_edited || local.is_edited,
+            deleted_for_all = incoming.deleted_for_all || local.deleted_for_all,
+            deleted_by = (local.deleted_by + incoming.deleted_by).distinct().map { it.trim().lowercase() },
+            reactions = if (incoming.reactions.isNotEmpty()) incoming.reactions else local.reactions,
+            is_forwarded = incoming.is_forwarded || local.is_forwarded,
+            forwarded_from_message_id = incoming.forwarded_from_message_id ?: local.forwarded_from_message_id,
+            forwarded_from_user_id = incoming.forwarded_from_user_id ?: local.forwarded_from_user_id,
+            status = mergedReceipt.status,
+            delivered_at = mergedReceipt.deliveredAt,
+            read_at = mergedReceipt.readAt
+        )
     }
 
     private fun unifyGroupMessages(messages: List<GroupMessage>, currentUserId: String?): List<GroupMessage> {
@@ -801,9 +1016,9 @@ class GroupRepository @Inject constructor(
     }
 
     private fun updateGroupMessageInFlow(groupId: String, msg: GroupMessage) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         val flow = _activeGroupMessages[cleanId] ?: return
-        val currentUserId = authService.getCurrentUserId()
+        var currentUserId = authService.getCurrentUserId()
         
         flow.update { current ->
             val list = current.toMutableList()
@@ -819,170 +1034,105 @@ class GroupRepository @Inject constructor(
 
     // --- ACTIONS ---
 
+@Composable
+@Composable
     suspend fun markAsRead(groupId: String, messageIds: Collection<String>) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            val token = authService.getAccessToken()
-            val now = java.time.Instant.now().toString()
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
+            var token = authService.getAccessToken()
+            var now = java.time.Instant.now().toString()
             val cleanMessageIds = messageIds
                 .map { it.trim().lowercase() }
                 .filter { it.isNotBlank() }
                 .distinct()
             if (cleanMessageIds.isEmpty()) return@withContext
-            val remotelyReadIds = mutableSetOf<String>()
-            if (!token.isNullOrBlank()) {
-                try {
-                    val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        header("Prefer", "return=representation")
-                        parameter("group_id", "eq.$cleanId")
-                        parameter("sender_id", "neq.$currentUserId")
-                        parameter("id", "in.(${cleanMessageIds.joinToString(",")})")
-                        parameter("read_at", "is.null")
-                        parameter("select", "id")
-                        setBody(
-                            buildJsonObject {
-                                put("status", "read")
-                                put("read_at", now)
-                                put("delivered_at", now)
-                                put("updated_at", now)
-                            }
-                        )
-                    }
-                    if (response.status.isSuccess()) {
-                        remotelyReadIds.addAll(extractUpdatedIdsFromPatchBody(response.bodyAsText()))
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("GroupRepository", "markAsRead remote sync failed for $cleanId", e)
-                }
-            }
-            if (remotelyReadIds.isEmpty() && !token.isNullOrBlank()) {
-                remotelyReadIds.addAll(
-                    fetchRemoteGroupMessageIdsByStatus(
-                        groupId = cleanId,
-                        messageIds = cleanMessageIds,
-                        currentUserId = currentUserId,
-                        token = token,
-                        statuses = listOf("read")
-                    )
+            var remotelyReadIds = runCatching {
+                collectionMessageReceiptRemoteStore.markMessagesReadByIds(
+                    logTag = "GroupRepository",
+                    messageTable = "group_messages",
+                    scopeColumn = "group_id",
+                    scopeId = cleanId,
+                    messageIds = cleanMessageIds,
+                    currentUserId = currentUserId,
+                    token = token,
+                    requireReadAtNull = true,
+                    confirmationStatuses = listOf("read")
                 )
-            }
-            val idsToMark = cleanMessageIds.filter { remotelyReadIds.contains(it) }
+            }.onFailure {
+                android.util.Log.w("GroupRepository", "markAsRead by ids fallback to local state for $cleanId", it)
+            }.getOrDefault(emptySet())
+            val idsToMark = CollectionMessageSyncSupport.resolveLocallyReadableIds(
+                requestedIds = cleanMessageIds,
+                remotelyReadIds = remotelyReadIds
+            )
             if (idsToMark.isNotEmpty()) {
                 groupDao.markMessagesAsReadByIds(cleanId, now, currentUserId, idsToMark)
             }
             val remainingUnread = runCatching { groupDao.countUnreadIncoming(cleanId, currentUserId) }.getOrDefault(0)
-            if (currentOpenedGroupId == cleanId || remainingUnread <= 0) {
-                groupDao.resetUnreadCount(cleanId)
+            val displayedUnread = CollectionMessageSyncSupport.resolveDisplayedUnreadCount(
+                isConversationOpen = currentOpenedGroupId == cleanId,
+                exactUnread = remainingUnread
+            )
+            groupDao.resetUnreadCount(cleanId)
+            if (displayedUnread > 0) {
+                groupDao.incrementUnreadCount(cleanId, displayedUnread)
             }
         }
     }
 
+@Composable
+@Composable
     suspend fun markAsRead(groupId: String) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            val token = authService.getAccessToken()
-            val now = java.time.Instant.now().toString()
-            if (!token.isNullOrBlank()) {
-                var remoteReadSynced = false
-                runCatching {
-                    supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_group_messages_read") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        setBody(buildJsonObject { put("p_group_id", cleanId) })
-                    }
-                }.onSuccess { response ->
-                    remoteReadSynced = response.status.isSuccess()
-                    if (!remoteReadSynced) {
-                        android.util.Log.w("GroupRepository", "secure_mark_group_messages_read failed for $cleanId: ${response.status}")
-                    }
-                }.onFailure { e ->
-                    android.util.Log.w("GroupRepository", "secure_mark_group_messages_read exception for $cleanId", e)
-                }
-
-                if (!remoteReadSynced) {
-                    val messageUpdate = buildJsonObject {
-                        put("status", "read")
-                        put("read_at", now)
-                        put("delivered_at", now)
-                        put("updated_at", now)
-                    }
-                    runCatching {
-                        supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                            header("Authorization", "Bearer $token")
-                            header("apikey", supabaseConfig.supabaseAnonKey)
-                            header("Content-Type", "application/json")
-                            parameter("group_id", "eq.$cleanId")
-                            parameter("sender_id", "neq.$currentUserId")
-                            parameter("read_at", "is.null")
-                            setBody(messageUpdate)
-                        }
-                    }.onFailure { e ->
-                        android.util.Log.w("GroupRepository", "markAsRead fallback patch failed for $cleanId", e)
-                    }
-                }
-            } else {
-                android.util.Log.w("GroupRepository", "markAsRead: no token available, skipping remote sync for $cleanId")
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
+            var token = authService.getAccessToken()
+            var now = java.time.Instant.now().toString()
+            runCatching {
+                collectionMessageReceiptRemoteStore.markAllMessagesRead(
+                    logTag = "GroupRepository",
+                    messageTable = "group_messages",
+                    scopeColumn = "group_id",
+                    scopeId = cleanId,
+                    currentUserId = currentUserId,
+                    token = token,
+                    rpcFunctionName = "secure_mark_group_messages_read",
+                    rpcScopeKey = "p_group_id",
+                    requireReadAtNull = true
+                )
+            }.onFailure {
+                android.util.Log.w("GroupRepository", "markAsRead fallback to local state for $cleanId", it)
             }
             groupDao.markAllAsRead(cleanId, now, currentUserId)
             groupDao.resetUnreadCount(cleanId)
             runCatching {
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                var notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(cleanId.hashCode())
             }
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessageAsDelivered(groupId: String, messageId: String) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
         if (cleanId.isBlank() || cleanMessageId.isBlank()) return
         withContext(Dispatchers.IO) {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            val token = authService.getAccessToken()
-            val now = java.time.Instant.now().toString()
-            var remoteSynced = false
-            if (!token.isNullOrBlank()) {
-                try {
-                    val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        header("Prefer", "return=representation")
-                        parameter("group_id", "eq.$cleanId")
-                        parameter("id", "eq.$cleanMessageId")
-                        parameter("sender_id", "neq.$currentUserId")
-                        parameter("status", "eq.sent")
-                        parameter("select", "id")
-                        setBody(
-                            buildJsonObject {
-                                put("status", "delivered")
-                                put("delivered_at", now)
-                                put("updated_at", now)
-                            }
-                        )
-                    }
-                    if (response.status.isSuccess()) {
-                        remoteSynced = extractUpdatedIdsFromPatchBody(response.bodyAsText()).contains(cleanMessageId)
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("GroupRepository", "markMessageAsDelivered remote sync failed for $cleanMessageId", e)
-                }
-            }
-            if (!remoteSynced && !token.isNullOrBlank()) {
-                remoteSynced = fetchRemoteGroupMessageIdsByStatus(
-                    groupId = cleanId,
-                    messageIds = listOf(cleanMessageId),
-                    currentUserId = currentUserId,
-                    token = token,
-                    statuses = listOf("delivered", "read", "received")
-                ).contains(cleanMessageId)
-            }
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
+            var token = authService.getAccessToken()
+            var now = java.time.Instant.now().toString()
+            var remoteSynced = collectionMessageReceiptRemoteStore.markMessageDelivered(
+                logTag = "GroupRepository",
+                messageTable = "group_messages",
+                scopeColumn = "group_id",
+                scopeId = cleanId,
+                messageId = cleanMessageId,
+                currentUserId = currentUserId,
+                token = token,
+                confirmationStatuses = listOf("delivered", "read", "received")
+            )
             groupDao.markMessageAsDelivered(cleanId, cleanMessageId, now, currentUserId)
             if (!remoteSynced) {
                 android.util.Log.w("GroupRepository", "markMessageAsDelivered could not confirm remote transition for $cleanMessageId in $cleanId")
@@ -990,64 +1140,25 @@ class GroupRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun markMessagesAsDelivered(groupId: String) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
-            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            val token = authService.getAccessToken()
-            val now = java.time.Instant.now().toString()
-            if (!token.isNullOrBlank()) {
-                try {
-                    supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_group_messages_delivered") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        setBody(buildJsonObject { put("p_group_id", cleanId) })
-                    }
-                    groupDao.markAllAsDelivered(cleanId, now, currentUserId)
-                } catch (e: Exception) {
-                    android.util.Log.w("GroupRepository", "markMessagesAsDelivered remote sync failed for $cleanId", e)
-                }
+            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
+            var token = authService.getAccessToken()
+            var now = java.time.Instant.now().toString()
+            var remoteSynced = collectionMessageReceiptRemoteStore.markAllMessagesDelivered(
+                logTag = "GroupRepository",
+                scopeId = cleanId,
+                token = token,
+                rpcFunctionName = "secure_mark_group_messages_delivered",
+                rpcScopeKey = "p_group_id"
+            )
+            if (remoteSynced) {
+                groupDao.markAllAsDelivered(cleanId, now, currentUserId)
             }
         }
-    }
-
-    private fun extractUpdatedIdsFromPatchBody(rawBody: String): Set<String> {
-        if (rawBody.isBlank()) return emptySet()
-        return runCatching {
-            val element = Json.parseToJsonElement(rawBody)
-            if (element !is JsonArray) return@runCatching emptySet<String>()
-            element.mapNotNull { row ->
-                row.jsonObject["id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-            }.toSet()
-        }.getOrDefault(emptySet())
-    }
-
-    private suspend fun fetchRemoteGroupMessageIdsByStatus(
-        groupId: String,
-        messageIds: Collection<String>,
-        currentUserId: String,
-        token: String,
-        statuses: List<String>
-    ): Set<String> {
-        val cleanGroupId = groupId.trim().lowercase()
-        val cleanIds = messageIds.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
-        val cleanStatuses = statuses.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
-        if (cleanGroupId.isBlank() || cleanIds.isEmpty() || cleanStatuses.isEmpty()) return emptySet()
-
-        return runCatching {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("select", "id")
-                parameter("group_id", "eq.$cleanGroupId")
-                parameter("sender_id", "neq.$currentUserId")
-                parameter("id", "in.(${cleanIds.joinToString(",")})")
-                parameter("status", "in.(${cleanStatuses.joinToString(",")})")
-            }
-            if (!response.status.isSuccess()) return@runCatching emptySet<String>()
-            extractUpdatedIdsFromPatchBody(response.bodyAsText())
-        }.getOrElse { emptySet() }
     }
 
     suspend fun sendGroupPollMessage(
@@ -1056,8 +1167,8 @@ class GroupRepository @Inject constructor(
         options: List<String>,
         allowsMultiple: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanId = groupId.trim().lowercase()
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+        var cleanId = groupId.trim().lowercase()
+        var userId = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return@withContext Result.failure(Exception("No user"))
 
         val sanitizedQuestion = question.trim().take(300)
@@ -1065,9 +1176,9 @@ class GroupRepository @Inject constructor(
         if (sanitizedQuestion.isBlank()) return@withContext Result.failure(Exception("La pregunta es obligatoria"))
         if (sanitizedOptions.size < 2) return@withContext Result.failure(Exception("La encuesta requiere al menos 2 opciones"))
 
-        val msgId = UUID.randomUUID().toString()
-        val now = java.time.Instant.now().toString()
-        val optimistic = GroupMessage(
+        var msgId = UUID.randomUUID().toString()
+        var now = java.time.Instant.now().toString()
+        var optimistic = GroupMessage(
             id = msgId,
             group_id = cleanId,
             sender_id = userId,
@@ -1092,7 +1203,7 @@ class GroupRepository @Inject constructor(
         updateGroupMessageInFlow(cleanId, optimistic)
         groupDao.updateMetadata(cleanId, "📊 $sanitizedQuestion", now)
 
-        val remote = createGroupPollMessageSecure(
+        var remote = createGroupPollMessageSecure(
             groupId = cleanId,
             messageId = msgId,
             question = sanitizedQuestion,
@@ -1107,7 +1218,7 @@ class GroupRepository @Inject constructor(
             updateGroupMessageInFlow(cleanId, inserted)
             Result.success(Unit)
         } else {
-            val error = remote.exceptionOrNull() ?: Exception("No se pudo crear la encuesta")
+            var error = remote.exceptionOrNull() ?: Exception("No se pudo crear la encuesta")
             groupDao.markRetryAttempt(msgId, lastRetryAt = java.time.Instant.now().toString(), status = "failed")
             groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
             groupDao.getMessageById(msgId)?.toDomain()?.let { failed -> updateGroupMessageInFlow(failed.group_id, failed) }
@@ -1121,169 +1232,32 @@ class GroupRepository @Inject constructor(
         question: String,
         options: List<String>,
         allowsMultiple: Boolean
-    ): Result<GroupMessage> {
-        return try {
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No token"))
-            val payloadAttempts = listOf(
-                buildJsonObject {
-                    put("p_group_id", groupId)
-                    put("p_message_id", messageId)
-                    put("p_question", question)
-                    put("p_options", JsonArray(options.map { JsonPrimitive(it) }))
-                    put("p_allows_multiple", allowsMultiple)
-                },
-                buildJsonObject {
-                    put("p_group_id", groupId)
-                    put("p_message_id", messageId)
-                    put("p_question", question)
-                    put("p_options", toPostgresTextArray(options))
-                    put("p_allows_multiple", allowsMultiple)
-                }
+    ): Result<GroupMessage> = collectionPollMessageRemoteStore.createPollMessage(
+        scopeType = "group",
+        scopeId = groupId,
+        messageId = messageId,
+        question = question,
+        options = options,
+        allowsMultiple = allowsMultiple,
+        rpcFunctionName = "secure_create_group_poll_message",
+        rpcScopeKey = "p_group_id",
+        messageTable = "group_messages",
+        messageScopeColumn = "group_id",
+        includeStatusSentInFallbackPayload = true,
+        parseMessage = ::parseRpcGroupMessage,
+        buildFallbackMessage = { pollId, senderId, createdAt ->
+            GroupMessage(
+                id = messageId,
+                group_id = groupId,
+                sender_id = senderId,
+                content = question,
+                content_type = "poll",
+                poll_id = pollId,
+                created_at = createdAt,
+                status = "sent"
             )
-
-            var rpcError: Exception? = null
-            payloadAttempts.forEach { payload ->
-                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_group_poll_message") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    header("Prefer", "return=representation")
-                    setBody(payload)
-                }
-
-                val body = runCatching { response.bodyAsText() }.getOrDefault("")
-                if (response.status.isSuccess()) {
-                    val parsed = parseRpcGroupMessage(body)
-                    if (parsed != null) {
-                        return Result.success(parsed)
-                    }
-                    rpcError = Exception("Respuesta inválida creando encuesta")
-                } else {
-                    rpcError = Exception("Error creando encuesta: ${response.status.value} $body")
-                }
-            }
-
-            val fallback = createGroupPollMessageFallback(
-                groupId = groupId,
-                messageId = messageId,
-                question = question,
-                options = options,
-                allowsMultiple = allowsMultiple,
-                token = token
-            )
-            if (fallback.isSuccess) {
-                fallback
-            } else {
-                Result.failure(
-                    rpcError ?: fallback.exceptionOrNull() ?: Exception("No se pudo crear la encuesta")
-                )
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
-
-    private suspend fun createGroupPollMessageFallback(
-        groupId: String,
-        messageId: String,
-        question: String,
-        options: List<String>,
-        allowsMultiple: Boolean,
-        token: String
-    ): Result<GroupMessage> {
-        return try {
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return Result.failure(Exception("No user"))
-
-            val pollResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/message_polls") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "return=representation")
-                setBody(
-                    buildJsonObject {
-                        put("scope_type", "group")
-                        put("scope_id", groupId)
-                        put("creator_id", userId)
-                        put("question", question)
-                        put("allows_multiple", allowsMultiple)
-                    }
-                )
-            }
-            val pollBody = runCatching { pollResponse.bodyAsText() }.getOrDefault("")
-            if (!pollResponse.status.isSuccess()) {
-                return Result.failure(Exception("Error creando encuesta (fallback): ${pollResponse.status.value} $pollBody"))
-            }
-
-            val pollId = extractIdFromRepresentation(pollBody)
-                ?: return Result.failure(Exception("No se pudo obtener poll_id"))
-
-            val optionsPayload = JsonArray(
-                options.mapIndexed { index, value ->
-                    buildJsonObject {
-                        put("poll_id", pollId)
-                        put("option_text", value)
-                        put("display_order", index)
-                    }
-                }
-            )
-
-            val optionsResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_options") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "return=minimal")
-                setBody(optionsPayload)
-            }
-            if (!optionsResponse.status.isSuccess()) {
-                val optionsBody = runCatching { optionsResponse.bodyAsText() }.getOrDefault("")
-                return Result.failure(Exception("Error creando opciones (fallback): ${optionsResponse.status.value} $optionsBody"))
-            }
-
-            val messageResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "return=representation")
-                setBody(
-                    buildJsonObject {
-                        put("id", messageId)
-                        put("group_id", groupId)
-                        put("sender_id", userId)
-                        put("content", question)
-                        put("content_type", "poll")
-                        put("poll_id", pollId)
-                        put("status", "sent")
-                    }
-                )
-            }
-            val msgBody = runCatching { messageResponse.bodyAsText() }.getOrDefault("")
-            if (!messageResponse.status.isSuccess()) {
-                return Result.failure(Exception("Error enviando mensaje encuesta (fallback): ${messageResponse.status.value} $msgBody"))
-            }
-
-            val parsed = parseRpcGroupMessage(msgBody)
-            if (parsed != null) {
-                Result.success(parsed)
-            } else {
-                Result.success(
-                    GroupMessage(
-                        id = messageId,
-                        group_id = groupId,
-                        sender_id = userId,
-                        content = question,
-                        content_type = "poll",
-                        poll_id = pollId,
-                        created_at = java.time.Instant.now().toString(),
-                        status = "sent"
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    )
 
     private fun parseRpcGroupMessage(body: String): GroupMessage? {
         if (body.isBlank()) return null
@@ -1291,22 +1265,6 @@ class GroupRepository @Inject constructor(
             json.decodeFromString<GroupMessage>(body)
         } catch (_: Exception) {
             runCatching { json.decodeFromString<List<GroupMessage>>(body).firstOrNull() }.getOrNull()
-        }
-    }
-
-    private fun extractIdFromRepresentation(body: String): String? {
-        if (body.isBlank()) return null
-        val asList = runCatching { json.decodeFromString<List<JsonObject>>(body) }.getOrNull()
-        val fromList = asList?.firstOrNull()?.get("id")?.jsonPrimitive?.contentOrNull
-        if (!fromList.isNullOrBlank()) return fromList
-
-        val asObject = runCatching { json.decodeFromString<JsonObject>(body) }.getOrNull()
-        return asObject?.get("id")?.jsonPrimitive?.contentOrNull
-    }
-
-    private fun toPostgresTextArray(values: List<String>): String {
-        return values.joinToString(prefix = "{", postfix = "}") { raw ->
-            "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
         }
     }
     
@@ -1319,13 +1277,14 @@ class GroupRepository @Inject constructor(
         pollId: String? = null,
         isForwarded: Boolean = false,
         forwardedFromMessageId: String? = null,
-        forwardedFromUserId: String? = null
+        forwardedFromUserId: String? = null,
+        messageId: String? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val cleanId = groupId.trim().lowercase()
+            var cleanId = groupId.trim().lowercase()
 
             val guardDecision = operationGuard.acquire(
                 action = GuardedAction.GROUP_MESSAGE_SEND,
@@ -1358,10 +1317,11 @@ class GroupRepository @Inject constructor(
                 return@withContext Result.failure(Exception("El mensaje no puede estar vacio"))
             }
             
-            val msgId = java.util.UUID.randomUUID().toString()
-            val now = java.time.Instant.now().toString()
+            var msgId = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                ?: java.util.UUID.randomUUID().toString()
+            var now = java.time.Instant.now().toString()
             
-            val msg = GroupMessage(
+            var msg = GroupMessage(
                 id = msgId,
                 group_id = cleanId,
                 sender_id = userId,
@@ -1390,7 +1350,10 @@ class GroupRepository @Inject constructor(
             )
             )
             updateGroupMessageInFlow(cleanId, msg)
-            groupDao.updateMetadata(cleanId, if (contentType == "text") finalContent else "Multimedia", now)
+            val preview = buildConversationBackgroundPreview(contentType, finalContent)
+                ?: buildCallEventPreview(contentType, finalContent)
+                ?: if (contentType == "text") finalContent else "Multimedia"
+            groupDao.updateMetadata(cleanId, preview, now)
 
             try {
                 operationGuard.audit(
@@ -1479,128 +1442,40 @@ class GroupRepository @Inject constructor(
         payload: JsonObject,
         maxAttempts: Int = 4
     ): Result<Unit> {
-        var lastError: Exception? = null
-
-        for (attempt in 0 until maxAttempts) {
-            try {
-                val pushResult = sendGroupMessageSecureOrFallback(msgId = msgId, payload = payload)
-                if (pushResult.isFailure) {
-                    throw (pushResult.exceptionOrNull() ?: Exception("Unknown push error"))
-                }
+        return CollectionPendingMessageRetrySupport.retryPendingMessageSend(
+            messageId = msgId,
+            maxAttempts = maxAttempts,
+            sendAction = { sendGroupMessageSecureOrFallback(msgId = msgId, payload = payload) },
+            isDuplicateKeyError = CollectionRepositorySupport::isDuplicateKeyError,
+            isRetryableNetworkError = { error -> CollectionRepositorySupport.isRetryableNetworkError(error, transientNetworkRetryCodes) },
+            onConfirmedSuccess = {
                 groupDao.updateMessageSyncStatus(msgId, status = "sent", isSynced = true, pendingAction = null)
                 groupDao.getMessageById(msgId)?.toDomain()?.let { synced -> updateGroupMessageInFlow(synced.group_id, synced) }
-                return Result.success(Unit)
-            } catch (e: Exception) {
-                lastError = e
-
-                // If message was inserted previously, duplicate-key means delivery already happened.
-                if (isDuplicateKeyError(e)) {
-                    android.util.Log.w("GroupRepository", "⚠️ Duplicate insert for $msgId detected; treating as delivered")
-                    groupDao.updateMessageSyncStatus(msgId, status = "sent", isSynced = true, pendingAction = null)
-                    groupDao.getMessageById(msgId)?.toDomain()?.let { synced -> updateGroupMessageInFlow(synced.group_id, synced) }
-                    return Result.success(Unit)
-                }
-
-                val isLastAttempt = attempt == maxAttempts - 1
-                val retryable = isRetryableNetworkError(e)
-                if (!retryable || isLastAttempt) {
-                    groupDao.markRetryAttempt(msgId, lastRetryAt = java.time.Instant.now().toString(), status = "failed")
-                    groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
-                    groupDao.getMessageById(msgId)?.toDomain()?.let { failed -> updateGroupMessageInFlow(failed.group_id, failed) }
-                    return Result.failure(lastError)
-                }
-
-                val backoffMs = 1000L * (1L shl minOf(attempt, 3))
-                delay(backoffMs)
-            }
-        }
-
-        return Result.failure(lastError ?: Exception("No se pudo sincronizar mensaje de grupo"))
+            },
+            onDuplicateTreatedAsSuccess = {
+                groupDao.updateMessageSyncStatus(msgId, status = "sent", isSynced = true, pendingAction = null)
+                groupDao.getMessageById(msgId)?.toDomain()?.let { synced -> updateGroupMessageInFlow(synced.group_id, synced) }
+            },
+            onTerminalFailure = {
+                groupDao.markRetryAttempt(msgId, lastRetryAt = java.time.Instant.now().toString(), status = "failed")
+                groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
+                groupDao.getMessageById(msgId)?.toDomain()?.let { failed -> updateGroupMessageInFlow(failed.group_id, failed) }
+            },
+            failureMessage = "No se pudo sincronizar mensaje de grupo"
+        )
     }
 
     private suspend fun sendGroupMessageSecureOrFallback(
         msgId: String,
         payload: JsonObject
-    ): Result<Unit> {
-        val token = authService.getAccessToken()
-            ?: return Result.failure(Exception("No token"))
-
-        val groupId = payload["group_id"]?.jsonPrimitive?.contentOrNull
-            ?: return Result.failure(Exception("Missing group_id payload"))
-        val content = payload["content"]?.jsonPrimitive?.contentOrNull ?: ""
-        val contentType = payload["content_type"]?.jsonPrimitive?.contentOrNull ?: "text"
-        val mediaUrl = payload["media_url"]?.jsonPrimitive?.contentOrNull
-        val replyToId = payload["reply_to_id"]?.jsonPrimitive?.contentOrNull
-        val isForwarded = payload["is_forwarded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
-        val forwardedFromMessageId = payload["forwarded_from_message_id"]?.jsonPrimitive?.contentOrNull
-        val forwardedFromUserId = payload["forwarded_from_user_id"]?.jsonPrimitive?.contentOrNull
-
-        val rpcPayload = buildJsonObject {
-            put("p_group_id", groupId)
-            put("p_message_id", msgId)
-            put("p_content", content)
-            put("p_content_type", contentType)
-            put("p_media_url", mediaUrl)
-            put("p_reply_to_id", replyToId)
-            put("p_is_forwarded", isForwarded)
-            put("p_forwarded_from_message_id", forwardedFromMessageId)
-            put("p_forwarded_from_user_id", forwardedFromUserId)
-        }
-
-        return try {
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_send_group_message") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "return=representation")
-                setBody(rpcPayload)
-            }
-
-            if (rpcResponse.status.isSuccess()) {
-                return Result.success(Unit)
-            }
-
-            val rpcError = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
-            if (isMissingGroupRpcFunction(rpcResponse.status.value, rpcError)) {
-                return if (isForwarded || !forwardedFromMessageId.isNullOrBlank() || !forwardedFromUserId.isNullOrBlank()) {
-                    val firstTry = runCatching {
-                        supabaseConfig.client.postgrest["group_messages"].insert(payload)
-                    }
-                    if (firstTry.isSuccess) {
-                        Result.success(Unit)
-                    } else {
-                        val errMsg = firstTry.exceptionOrNull()?.message.orEmpty()
-                        if (isMissingForwardingColumnError(errMsg)) {
-                            val legacyPayload = buildJsonObject {
-                                payload["id"]?.let { put("id", it) }
-                                payload["group_id"]?.let { put("group_id", it) }
-                                payload["sender_id"]?.let { put("sender_id", it) }
-                                payload["content"]?.let { put("content", it) }
-                                payload["content_type"]?.let { put("content_type", it) }
-                                payload["media_url"]?.let { put("media_url", it) }
-                                payload["reply_to_id"]?.let { put("reply_to_id", it) }
-                                payload["poll_id"]?.let { put("poll_id", it) }
-                            }
-                            runCatching { supabaseConfig.client.postgrest["group_messages"].insert(legacyPayload) }
-                                .fold(
-                                    onSuccess = { Result.success(Unit) },
-                                    onFailure = { Result.failure(it as? Exception ?: Exception(it.message ?: "Fallback insert failed")) }
-                                )
-                        } else {
-                            Result.failure(firstTry.exceptionOrNull() as? Exception ?: Exception(errMsg.ifBlank { "Fallback insert failed" }))
-                        }
-                    }
-                } else {
-                    supabaseConfig.client.postgrest["group_messages"].insert(payload)
-                    Result.success(Unit)
-                }
-            } else {
-                Result.failure(Exception("RPC group send failed ${rpcResponse.status.value}: $rpcError"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    ): Result<Unit> = collectionPendingMessageRemoteStore.sendSecureOrFallback(
+        rpcFunctionName = "secure_send_group_message",
+        scopePayloadKey = "group_id",
+        scopeRpcKey = "p_group_id",
+        tableName = "group_messages",
+        messageId = msgId,
+        payload = payload
+    )
 
     private fun isMissingGroupRpcFunction(statusCode: Int, responseBody: String): Boolean {
         if (statusCode != 400 && statusCode != 404) return false
@@ -1609,35 +1484,15 @@ class GroupRepository @Inject constructor(
             (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
-    private fun isDuplicateKeyError(error: Exception): Boolean {
-        val text = error.message?.lowercase() ?: return false
-        return text.contains("duplicate key") || text.contains("23505")
-    }
-
-    private fun isMissingForwardingColumnError(errorText: String): Boolean {
-        val normalized = errorText.lowercase()
-        return normalized.contains("column") &&
-            (
-                normalized.contains("is_forwarded") ||
-                    normalized.contains("forwarded_from_message_id") ||
-                    normalized.contains("forwarded_from_user_id")
-                )
-    }
-
-    private fun isRetryableNetworkError(error: Exception): Boolean {
-        val text = error.message?.lowercase() ?: return false
-        return transientNetworkRetryCodes.any { code -> text.contains(code) }
-    }
-
     private suspend fun retryPendingGroupMessages(maxBatch: Int = 40) {
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
+        var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val pending = groupDao.getPendingOutgoingMessages(maxBatch)
         if (pending.isEmpty()) return
 
         pending.forEach { pendingEntity ->
             if (pendingEntity.sender_id.trim().lowercase() != userId) return@forEach
 
-            val payload = buildJsonObject {
+            var payload = buildJsonObject {
                 put("id", pendingEntity.id)
                 put("group_id", pendingEntity.group_id)
                 put("sender_id", pendingEntity.sender_id)
@@ -1655,9 +1510,11 @@ class GroupRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun editGroupMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
             
             supabaseConfig.client.postgrest["group_messages"].update({
                 set("content", newContent)
@@ -1670,9 +1527,9 @@ class GroupRepository @Inject constructor(
             }
             
             // Optimistic update
-            val existing = groupDao.getMessageById(messageId)
+            var existing = groupDao.getMessageById(messageId)
             if (existing != null) {
-                val updated = existing.toDomain().copy(content = newContent, is_edited = true)
+                var updated = existing.toDomain().copy(content = newContent, is_edited = true)
                 groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(updated)))
                 updateGroupMessageInFlow(updated.group_id, updated)
             }
@@ -1683,432 +1540,141 @@ class GroupRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun deleteGroupMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            
-            if (forEveryone) {
-                 supabaseConfig.client.postgrest["group_messages"].update({
-                    set("deleted_for_all", true)
-                }) {
-                    filter {
-                        eq("id", messageId)
-                        eq("sender_id", userId)
-                    }
-                }
-            } else {
-                 val existing = groupDao.getMessageById(messageId) ?: return@withContext Result.success(Unit)
-                 val currentDeleted = existing.toDomain().deleted_by.toMutableList()
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
 
-                 if (!currentDeleted.contains(userId)) {
-                     currentDeleted.add(userId)
-                     
-                     supabaseConfig.client.postgrest["group_messages"].update({
-                        set("deleted_by", currentDeleted.toList())
-                    }) {
-                        filter { eq("id", messageId) }
-                    }
-                 }
-
-            }
-             // Optimistic 
-            val existingLocal = groupDao.getMessageById(messageId)
-            if (existingLocal != null) {
-                val domain = existingLocal.toDomain()
-                val updated = if (forEveryone) domain.copy(deleted_for_all = true) 
-                              else domain.copy(deleted_by = (domain.deleted_by + userId).distinct())
-                
-                groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(updated)))
-                updateGroupMessageInFlow(domain.group_id, updated)
-            }
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getGroupMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
-        try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_get_group_message_receipts") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(buildJsonObject { put("p_message_id", messageId.trim().lowercase()) })
-            }
-            val body = runCatching { response.bodyAsText() }.getOrDefault("")
-            if (!response.status.isSuccess()) {
-                return@withContext Result.failure(Exception("Error cargando recibos: ${response.status.value} $body"))
-            }
-            val parsed = runCatching { json.decodeFromString<List<MessageReadReceipt>>(body) }
-                .getOrElse {
-                    runCatching {
-                        listOf(json.decodeFromString<MessageReadReceipt>(body))
-                    }.getOrDefault(emptyList())
-                }
-            Result.success(parsed)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getPollState(pollId: String): Result<List<MessagePollOptionState>> = withContext(Dispatchers.IO) {
-        try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val cleanPollId = pollId.trim().lowercase()
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_get_poll_state") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(buildJsonObject { put("p_poll_id", cleanPollId) })
-            }
-            val body = runCatching { response.bodyAsText() }.getOrDefault("")
-            if (response.status.isSuccess()) {
-                val parsed = runCatching { json.decodeFromString<List<MessagePollOptionState>>(body) }
-                    .getOrElse {
-                        runCatching {
-                            listOf(json.decodeFromString<MessagePollOptionState>(body))
-                        }.getOrDefault(emptyList())
-                    }
-                if (parsed.isNotEmpty()) {
-                    return@withContext Result.success(parsed.sortedBy { it.displayOrder })
+            var normalizedUserId = userId.trim().lowercase()
+            val existingLocal = groupDao.getMessageById(messageId)?.toDomain()
+            val optimisticMessage = existingLocal?.let { domain ->
+                if (forEveryone) {
+                    domain.copy(deleted_for_all = true)
+                } else {
+                    domain.copy(
+                        deleted_by = (domain.deleted_by + normalizedUserId)
+                            .map { it.trim().lowercase() }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                    )
                 }
             }
-            val fallback = loadPollStateFallback(cleanPollId, token)
-            if (fallback.isNotEmpty()) {
-                Result.success(fallback.sortedBy { it.displayOrder })
-            } else if (!response.status.isSuccess()) {
-                Result.failure(Exception("Error cargando encuesta: ${response.status.value} $body"))
-            } else {
-                Result.success(emptyList())
+
+            if (optimisticMessage != null) {
+                groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(optimisticMessage)))
+                updateGroupMessageInFlow(optimisticMessage.group_id, optimisticMessage)
             }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 
-    private suspend fun loadPollStateFallback(
-        pollId: String,
-        token: String
-    ): List<MessagePollOptionState> {
-        if (pollId.isBlank()) return emptyList()
-        val cleanUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            val remoteDeleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
+                logTag = "GroupRepository",
+                messageId = messageId,
+                remoteDelete = {
+                    if (forEveryone) {
+                        supabaseConfig.client.postgrest["group_messages"].update({
+                            set("deleted_for_all", true)
+                        }) {
+                            filter {
+                                eq("id", messageId)
+                                eq("sender_id", userId)
+                            }
+                        }
+                    } else {
+                        val remoteDeletedBy = optimisticMessage?.deleted_by
+                            ?: existingLocal?.deleted_by
+                                ?.map { it.trim().lowercase() }
+                                ?.filter { it.isNotBlank() }
+                                ?.distinct()
+                            ?: emptyList()
 
-        val metaResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_polls") {
-            header("Authorization", "Bearer $token")
-            header("apikey", supabaseConfig.supabaseAnonKey)
-            parameter("id", "eq.$pollId")
-            parameter("select", "question,allows_multiple,is_closed")
-            parameter("limit", "1")
-        }
-        val metaRows = if (metaResponse.status.isSuccess()) {
-            runCatching { json.decodeFromString<List<JsonObject>>(metaResponse.bodyAsText()) }.getOrDefault(emptyList())
-        } else {
-            emptyList()
-        }
-        val meta = metaRows.firstOrNull()
-        val question = meta?.get("question")?.jsonPrimitive?.contentOrNull.orEmpty()
-        val allowsMultiple = meta?.get("allows_multiple")?.jsonPrimitive?.booleanOrNull ?: false
-        val isClosed = meta?.get("is_closed")?.jsonPrimitive?.booleanOrNull ?: false
-
-        val optionsResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_options") {
-            header("Authorization", "Bearer $token")
-            header("apikey", supabaseConfig.supabaseAnonKey)
-            parameter("poll_id", "eq.$pollId")
-            parameter("select", "id,option_text,display_order")
-            parameter("order", "display_order.asc")
-        }
-        if (!optionsResponse.status.isSuccess()) return emptyList()
-
-        val options = runCatching { json.decodeFromString<List<JsonObject>>(optionsResponse.bodyAsText()) }.getOrDefault(emptyList())
-        if (options.isEmpty()) return emptyList()
-
-        val votesResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
-            header("Authorization", "Bearer $token")
-            header("apikey", supabaseConfig.supabaseAnonKey)
-            parameter("poll_id", "eq.$pollId")
-            parameter("select", "option_id,user_id")
-        }
-        val voteRows = if (votesResponse.status.isSuccess()) {
-            runCatching { json.decodeFromString<List<JsonObject>>(votesResponse.bodyAsText()) }.getOrDefault(emptyList())
-        } else {
-            emptyList()
-        }
-
-        val voteCountByOption = mutableMapOf<String, Long>()
-        val votedByMeOptionIds = mutableSetOf<String>()
-        var totalVotes = 0L
-        voteRows.forEach { row ->
-            val votedOptionId = row["option_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-            if (votedOptionId.isBlank()) return@forEach
-            totalVotes += 1
-            voteCountByOption[votedOptionId] = (voteCountByOption[votedOptionId] ?: 0L) + 1L
-
-            val voterId = row["user_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase().orEmpty()
-            if (!cleanUserId.isNullOrBlank() && voterId == cleanUserId) {
-                votedByMeOptionIds += votedOptionId
-            }
-        }
-
-        return options.mapIndexedNotNull { index, row ->
-            val optionId = row["id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-            val optionText = row["option_text"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-            if (optionId.isBlank() || optionText.isBlank()) return@mapIndexedNotNull null
-
-            MessagePollOptionState(
-                pollId = pollId,
-                optionId = optionId,
-                optionText = optionText,
-                displayOrder = row["display_order"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: index,
-                voteCount = voteCountByOption[optionId] ?: 0L,
-                votedByMe = votedByMeOptionIds.contains(optionId),
-                totalVotes = totalVotes,
-                allowsMultiple = allowsMultiple,
-                isClosed = isClosed,
-                question = question
+                        if (remoteDeletedBy.isNotEmpty()) {
+                            supabaseConfig.client.postgrest["group_messages"].update({
+                                set("deleted_by", remoteDeletedBy)
+                            }) {
+                                filter { eq("id", messageId) }
+                            }
+                        }
+                    }
+                },
+                isRetryableNetworkError = { error ->
+                    CollectionRepositorySupport.isRetryableNetworkError(error, transientNetworkRetryCodes)
+                }
             )
+
+            try {
+                remoteDeleteResult.getOrThrow()
+                Result.success(Unit)
+            } catch (remoteError: Exception) {
+                if (optimisticMessage != null) {
+                    android.util.Log.w(
+                        "GroupRepository",
+                        "Remote delete sync failed after optimistic local delete for $messageId",
+                        remoteError
+                    )
+                    Result.success(Unit)
+                } else {
+                    Result.failure(remoteError)
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
+
+@Composable
+@Composable
+    suspend fun getGroupMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
+        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+        collectionMessageEngagementStore.getMessageReadReceipts(
+            messageId = messageId,
+            token = token,
+            rpcFunctionName = "secure_get_group_message_receipts"
+        )
+    }
+
+    suspend fun getPollState(pollId: String): Result<List<MessagePollOptionState>> =
+        collectionPollStore.getPollState(pollId)
 
     suspend fun votePollOption(
         pollId: String,
         optionId: String,
         selected: Boolean = true
-    ): Result<List<MessagePollOptionState>> = withContext(Dispatchers.IO) {
-        try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val cleanPollId = pollId.trim().lowercase()
-            val cleanOptionId = optionId.trim().lowercase()
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_vote_poll_option") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(
-                    buildJsonObject {
-                        put("p_poll_id", cleanPollId)
-                        put("p_option_id", cleanOptionId)
-                        put("p_selected", selected)
-                    }
-                )
-            }
-            val body = runCatching { response.bodyAsText() }.getOrDefault("")
-            if (!response.status.isSuccess()) {
-                if (isAmbiguousPollIdRpcError(response.status.value, body)) {
-                    return@withContext votePollOptionFallback(
-                        pollId = cleanPollId,
-                        optionId = cleanOptionId,
-                        selected = selected,
-                        token = token
-                    )
-                }
-                return@withContext Result.failure(Exception("Error votando encuesta: ${response.status.value} $body"))
-            }
-            val parsed = runCatching { json.decodeFromString<List<MessagePollOptionState>>(body) }
-                .getOrElse {
-                    runCatching {
-                        listOf(json.decodeFromString<MessagePollOptionState>(body))
-                    }.getOrDefault(emptyList())
-                }
-            Result.success(parsed.sortedBy { it.displayOrder })
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    ): Result<List<MessagePollOptionState>> =
+        collectionPollStore.votePollOption(pollId = pollId, optionId = optionId, selected = selected)
 
     suspend fun getPollOptionVoters(
         pollId: String,
         optionId: String
-    ): Result<List<PollVoteUser>> = withContext(Dispatchers.IO) {
-        try {
-            val token = authService.getAccessToken()
-                ?: return@withContext Result.failure(Exception("No token"))
-            val cleanPollId = pollId.trim().lowercase()
-            val cleanOptionId = optionId.trim().lowercase()
-            if (cleanPollId.isBlank() || cleanOptionId.isBlank()) {
-                return@withContext Result.success(emptyList())
-            }
-
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("poll_id", "eq.$cleanPollId")
-                parameter("option_id", "eq.$cleanOptionId")
-                parameter("select", "user_id,profiles(username,full_name,avatar_url)")
-            }
-
-            val body = runCatching { response.bodyAsText() }.getOrDefault("")
-            if (!response.status.isSuccess()) {
-                return@withContext Result.failure(Exception("Error cargando votantes: ${response.status.value} $body"))
-            }
-
-            val rows = runCatching { json.decodeFromString<List<JsonObject>>(body) }.getOrDefault(emptyList())
-            val voters = rows.mapNotNull { row ->
-                val userId = row["user_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-                if (userId.isBlank()) return@mapNotNull null
-                val profileElement = row["profiles"]
-                val profile = when (profileElement) {
-                    is JsonObject -> profileElement
-                    is JsonArray -> profileElement.firstOrNull() as? JsonObject
-                    else -> null
-                }
-                PollVoteUser(
-                    userId = userId,
-                    username = profile?.get("username")?.jsonPrimitive?.contentOrNull,
-                    fullName = profile?.get("full_name")?.jsonPrimitive?.contentOrNull,
-                    avatarUrl = profile?.get("avatar_url")?.jsonPrimitive?.contentOrNull
-                )
-            }.distinctBy { it.userId.trim().lowercase() }
-
-            Result.success(voters)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    private suspend fun votePollOptionFallback(
-        pollId: String,
-        optionId: String,
-        selected: Boolean,
-        token: String
-    ): Result<List<MessagePollOptionState>> {
-        val cleanUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("No user"))
-
-        if (selected) {
-            val allowsMultiple = loadPollAllowsMultiple(pollId, token) ?: false
-            if (!allowsMultiple) {
-                val clearResponse = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    parameter("poll_id", "eq.$pollId")
-                    parameter("user_id", "eq.$cleanUserId")
-                    parameter("option_id", "neq.$optionId")
-                }
-                if (!clearResponse.status.isSuccess()) {
-                    val clearBody = runCatching { clearResponse.bodyAsText() }.getOrDefault("")
-                    return Result.failure(Exception("Error limpiando voto anterior: ${clearResponse.status.value} $clearBody"))
-                }
-            }
-
-            val insertResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "resolution=ignore-duplicates,return=minimal")
-                setBody(
-                    buildJsonObject {
-                        put("poll_id", pollId)
-                        put("option_id", optionId)
-                        put("user_id", cleanUserId)
-                    }
-                )
-            }
-            val insertBody = runCatching { insertResponse.bodyAsText() }.getOrDefault("")
-            val isDuplicateConflict = insertResponse.status.value == 409 &&
-                (insertBody.contains("23505") || insertBody.lowercase().contains("duplicate key"))
-            if (!insertResponse.status.isSuccess() && !isDuplicateConflict) {
-                return Result.failure(Exception("Error guardando voto: ${insertResponse.status.value} $insertBody"))
-            }
-        } else {
-            val deleteResponse = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("poll_id", "eq.$pollId")
-                parameter("option_id", "eq.$optionId")
-                parameter("user_id", "eq.$cleanUserId")
-            }
-            if (!deleteResponse.status.isSuccess()) {
-                val deleteBody = runCatching { deleteResponse.bodyAsText() }.getOrDefault("")
-                return Result.failure(Exception("Error quitando voto: ${deleteResponse.status.value} $deleteBody"))
-            }
-        }
-
-        return getPollState(pollId)
-    }
-
-    private suspend fun loadPollAllowsMultiple(pollId: String, token: String): Boolean? {
-        val metaResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_polls") {
-            header("Authorization", "Bearer $token")
-            header("apikey", supabaseConfig.supabaseAnonKey)
-            parameter("id", "eq.$pollId")
-            parameter("select", "allows_multiple")
-            parameter("limit", "1")
-        }
-        if (!metaResponse.status.isSuccess()) return null
-        val rows = runCatching { json.decodeFromString<List<JsonObject>>(metaResponse.bodyAsText()) }.getOrDefault(emptyList())
-        return rows.firstOrNull()
-            ?.get("allows_multiple")
-            ?.jsonPrimitive
-            ?.booleanOrNull
-    }
-
-    private fun isAmbiguousPollIdRpcError(statusCode: Int, body: String): Boolean {
-        val lower = body.lowercase()
-        return statusCode == 400 &&
-            lower.contains("42702") &&
-            lower.contains("poll_id") &&
-            lower.contains("ambiguous")
-    }
+    ): Result<List<PollVoteUser>> =
+        collectionPollStore.getPollOptionVoters(pollId = pollId, optionId = optionId)
 
     data class GroupMessageReactionToggleResult(
         val messageId: String,
         val reactions: Map<String, List<String>>
     )
 
+@Composable
+@Composable
     suspend fun toggleGroupMessageReaction(messageId: String, emoji: String): Result<GroupMessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
-            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val local = groupDao.getMessageById(messageId)
+            var local = groupDao.getMessageById(messageId)
                 ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
+            val reactionResult = collectionMessageEngagementStore.toggleReaction(
+                messageId = messageId,
+                emoji = emoji,
+                currentReactions = local.toDomain().reactions,
+                userId = userId,
+                token = token,
+                rpcFunctionName = "secure_toggle_group_message_reaction",
+                tableName = "group_messages",
+                missingRpcPredicate = ::isMissingGroupRpcFunction
+            ).getOrElse { return@withContext Result.failure(it) }
+            val updatedReactions = reactionResult.reactions
 
-            val normalizedEmoji = emoji.trim()
-            if (normalizedEmoji.isBlank()) {
-                return@withContext Result.failure(Exception("Reacción inválida"))
-            }
-
-            val rpcPayload = buildJsonObject {
-                put("p_message_id", messageId)
-                put("p_emoji", normalizedEmoji.take(16))
-            }
-
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_group_message_reaction") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(rpcPayload)
-            }
-
-            val updatedReactions = if (rpcResponse.status.isSuccess()) {
-                val raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
-                parseReactionToggleResponse(raw, messageId)?.reactions
-                    ?: toggleReactionMap(local.toDomain().reactions, normalizedEmoji, userId)
-            } else {
-                val rpcBody = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
-                if (isMissingGroupRpcFunction(rpcResponse.status.value, rpcBody) || isMissingRpcFunctionAlias(rpcBody, "secure_toggle_group_message_reaction")) {
-                    val patched = toggleReactionMap(local.toDomain().reactions, normalizedEmoji, userId)
-                    val patchPayload = buildJsonObject {
-                        put("reactions", reactionsToJsonObject(patched))
-                    }
-                    val patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/group_messages") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        parameter("id", "eq.$messageId")
-                        setBody(patchPayload)
-                    }
-                    if (!patchResponse.status.isSuccess()) {
-                        return@withContext Result.failure(Exception("No se pudo guardar reacción"))
-                    }
-                    patched
-                } else {
-                    return@withContext Result.failure(Exception("No se pudo reaccionar: $rpcBody"))
-                }
-            }
-
-            val updated = local.toDomain().copy(reactions = updatedReactions)
+            var updated = local.toDomain().copy(reactions = updatedReactions)
             groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(updated, isSynced = local.is_synced, pendingAction = local.pending_action, retryCount = local.retry_count, lastRetryAt = local.last_retry_at)))
             updateGroupMessageInFlow(updated.group_id, updated)
 
@@ -2122,24 +1688,16 @@ class GroupRepository @Inject constructor(
         source: GroupMessage,
         targetGroupIds: List<String>
     ): Result<Int> = withContext(Dispatchers.IO) {
-        if (source.deleted_for_all) {
-            return@withContext Result.failure(Exception("No se puede reenviar un mensaje eliminado"))
-        }
-
-        val targets = targetGroupIds
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .filter { it != source.group_id.trim().lowercase() }
-
-        if (targets.isEmpty()) return@withContext Result.failure(Exception("Selecciona al menos un grupo"))
-        if (targets.size > maxForwardTargetsPerBatch) {
-            return@withContext Result.failure(Exception("Puedes reenviar a un máximo de $maxForwardTargetsPerBatch grupos por vez"))
-        }
-
-        var success = 0
-        targets.forEach { targetId ->
-            val result = sendGroupMessage(
+        CollectionMessageForwardingSupport.forwardMessage(
+            sourceDeletedForAll = source.deleted_for_all,
+            sourceScopeId = source.group_id,
+            targetScopeIds = targetGroupIds,
+            maxTargetsPerBatch = maxForwardTargetsPerBatch,
+            emptySelectionMessage = "Selecciona al menos un grupo",
+            batchLimitMessage = "Puedes reenviar a un máximo de $maxForwardTargetsPerBatch grupos por vez",
+            totalFailureMessage = "No se pudo reenviar"
+        ) { targetId ->
+            sendGroupMessage(
                 groupId = targetId,
                 content = if (source.content.isNotBlank()) source.content else "Mensaje reenviado",
                 contentType = source.content_type,
@@ -2148,130 +1706,82 @@ class GroupRepository @Inject constructor(
                 forwardedFromMessageId = source.id,
                 forwardedFromUserId = source.sender_id
             )
-            if (result.isSuccess) success++
         }
-
-        if (success == 0) return@withContext Result.failure(Exception("No se pudo reenviar"))
-        Result.success(success)
-    }
-
-    private fun isMissingRpcFunctionAlias(body: String, functionName: String): Boolean {
-        val normalized = body.lowercase()
-        return normalized.contains(functionName.lowercase()) &&
-            (normalized.contains("could not find the function") || normalized.contains("undefined function"))
-    }
-
-    private fun toggleReactionMap(
-        current: Map<String, List<String>>,
-        emoji: String,
-        userId: String
-    ): Map<String, List<String>> {
-        val normalized = current.mapValues { (_, users) ->
-            users.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct().toMutableList()
-        }.toMutableMap()
-
-        var hadSameReaction = false
-        normalized.keys.toList().forEach { key ->
-            val users = normalized[key] ?: mutableListOf()
-            val removed = users.remove(userId)
-            if (key == emoji && removed) hadSameReaction = true
-            if (users.isEmpty()) normalized.remove(key) else normalized[key] = users
-        }
-
-        if (!hadSameReaction) {
-            val targetUsers = normalized[emoji]?.toMutableList() ?: mutableListOf()
-            if (!targetUsers.contains(userId)) targetUsers.add(userId)
-            normalized[emoji] = targetUsers
-        }
-
-        return normalized.mapValues { (_, users) -> users.distinct() }.filterValues { it.isNotEmpty() }
-    }
-
-    private fun reactionsToJsonObject(reactions: Map<String, List<String>>): JsonObject {
-        return buildJsonObject {
-            reactions.forEach { (emoji, users) ->
-                val cleaned = users.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
-                if (emoji.isNotBlank() && cleaned.isNotEmpty()) {
-                    put(emoji, JsonArray(cleaned.map { JsonPrimitive(it) }))
-                }
-            }
-        }
-    }
-
-    private fun parseReactionToggleResponse(raw: String, fallbackMessageId: String): GroupMessageReactionToggleResult? {
-        if (raw.isBlank()) return null
-        return runCatching {
-            val element = json.parseToJsonElement(raw)
-            when (element) {
-                is JsonObject -> {
-                    val msgId = element["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
-                    val reactionsElement = element["reactions"] ?: element
-                    GroupMessageReactionToggleResult(msgId, parseReactionMap(reactionsElement))
-                }
-                is JsonArray -> {
-                    val first = element.firstOrNull() as? JsonObject ?: return@runCatching null
-                    val msgId = first["message_id"]?.jsonPrimitive?.contentOrNull ?: fallbackMessageId
-                    val reactionsElement = first["reactions"] ?: first
-                    GroupMessageReactionToggleResult(msgId, parseReactionMap(reactionsElement))
-                }
-                else -> null
-            }
-        }.getOrNull()
-    }
-
-    private fun parseReactionMap(element: kotlinx.serialization.json.JsonElement?): Map<String, List<String>> {
-        val obj = element as? JsonObject ?: return emptyMap()
-        return obj.mapNotNull { (emoji, usersElement) ->
-            val usersArray = usersElement as? JsonArray ?: return@mapNotNull null
-            val users = usersArray.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.lowercase() }
-                .filter { it.isNotBlank() }
-                .distinct()
-            if (emoji.isBlank() || users.isEmpty()) null else emoji to users
-        }.toMap()
     }
 
     suspend fun syncGroupMessages(groupId: String) {
-        val cleanId = groupId.trim().lowercase()
-        val currentUserId = authService.getCurrentUserId() ?: return
+        syncGroupMessages(groupId, currentSessionUserId())
+    }
+
+@Composable
+@Composable
+    private suspend fun syncGroupMessages(groupId: String, sessionUserId: String?) {
+        var cleanId = groupId.trim().lowercase()
+        val normalizedSessionUserId = SessionWriteGuard.normalizeAccountId(sessionUserId) ?: return
+        var sessionSnapshot = captureSessionSnapshot(normalizedSessionUserId)
         
         withContext(Dispatchers.IO) {
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-start:$cleanId")) return@withContext
             try {
                 // 1. Fetch Remote Messages
-                val response = supabaseConfig.client.postgrest["group_messages"].select {
+                var response = supabaseConfig.client.postgrest["group_messages"].select {
                     filter { eq("group_id", cleanId) }
                     order("created_at", io.github.jan.supabase.postgrest.query.Order.ASCENDING)
                 }.decodeList<GroupMessage>()
                 
                 if (response.isNotEmpty()) {
-                    // 2. Update flow cache if active
+                    val receiptStates = fetchGroupReceiptStates(cleanId, normalizedSessionUserId)
+                    val localMessagesById = groupDao.getMessagesSync(cleanId)
+                        .associateBy { it.id.trim().lowercase() }
+                        .mapValues { (_, entity) -> entity.toDomain() }
+                    val hydratedResponse = hydrateGroupMessages(
+                        response.map { it.copy(group_id = cleanId) }
+                    ).map { message ->
+                        var messageId = message.id.trim().lowercase()
+                        applyGroupReceiptState(
+                            message = message,
+                            receipt = receiptStates[messageId],
+                            currentUserId = normalizedSessionUserId
+                        )
+                    }
+                    val mergedResponse = hydratedResponse.map { incoming ->
+                        mergeSyncedGroupMessageWithLocalState(
+                            incoming = incoming,
+                            local = localMessagesById[incoming.id.trim().lowercase()]
+                        )
+                    }
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-after-network:$cleanId")) return@withContext
                     if (_activeGroupMessages.containsKey(cleanId)) {
-                         val current = _activeGroupMessages[cleanId]?.value ?: emptyList()
-                         val combined = (current + response).distinctBy { it.id }.sortedBy { it.created_at }
-                         _activeGroupMessages[cleanId]?.value = combined
+                        var current = _activeGroupMessages[cleanId]?.value ?: emptyList()
+                        _activeGroupMessages[cleanId]?.value = CollectionMessageSyncSupport.mergeActiveMessages(
+                            current = current,
+                            incoming = mergedResponse,
+                            idSelector = { it.id },
+                            createdAtSelector = { it.created_at }
+                        )
                     }
                     
-                    // 3. Insert all messages first, then derive unread from persisted status.
-                    groupDao.insertMessages(response.map { 
-                        GroupMessageEntity.fromDomain(it.copy(group_id = cleanId)) 
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-before-db:$cleanId")) return@withContext
+                    groupDao.insertMessages(mergedResponse.map {
+                        GroupMessageEntity.fromDomain(it) 
                     })
 
-                    val normalizedCurrentUserId = currentUserId.trim().lowercase()
-                    val exactUnread = runCatching {
-                        groupDao.countUnreadIncoming(cleanId, normalizedCurrentUserId)
-                    }.getOrDefault(0)
-                    val isGroupCurrentlyOpen = (cleanId == currentOpenedGroupId)
-                    groupDao.resetUnreadCount(cleanId)
-                    if (!isGroupCurrentlyOpen && exactUnread > 0) {
-                        android.util.Log.d("GroupRepository", "🔔 [SYNC-UNREAD] Reconciled unread=$exactUnread for group $cleanId")
-                        groupDao.incrementUnreadCount(cleanId, exactUnread)
-                    }
+                    CollectionMessageSyncSupport.reconcileUnreadCount(
+                        isConversationOpen = (cleanId == currentOpenedGroupId),
+                        countUnread = { groupDao.countUnreadIncoming(cleanId, normalizedSessionUserId) },
+                        resetUnread = { groupDao.resetUnreadCount(cleanId) },
+                        incrementUnread = { unread -> groupDao.incrementUnreadCount(cleanId, unread) },
+                        onUnreadReconciled = { unread ->
+                            android.util.Log.d("GroupRepository", "🔔 [SYNC-UNREAD] Reconciled unread=$unread for group $cleanId")
+                        }
+                    )
                     
-                    // 4. Update metadata logic (pick the absolute latest by timestamp).
-                    val lastMsg = response.maxByOrNull { it.created_at }
+                    val lastMsg = mergedResponse.maxByOrNull { it.created_at }
                     if (lastMsg != null) {
+                        if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-before-metadata:$cleanId")) return@withContext
                         groupDao.updateMetadata(
                             cleanId,
-                            if(lastMsg.content_type == "text") lastMsg.content else "Archivo multimedia",
+                            CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
                             lastMsg.created_at
                         )
                     }
@@ -2284,40 +1794,37 @@ class GroupRepository @Inject constructor(
     }
 
 
-    suspend fun uploadGroupAudio(groupId: String, bytes: ByteArray): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val fileName = "group_audio_${groupId}_${System.currentTimeMillis()}.mp3"
-             val result = storageService.uploadFile(
-                bucketName = "group-audio", 
-                fileName = fileName,
-                bytes = bytes,
-                contentType = "audio/mpeg"
-            )
-             if (result.isSuccess) {
-                 Result.success(storageService.getPublicUrl("group-audio", fileName))
-             } else {
-                 Result.failure(result.exceptionOrNull() ?: Exception("Upload failed"))
-             }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun uploadGroupAudio(groupId: String, bytes: ByteArray): Result<String> =
+        collectionMediaStore.uploadAudio(
+            ownerId = groupId,
+            bytes = bytes,
+            primaryBucket = "group-audio",
+            filePrefix = "group_audio",
+            extension = "mp3",
+            contentType = "audio/mpeg"
+        )
 
+@Composable
+@Composable
     override suspend fun syncGroups(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = (authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))).trim().lowercase()
+            var userId = (authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))).trim().lowercase()
+            var sessionSnapshot = captureSessionSnapshot(userId)
             
             android.util.Log.d("GroupRepository", "🔄 [SYNC] Iniciando sincronización de grupos para $userId")
             
             // 1. Fetch memberships first
-            val memberships = supabaseConfig.client.postgrest["group_members"].select {
+            var memberships = supabaseConfig.client.postgrest["group_members"].select {
                 filter { eq("user_id", userId) }
             }.decodeList<GroupMember>()
             
-            val ids = memberships.map { it.group_id.trim().lowercase() }
+            var ids = memberships.map { it.group_id.trim().lowercase() }
             
             if (ids.isEmpty()) {
                 android.util.Log.d("GroupRepository", "⚠️ [SYNC] Usuario no tiene grupos. Limpiando local.")
+                if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-empty:$userId")) {
+                    return@withContext Result.success(Unit)
+                }
                 groupDao.markOthersAsNotMembers(emptyList())
                 return@withContext Result.success(Unit)
             }
@@ -2335,48 +1842,36 @@ class GroupRepository @Inject constructor(
             
             // Preserve unread counts
             val allLocalGroups = groupDao.getAllGroupsSync()
-            val localCounts = allLocalGroups.associate { it.id.trim().lowercase() to it.unread_count }
+            val localUnreadCounts = groupDao.getUnreadCountRows(userId)
+                .associate { row ->
+                    row.groupId.trim().lowercase() to row.unreadCount.coerceAtLeast(0)
+                }
             val localGroupsMap = allLocalGroups.associateBy { it.id.trim().lowercase() }
 
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-before-upsert:$userId")) {
+                return@withContext Result.success(Unit)
+            }
             groupDao.upsertGroups(groupsResponse.map { 
-                val cleanGroupId = it.id.trim().lowercase()
-                val localGroup = localGroupsMap[cleanGroupId]
-                
-                // Merge Last Message Logic (Server vs Local)
-                val serverTimeStr = it.last_message_at
-                val localTimeStr = localGroup?.last_message_at
-
-                var useLocal = false
-                if (localTimeStr != null && serverTimeStr != null) {
-                    try {
-                        val serverInstant = java.time.Instant.parse(serverTimeStr)
-                        val localInstant = java.time.Instant.parse(localTimeStr)
-                        if (localInstant.isAfter(serverInstant)) {
-                            useLocal = true
-                        }
-                    } catch (e: Exception) {
-                        // If parse fails (e.g. legacy format), fall back to string comparison or server authority
-                        if (localTimeStr > serverTimeStr) useLocal = true
-                    }
-                } else if (localTimeStr != null && serverTimeStr == null) {
-                     useLocal = true
-                }
-
-                val finalMsg = if (useLocal) localGroup?.last_message else it.last_message
-                val finalTime = if (useLocal) localGroup?.last_message_at else it.last_message_at
-
-                // [FIX] Don't allow server to nullify local last_message if it provides nothing
-                val actualMsg = if (finalMsg.isNullOrBlank() && !localGroup?.last_message.isNullOrBlank()) localGroup?.last_message else finalMsg
-                val actualTime = if (finalTime.isNullOrBlank() && !localGroup?.last_message_at.isNullOrBlank()) localGroup?.last_message_at else finalTime
+                var cleanGroupId = it.id.trim().lowercase()
+                var localGroup = localGroupsMap[cleanGroupId]
+                val snapshot = CollectionSyncSupport.resolveLastMessageSnapshot(
+                    serverMessage = it.last_message,
+                    serverTime = it.last_message_at,
+                    localMessage = localGroup?.last_message,
+                    localTime = localGroup?.last_message_at
+                )
 
                 GroupEntity.fromDomain(
                     group = it.copy(
                         id = cleanGroupId,
                         is_member = true,
-                        last_message = actualMsg,
-                        last_message_at = actualTime
+                        last_message = snapshot.lastMessage,
+                        last_message_at = snapshot.lastMessageAt
                     ),
-                    unreadCount = localCounts[cleanGroupId] ?: 0
+                    unreadCount = CollectionMessageSyncSupport.resolveDisplayedUnreadCount(
+                        isConversationOpen = cleanGroupId == currentOpenedGroupId,
+                        exactUnread = localUnreadCounts[cleanGroupId] ?: 0
+                    )
                 ) 
             })
             
@@ -2385,6 +1880,9 @@ class GroupRepository @Inject constructor(
             val validMemberships = memberships.filter { activeIds.contains(it.group_id.trim().lowercase()) }
             
             // Upsert (Replace) current valid memberships
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-before-members:$userId")) {
+                return@withContext Result.success(Unit)
+            }
             groupDao.insertMembers(validMemberships.map {
                 GroupMemberEntity(it.group_id.trim().lowercase(), it.user_id.trim().lowercase(), it.role, it.joined_at)
             })
@@ -2398,34 +1896,19 @@ class GroupRepository @Inject constructor(
             }
             
             // 5. Cleanup
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-before-cleanup:$userId")) {
+                return@withContext Result.success(Unit)
+            }
             groupDao.markOthersAsNotMembers(activeIds)
             
             // [SMART SYNC] Check for Ghost Messages after sync
             try {
                 groupsResponse.forEach { group ->
-                    val cleanId = group.id.trim().lowercase()
-                    val serverTime = group.last_message_at
-                    val localGroup = localGroupsMap[cleanId]
-                    val localTime = localGroup?.last_message_at
-                    
-                    if (serverTime != null) {
-                        var isNewer = false
-                        if (localTime == null) {
-                            isNewer = true
-                        } else {
-                            try {
-                                val s = java.time.Instant.parse(serverTime)
-                                val l = java.time.Instant.parse(localTime)
-                                if (s.isAfter(l)) isNewer = true
-                            } catch (e: Exception) {
-                                isNewer = true
-                            }
-                        }
-                        
-                        if (isNewer) {
-                             android.util.Log.i("GroupRepository", "👻 [GHOST-CHECK] Group $cleanId has newer content on server. Fetching...")
-                             launch { syncGroupMessages(cleanId) }
-                        }
+                    var cleanId = group.id.trim().lowercase()
+                    var localGroup = localGroupsMap[cleanId]
+                    if (CollectionSyncSupport.hasServerNewerContent(group.last_message_at, localGroup?.last_message_at)) {
+                        android.util.Log.i("GroupRepository", "👻 [GHOST-CHECK] Group $cleanId has newer content on server. Fetching...")
+                        launch { syncGroupMessages(cleanId, userId) }
                     }
                 }
             } catch (e: Exception) {
@@ -2440,46 +1923,37 @@ class GroupRepository @Inject constructor(
         }
     }
 
-    suspend fun uploadGroupImage(groupId: String, bytes: ByteArray): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val fileName = "group_${groupId}_${System.currentTimeMillis()}.jpg"
-            val result = storageService.uploadFile(
-                bucketName = "groups",
-                fileName = fileName,
-                bytes = bytes,
-                contentType = "image/jpeg"
-            )
-            if (result.isSuccess) {
-                Result.success(storageService.getPublicUrl("groups", fileName))
-            } else {
-                Result.failure(result.exceptionOrNull() ?: Exception("Upload failed"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun uploadGroupImage(groupId: String, bytes: ByteArray): Result<String> =
+        collectionMediaStore.uploadImage(
+            ownerId = groupId,
+            bytes = bytes,
+            bucketName = "groups",
+            filePrefix = "group"
+        )
 
     /**
      * Crea un nuevo grupo en Supabase e inserta al creador como admin.
      */
+@Composable
+@Composable
     suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>): Result<String> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("GroupRepository", "[GOD] Creando grupo: $name para integrantes: $members")
-            val creatorId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var creatorId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             
             val groupId = UUID.randomUUID().toString().lowercase()
             android.util.Log.d("GroupRepository", "[GOD] Generando nuevo groupId: $groupId")
             
             var imageUrl: String? = null
             if (imageBytes != null) {
-                val uploadResult = uploadGroupImage(groupId, imageBytes)
+                var uploadResult = uploadGroupImage(groupId, imageBytes)
                 if (uploadResult.isSuccess) {
                     imageUrl = uploadResult.getOrNull()
                 }
             }
 
             // Usar JsonObject explícito para evitar fallos por campos nulos o inesperados
-            val now = java.time.Instant.now().toString()
+            var now = java.time.Instant.now().toString()
             val groupJson = buildJsonObject {
                 put("id", groupId)
                 put("name", name)
@@ -2490,25 +1964,26 @@ class GroupRepository @Inject constructor(
                 put("is_deleted", false)
             }
 
-            // 1. Insertar el grupo
-            android.util.Log.d("GroupRepository", "[GOD] Insertando grupo en Supabase...")
-            supabaseConfig.client.postgrest["groups"].insert(groupJson)
-
-            // 2. Insertar miembros (incluyendo al creador)
-            val allMembers = (members + creatorId).distinct()
+            val allMembers = (members + creatorId)
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
             android.util.Log.d("GroupRepository", "[GOD] Insertando ${allMembers.size} miembros en Supabase...")
-            val memberJsonList = allMembers.map { uid ->
+            var membershipPayloads = allMembers.map { uid ->
                 buildJsonObject {
                     put("group_id", groupId)
                     put("user_id", uid)
-                    put("role", if (uid == creatorId) "admin" else "member")
+                    put("role", if (uid == creatorId.trim().lowercase()) "admin" else "member")
                     put("joined_at", now)
                 }
             }
-            supabaseConfig.client.postgrest["group_members"].insert(memberJsonList)
+            collectionCreationRemoteStore.createCollectionWithMemberships(
+                collectionTable = "groups",
+                collectionPayload = groupJson,
+                membershipTable = "group_members",
+                membershipPayloads = membershipPayloads
+            ).getOrThrow()
 
-            // 3. INSERCIÓN LOCAL OPTIMISTA (WhatsApp Style)
-            // Esto evita que el creador vea "No formas parte" mientras espera al Realtime
             try {
                 val optimisticGroup = GroupEntity(
                     id = groupId,
@@ -2523,126 +1998,127 @@ class GroupRepository @Inject constructor(
                     is_deleted = false
                 )
                 groupDao.upsertGroup(optimisticGroup)
-                
-                // También insertamos la membresía localmente
+
                 groupDao.insertMembers(allMembers.map { uid ->
                     conectate.com.data.local.entity.GroupMemberEntity(
                         group_id = groupId,
-                        user_id = uid.trim().lowercase(),
-                        role = if (uid == creatorId) "admin" else "member",
+                        user_id = uid,
+                        role = if (uid == creatorId.trim().lowercase()) "admin" else "member",
                         joined_at = now
                     )
                 })
-            android.util.Log.d("GroupRepository", "[GOD] Inserción local optimista exitosa para $groupId")
-        } catch (e: Exception) {
-            android.util.Log.e("GroupRepository", "Fallo inserción local optimista", e)
-        }
+                android.util.Log.d("GroupRepository", "[GOD] Inserción local optimista exitosa para $groupId")
+            } catch (e: Exception) {
+                android.util.Log.e("GroupRepository", "Fallo inserción local optimista", e)
+            }
 
-        // NO sincronizar inmediatamente - dejar que Realtime lo maneje
-        // syncGroups() puede borrar los miembros locales si el servidor aún no responde
-        android.util.Log.d("GroupRepository", "[GOD] Creación completada. Realtime sincronizará automáticamente.")
-
-        Result.success(groupId)
+            android.util.Log.d("GroupRepository", "[GOD] Creación completada. Realtime sincronizará automáticamente.")
+            Result.success(groupId)
         } catch (e: Exception) {
             android.util.Log.e("GroupRepository", "[GOD] ERROR AL CREAR GRUPO", e)
             Result.failure(e)
         }
     }
 
+@Composable
+@Composable
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         try {
-            val response = supabaseConfig.client.postgrest["group_members"].select {
+            var response = supabaseConfig.client.postgrest["group_members"].select {
                 filter { eq("group_id", groupId) }
             }.decodeList<GroupMember>()
             
             if (response.isEmpty()) return@withContext Result.success(emptyList())
 
-            // Fetch user profiles in parallel using Postgrest client
-            val userIds = response.map { it.user_id }.distinct()
-            val profiles = supabaseConfig.client.postgrest["profiles"].select {
-                filter {
-                    isIn("id", userIds)
-                }
-            }.decodeList<kotlinx.serialization.json.JsonObject>()
+            var profileMap = collectionMemberProfileStore.loadProfiles(response.map { it.user_id })
+            val enrichedMembers = response.map { member ->
+                var profile = profileMap[member.user_id.trim().lowercase()]
+                member.copy(
+                    userName = profile?.userName ?: member.userName ?: "Usuario",
+                    userImage = profile?.userImage ?: member.userImage
+                )
+            }
 
-            val enrichedMembers = if (profiles.isNotEmpty()) {
-                val profileMap = profiles.associate { 
-                    val id = it["id"]?.jsonPrimitive?.content ?: ""
-                    val name = it["display_name"]?.jsonPrimitive?.contentOrNull 
-                        ?: it["full_name"]?.jsonPrimitive?.contentOrNull 
-                        ?: it["username"]?.jsonPrimitive?.contentOrNull ?: "Usuario"
-                    val img = it["avatar_url"]?.jsonPrimitive?.contentOrNull
-                    id to (name to img)
-                }
-                
-                response.map { member ->
-                    val (name, img) = profileMap[member.user_id] ?: ("Usuario" to null)
-                    member.copy(userName = name, userImage = img)
-                }
-            } else response
-
-            // Update local cache (simplified, Entity doesn't have names yet, but it's okay for now as detail screen uses VM)
             groupDao.insertMembers(enrichedMembers.map { 
-                GroupMemberEntity(it.group_id, it.user_id, it.role, it.joined_at) 
+                GroupMemberEntity(
+                    it.group_id.trim().lowercase(),
+                    it.user_id.trim().lowercase(),
+                    it.role,
+                    it.joined_at
+                ) 
             })
             
             Result.success(enrichedMembers)
         } catch (e: Exception) {
             // Fallback to local
-            val local = groupDao.getMembersFlow(groupId).first().map {
+            var local = groupDao.getMembersFlow(groupId).first().map {
                 GroupMember(it.group_id, it.user_id, it.role, it.joined_at)
             }
-            if (local.isNotEmpty()) Result.success(local)
+            val localProfiles = collectionMemberProfileStore.loadProfiles(local.map { it.user_id })
+            val enrichedLocal = local.map { member ->
+                var profile = localProfiles[member.user_id.trim().lowercase()]
+                member.copy(
+                    userName = profile?.userName ?: member.userName,
+                    userImage = profile?.userImage ?: member.userImage
+                )
+            }
+            if (enrichedLocal.isNotEmpty()) Result.success(enrichedLocal)
             else Result.failure(e)
         }
     }
 
     fun getMembersFlow(groupId: String): Flow<List<GroupMember>> {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         return groupDao.getMembersFlow(cleanId).map { list ->
             list.map { GroupMember(it.group_id, it.user_id, it.role, it.joined_at) }
         }
     }
 
+@Composable
+@Composable
     suspend fun leaveGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val cleanId = groupId.trim().lowercase()
-            
-            // 4. Optimistic Delete locally
-            groupDao.removeMember(cleanId, userId.trim().lowercase())
-            groupDao.updateMembership(cleanId, false)
-            
-            // 5. Delete membership from Supabase
-            supabaseConfig.client.postgrest["group_members"].delete {
-                filter {
-                    eq("group_id", cleanId)
-                    eq("user_id", userId)
-                }
+        var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        CollectionMembershipMutationSupport.leaveCurrentUserCollection(
+            scopeId = groupId,
+            currentUserId = userId,
+            applyLocalOptimistic = { cleanId, cleanUserId ->
+                groupDao.removeMember(cleanId, cleanUserId)
+                groupDao.updateMembership(cleanId, false)
+            },
+            remoteDelete = { cleanId, cleanUserId ->
+                collectionAdminRemoteStore.deleteMember(
+                    membershipTable = "group_members",
+                    scopeColumn = "group_id",
+                    scopeId = cleanId,
+                    userId = cleanUserId
+                )
+            },
+            applyLocalAfterRemote = { cleanId, cleanUserId ->
+                groupDao.removeMember(cleanId, cleanUserId)
             }
-            
-            // Remove locally
-            groupDao.removeMember(cleanId, userId.trim().lowercase())
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        )
     }
 
+@Composable
+@Composable
     suspend fun addMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val cleanId = groupId.trim().lowercase()
-            
-            // Fix: serialize only table columns
-            val memberJson = buildJsonObject {
-                put("group_id", cleanId)
-                put("user_id", userId)
-                put("role", "member")
-                put("joined_at", java.time.Instant.now().toString())
-            }
-            
-            supabaseConfig.client.postgrest["group_members"].insert(memberJson)
+            var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var cleanId = groupId.trim().lowercase()
+            var group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
+            var privileges = resolveGroupGovernancePrivileges(group, me)
+            CollectionGovernanceSupport.requireCanManageMembers(
+                privileges = privileges,
+                errorMessage = "No tienes permisos para agregar miembros."
+            )
+
+            collectionAdminRemoteStore.insertMember(
+                membershipTable = "group_members",
+                scopeColumn = "group_id",
+                scopeId = cleanId,
+                userId = userId,
+                joinedAt = java.time.Instant.now().toString()
+            ).getOrThrow()
             
             // Local update will be handled by realtime or refresh, but we can do it optimistically if needed
             // For now, let's rely on syncing
@@ -2653,36 +2129,33 @@ class GroupRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun removeMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val cleanId = groupId.trim().lowercase()
-            val targetUserId = userId.trim().lowercase()
+            var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var cleanId = groupId.trim().lowercase()
+            var targetUserId = userId.trim().lowercase()
             
-            // 1. Get Group to check creator
-            val group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
-            
-            // 2. CREATOR PROTECTION: Cannot remove the creator
-            if (targetUserId == group.creator_id.trim().lowercase()) {
-                return@withContext Result.failure(Exception("No se puede eliminar al creador del grupo."))
-            }
-            
-            // 3. Check Permissions (My Role)
-            val myRole = getMemberRole(cleanId, me)
-            val isCreator = me.trim().lowercase() == group.creator_id.trim().lowercase()
-            val isAdmin = myRole == "admin" || myRole == "owner"
-            
-            if (!isCreator && !isAdmin) {
-                return@withContext Result.failure(Exception("No tienes permisos para eliminar miembros."))
-            }
+            var group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
+            CollectionGovernanceSupport.requireTargetIsNotCreator(
+                targetUserId = targetUserId,
+                creatorId = group.creator_id,
+                errorMessage = "No se puede eliminar al creador del grupo."
+            )
+            var privileges = resolveGroupGovernancePrivileges(group, me)
+            CollectionGovernanceSupport.requireCanManageMembers(
+                privileges = privileges,
+                errorMessage = "No tienes permisos para eliminar miembros."
+            )
 
             // Execute delete
-            supabaseConfig.client.postgrest["group_members"].delete {
-                filter {
-                    eq("group_id", cleanId)
-                    eq("user_id", targetUserId)
-                }
-            }
+            collectionAdminRemoteStore.deleteMember(
+                membershipTable = "group_members",
+                scopeColumn = "group_id",
+                scopeId = cleanId,
+                userId = targetUserId
+            ).getOrThrow()
             
             // Remove locally
             groupDao.removeMember(cleanId, targetUserId)
@@ -2693,28 +2166,21 @@ class GroupRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun deleteGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val cleanId = groupId.trim().lowercase()
-            val group = getGroupById(cleanId)
-            
-            // 1. Obtener mi perfil para ver si soy Admin Global
-            val userProfile = userRepository.getUserById(userId).getOrNull()
-            val isGlobalAdmin = userProfile?.is_admin ?: false
-            
-            // 2. Obtener mi rol en este grupo
-            val memberRole = getMemberRole(cleanId, userId)
-            val isAuthorized = isGlobalAdmin || group?.creator_id == userId || memberRole == "admin" || memberRole == "owner"
+            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var cleanId = groupId.trim().lowercase()
+            var group = getGroupById(cleanId)
+            var privileges = group?.let { resolveGroupGovernancePrivileges(it, userId) }
+            val isAuthorized = privileges?.canManageCollection == true
             
             if (isAuthorized) {
-                // Borrado GLOBAL (Soft delete)
-                val updateJson = kotlinx.serialization.json.buildJsonObject {
-                    put("is_deleted", true)
-                }
-                supabaseConfig.client.postgrest["groups"].update(updateJson) {
-                    filter { eq("id", cleanId) }
-                }
+                collectionAdminRemoteStore.softDeleteCollection(
+                    collectionTable = "groups",
+                    scopeId = cleanId
+                ).getOrThrow()
             } else {
                 // Si no soy admin, solo salgo del grupo localmente
                 leaveGroup(cleanId)
@@ -2733,56 +2199,46 @@ class GroupRepository @Inject constructor(
     }
 
     private suspend fun getMemberRole(groupId: String, userId: String): String? {
-        val cleanId = groupId.trim().lowercase()
-        return try {
-            val response = supabaseConfig.client.postgrest["group_members"].select {
-                filter {
-                    eq("group_id", cleanId)
-                    eq("user_id", userId)
-                }
-            }.decodeSingleOrNull<GroupMember>()
-            response?.role
-        } catch (e: Exception) {
-            null
-        }
+        return collectionAdminRemoteStore.getMemberRole(
+            membershipTable = "group_members",
+            scopeColumn = "group_id",
+            scopeId = groupId,
+            userId = userId
+        )
     }
 
     suspend fun deleteGroupLocally(groupId: String) {
-        val cleanId = groupId.trim().lowercase()
+        var cleanId = groupId.trim().lowercase()
         groupDao.deleteGroup(cleanId)
     }
 
+@Composable
+@Composable
     suspend fun updateMemberRole(groupId: String, userId: String, newRole: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val cleanId = groupId.trim().lowercase()
-            val targetUserId = userId.trim().lowercase()
+            var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var cleanId = groupId.trim().lowercase()
+            var targetUserId = userId.trim().lowercase()
             
-            // 1. Get Group for creator check
-            val group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
+            var group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
+            CollectionGovernanceSupport.requireTargetIsNotCreator(
+                targetUserId = targetUserId,
+                creatorId = group.creator_id,
+                errorMessage = "No se puede cambiar el rol del creador."
+            )
+            var privileges = resolveGroupGovernancePrivileges(group, me)
+            CollectionGovernanceSupport.requireCanManageMembers(
+                privileges = privileges,
+                errorMessage = "No tienes permisos para gestionar roles."
+            )
 
-            // 2. CREATOR PROTECTION: Cannot change creator's role (they are always owner/admin)
-            if (targetUserId == group.creator_id.trim().lowercase()) {
-                return@withContext Result.failure(Exception("No se puede cambiar el rol del creador."))
-            }
-            
-            // 3. Check Permissions
-            val myRole = getMemberRole(cleanId, me)
-            val isCreator = me.trim().lowercase() == group.creator_id.trim().lowercase()
-            val isAdmin = myRole == "admin" || myRole == "owner"
-            
-            if (!isCreator && !isAdmin) {
-                return@withContext Result.failure(Exception("No tienes permisos para gestionar roles."))
-            }
-
-            supabaseConfig.client.postgrest["group_members"].update({
-                set("role", newRole)
-            }) {
-                filter {
-                    eq("group_id", cleanId)
-                    eq("user_id", targetUserId)
-                }
-            }
+            collectionAdminRemoteStore.updateMemberRole(
+                membershipTable = "group_members",
+                scopeColumn = "group_id",
+                scopeId = cleanId,
+                userId = targetUserId,
+                newRole = newRole
+            ).getOrThrow()
             
             // Update local member cache
             getGroupMembers(cleanId)
@@ -2801,24 +2257,34 @@ class GroupRepository @Inject constructor(
         onlyAdminsCanTalk: Boolean = false
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val cleanId = groupId.trim().lowercase()
+            var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var cleanId = groupId.trim().lowercase()
+            var group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
+            var privileges = resolveGroupGovernancePrivileges(group, me)
+            CollectionGovernanceSupport.requireCanManageCollection(
+                privileges = privileges,
+                errorMessage = "No tienes permisos para editar el grupo."
+            )
             var imageUrl: String? = null
             
             if (imageBytes != null) {
-                val uploadResult = uploadGroupImage(cleanId, imageBytes)
+                var uploadResult = uploadGroupImage(cleanId, imageBytes)
                 if (uploadResult.isSuccess) {
                     imageUrl = uploadResult.getOrNull()
                 }
             }
 
-            supabaseConfig.client.postgrest["groups"].update({
-                set("name", name)
-                set("description", description ?: "")
-                set("only_admins_can_talk", onlyAdminsCanTalk)
-                if (imageUrl != null) set("image", imageUrl)
-            }) {
-                filter { eq("id", cleanId) }
+            val updatePayload = buildJsonObject {
+                put("name", name)
+                put("description", description ?: "")
+                put("only_admins_can_talk", onlyAdminsCanTalk)
+                if (imageUrl != null) put("image", imageUrl)
             }
+            collectionAdminRemoteStore.updateCollectionInfo(
+                collectionTable = "groups",
+                scopeId = cleanId,
+                payload = updatePayload
+            ).getOrThrow()
             
             syncGroups()
             Result.success(Unit)
@@ -2827,37 +2293,30 @@ class GroupRepository @Inject constructor(
         }
     }
 
-    suspend fun uploadGroupMedia(groupId: String, bytes: ByteArray, contentType: String): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val extension = when {
-                contentType.equals("image/gif", ignoreCase = true) -> "gif"
-                contentType.startsWith("image/") -> "jpg"
-                contentType.startsWith("video/") -> "mp4"
-                else -> "bin"
-            }
-            val fileName = "media_group_${groupId}_${System.currentTimeMillis()}.$extension"
-            val result = storageService.uploadFile(
-                bucketName = "group-media",
-                fileName = fileName,
-                bytes = bytes,
-                contentType = contentType
-            )
-            if (result.isSuccess) {
-                Result.success(storageService.getPublicUrl("group-media", fileName))
-            } else {
-                // Fallback to old groups bucket if new one fails or isn't ready
-                storageService.uploadFile(
-                    bucketName = "groups",
-                    fileName = fileName,
-                    bytes = bytes,
-                    contentType = contentType
-                ).let { fallback ->
-                    if (fallback.isSuccess) Result.success(storageService.getPublicUrl("groups", fileName))
-                    else Result.failure(fallback.exceptionOrNull() ?: Exception("Upload failed"))
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+    private suspend fun resolveGroupGovernancePrivileges(
+        group: Group,
+        currentUserId: String
+    ) = CollectionGovernanceSupport.resolvePrivileges(
+        currentUserId = currentUserId,
+        creatorId = group.creator_id,
+        loadMemberRole = { normalizedUserId -> getMemberRole(group.id, normalizedUserId) },
+        loadIsGlobalAdmin = { normalizedUserId ->
+            userRepository.getUserById(normalizedUserId).getOrNull()?.is_admin == true
         }
-    }
+    )
+
+    suspend fun uploadGroupMedia(groupId: String, bytes: ByteArray, contentType: String): Result<String> =
+        collectionMediaStore.uploadMessageMedia(
+            ownerId = groupId,
+            bytes = bytes,
+            contentType = contentType,
+            primaryBucket = "group-media",
+            fallbackBucket = "groups",
+            filePrefix = "media_group"
+        )
 }
+
+
+
+
+

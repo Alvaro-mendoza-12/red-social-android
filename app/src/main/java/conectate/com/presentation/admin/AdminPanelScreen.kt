@@ -27,13 +27,14 @@ import conectate.com.data.model.VideoReport
 import conectate.com.data.repository.SuspensionDurationUnit
 import conectate.com.presentation.navigation.Screen
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
+
+
 fun AdminPanelScreen(
     navController: NavController,
     viewModel: AdminViewModel = hiltViewModel()
 ) {
     val adminState by viewModel.adminState.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(viewModel) {
@@ -60,6 +61,42 @@ fun AdminPanelScreen(
             )
         }
     ) { padding ->
+        if (!isAdmin) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    tonalElevation = 2.dp,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Acceso restringido",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Esta seccion esta disponible solo para cuentas administradoras autorizadas.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(onClick = { navController.popBackStack() }) {
+                            Text("Volver")
+                        }
+                    }
+                }
+            }
+            return
+        }
+
         var selectedTab by remember { mutableStateOf(0) }
         val tabs = listOf("Reportes", "Reporte de Videos", "Insignias")
 
@@ -89,19 +126,32 @@ fun AdminPanelScreen(
     }
 }
 
-@Composable
+
 fun ReportsTabContent(
     adminState: AdminUiState,
     navController: NavController,
     viewModel: AdminViewModel
 ) {
-    when (val state = adminState) {
+    when (var state = adminState) {
         is AdminUiState.Loading -> {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        is AdminUiState.Unauthorized -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No tienes permisos para ver esta seccion",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                )
             }
         }
         
@@ -153,16 +203,24 @@ fun ReportsTabContent(
     }
 }
 
-@Composable
+
 fun VideoReportsTabContent(
     adminState: AdminUiState,
     navController: NavController,
     viewModel: AdminViewModel
 ) {
-    when (val state = adminState) {
+    when (var state = adminState) {
         is AdminUiState.Loading -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.error)
+            }
+        }
+        is AdminUiState.Unauthorized -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "No tienes permisos para revisar reportes de video",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                )
             }
         }
         is AdminUiState.Success -> {
@@ -202,6 +260,7 @@ fun VideoReportsTabContent(
     }
 }
 
+
 @Composable
 fun VideoReportCard(
     report: VideoReport,
@@ -230,7 +289,7 @@ fun VideoReportCard(
         actionNoteLower.contains("cuenta suspendida") &&
             !actionNoteLower.contains("habilitada")
 
-    val statusColor = when (normalizedStatus) {
+    var statusColor = when (normalizedStatus) {
         "pendiente" -> Color(0xFFFF9800)
         "en_revision", "en_proceso" -> Color(0xFF2196F3)
         "finalizado", "revisado" -> Color(0xFF4CAF50)
@@ -491,8 +550,8 @@ fun VideoReportCard(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val durationValue = suspendDurationValueText.toIntOrNull()?.coerceAtLeast(1) ?: 7
-                        val reason = suspendReasonText.trim().ifBlank {
+                        var durationValue = suspendDurationValueText.toIntOrNull()?.coerceAtLeast(1) ?: 7
+                        var reason = suspendReasonText.trim().ifBlank {
                             "Incumplimiento de normas de la comunidad"
                         }
                         showSuspendDialog = false
@@ -518,6 +577,7 @@ fun VideoReportCard(
     }
 }
 
+
 @Composable
 fun ReportCard(
     report: Report,
@@ -528,7 +588,7 @@ fun ReportCard(
     var showStatusMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     
-    val statusColor = when (report.status) {
+    var statusColor = when (report.status) {
         "pendiente" -> Color(0xFFFF9800) // Orange
         "en_proceso" -> Color(0xFF2196F3) // Blue
         "finalizado" -> Color(0xFF4CAF50) // Green
@@ -735,3 +795,11 @@ fun ReportCard(
         )
     }
 }
+
+
+
+
+
+
+
+

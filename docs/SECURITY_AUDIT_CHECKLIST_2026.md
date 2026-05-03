@@ -1,10 +1,11 @@
 # Security Audit Checklist (2026)
 
 ## Scope
-This checklist is the release-blocking baseline for SQL security hardening in Supabase/Postgres artifacts (`*.sql`).
+This checklist is the release-blocking baseline for deployable Supabase/Postgres SQL listed in `sql/release-manifest.txt`.
 
 ## Automated Gate
 - Script: `tools/security_sql_audit.py`
+- Release manifest: `sql/release-manifest.txt`
 - Baseline file: `tools/security_audit_baseline.json`
 - Report outputs:
   - `build/reports/security/sql_security_audit.md`
@@ -13,24 +14,32 @@ This checklist is the release-blocking baseline for SQL security hardening in Su
 Run locally:
 
 ```bash
-python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
+python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH
 ```
 
 Gate policy:
 - Fails on new `HIGH`/`CRITICAL` findings not present in baseline.
-- Existing historical findings remain visible in reports until remediated.
+- Applies only to files inside the release manifest.
+- Historical SQL outside the manifest is tracked separately as hygiene debt until remediated or archived.
 
 ## Baseline Maintenance
 Only update baseline after security review and explicit sign-off.
 
 ```bash
-python tools/security_sql_audit.py --root . --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --update-baseline
+python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --update-baseline
 ```
 
 Required for baseline updates:
 - Link to reviewed PR.
 - Security owner approval.
 - Justification per new finding ID.
+
+## Historical Inventory
+Use the whole-tree scan only to prioritize cleanup of legacy or archived SQL, not to block releases directly.
+
+```bash
+python tools/security_sql_audit.py --root . --report build/reports/security/sql_security_inventory.md --json build/reports/security/sql_security_inventory.json --fail-threshold HIGH
+```
 
 ## Manual Review Checklist
 - Confirm `SECURITY DEFINER` functions define `SET search_path`.

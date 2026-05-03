@@ -4,9 +4,11 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.sp
 
-val Typography = Typography(
+private val BaseTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
@@ -98,3 +100,63 @@ val Typography = Typography(
         lineHeight = 16.sp
     )
 )
+
+val Typography = BaseTypography
+
+fun buildAppTypography(
+    fontFamily: FontFamily = FontFamily.Default,
+    textScale: Float = 1f
+): Typography {
+    val safeScale = textScale.coerceIn(0.9f, 1.25f)
+    return Typography(
+        displayLarge = BaseTypography.displayLarge.withFont(fontFamily, safeScale),
+        displayMedium = BaseTypography.displayMedium.withFont(fontFamily, safeScale),
+        displaySmall = BaseTypography.displaySmall.withFont(fontFamily, safeScale),
+        headlineLarge = BaseTypography.headlineLarge.withFont(fontFamily, safeScale),
+        headlineMedium = BaseTypography.headlineMedium.withFont(fontFamily, safeScale),
+        headlineSmall = BaseTypography.headlineSmall.withFont(fontFamily, safeScale),
+        titleLarge = BaseTypography.titleLarge.withFont(fontFamily, safeScale),
+        titleMedium = BaseTypography.titleMedium.withFont(fontFamily, safeScale),
+        titleSmall = BaseTypography.titleSmall.withFont(fontFamily, safeScale),
+        bodyLarge = BaseTypography.bodyLarge.withFont(fontFamily, safeScale),
+        bodyMedium = BaseTypography.bodyMedium.withFont(fontFamily, safeScale),
+        bodySmall = BaseTypography.bodySmall.withFont(fontFamily, safeScale),
+        labelLarge = BaseTypography.labelLarge.withFont(fontFamily, safeScale),
+        labelMedium = BaseTypography.labelMedium.withFont(fontFamily, safeScale),
+        labelSmall = BaseTypography.labelSmall.withFont(fontFamily, safeScale)
+    )
+}
+
+private fun TextStyle.withFont(fontFamily: FontFamily, scale: Float): TextStyle {
+    return copy(
+        fontFamily = fontFamily,
+        fontSize = fontSize.scaleBy(scale),
+        lineHeight = lineHeight.scaleBy(scale),
+        letterSpacing = letterSpacing.scaleBy(scale)
+    )
+}
+
+private fun TextUnit.scaleBy(scale: Float): TextUnit {
+    return if (type == TextUnitType.Sp) {
+        (value * scale).sp
+    } else {
+        this
+    }
+}
+
+fun appFontFamilyFor(storageValue: String): androidx.compose.ui.text.font.FontFamily {
+    return when (storageValue) {
+        "sans" -> androidx.compose.ui.text.font.FontFamily.SansSerif
+        "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+        "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+        "cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
+        else -> androidx.compose.ui.text.font.FontFamily.Default
+    }
+}
+
+
+
+
+
+
+

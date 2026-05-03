@@ -17,7 +17,7 @@ class ChatSettingsRepository @Inject constructor(
     private val chatSettingsDao: ChatSettingsDao
 ) {
     fun observeChatBackground(chatId: String): Flow<ChatBackgroundSettings> {
-        val cleanId = chatId.trim().lowercase()
+        var cleanId = chatId.trim().lowercase()
         return chatSettingsDao.observeByChatId(cleanId).map { entity ->
             if (entity == null) {
                 ChatBackgroundSettings()
@@ -31,7 +31,7 @@ class ChatSettingsRepository @Inject constructor(
     }
 
     suspend fun upsertChatBackground(chatId: String, backgroundType: String, backgroundUri: String?) {
-        val cleanId = chatId.trim().lowercase()
+        var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return
         val normalizedType = backgroundType.trim().lowercase().ifBlank { "default" }
         chatSettingsDao.upsert(
@@ -45,9 +45,12 @@ class ChatSettingsRepository @Inject constructor(
     }
 
     suspend fun clearChatBackground(chatId: String) {
-        val cleanId = chatId.trim().lowercase()
+        var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return
         chatSettingsDao.clearByChatId(cleanId)
     }
 }
+
+
+
 

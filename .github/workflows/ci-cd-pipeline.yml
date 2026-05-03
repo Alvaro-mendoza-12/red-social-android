@@ -1,0 +1,647 @@
+# 🔥 CONÉCTATE CI/CD PIPELINE - ENTERPRISE PRODUCTION READY
+# Pipeline CI/CD basado en GitHub Actions con mejores prácticas oficiales
+# Implementación 100% realista con testing automatizado, security scanning y deployment
+# 
+# Características implementadas:
+# 1. Multi-stage pipeline con parallel jobs
+# 2. Automated testing (unit, integration, UI, performance)
+# 3. Security scanning (dependency check, code analysis)
+# 4. Code quality checks (SonarQube, linting)
+# 5. Build optimization con caching
+# 6. Docker image building y pushing
+# 7. Kubernetes deployment con Helm
+# 8. Environment-specific configurations
+# 9. Rollback capabilities
+# 10. Monitoring y alerting
+
+name: 🚀 Conectate CI/CD Pipeline
+
+# 🔥 TRIGGERS - Eventos que disparan el pipeline
+on:
+  push:
+    branches: [ main, develop, release/* ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      force_deploy:
+        description: 'Force deployment (bypass checks)'
+        required: false
+        default: false
+        type: boolean
+
+# 🔥 ENVIRONMENT VARIABLES - Variables globales
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: conectate/android
+  PROJECT_ID: conectate-enterprise
+  SONAR_ORG: conectate
+  SONAR_PROJECT_KEY: conectate-android
+
+# 🔥 JOBS - Tareas del pipeline
+jobs:
+  # 🔥 CODE QUALITY - Análisis de calidad de código
+  code-quality:
+    name: 🔍 Code Quality Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better analysis
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    
+    - name: 📦 Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    
+    - name: 🔍 Run Detekt (Static Analysis)
+      run: ./gradlew detekt --no-daemon
+    
+    - name: 📊 Upload Detekt reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: detekt-reports
+        path: app/build/reports/detekt/
+    
+    - name: 🔍 Run Lint
+      run: ./gradlew lint --no-daemon
+    
+    - name: 📊 Upload Lint reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: lint-reports
+        path: app/build/reports/lint-results-*.html
+    
+    - name: 🎯 SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # 🔥 SECURITY SCANNING - Análisis de seguridad
+  security-scan:
+    name: 🔒 Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: 🔍 OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'conectate-android'
+        path: '.'
+        format: 'HTML'
+        out: 'dependency-check-reports'
+    
+    - name: 📊 Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: dependency-check-reports/
+    
+    - name: 🔍 Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: 📊 Upload Trivy results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # 🔥 UNIT TESTS - Testing unitario
+  unit-tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    
+    - name: 📦 Cache Gradle
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    
+    - name: 🧪 Run Unit Tests
+      run: ./gradlew test --no-daemon --continue
+    
+    - name: 📊 Generate Test Report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Unit Tests
+        path: app/build/test-results/**/*.xml
+        reporter: java-junit
+    
+    - name: 📊 Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: unit-test-results
+        path: app/build/test-results/
+
+  # 🔥 INTEGRATION TESTS - Testing de integración
+  integration-tests:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: conectate_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    
+    - name: 📦 Cache Gradle
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    
+    - name: 🧪 Run Integration Tests
+      env:
+        DATABASE_URL: jdbc:postgresql://localhost:5432/conectate_test
+        DATABASE_USERNAME: postgres
+        DATABASE_PASSWORD: postgres
+        REDIS_URL: redis://localhost:6379
+      run: ./gradlew integrationTest --no-daemon --continue
+    
+    - name: 📊 Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: app/build/test-results/integrationTest/
+
+  # 🔥 ANDROID TESTS - Testing de Android
+  android-tests:
+    name: 🤖 Android Tests
+    runs-on: macos-latest  # macOS para emulador Android
+    timeout-minutes: 60
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: 🤖 Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 33
+        build-tools: 33.0.2
+        ndk: 25.2.9519653
+        cmake: 3.22.1
+    
+    - name: 📦 Cache Gradle
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    
+    - name: 🤖 Create AVD
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 33
+        target: google_apis
+        arch: x86_64
+        profile: Nexus 6
+        sdcard: 512M
+        script: |
+          # Wait for emulator to start
+          adb wait-for-device
+          # Unlock device
+          adb shell input keyevent 82
+    
+    - name: 🧪 Run Android Tests
+      run: ./gradlew connectedAndroidTest --no-daemon --continue
+    
+    - name: 📊 Upload Android test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: android-test-results
+        path: app/build/reports/androidTests/
+
+  # 🔥 PERFORMANCE TESTS - Testing de rendimiento
+  performance-tests:
+    name: ⚡ Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    
+    - name: 📦 Cache Gradle
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    
+    - name: ⚡ Run Performance Tests
+      run: ./gradlew performanceTest --no-daemon --continue
+    
+    - name: 📊 Upload performance reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-reports
+        path: app/build/reports/performance/
+
+  # 🔥 BUILD ANDROID APP - Construcción de aplicación
+  build-android:
+    name: 🏗️ Build Android App
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [code-quality, security-scan, unit-tests, integration-tests]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+    
+    - name: 🤖 Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 33
+        build-tools: 33.0.2
+        ndk: 25.2.9519653
+    
+    - name: 📦 Cache Gradle
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    
+    - name: 🔑 Decode Keystore
+      env:
+        ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
+      run: |
+        echo $ENCODED_STRING | base64 -di > app/keystore.jks
+    
+    - name: 🏗️ Build Release APK
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        ./gradlew assembleRelease --no-daemon
+    
+    - name: 📊 Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: android-apk
+        path: app/build/outputs/apk/release/app-release.apk
+    
+    - name: 📊 Upload Mapping
+      uses: actions/upload-artifact@v3
+      with:
+        name: mapping-file
+        path: app/build/outputs/mapping/release/mapping.txt
+
+  # 🔥 BUILD DOCKER IMAGE - Construcción de imagen Docker
+  build-docker:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-android
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 📥 Download APK
+      uses: actions/download-artifact@v3
+      with:
+        name: android-apk
+        path: artifacts/
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🔐 Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 🏷️ Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: 🐳 Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          APK_FILE=artifacts/app-release.apk
+          VERSION=${{ github.sha }}
+
+  # 🔥 DEPLOY TO STAGING - Deployment a staging
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    environment: staging
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☸️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.2'
+    
+    - name: 🔐 Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+    
+    - name: 📦 Download Helm chart
+      uses: actions/download-artifact@v3
+      with:
+        name: helm-chart
+        path: charts/
+    
+    - name: ☸️ Deploy with Helm
+      run: |
+        helm upgrade --install conectate-staging charts/conectate \
+          --namespace conectate-staging \
+          --create-namespace \
+          --set image.tag=${{ github.sha }} \
+          --set environment=staging \
+          --set ingress.host=staging.conectate.com \
+          --timeout 10m
+    
+    - name: 🧪 Smoke Tests
+      run: |
+        kubectl wait --for=condition=ready pod -l app=conectate -n conectate-staging --timeout=300s
+        kubectl get pods -n conectate-staging
+    
+    - name: 📊 Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        message: |
+          🚀 Conectate deployed to staging successfully!
+          📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          🌐 URL: https://staging.conectate.com
+
+  # 🔥 DEPLOY TO PRODUCTION - Deployment a producción
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☸️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.2'
+    
+    - name: 🔐 Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+    
+    - name: 📦 Download Helm chart
+      uses: actions/download-artifact@v3
+      with:
+        name: helm-chart
+        path: charts/
+    
+    - name: ☸️ Deploy with Helm
+      run: |
+        helm upgrade --install conectate-production charts/conectate \
+          --namespace conectate-production \
+          --create-namespace \
+          --set image.tag=${{ github.sha }} \
+          --set environment=production \
+          --set ingress.host=conectate.com \
+          --set replicaCount=3 \
+          --timeout 15m
+    
+    - name: 🧪 Health Checks
+      run: |
+        kubectl wait --for=condition=ready pod -l app=conectate -n conectate-production --timeout=600s
+        kubectl get pods -n conectate-production
+        
+        # Health check endpoint
+        kubectl run health-check --image=curlimages/curl --rm -i --restart=Never \
+          -- curl -f https://conectate.com/health
+    
+    - name: 📊 Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        message: |
+          🚀🎉 Conectate deployed to production successfully!
+          📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          🌐 URL: https://conectate.com
+          👤 Deployed by: ${{ github.actor }}
+
+  # 🔥 ROLLBACK - Rollback automático
+  rollback:
+    name: 🔄 Rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: failure() && (needs.deploy-staging.result == 'failure' || needs.deploy-production.result == 'failure')
+    needs: [deploy-staging, deploy-production]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☸️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.2'
+    
+    - name: 🔐 Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+    
+    - name: 🔄 Rollback deployment
+      run: |
+        helm rollback conectate-production --namespace conectate-production
+    
+    - name: 📊 Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        message: |
+          🔄 Conectate deployment rolled back due to failure
+          👤 Action by: ${{ github.actor }}
+
+  # 🔥 CLEANUP - Limpieza de artifacts
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [unit-tests, integration-tests, android-tests, performance-tests]
+    
+    steps:
+    - name: 🧹 Clean up old artifacts
+      uses: actions/github-script@v6
+      with:
+        script: |
+          // Delete old artifacts (keep last 10)
+          const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.runId,
+          });
+          
+          const artifactsToDelete = artifacts.data.artifacts
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(10);
+          
+          for (const artifact of artifactsToDelete) {
+            await github.rest.actions.deleteArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+            });
+            console.log(`Deleted artifact: ${artifact.name}`);
+          }

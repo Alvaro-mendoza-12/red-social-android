@@ -19,6 +19,13 @@ class MainActivitySmokeTest {
 
     @Test
     fun appLaunchesAndShowsBrandText() {
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            runCatching {
+                composeRule.onNodeWithText("Conectate", substring = false, ignoreCase = true)
+                    .assertExists()
+                true
+            }.getOrDefault(false)
+        }
         composeRule.onNodeWithText("Conectate", substring = false, ignoreCase = true)
             .assertIsDisplayed()
     }

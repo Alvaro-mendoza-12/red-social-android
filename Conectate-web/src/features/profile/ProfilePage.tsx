@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link } from 'react-router-dom'
+import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../../core/auth/AuthProvider'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 
 type ProfileStats = {
@@ -46,6 +48,9 @@ function initialsOf(name: string): string {
 
 export function ProfilePage() {
   const { user } = useAuth()
+  const profileQrValue = user?.id ? `conectate://profile/${user.id}` : ''
+  const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
+  const metadataAvatar = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [myPosts, setMyPosts] = useState<MyPost[]>([])
   const [myReports, setMyReports] = useState<MyReport[]>([])
@@ -80,18 +85,18 @@ export function ProfilePage() {
         const row = ((profileRows ?? []) as GenericRow[])[0]
         if (row) {
           setProfile({
-            name: textOf(row, ['displayName', 'display_name', 'full_name'], user.email ?? 'Usuario'),
+            name: textOf(row, ['displayName', 'display_name', 'full_name'], metadataName || user.email || 'Usuario'),
             username: textOf(row, ['username'], ''),
             bio: textOf(row, ['bio'], ''),
-            avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
+            avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], '') || metadataAvatar,
             coverUrl: textOf(row, ['cover_url'], ''),
           })
         } else {
           setProfile({
-            name: user.email ?? 'Usuario',
+            name: metadataName || user.email || 'Usuario',
             username: '',
             bio: '',
-            avatarUrl: '',
+            avatarUrl: metadataAvatar,
             coverUrl: '',
           })
         }
@@ -176,7 +181,7 @@ export function ProfilePage() {
     }
 
     void loadProfile()
-  }, [user])
+  }, [metadataAvatar, metadataName, user])
 
   if (loading) return <StatusView title="Cargando perfil" description="Espera un momento..." />
   if (error) return <StatusView title="Perfil no disponible" description={error} />
@@ -250,6 +255,31 @@ export function ProfilePage() {
         </article>
       </div>
 
+      {profileQrValue ? (
+        <article className="surface-card profile-qr-card">
+          <div className="section-stack">
+            <div>
+              <h3>Mi código</h3>
+              <p>Compártelo para que otro usuario abra tu perfil al instante desde Conectate móvil.</p>
+            </div>
+            <div className="row-actions wrap">
+              <Link className="ghost-btn" to="/app/settings">
+                Ajustes y QR
+              </Link>
+              <Link className="ghost-btn" to="/login?mode=qr">
+                Login web por QR
+              </Link>
+            </div>
+          </div>
+          <QrCodeTile
+            value={profileQrValue}
+            title={profile?.username ? `@${profile.username}` : 'Perfil Conectate'}
+            description="Este QR codifica tu perfil, no una sesión."
+            compact
+          />
+        </article>
+      ) : null}
+
       <section className="section-stack">
         <h3>Mis publicaciones</h3>
         {myPosts.length === 0 ? (
@@ -265,7 +295,7 @@ export function ProfilePage() {
                     </Link>
                     <small>{formatDateTime(post.createdAt)}</small>
                   </div>
-                  <p>{post.content}</p>
+                  <ExpandableText text={post.content} lines={3} className="feed-card-text" />
                   {post.media.length > 0 ? (
                     <div className={post.media.length > 1 ? 'feed-media-grid' : ''}>
                       {post.media.map((media, index) => {

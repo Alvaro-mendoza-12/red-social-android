@@ -110,11 +110,11 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
 
         while (remaining.isNotEmpty()) {
             val next = remaining.firstOrNull { candidate ->
-                val previousAuthor = result.lastOrNull()?.userId
+                var previousAuthor = result.lastOrNull()?.userId
                 if (previousAuthor == candidate.userId) return@firstOrNull false
 
                 if (result.size < DIVERSITY_WINDOW_SIZE) {
-                    val hits = firstWindowAuthorHits[candidate.userId] ?: 0
+                    var hits = firstWindowAuthorHits[candidate.userId] ?: 0
                     hits < MAX_POSTS_PER_AUTHOR_IN_WINDOW
                 } else {
                     true
@@ -137,3 +137,6 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
         private const val MAX_POSTS_PER_AUTHOR_IN_WINDOW = 2
     }
 }
+
+
+

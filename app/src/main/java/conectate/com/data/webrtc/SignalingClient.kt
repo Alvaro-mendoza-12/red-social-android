@@ -34,7 +34,7 @@ class SignalingClient(
             }
 
             socket?.on("user-joined") { args ->
-                val data = args[0] as JSONObject
+                var data = args[0] as JSONObject
                 listener.onUserJoined(
                     data.getString("socketId"),
                     data.getString("userId"),
@@ -48,7 +48,7 @@ class SignalingClient(
             }
 
             socket?.on("offer") { args ->
-                val data = args[0] as JSONObject
+                var data = args[0] as JSONObject
                 listener.onOfferReceived(
                     data.getString("sender"),
                     data.getJSONObject("offer"),
@@ -58,7 +58,7 @@ class SignalingClient(
             }
 
             socket?.on("answer") { args ->
-                val data = args[0] as JSONObject
+                var data = args[0] as JSONObject
                 listener.onAnswerReceived(
                     data.getString("sender"),
                     data.getJSONObject("answer")
@@ -66,7 +66,7 @@ class SignalingClient(
             }
 
             socket?.on("ice-candidate") { args ->
-                val data = args[0] as JSONObject
+                var data = args[0] as JSONObject
                 listener.onIceCandidateReceived(
                     data.getString("sender"),
                     data.getJSONObject("candidate")
@@ -74,7 +74,7 @@ class SignalingClient(
             }
 
             socket?.on("current-participants") { args ->
-                val data = args[0] as JSONArray
+                var data = args[0] as JSONArray
                 val participants = mutableListOf<String>()
                 for (i in 0 until data.length()) {
                     participants.add(data.getString(i))
@@ -100,7 +100,7 @@ class SignalingClient(
     }
 
     fun joinRoom(roomId: String, userId: String, name: String) {
-        val data = JSONObject()
+        var data = JSONObject()
         data.put("roomId", roomId)
         data.put("userId", userId)
         data.put("name", name)
@@ -108,7 +108,7 @@ class SignalingClient(
     }
 
     fun sendOffer(target: String, offer: JSONObject, userId: String, name: String) {
-        val data = JSONObject()
+        var data = JSONObject()
         data.put("target", target)
         data.put("offer", offer)
         data.put("userId", userId)
@@ -117,16 +117,19 @@ class SignalingClient(
     }
 
     fun sendAnswer(target: String, answer: JSONObject) {
-        val data = JSONObject()
+        var data = JSONObject()
         data.put("target", target)
         data.put("answer", answer)
         socket?.emit("answer", data)
     }
 
     fun sendIceCandidate(target: String, candidate: JSONObject) {
-        val data = JSONObject()
+        var data = JSONObject()
         data.put("target", target)
         data.put("candidate", candidate)
         socket?.emit("ice-candidate", data)
     }
 }
+
+
+

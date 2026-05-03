@@ -29,8 +29,8 @@ import conectate.com.data.model.User
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.isUserAdmin
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
+
+
 fun BadgesTabContent(
     navController: NavController,
     viewModel: AdminViewModel = hiltViewModel()
@@ -61,16 +61,16 @@ fun BadgesTabContent(
         val badgeGroups = grantedAssignments
             .filter { it.user != null && it.badge != null }
             .groupBy { it.user_id }
-            .mapValues { entry -> entry.value.map { it.badge!! } }
+            .mapValues { entry -> entry.value.mapNotNull { it.badge } }
 
         val allUserIds = (badgeGroups.keys + verifiedUsers.map { it.id }).distinct()
         
         allUserIds.mapNotNull { uid ->
-            val user = verifiedUsers.find { it.id == uid } 
+            var user = verifiedUsers.find { it.id == uid } 
                        ?: grantedAssignments.find { it.user_id == uid }?.user
             
             if (user != null) {
-                val badges = badgeGroups[uid] ?: emptyList()
+                var badges = badgeGroups[uid] ?: emptyList()
                 val finalVerified = user.is_verified || verifiedUsers.any { it.id == uid }
                 user.copy(is_verified = finalVerified) to badges
             } else null
@@ -477,20 +477,23 @@ fun BadgesTabContent(
     }
 
     // Assign Badge Dialog
-    if (showAssignBadgeDialog && searchedUser != null) {
-        AssignBadgeDialog(
-            user = searchedUser!!,
-            availableBadges = allBadges,
-            onDismiss = { showAssignBadgeDialog = false },
-            onAssign = { badgeId ->
-                viewModel.grantBadge(searchedUser!!.id, badgeId)
-                showAssignBadgeDialog = false
-            }
-        )
+    if (showAssignBadgeDialog) {
+        var user = searchedUser
+        if (user != null) {
+            AssignBadgeDialog(
+                user = user,
+                availableBadges = allBadges,
+                onDismiss = { showAssignBadgeDialog = false },
+                onAssign = { badgeId ->
+                    viewModel.grantBadge(user.id, badgeId)
+                    showAssignBadgeDialog = false
+                }
+            )
+        }
     }
 }
 
-@Composable
+
 fun BadgeChip(
     badge: Badge,
     onClick: () -> Unit = {}
@@ -525,3 +528,10 @@ fun BadgeChip(
         }
     }
 }
+
+
+
+
+
+
+

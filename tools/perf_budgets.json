@@ -1,5 +1,6 @@
 {
-  "max_apk_bytes": 78643200,
-  "max_total_dex_bytes": 73400320,
-  "max_native_so_bytes": 54525952
+  "max_apk_bytes": 62914560,
+  "max_bundle_bytes": 83886080,
+  "max_total_dex_bytes": 26214400,
+  "max_native_so_bytes": 52428800
 }

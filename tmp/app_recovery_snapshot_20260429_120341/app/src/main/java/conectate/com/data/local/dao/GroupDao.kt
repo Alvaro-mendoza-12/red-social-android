@@ -1,0 +1,211 @@
+package conectate.com.data.local.dao
+
+import androidx.room.*
+import conectate.com.data.local.entity.GroupEntity
+import conectate.com.data.local.entity.GroupMemberEntity
+import conectate.com.data.local.entity.GroupMessageEntity
+import kotlinx.coroutines.flow.Flow
+
+data class GroupUnreadCountRow(
+    val groupId: String,
+    val unreadCount: Int
+)
+
+@Dao
+interface GroupDao {
+    // GROUPS
+    @Query("SELECT * FROM groups WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
+    fun getAllGroupsFlow(): Flow<List<GroupEntity>>
+
+    @Query(
+        "SELECT groups.* FROM groups " +
+            "INNER JOIN group_members ON group_members.group_id = groups.id " +
+            "WHERE groups.is_deleted = 0 AND group_members.user_id = :userId " +
+            "ORDER BY COALESCE(groups.last_message_at, groups.created_at) DESC"
+    )
+    fun getGroupsForUserFlow(userId: String): Flow<List<GroupEntity>>
+
+    @Query("SELECT * FROM groups WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
+    suspend fun getAllGroupsSync(): List<GroupEntity>
+
+    @Query("SELECT * FROM groups WHERE id = :groupId AND is_deleted = 0")
+    suspend fun getGroupById(groupId: String): GroupEntity?
+
+    @Query("UPDATE groups SET is_member = :isMember WHERE id = :groupId")
+    suspend fun updateMembership(groupId: String, isMember: Boolean)
+    
+    @Query("SELECT * FROM groups WHERE id = :groupId AND is_deleted = 0")
+    fun getGroupByIdFlow(groupId: String): Flow<GroupEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGroupsIgnore(groups: List<GroupEntity>): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGroupIgnore(group: GroupEntity): Long
+
+    @Update
+    suspend fun updateGroups(groups: List<GroupEntity>)
+
+    @Transaction
+    suspend fun upsertGroups(groups: List<GroupEntity>) {
+        val insertResults = insertGroupsIgnore(groups)
+        val toUpdate = mutableListOf<GroupEntity>()
+        
+        for (i in insertResults.indices) {
+            if (insertResults[i] == -1L) {
+                toUpdate.add(groups[i])
+            }
+        }
+        
+        if (toUpdate.isNotEmpty()) {
+            updateGroups(toUpdate)
+        }
+    }
+
+    @Transaction
+    suspend fun upsertGroup(group: GroupEntity) {
+        var result = insertGroupIgnore(group)
+        if (result == -1L) {
+            updateGroup(group)
+        }
+    }
+
+    @Update
+    suspend fun updateGroup(group: GroupEntity)
+
+    @Query("UPDATE groups SET last_message = :lastMsg, last_message_at = :lastTime WHERE id = :groupId")
+    suspend fun updateMetadata(groupId: String, lastMsg: String?, lastTime: String?)
+
+    @Query("UPDATE groups SET unread_count = 0 WHERE id = :groupId")
+    suspend fun resetUnreadCount(groupId: String)
+
+    @Query("UPDATE groups SET unread_count = unread_count + 1 WHERE id = :groupId")
+    suspend fun incrementUnreadCount(groupId: String)
+
+    @Query("UPDATE groups SET unread_count = unread_count + :amount WHERE id = :groupId")
+    suspend fun incrementUnreadCount(groupId: String, amount: Int)
+
+    @Query("UPDATE groups SET is_deleted = 1 WHERE id = :groupId")
+    suspend fun deleteGroup(groupId: String)
+
+    @Query("UPDATE groups SET is_member = 0 WHERE id NOT IN (:validIds)")
+    suspend fun markOthersAsNotMembers(validIds: List<String>)
+
+    @Query("UPDATE groups SET is_deleted = 1 WHERE id IN (:ids)")
+    suspend fun markAsDeletedGlobally(ids: List<String>)
+
+    @Query("UPDATE groups SET is_deleted = 1 WHERE id = :groupId")
+    suspend fun deleteGroupGlobally(groupId: String)
+
+
+    // MEMBERS
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMembers(members: List<GroupMemberEntity>)
+
+    @Query("SELECT * FROM group_members WHERE group_id = :groupId")
+    fun getMembersFlow(groupId: String): Flow<List<GroupMemberEntity>>
+
+    @Query("DELETE FROM group_members WHERE group_id = :groupId AND user_id = :userId")
+    suspend fun removeMember(groupId: String, userId: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = :groupId AND user_id = :userId)")
+    fun isUserMemberFlow(groupId: String, userId: String): Flow<Boolean>
+
+    @Query("DELETE FROM group_members WHERE user_id = :userId AND group_id NOT IN (:validIds)")
+    suspend fun deleteMembershipsExcept(userId: String, validIds: List<String>)
+
+    @Query("DELETE FROM group_members WHERE user_id = :userId")
+    suspend fun deleteAllMembershipsForUser(userId: String)
+
+    @Query("DELETE FROM group_members WHERE user_id = :userId AND group_id NOT IN (:validGroupIds)")
+    suspend fun deleteUserMembershipsNotIn(userId: String, validGroupIds: List<String>)
+
+    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId")
+    fun getUserRoleFlow(groupId: String, userId: String): Flow<String?>
+
+    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId")
+    suspend fun getUserRoleSync(groupId: String, userId: String): String?
+
+    // MESSAGES
+    @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
+    fun getMessagesFlow(groupId: String): Flow<List<GroupMessageEntity>>
+
+    @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
+    suspend fun getMessagesSync(groupId: String): List<GroupMessageEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessages(messages: List<GroupMessageEntity>)
+
+    @Query("SELECT id FROM group_messages WHERE group_id = :groupId")
+    suspend fun getGroupMessageIds(groupId: String): List<String>
+
+    @Query("SELECT * FROM group_messages WHERE id = :messageId")
+    suspend fun getMessageById(messageId: String): GroupMessageEntity?
+
+    @Query("SELECT * FROM group_messages WHERE is_synced = 0 AND pending_action = 'send' ORDER BY created_at ASC LIMIT :limit")
+    suspend fun getPendingOutgoingMessages(limit: Int): List<GroupMessageEntity>
+
+    @Query("UPDATE group_messages SET status = :status, is_synced = :isSynced, pending_action = :pendingAction WHERE id = :messageId")
+    suspend fun updateMessageSyncStatus(messageId: String, status: String, isSynced: Boolean, pendingAction: String?)
+
+    @Query("UPDATE group_messages SET retry_count = retry_count + 1, last_retry_at = :lastRetryAt, status = :status WHERE id = :messageId")
+    suspend fun markRetryAttempt(messageId: String, lastRetryAt: String, status: String = "failed")
+    @Query("UPDATE group_messages SET status = 'read', read_at = :now, delivered_at = CASE WHEN delivered_at IS NULL THEN :now ELSE delivered_at END WHERE group_id = :groupId AND sender_id != :currentUserId AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')")
+    suspend fun markAllAsRead(groupId: String, now: String, currentUserId: String)
+
+    @Query("UPDATE group_messages SET status = 'delivered', delivered_at = CASE WHEN delivered_at IS NULL THEN :now ELSE delivered_at END WHERE group_id = :groupId AND sender_id != :currentUserId AND LOWER(COALESCE(status, '')) = 'sent'")
+    suspend fun markAllAsDelivered(groupId: String, now: String, currentUserId: String)
+
+    @Query(
+        "UPDATE group_messages " +
+            "SET status = 'read', " +
+            "read_at = :now, " +
+            "delivered_at = CASE WHEN delivered_at IS NULL THEN :now ELSE delivered_at END " +
+            "WHERE group_id = :groupId " +
+            "AND sender_id != :currentUserId " +
+            "AND id IN (:messageIds) " +
+            "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')"
+    )
+    suspend fun markMessagesAsReadByIds(
+        groupId: String,
+        now: String,
+        currentUserId: String,
+        messageIds: List<String>
+    )
+
+    @Query(
+        "SELECT COUNT(*) FROM group_messages " +
+            "WHERE group_id = :groupId " +
+            "AND sender_id != :currentUserId " +
+            "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')"
+    )
+    suspend fun countUnreadIncoming(groupId: String, currentUserId: String): Int
+
+    @Query(
+        "SELECT group_id AS groupId, COUNT(*) AS unreadCount " +
+            "FROM group_messages " +
+            "WHERE sender_id != :currentUserId " +
+            "AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received') " +
+            "GROUP BY group_id"
+    )
+    suspend fun getUnreadCountRows(currentUserId: String): List<GroupUnreadCountRow>
+
+    @Query(
+        "UPDATE group_messages " +
+            "SET status = 'delivered', " +
+            "delivered_at = CASE WHEN delivered_at IS NULL THEN :now ELSE delivered_at END " +
+            "WHERE group_id = :groupId " +
+            "AND id = :messageId " +
+            "AND sender_id != :currentUserId " +
+            "AND LOWER(COALESCE(status, '')) = 'sent'"
+    )
+    suspend fun markMessageAsDelivered(
+        groupId: String,
+        messageId: String,
+        now: String,
+        currentUserId: String
+    )
+}
+
+
+

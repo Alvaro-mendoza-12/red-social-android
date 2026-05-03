@@ -14,7 +14,7 @@ val RedSecondaryLight = Color(0xFFFF867C)
 
 // Background Colors
 val BackgroundLight = Color(0xFFFAFAFA)
-val BackgroundDark = Color(0xFF121212)
+var BackgroundDark = Color(0xFF121212)
 
 // Surface Colors
 val SurfaceLight = Color(0xFFFFFFFF)
@@ -45,4 +45,11 @@ val MessageReceivedTextColorDark = Color(0xFFE0E0E0)  // Light text on dark bg
 
 // Notification Color
 val NotificationColor = RedPrimary
+
+
+
+
+
+
+
 

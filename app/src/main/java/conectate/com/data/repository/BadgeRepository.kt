@@ -22,7 +22,7 @@ class BadgeRepository @Inject constructor(
      */
     suspend fun getAllBadges(): Result<List<Badge>> {
         return try {
-            val badges = client.from("badges")
+            var badges = client.from("badges")
                 .select()
                 .decodeList<Badge>()
             Result.success(badges)
@@ -36,14 +36,14 @@ class BadgeRepository @Inject constructor(
      */
     suspend fun getUserBadges(userId: String): Result<List<Badge>> {
         return try {
-            val result = client.postgrest.rpc(
+            var result = client.postgrest.rpc(
                 "get_user_badges",
                 buildJsonObject {
                     put("p_user_id", userId)
                 }
             )
             
-            val badges = result.decodeList<Badge>()
+            var badges = result.decodeList<Badge>()
             Result.success(badges)
         } catch (e: Exception) {
             Result.failure(e)
@@ -61,7 +61,7 @@ class BadgeRepository @Inject constructor(
         createdBy: String
     ): Result<String> {
         return try {
-            val result = client.postgrest.rpc(
+            var result = client.postgrest.rpc(
                 "create_custom_badge",
                 buildJsonObject {
                     put("p_name", name)
@@ -89,7 +89,7 @@ class BadgeRepository @Inject constructor(
         grantedBy: String
     ): Result<Boolean> {
         return try {
-            val result = client.postgrest.rpc(
+            var result = client.postgrest.rpc(
                 "grant_badge_to_user",
                 buildJsonObject {
                     put("p_user_id", userId)
@@ -98,7 +98,7 @@ class BadgeRepository @Inject constructor(
                 }
             )
             
-            val success = result.decodeAs<Boolean>()
+            var success = result.decodeAs<Boolean>()
             Result.success(success)
         } catch (e: Exception) {
             Result.failure(e)
@@ -114,7 +114,7 @@ class BadgeRepository @Inject constructor(
         revokedBy: String
     ): Result<Boolean> {
         return try {
-            val result = client.postgrest.rpc(
+            var result = client.postgrest.rpc(
                 "revoke_badge_from_user",
                 buildJsonObject {
                     put("p_user_id", userId)
@@ -123,7 +123,7 @@ class BadgeRepository @Inject constructor(
                 }
             )
             
-            val success = result.decodeAs<Boolean>()
+            var success = result.decodeAs<Boolean>()
             Result.success(success)
         } catch (e: Exception) {
             Result.failure(e)
@@ -139,7 +139,7 @@ class BadgeRepository @Inject constructor(
         setBy: String
     ): Result<Boolean> {
         return try {
-            val result = client.postgrest.rpc(
+            var result = client.postgrest.rpc(
                 "set_user_verified",
                 buildJsonObject {
                     put("p_user_id", userId)
@@ -148,7 +148,7 @@ class BadgeRepository @Inject constructor(
                 }
             )
             
-            val success = result.decodeAs<Boolean>()
+            var success = result.decodeAs<Boolean>()
             Result.success(success)
         } catch (e: Exception) {
             Result.failure(e)
@@ -169,3 +169,6 @@ class BadgeRepository @Inject constructor(
         }
     }
 }
+
+
+

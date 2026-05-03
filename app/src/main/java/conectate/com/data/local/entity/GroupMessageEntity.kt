@@ -61,7 +61,7 @@ data class GroupMessageEntity(
     val last_retry_at: String? = null
 ) {
     fun toDomain(): GroupMessage {
-        val canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
+        var canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
         return GroupMessage(
             id = id,
             group_id = group_id,
@@ -96,7 +96,7 @@ data class GroupMessageEntity(
             retryCount: Int = 0,
             lastRetryAt: String? = null
         ): GroupMessageEntity {
-            val canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
+            var canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
             return GroupMessageEntity(
                 id = msg.id,
                 group_id = msg.group_id,
@@ -128,3 +128,6 @@ data class GroupMessageEntity(
         }
     }
 }
+
+
+

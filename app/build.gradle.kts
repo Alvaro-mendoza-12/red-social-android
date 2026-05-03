@@ -1,14 +1,33 @@
 plugins {
-    id("com.android.application") version "8.5.1"
-    id("org.jetbrains.kotlin.android") version "1.9.20"
-    id("com.google.dagger.hilt.android") version "2.48"
-    id("com.google.devtools.ksp") version "1.9.20-1.0.14"
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.20"
-    id("com.google.gms.google-services") version "4.4.0"
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 import java.io.FileInputStream
 import java.util.Properties
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+fun Properties.getNonBlank(key: String): String? = getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+fun String.asBuildConfigString(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val releaseStoreFile = keystoreProperties.getNonBlank("storeFile")?.let { rootProject.file(it) }
+val hasReleaseSigning =
+    keystorePropertiesFile.exists() &&
+        releaseStoreFile != null &&
+        releaseStoreFile.exists() &&
+        keystoreProperties.getNonBlank("storePassword") != null &&
+        keystoreProperties.getNonBlank("keyAlias") != null &&
+        keystoreProperties.getNonBlank("keyPassword") != null
 
 android {
     namespace = "conectate.com"
@@ -18,39 +37,75 @@ android {
         applicationId = "conectate.com"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.1.9"
+        versionCode = 27
+        versionName = "2.1.7"
 
-        // Expose Supabase secrets via BuildConfig (loaded from secrets.properties)
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
         if (secretsFile.exists()) {
             props.load(FileInputStream(secretsFile))
             val supabaseUrl = props.getProperty("SUPABASE_URL") ?: ""
             val supabaseAnon = props.getProperty("SUPABASE_ANON_KEY") ?: ""
+            val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
+            val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
             buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnon\"")
+            buildConfigField("String", "UPSTASH_REST_URL", "\"$upstashRestUrl\"")
+            buildConfigField("String", "UPSTASH_TOKEN", "\"$upstashToken\"")
+            buildConfigField("String", "TMDB_API_KEY", "\"\"")
         } else {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
+            buildConfigField("String", "UPSTASH_REST_URL", "\"\"")
+            buildConfigField("String", "UPSTASH_TOKEN", "\"\"")
+            buildConfigField("String", "TMDB_API_KEY", "\"\"")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         vectorDrawables {
             useSupportLibrary = true
         }
     }
 
-    buildFeatures {
-        buildConfig = true
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../keystores/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = keystoreProperties.getNonBlank("storePassword")!!
+                keyAlias = keystoreProperties.getNonBlank("keyAlias")!!
+                keyPassword = keystoreProperties.getNonBlank("keyPassword")!!
+            }
+        }
     }
 
     buildTypes {
-        release {
+        getByName("debug") {
+            isMinifyEnabled = false
+            isDebuggable = true
+            versionNameSuffix = "-debug"
+        }
+
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -65,18 +120,39 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.4"
+        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
 
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += setOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/gradle/incremental.annotation.processors",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*"
+            )
         }
         jniLibs {
             useLegacyPackaging = false
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            manifest.srcFile("src/main/AndroidManifest.xml")
+            java.setSrcDirs(listOf("src/main/java"))
+            res.setSrcDirs(listOf("src/main/res"))
         }
     }
 
@@ -95,108 +171,86 @@ tasks.register("qualityGateDebug") {
 }
 
 dependencies {
-    // AndroidX Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-    implementation("androidx.activity:activity-compose:1.8.1")
-    implementation("com.google.android.material:material:1.11.0")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.google.material)
 
-    // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2023.10.01")
-    implementation(composeBom)
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material")
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material)
+    implementation(libs.androidx.compose.material.icons.extended)
 
-    // Navigation Compose
-    implementation("androidx.navigation:navigation-compose:2.7.5")
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
-    // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
+    implementation(libs.supabase.realtime)
+    implementation(libs.supabase.gotrue)
+    implementation(libs.supabase.postgrest)
+    implementation(libs.supabase.storage)
 
-    // Supabase - HTTP client with Ktor
-    // implementation("io.github.supabase:supabase-kt:2.1.0") // Removed - using custom Ktor implementation
-    implementation("io.github.jan-tennert.supabase:realtime-kt:2.0.4")
-    implementation("io.github.jan-tennert.supabase:gotrue-kt:2.0.4") // Required for session/auth integration with Realtime
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.0.4") // Helpful for typed queries if needed, but mainly for Realtime config
-    implementation("io.github.jan-tennert.supabase:storage-kt:2.0.4")
-    
-    // Ktor for Supabase HTTP client
-    // NOTE: CIO engine is REQUIRED for WebSocket (Realtime) support
-    implementation("io.ktor:ktor-client-cio:2.3.5")
-    implementation("io.ktor:ktor-client-okhttp:2.3.5")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.5")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.5")
-    implementation("io.ktor:ktor-client-logging:2.3.5")
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
 
-    // Remove any Firebase Play Services coroutine dependency remnants
-    // implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
+    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.crashlytics)
 
-    // Firebase Messaging
-    implementation("com.google.firebase:firebase-messaging-ktx:23.4.0")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
-    // Hilt for Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.48")
-    ksp("com.google.dagger:hilt-compiler:2.48")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation(libs.coil.compose)
+    implementation(libs.coil.video)
 
-    // Coil for Image Loading
-    implementation("io.coil-kt:coil-compose:2.5.0")
-    implementation("io.coil-kt:coil-video:2.5.0")
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.common)
+    implementation(libs.media3.datasource.okhttp)
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.exoplayer.hls)
 
-    // ExoPlayer for Video Playback
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
-    implementation("androidx.media3:media3-common:1.5.1")
-    implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
-    implementation("androidx.media3:media3-transformer:1.5.1")
-    implementation("androidx.media3:media3-effect:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+    implementation(libs.accompanist.permissions)
 
-    // Accompanist for Permissions
-    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+    implementation(libs.mlkit.segmentation.selfie)
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.zxing.android.embedded)
+    implementation(libs.zxing.core)
 
-    // ML Kit - Sticker cutout (automatic foreground segmentation)
-    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
-
-    // Pure WebRTC for Voice Rooms
-    implementation("io.github.webrtc-sdk:android:137.7151.05")
-    implementation("io.socket:socket.io-client:2.1.0") {
+    implementation(libs.webrtc)
+    implementation(libs.socket.io.client) {
         exclude(group = "org.json", module = "json")
     }
 
-    // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    
-    // Kotlinx Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
-    
-    // DataStore & Settings
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-    implementation("com.russhwolf:multiplatform-settings:1.2.0")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
 
-    // Room Database
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.multiplatform.settings)
+    implementation(libs.androidx.security.crypto)
 
-    // WorkManager for Offline Sync
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("androidx.hilt:hilt-work:1.1.0")
-    ksp("androidx.hilt:hilt-compiler:1.1.0")
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
-    // Testing
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(composeBom)
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    implementation(libs.googleauth)
+    ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

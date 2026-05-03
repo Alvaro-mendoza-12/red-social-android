@@ -65,7 +65,7 @@ data class ChatEntity(
     }
 
     fun toDomainWithDetails(): conectate.com.data.model.ChatWithLastMessage {
-        val lastMessage = if (last_message_preview != null) {
+        var lastMessage = if (last_message_preview != null) {
             conectate.com.data.model.Message(
                 id = last_message_id ?: java.util.UUID.randomUUID().toString(),
                 chat_id = id,
@@ -119,3 +119,6 @@ data class ChatEntity(
         }
     }
 }
+
+
+

@@ -4,12 +4,10 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,11 +21,11 @@ class NetworkConnectivityObserver @Inject constructor(
     val isConnected: Flow<Boolean> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(true)
+                trySend(resolveCurrentConnectionState())
             }
 
             override fun onLost(network: Network) {
-                trySend(false)
+                trySend(resolveCurrentConnectionState())
             }
             
             override fun onUnavailable() {
@@ -35,22 +33,14 @@ class NetworkConnectivityObserver @Inject constructor(
             }
             
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                trySend(hasInternet)
+                trySend(isUsableConnection(networkCapabilities))
             }
         }
 
-        val request = NetworkRequest.Builder()
-             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-             .build()
-
-        connectivityManager.registerNetworkCallback(request, callback)
+        connectivityManager.registerDefaultNetworkCallback(callback)
 
         // Initial state
-        val currentNetwork = connectivityManager.activeNetwork
-        val caps = connectivityManager.getNetworkCapabilities(currentNetwork)
-        val isInitiallyConnected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-        trySend(isInitiallyConnected)
+        trySend(resolveCurrentConnectionState())
 
         awaitClose {
             connectivityManager.unregisterNetworkCallback(callback)
@@ -58,8 +48,23 @@ class NetworkConnectivityObserver @Inject constructor(
     }.distinctUntilChanged()
     
     fun isNetworkAvailable(): Boolean {
-        val activeNetwork = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        var activeNetwork = connectivityManager.activeNetwork ?: return false
+        var capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return isUsableConnection(capabilities)
+    }
+
+    private fun resolveCurrentConnectionState(): Boolean {
+        var activeNetwork = connectivityManager.activeNetwork ?: return false
+        var capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return isUsableConnection(capabilities)
+    }
+
+    private fun isUsableConnection(capabilities: NetworkCapabilities): Boolean {
+        val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return hasInternet && validated
     }
 }
+
+
+

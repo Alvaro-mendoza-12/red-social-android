@@ -142,7 +142,7 @@ data class CommunityMessageEntity(
     val last_retry_at: String? = null
 ) {
     fun toDomain(): conectate.com.data.model.CommunityMessage {
-        val canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
+        var canonicalStatus = MessageStatusNormalizer.canonical(status, delivered_at, read_at)
         return conectate.com.data.model.CommunityMessage(
             id = id,
             community_id = community_id,
@@ -177,7 +177,7 @@ data class CommunityMessageEntity(
             retryCount: Int = 0,
             lastRetryAt: String? = null
         ): CommunityMessageEntity {
-            val canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
+            var canonicalStatus = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at)
             return CommunityMessageEntity(
                 id = msg.id,
                 community_id = msg.community_id,
@@ -209,3 +209,6 @@ data class CommunityMessageEntity(
         }
     }
 }
+
+
+

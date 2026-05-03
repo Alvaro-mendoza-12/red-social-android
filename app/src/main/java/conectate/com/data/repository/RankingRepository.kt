@@ -21,15 +21,17 @@ class RankingRepository @Inject constructor(
     private val authService: AuthService
 ) {
 
+@Composable
+@Composable
     suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
-            val orderColumn = when (filter) {
+            var orderColumn = when (filter) {
                 "likes" -> "likes_count" // Assuming these columns exist or we count them
                 "views" -> "views_count" // Assuming mostly for video creators
                 else -> "followers_count"
             }
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/profiles"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -49,14 +51,16 @@ class RankingRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun getTopVideos(filter: String = "views"): Result<List<Video>> = withContext(Dispatchers.IO) {
          try {
-            val orderColumn = when (filter) {
+            var orderColumn = when (filter) {
                 "likes" -> "like_count"
                 else -> "views"
             }
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/videos"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -67,11 +71,11 @@ class RankingRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                 val videos: List<Video> = response.body()
-                val currentUserId = authService.getCurrentUserId()
-                val result = if (currentUserId != null) {
-                    val accessToken = authService.getAccessToken() ?: ""
-                    val likedIds = getUserLikedVideoIds(accessToken, currentUserId)
-                    val sharedIds = getUserSharedContentIds(accessToken, currentUserId, "video")
+                var currentUserId = authService.getCurrentUserId()
+                var result = if (currentUserId != null) {
+                    var accessToken = authService.getAccessToken() ?: ""
+                    var likedIds = getUserLikedVideoIds(accessToken, currentUserId)
+                    var sharedIds = getUserSharedContentIds(accessToken, currentUserId, "video")
                     videos.map { it.copy(
                         likedByMe = likedIds.contains(it.id),
                         sharedByMe = sharedIds.contains(it.id)
@@ -86,14 +90,16 @@ class RankingRepository @Inject constructor(
         }
     }
 
+@Composable
+@Composable
     suspend fun getTopPosts(filter: String = "likes"): Result<List<Post>> = withContext(Dispatchers.IO) {
         try {
-             val orderColumn = when (filter) {
+             var orderColumn = when (filter) {
                 "shares" -> "share_count"
                 else -> "like_count"
             }
             
-            val response = supabaseConfig.httpClient.get(
+            var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/posts"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -104,11 +110,11 @@ class RankingRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                 val posts: List<Post> = response.body()
-                val currentUserId = authService.getCurrentUserId()
-                val result = if (currentUserId != null) {
-                   val accessToken = authService.getAccessToken() ?: ""
-                   val likedIds = getUserLikedPostIds(accessToken, currentUserId)
-                   val sharedIds = getUserSharedContentIds(accessToken, currentUserId, "post")
+                var currentUserId = authService.getCurrentUserId()
+                var result = if (currentUserId != null) {
+                   var accessToken = authService.getAccessToken() ?: ""
+                   var likedIds = getUserLikedPostIds(accessToken, currentUserId)
+                   var sharedIds = getUserSharedContentIds(accessToken, currentUserId, "post")
                    posts.map { it.copy(
                        likedByMe = likedIds.contains(it.id),
                        sharedByMe = sharedIds.contains(it.id)
@@ -125,7 +131,7 @@ class RankingRepository @Inject constructor(
 
     private suspend fun getUserLikedVideoIds(accessToken: String, userId: String): Set<String> {
         return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_likes") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
@@ -140,7 +146,7 @@ class RankingRepository @Inject constructor(
 
     private suspend fun getUserLikedPostIds(accessToken: String, userId: String): Set<String> {
         return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
@@ -155,7 +161,7 @@ class RankingRepository @Inject constructor(
 
     private suspend fun getUserSharedContentIds(accessToken: String, userId: String, contentType: String): Set<String> {
         return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/shares") {
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/shares") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
@@ -171,3 +177,8 @@ class RankingRepository @Inject constructor(
         } catch (e: Exception) { emptySet() }
     }
 }
+
+
+
+
+

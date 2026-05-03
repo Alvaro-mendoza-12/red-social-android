@@ -1,0 +1,569 @@
+name: 🔥 CONÉCTATE CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  JAVA_VERSION: '17'
+  ANDROID_SDK_VERSION: '34'
+  GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2'
+
+jobs:
+  # 🔥 CODE QUALITY CHECKS
+  code-quality:
+    name: 🔍 Code Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🔍 Static Code Analysis
+        run: |
+          echo "🔥 Running static code analysis..."
+          ./gradlew detekt
+          ./gradlew ktlintCheck
+          ./gradlew spotlessCheck
+      
+      - name: 📊 Generate Quality Report
+        run: |
+          echo "🔥 Generating quality metrics..."
+          ./gradlew jacocoTestReport
+          ./gradlew sonarqube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📈 Upload Quality Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: quality-reports
+          path: |
+            build/reports/
+            build/sonar/
+          retention-days: 30
+
+  # 🔥 UNIT TESTS
+  unit-tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🧪 Run Unit Tests
+        run: |
+          echo "🔥 Running unit tests..."
+          ./gradlew testDebugUnitTest --continue
+      
+      - name: 📊 Generate Test Report
+        run: |
+          echo "🔥 Generating test coverage report..."
+          ./gradlew jacocoTestReport
+      
+      - name: 📈 Upload Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: unit-test-results
+          path: |
+            app/build/reports/tests/
+            app/build/reports/jacoco/
+          retention-days: 30
+      
+      - name: 📊 Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./app/build/reports/jacoco/jacocoTestReport.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  # 🔥 INTEGRATION TESTS
+  integration-tests:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🐳 Setup Test Environment
+        run: |
+          echo "🔥 Setting up test environment..."
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30
+      
+      - name: 🔗 Run Integration Tests
+        run: |
+          echo "🔥 Running integration tests..."
+          ./gradlew connectedDebugAndroidTest --continue
+      
+      - name: 📈 Upload Integration Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-results
+          path: |
+            app/build/reports/androidTests/
+          retention-days: 30
+      
+      - name: 🧹 Cleanup Test Environment
+        if: always()
+        run: |
+          docker-compose -f docker-compose.test.yml down
+
+  # 🔥 LOAD TESTING
+  load-testing:
+    name: ⚡ Load Testing
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🔨 Build Application
+        run: |
+          echo "🔥 Building application for load testing..."
+          ./gradlew assembleDebug
+      
+      - name: ⚡ Run Load Tests
+        run: |
+          echo "🔥 Running load tests..."
+          ./gradlew runLoadTests
+        env:
+          LOAD_TEST_TARGET: ${{ secrets.LOAD_TEST_TARGET }}
+          LOAD_TEST_DURATION: '300'
+          LOAD_TEST_USERS: '50'
+      
+      - name: 📊 Generate Load Test Report
+        run: |
+          echo "🔥 Generating load test report..."
+          ./gradlew generateLoadTestReport
+      
+      - name: 📈 Upload Load Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: load-test-results
+          path: |
+            build/reports/load-tests/
+          retention-days: 30
+
+  # 🔥 SECURITY SCANS
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔒 Run Trivy Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: 📊 Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: 🔍 Run OWASP Dependency Check
+        run: |
+          echo "🔥 Running OWASP dependency check..."
+          ./gradlew dependencyCheckAnalyze
+      
+      - name: 📈 Upload Security Scan Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            build/reports/dependency-check-report.html
+            trivy-results.sarif
+          retention-days: 30
+
+  # 🔥 BUILD AND PACKAGE
+  build:
+    name: 🔨 Build & Package
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests, integration-tests, security-scan]
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🔨 Build Debug APK
+        run: |
+          echo "🔥 Building debug APK..."
+          ./gradlew assembleDebug
+      
+      - name: 🔨 Build Release Bundle
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "🔥 Building release bundle..."
+          ./gradlew assembleRelease bundleRelease
+      
+      - name: 📈 Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            app/build/outputs/apk/debug/
+            app/build/outputs/bundle/release/
+          retention-days: 30
+      
+      - name: 📊 Sign APK (Release)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "🔥 Signing release APK..."
+          ./gradlew signReleaseBundle
+        env:
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+
+  # 🔥 DEPLOYMENT
+  deploy:
+    name: 🚀 Deploy
+    runs-on: ubuntu-latest
+    needs: [build, load-testing]
+    if: github.ref == 'refs/heads/main'
+    
+    environment: production
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: artifacts/
+      
+      - name: 🚀 Deploy to Google Play Console
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: conectate.com
+          releaseFiles: artifacts/app/build/outputs/bundle/release/app-release.aab
+          track: production
+          status: completed
+          whatsNewDirectory: metadata/
+      
+      - name: 🚀 Deploy to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          groups: testers
+          file: artifacts/app/build/outputs/apk/debug/app-debug.apk
+          releaseNotes: |
+            🚀 Latest CONÉCTATE deployment
+            
+            Features:
+            • Enhanced voice recognition
+            • Improved template matching
+            • Real-time audio processing
+            • Bug fixes and performance improvements
+      
+      - name: 📊 Notify Deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          text: |
+            🚀 CONÉCTATE Deployment Complete!
+            
+            📦 Version: ${{ github.sha }}
+            🌍 Environment: Production
+            ✅ Status: Success
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 🔥 PERFORMANCE MONITORING
+  performance-monitoring:
+    name: 📊 Performance Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ⏱️ Wait for Deployment
+        run: |
+          echo "🔥 Waiting for deployment to stabilize..."
+          sleep 300 # 5 minutes
+      
+      - name: 📊 Run Performance Tests
+        run: |
+          echo "🔥 Running post-deployment performance tests..."
+          curl -X POST "https://api.conectate.com/performance-test" \
+            -H "Authorization: Bearer ${{ secrets.PERFORMANCE_TEST_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "test_type": "post_deployment",
+              "duration": 300,
+              "concurrent_users": 25
+            }'
+      
+      - name: 📈 Generate Performance Report
+        run: |
+          echo "🔥 Generating performance report..."
+          curl -X GET "https://api.conectate.com/performance-report/latest" \
+            -H "Authorization: Bearer ${{ secrets.PERFORMANCE_TEST_TOKEN }}" \
+            -o performance-report.json
+      
+      - name: 📊 Upload Performance Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-report
+          path: performance-report.json
+          retention-days: 30
+      
+      - name: 📊 Notify Performance Results
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#performance'
+          text: |
+            📊 Post-Deployment Performance Test Complete!
+            
+            📈 Results: See performance report
+            🚀 Deployment: ${{ github.sha }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 🔥 NOTIFICATIONS
+  notify:
+    name: 📢 Notifications
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests, integration-tests, security-scan, build, deploy]
+    if: always()
+    
+    steps:
+      - name: 📢 Notify Success
+        if: needs.build.result == 'success' && (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#ci-cd'
+          text: |
+            ✅ CONÉCTATE CI/CD Pipeline Successful!
+            
+            📦 Build: Success
+            🧪 Tests: Success
+            🔒 Security: Success
+            🚀 Deploy: ${{ needs.deploy.result || 'skipped' }}
+            
+            🎉 Ready for production!
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: 📢 Notify Failure
+        if: needs.build.result == 'failure' || needs.deploy.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#ci-cd'
+          text: |
+            ❌ CONÉCTATE CI/CD Pipeline Failed!
+            
+            📦 Build: ${{ needs.build.result }}
+            🧪 Tests: ${{ needs.unit-tests.result }}
+            🔗 Integration: ${{ needs.integration-tests.result }}
+            🔒 Security: ${{ needs.security-scan.result }}
+            🚀 Deploy: ${{ needs.deploy.result }}
+            
+            🔍 Please check the logs and fix the issues.
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
+      - name: 📧 Email Notification
+        if: needs.build.result == 'failure' || needs.deploy.result == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "❌ CONÉCTATE CI/CD Pipeline Failed"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: "GitHub Actions <github@conectate.com>"
+          body: |
+            The CONÉCTATE CI/CD pipeline has failed.
+            
+            Build Status: ${{ needs.build.result }}
+            Deploy Status: ${{ needs.deploy.result }}
+            
+            Please check the GitHub Actions logs for more details.
+            
+            Repository: ${{ github.repository }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref }}
+
+# 🔥 WORKFLOW DISPATCH FOR MANUAL TRIGERS
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - quick
+        - security-only
+        - performance-only
+      deploy_to_production:
+        description: 'Deploy to production'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  manual-tests:
+    name: 🔧 Manual Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: 🔧 Run Selected Tests
+        run: |
+          case "${{ github.event.inputs.test_type }}" in
+            "full")
+              echo "🔥 Running full test suite..."
+              ./gradlew test connectedAndroidTest
+              ;;
+            "quick")
+              echo "🔥 Running quick tests..."
+              ./gradlew test
+              ;;
+            "security-only")
+              echo "🔥 Running security tests only..."
+              ./gradlew dependencyCheckAnalyze
+              ;;
+            "performance-only")
+              echo "🔥 Running performance tests only..."
+              ./gradlew runLoadTests
+              ;;
+          esac
+      
+      - name: 🚀 Deploy to Production (if requested)
+        if: github.event.inputs.deploy_to_production == 'true'
+        run: |
+          echo "🔥 Deploying to production..."
+          ./gradlew deployToProduction
