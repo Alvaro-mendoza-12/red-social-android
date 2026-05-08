@@ -1,3 +1,5 @@
+import { isSupabaseServiceRestrictionError } from './supabase'
+
 export type GenericRow = Record<string, unknown>
 
 export function textOf(row: GenericRow, keys: string[], fallback = ''): string {
@@ -42,7 +44,30 @@ export function formatDateTime(value: string): string {
 }
 
 export function friendlyError(error: unknown, fallback = 'Ocurrió un error inesperado'): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  const message = error instanceof Error ? error.message.trim() : String(error ?? '').trim()
+  const normalized = message.toLowerCase()
+
+  if (isSupabaseServiceRestrictionError(error)) {
+    return 'El acceso está temporalmente no disponible. Intenta más tarde mientras se restablece el servicio.'
+  }
+
+  if (normalized.includes('invalid login credentials')) {
+    return 'El correo o la contraseña no coinciden con una cuenta válida.'
+  }
+
+  if (normalized.includes('email not confirmed')) {
+    return 'Tu correo todavía no fue confirmado. Revisa tu bandeja antes de continuar.'
+  }
+
+  if (normalized.includes('network request failed') || normalized.includes('failed to fetch')) {
+    return 'No pudimos conectarnos en este momento. Revisa tu conexión e inténtalo otra vez.'
+  }
+
+  if (normalized.includes('too many requests') || normalized.includes('rate limit')) {
+    return 'Hiciste demasiados intentos seguidos. Espera un momento antes de volver a intentarlo.'
+  }
+
+  if (message) return message
   return fallback
 }
 

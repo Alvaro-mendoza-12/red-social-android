@@ -16,21 +16,6 @@ import { friendlyError } from '../../core/utils'
 
 type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
 
-const loginHighlights = [
-  {
-    title: 'Mensajes y multi-cuenta',
-    description: 'La web ya comparte bandeja, favoritos, archivados y cambio rápido alineado con móvil.',
-  },
-  {
-    title: 'Videos y social',
-    description: 'Feed, reels, perfil estilo Discord y monetización viven sobre el mismo backend.',
-  },
-  {
-    title: 'Acceso flexible',
-    description: 'Puedes entrar por contraseña, correo, QR o una sesión de recuperación compatible.',
-  },
-]
-
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -40,6 +25,40 @@ function normalizeMode(value: string | null): LoginMode {
   if (value === 'recovery') return 'recovery'
   if (value === 'qr') return 'qr'
   return 'password'
+}
+
+function getModeTitle(mode: LoginMode): string {
+  if (mode === 'password') return 'Acceso clásico'
+  if (mode === 'code') return 'Código temporal'
+  if (mode === 'recovery') return 'Vincular sesión'
+  return 'Aprobación desde la app'
+}
+
+function getModeDescription(mode: LoginMode): string {
+  if (mode === 'password') {
+    return 'Ideal si quieres entrar manualmente desde este navegador.'
+  }
+  if (mode === 'code') {
+    return 'Recibe un acceso temporal por correo sin depender de tu contraseña.'
+  }
+  if (mode === 'recovery') {
+    return 'Importa una sesión ya emitida desde un flujo de recuperación o desde otro dispositivo.'
+  }
+  return 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'
+}
+
+function getErrorBannerTitle(message: string): string {
+  const normalized = message.toLowerCase()
+  if (normalized.includes('temporalmente no disponible')) {
+    return 'Servicio temporalmente no disponible'
+  }
+  if (normalized.includes('no coinciden') || normalized.includes('no fue confirmado')) {
+    return 'No pudimos validar tu acceso'
+  }
+  if (normalized.includes('no pudimos conectarnos')) {
+    return 'Conexión no disponible'
+  }
+  return 'No pudimos completar el acceso'
 }
 
 export function LoginPage() {
@@ -306,46 +325,16 @@ export function LoginPage() {
   }
 
   return (
-    <section className="auth-shell auth-shell-rich">
-      <div className="auth-layout-grid">
-        <aside className="auth-spotlight">
-          <div className="section-stack auth-spotlight-copy">
-            <p className="brand-tag">Conectate-web</p>
-            <div>
-              <h1>La versión web ya no puede verse como maqueta</h1>
-              <p>
-                Entrar tiene que sentirse claro, sólido y social desde el primer segundo. Este
-                acceso ya acompaña mensajes, videos, perfil y sincronización con la APK.
-              </p>
-            </div>
-          </div>
-
-          <div className="auth-highlight-grid">
-            {loginHighlights.map((entry) => (
-              <article key={entry.title} className="surface-subcard auth-highlight-card">
-                <strong>{entry.title}</strong>
-                <p>{entry.description}</p>
-              </article>
-            ))}
-          </div>
-
-          <article className="surface-subcard auth-spotlight-note">
-            <strong>Paridad útil con Android</strong>
-            <p>
-              Si ya aprobaste una sesión desde el móvil o recibiste una recuperación, no tienes que
-              repetir todo el flujo: también puedes entrar por QR o importando sesión.
-            </p>
-          </article>
-        </aside>
-
-        <div className="auth-card auth-card-wide auth-panel-card">
+    <section className="auth-shell auth-shell-rich auth-shell-login">
+      <div className="auth-login-stage">
+        <div className="auth-card auth-login-card">
           <div className="section-stack auth-head-copy">
             <div>
               <p className="brand-tag auth-panel-tag">Acceso</p>
               <h1>Entrar a tu red social</h1>
               <p>
-                Elige el método que te sirva hoy: contraseña, código al correo, QR aprobado desde
-                la app o una sesión de recuperación.
+                Elige el método que te sirva hoy: contraseña, código, QR aprobado desde la app o
+                una sesión de recuperación.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid">
@@ -381,24 +370,8 @@ export function LoginPage() {
           </div>
 
           <div className="surface-subcard auth-mode-note">
-            <strong>
-              {mode === 'password'
-                ? 'Acceso clásico'
-                : mode === 'code'
-                  ? 'Código temporal'
-                  : mode === 'recovery'
-                    ? 'Importar sesión existente'
-                    : 'Aprobación desde el móvil'}
-            </strong>
-            <p>
-              {mode === 'password'
-                ? 'Ideal si quieres entrar manualmente desde este navegador.'
-                : mode === 'code'
-                  ? 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
-                  : mode === 'recovery'
-                    ? 'Pega un bloque válido con tokens si vienes de un flujo de recuperación o migración.'
-                    : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
-            </p>
+            <strong>{getModeTitle(mode)}</strong>
+            <p>{getModeDescription(mode)}</p>
           </div>
 
           {mode === 'password' ? (
@@ -556,8 +529,18 @@ export function LoginPage() {
             </div>
           ) : null}
 
-          {error ? <p className="error-text">{error}</p> : null}
-          {info ? <p>{info}</p> : null}
+          {error ? (
+            <div className="auth-banner auth-banner-error" role="alert">
+              <strong>{getErrorBannerTitle(error)}</strong>
+              <p>{error}</p>
+            </div>
+          ) : null}
+          {info ? (
+            <div className="auth-banner auth-banner-info">
+              <strong>Estado de acceso</strong>
+              <p>{info}</p>
+            </div>
+          ) : null}
 
           <p className="auth-foot">
             ¿No tienes cuenta? <Link to="/register">Regístrate</Link>

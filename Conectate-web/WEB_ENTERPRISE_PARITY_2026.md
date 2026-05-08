@@ -17,6 +17,7 @@ Fecha: 2026-05-07
 - Ajustes: cuenta, privacidad, seguridad, QR, preferencias web, apariencia, escala de texto, idioma y ahorro de datos.
 - Ajustes web: resumen superior, navegación por anclas y separación más clara entre bloques largos para reducir saturación visual.
 - Monetización: centro web de creator program, payout, earnings, wallet, gifts, premium y ads.
+- Login web: foco exclusivo en el panel de acceso y humanización de errores de cuota/restricción para no exponer mensajes técnicos al usuario final.
 
 ## Dependencias de backend
 

@@ -22,6 +22,7 @@ Frontend web independiente de tu app móvil Conectate.
 - El perfil web fue reordenado como dashboard: identidad, actividad social, QR, privacidad y monetización ya no compiten en la misma columna sin jerarquía.
 - Nuevo centro `/app/monetization` para creator program, wallet/gifts/premium/ads y earnings sobre el SQL final de Supabase.
 - Ajustes web ahora tienen resumen, anclas internas y mejor separación entre perfil, privacidad, seguridad, QR y preferencias para que no se sientan aglomerados.
+- Login web simplificado para producción: el usuario ahora ve solo el panel de acceso, sin columna editorial paralela ni mensajes técnicos crudos de Supabase.
 
 ## Deploy en Vercel desde este repo
 

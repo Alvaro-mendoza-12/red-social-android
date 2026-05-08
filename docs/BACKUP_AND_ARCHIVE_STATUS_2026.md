@@ -1,6 +1,6 @@
 # Backup And Archive Status 2026
 
-Fecha de revision: 2026-05-07.
+Fecha de revision: 2026-05-08.
 
 ## Estado activo
 
@@ -10,6 +10,7 @@ Los snapshots y cuarentenas locales no forman parte del build, del deploy SQL ni
 
 ## Backups detectados
 
+- `backup/20260508_0012_login_access_cleanup`: snapshot previo a simplificar la pantalla de login web a un solo panel de acceso y a humanizar errores técnicos de Supabase.
 - `backup/20260507_2358_web_subdir_vercel_config_hardening`: snapshot previo a fijar `vercel.json` dentro de `Conectate-web` para que Vercel aplique rewrites y headers en el subproyecto real.
 - `backup/20260507_2358_web_subdir_vercel_script_fix`: snapshot previo a alinear los scripts de `Conectate-web` con el deploy real de Vercel usando `Root Directory = Conectate-web`.
 - `backup/20260507_2333_main_deploy_install_fix`: snapshot previo a endurecer la instalacion web para un checkout limpio de `main` antes de promover el deploy.
@@ -57,5 +58,6 @@ El cierre local del `2026-05-06` confirmo:
 - La pasada del `2026-05-07 23:33` creo `backup/20260507_2333_main_deploy_install_fix` antes de promover la web a `main`. En un worktree limpio se detecto que `npm ci` fallaba por conflicto de peer dependencies entre React 19 y tooling de testing. Se endurecio la instalacion con `Conectate-web/.npmrc` (`legacy-peer-deps=true`) y `package.json` raiz usando `npm --prefix Conectate-web ci --legacy-peer-deps`. Despues de eso, `npm ci`, `npm run build` y `npm run vercel:build` pasaron en el worktree limpio de `main`.
 - La pasada del `2026-05-07 23:58` creo `backup/20260507_2358_web_subdir_vercel_script_fix` despues de ver un fallo remoto real en Vercel: el proyecto estaba configurado con `Root Directory = Conectate-web`, pero el install command seguia llamando `npm run vercel:install` dentro de esa carpeta y el script no existia alli. Se agregaron `vercel:install` y `vercel:build` a `Conectate-web/package.json` para que el mismo repo soporte tanto deploy desde raiz como deploy directo del subproyecto.
 - La pasada final del `2026-05-07 23:58` creo `backup/20260507_2358_web_subdir_vercel_config_hardening` para cerrar otro hueco de deploy: la documentacion oficial de Vite en Vercel exige `vercel.json` en la raiz del proyecto desplegado para soportar deep linking SPA. Como el proyecto en Vercel usara `Root Directory = Conectate-web`, se agrego `Conectate-web/vercel.json` con `rewrites`, `headers`, `installCommand`, `buildCommand` y `outputDirectory` propios del subproyecto. En la misma pasada se fijo `engines.node = 22.x` en `Conectate-web/package.json` para alinear el runtime del deploy con el runtime validado localmente.
+- La pasada del `2026-05-08 00:12` creo `backup/20260508_0012_login_access_cleanup` antes de simplificar el login web. Se retiro la columna editorial izquierda para que el usuario vea solo el panel `Acceso`, se reforzo el centrado/jerarquia visual del card y `friendlyError` empezo a traducir restricciones de servicio, credenciales invalidas y fallos de red a mensajes humanos en vez de exponer respuestas crudas de Supabase.
 
 Los backups historicos siguen congelados a proposito. La referencia vigente queda en `README.md`, `docs/`, `sql/release-manifest.txt` y los reportes generados bajo `build/reports/`.

@@ -101,6 +101,10 @@ textarea {
   padding: clamp(1rem, 3vw, 2rem);
 }
 
+.auth-shell-login {
+  padding: clamp(1rem, 4vw, 2.5rem);
+}
+
 .auth-layout-grid {
   width: min(1180px, 100%);
   display: grid;
@@ -157,6 +161,22 @@ textarea {
 
 .auth-card-wide {
   width: min(720px, 100%);
+}
+
+.auth-login-stage {
+  width: min(560px, 100%);
+  margin: 0 auto;
+}
+
+.auth-login-card {
+  width: 100%;
+  margin: 0;
+  padding: clamp(1.35rem, 3vw, 2rem);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(251, 113, 133, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(255, 247, 237, 0.98));
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.1);
 }
 
 .brand-tag {
@@ -253,6 +273,12 @@ textarea {
   gap: 0.7rem;
 }
 
+.auth-login-card h1 {
+  font-size: clamp(2rem, 5vw, 2.7rem);
+  line-height: 0.98;
+  margin-bottom: 0.55rem;
+}
+
 .auth-mode-row {
   margin-top: 0.25rem;
 }
@@ -288,6 +314,8 @@ textarea {
 
 .auth-mode-note {
   margin-top: 0.15rem;
+  padding: 0.85rem 0.9rem;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .auth-mode-note strong {
@@ -308,9 +336,28 @@ textarea {
   font-weight: 700;
 }
 
-.error-text {
-  color: #be123c;
-  font-weight: 600;
+.auth-banner {
+  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  border: 1px solid transparent;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.auth-banner strong {
+  color: inherit;
+}
+
+.auth-banner-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.auth-banner-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 .app-shell {
