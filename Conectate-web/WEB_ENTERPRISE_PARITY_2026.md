@@ -19,6 +19,7 @@ Fecha: 2026-05-07
 - Monetización: centro web de creator program, payout, earnings, wallet, gifts, premium y ads.
 - Login web: foco exclusivo en el panel de acceso y humanización de errores de cuota/restricción para no exponer mensajes técnicos al usuario final.
 - Identidad visual de acceso: login y registro ya usan el logo de Conectate y copy de marca propio en vez de un encabezado genérico.
+- Ajuste de viewport: el acceso ahora se compacta en alturas medias para que el login se vea completo con mayor frecuencia a zoom 100%.
 
 ## Dependencias de backend
 

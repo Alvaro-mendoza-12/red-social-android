@@ -3466,6 +3466,97 @@ button.conversation-row {
   }
 }
 
+@media (max-height: 920px) {
+  .auth-shell-login {
+    place-items: start center;
+    align-content: start;
+    padding-block: 0.75rem 1rem;
+  }
+
+  .auth-login-stage {
+    width: min(560px, 100%);
+  }
+
+  .auth-login-card {
+    padding: 1.15rem 1.2rem 1.25rem;
+    border-radius: 24px;
+    gap: 0.75rem;
+  }
+
+  .auth-head-copy {
+    gap: 0.55rem;
+  }
+
+  .auth-brand-lockup {
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .auth-brand-mark {
+    width: 60px;
+    height: 60px;
+    padding: 0.3rem;
+    border-radius: 18px;
+  }
+
+  .auth-brand-copy strong {
+    font-size: 1.12rem;
+  }
+
+  .auth-brand-copy span {
+    font-size: 0.86rem;
+    line-height: 1.28;
+  }
+
+  .auth-login-card h1 {
+    font-size: clamp(1.72rem, 4vw, 2.3rem);
+    margin-bottom: 0.35rem;
+  }
+
+  .auth-login-card p,
+  .auth-foot {
+    font-size: 0.92rem;
+  }
+
+  .auth-card label {
+    gap: 0.32rem;
+    font-size: 0.94rem;
+  }
+
+  .auth-card input,
+  .text-input {
+    padding: 0.58rem 0.78rem;
+  }
+
+  .auth-login-card form.section-stack,
+  .auth-qr-layout {
+    gap: 0.72rem;
+  }
+
+  .auth-mode-grid {
+    gap: 0.45rem;
+  }
+
+  .auth-mode-grid .chip-btn {
+    min-height: 42px;
+    padding: 0.5rem 0.8rem;
+  }
+
+  .primary-btn,
+  .ghost-btn,
+  .chip-btn {
+    border-radius: 11px;
+  }
+
+  .auth-mode-note {
+    padding: 0.72rem 0.8rem;
+  }
+
+  .auth-banner {
+    padding: 0.75rem 0.85rem;
+  }
+}
+
 @media (max-width: 720px) {
   .auth-brand-lockup {
     flex-direction: column;
