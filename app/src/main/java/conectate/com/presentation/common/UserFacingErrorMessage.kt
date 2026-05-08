@@ -25,6 +25,15 @@ internal fun Throwable?.toUserFacingMessage(
         looksLikeSessionIssue(rawMessage) ->
             "Tu sesión venció o dejó de ser válida. Inicia sesión de nuevo."
 
+        looksLikeStoragePathIssue(rawMessage) ->
+            "El archivo seleccionado no es válido o su ruta está dañada. Vuelve a intentarlo con otro archivo."
+
+        looksLikeSignedUrlIssue(rawMessage) ->
+            "No se pudo preparar el acceso temporal al archivo. Inténtalo de nuevo."
+
+        looksLikeMediaPolicyIssue(rawMessage) ->
+            "El archivo fue bloqueado por la política de seguridad. Revisa el tipo, tamaño o extensión antes de volver a intentarlo."
+
         throwable is HttpRequestTimeoutException ||
             throwable is SocketTimeoutException ||
             rawMessage.contains("timeout", ignoreCase = true) ||
@@ -126,10 +135,16 @@ internal fun looksLikeSessionIssue(message: String?): Boolean {
         normalized.contains("no hay una sesión activa") ||
         normalized.contains("no hay una sesion activa") ||
         normalized.contains("no access token") ||
+        normalized.contains("no access token available") ||
         normalized.contains("no token") ||
+        normalized.contains("no token de acceso") ||
         normalized.contains("invalid jwt") ||
         normalized.contains("pgrst303") ||
         normalized.contains("not authenticated") ||
+        normalized.contains("not logged in") ||
+        normalized.contains("no user logged in") ||
+        normalized.contains("no hay sesión activa") ||
+        normalized.contains("no hay sesion activa") ||
         normalized.contains("unauthorized") ||
         normalized.contains("la cuenta activa ya no está disponible") ||
         normalized.contains("la cuenta activa ya no esta disponible")
@@ -149,6 +164,35 @@ internal fun looksLikeStoredAccountSessionIssue(message: String?): Boolean {
         normalized.contains("no se pudo restaurar la sesion guardada") ||
         normalized.contains("invalid refresh token") ||
         normalized.contains("refresh token not found")
+}
+
+internal fun looksLikeStoragePathIssue(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("invalid storage path") ||
+        normalized.contains("unsafe file path") ||
+        normalized.contains("invalid file name")
+}
+
+internal fun looksLikeSignedUrlIssue(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("no signedurl in response") ||
+        normalized.contains("signedurl") ||
+        normalized.contains("no se pudo generar el enlace del archivo")
+}
+
+internal fun looksLikeMediaPolicyIssue(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("media_policy_blocked") ||
+        normalized.contains("upload blocked by media policy") ||
+        normalized.contains("blocked by media policy") ||
+        normalized.contains("file signature does not match declared content type") ||
+        normalized.contains("unsupported content type") ||
+        normalized.contains("unsupported file extension") ||
+        normalized.contains("file too large for") ||
+        normalized.contains("executable payload is not allowed")
 }
 
 

@@ -40,6 +40,12 @@ class StorageService @Inject constructor(
     private val mediaUploadGuard: MediaUploadGuard,
     private val appMetrics: AppMetrics
 ) {
+    companion object {
+        private const val INVALID_STORAGE_PATH_MESSAGE =
+            "El archivo seleccionado no es válido. Intenta elegirlo de nuevo."
+        private const val SIGNED_URL_UNAVAILABLE_MESSAGE =
+            "No se pudo preparar el acceso temporal al archivo."
+    }
 
     suspend fun uploadFile(
         bucketName: String,
@@ -50,7 +56,7 @@ class StorageService @Inject constructor(
     ): Result<StorageResponse> {
         val startedAt = System.currentTimeMillis()
         var normalizedPath = normalizeStoragePath(fileName)
-            ?: return Result.failure(Exception("Invalid storage path"))
+            ?: return invalidStoragePathFailure()
         val canonicalContentType = normalizeContentType(contentType)
         val metricAttrs = mapOf(
             "bucket" to bucketName,
@@ -74,7 +80,7 @@ class StorageService @Inject constructor(
             }
 
             var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+                ?: return missingSessionFailure()
 
             val mediaHash = sha256Hex(bytes)
             val registerResult = registerMediaObject(
@@ -147,9 +153,9 @@ class StorageService @Inject constructor(
     suspend fun downloadFile(bucketName: String, fileName: String): Result<ByteArray> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return Result.failure(Exception("Invalid storage path"))
+                ?: return invalidStoragePathFailure()
             var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+                ?: return missingSessionFailure()
 
             var response = config.httpClient.get {
                 url {
@@ -182,9 +188,9 @@ class StorageService @Inject constructor(
     suspend fun deleteFile(bucketName: String, fileName: String): Result<Unit> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return Result.failure(Exception("Invalid storage path"))
+                ?: return invalidStoragePathFailure()
             var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+                ?: return missingSessionFailure()
 
             var response = config.httpClient.delete {
                 url {
@@ -216,7 +222,7 @@ class StorageService @Inject constructor(
     suspend fun listFiles(bucketName: String, path: String = ""): Result<List<String>> {
         return try {
             var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+                ?: return missingSessionFailure()
 
             var response = config.httpClient.get {
                 url {
@@ -261,9 +267,9 @@ class StorageService @Inject constructor(
     suspend fun createSignedUrl(bucketName: String, fileName: String, expiresIn: Int = 3600): Result<String> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return Result.failure(Exception("Invalid storage path"))
+                ?: return invalidStoragePathFailure()
             var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+                ?: return missingSessionFailure()
 
             val signBody = mapOf("expiresIn" to expiresIn)
             
@@ -281,7 +287,8 @@ class StorageService @Inject constructor(
 
             if (response.status.isSuccess()) {
                 val responseBody: Map<String, String> = response.body()
-                val signedUrlPath = responseBody["signedURL"] ?: return Result.failure(Exception("No signedURL in response"))
+                val signedUrlPath = responseBody["signedURL"]
+                    ?: return Result.failure(Exception(SIGNED_URL_UNAVAILABLE_MESSAGE))
                 
                 android.util.Log.e("StorageService", "Sign SUCCESS raw: $signedUrlPath")
                 
@@ -387,6 +394,12 @@ class StorageService @Inject constructor(
             Result.failure(error)
         }
     }
+
+    private fun <T> invalidStoragePathFailure(): Result<T> =
+        Result.failure(Exception(INVALID_STORAGE_PATH_MESSAGE))
+
+    private fun <T> missingSessionFailure(): Result<T> =
+        Result.failure(Exception("Tu sesión venció o dejó de ser válida. Inicia sesión de nuevo."))
 
     private fun sha256Hex(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

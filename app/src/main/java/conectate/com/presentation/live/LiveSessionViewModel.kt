@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.LiveRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,7 @@ class LiveSessionViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val result = liveRepository.hostLive(liveId)
             if (result.isFailure) {
-                _uiError.value = result.exceptionOrNull()?.message ?: "No se pudo iniciar el live."
+                _uiError.value = result.exceptionOrNull().toUserFacingMessage("No se pudo iniciar el live.")
             }
         }
     }
@@ -55,7 +56,7 @@ class LiveSessionViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val result = liveRepository.joinLiveAsViewer(liveId)
             if (result.isFailure) {
-                _uiError.value = result.exceptionOrNull()?.message ?: "No se pudo abrir el live."
+                _uiError.value = result.exceptionOrNull().toUserFacingMessage("No se pudo abrir el live.")
             }
         }
     }
@@ -116,7 +117,10 @@ class LiveSessionViewModel @Inject constructor(
 
     fun sendComment(text: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            liveRepository.sendComment(text)
+            val result = liveRepository.sendComment(text)
+            if (result.isFailure) {
+                _uiError.value = result.exceptionOrNull().toUserFacingMessage("No se pudo enviar el comentario.")
+            }
         }
     }
 

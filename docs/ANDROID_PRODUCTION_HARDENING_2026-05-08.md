@@ -50,6 +50,16 @@ En paralelo se repusieron helpers test-only para cubrir:
 - threading de comentarios de video
 - mapper de errores user-facing
 
+### 4. Endurecimiento adicional de UX y red
+
+Después de recuperar el baseline se aplicó una segunda pasada:
+
+- `AndroidManifest.xml` ahora apunta a `network_security_config`
+- el proyecto declara explícitamente cleartext deshabilitado y trust de certificados de sistema, con override solo de debug para diagnósticos locales
+- `StorageService` dejó de exponer varios mensajes técnicos de ruta/token/signed URL
+- `AppFeedbackBus` ahora puede recibir `Throwable` y traducirlo a un mensaje humano
+- `LiveSessionViewModel` transforma errores con `toUserFacingMessage` y ya no ignora fallos al comentar en live
+
 ## Verificación ejecutada
 
 - `:app:compileDebugKotlin` OK

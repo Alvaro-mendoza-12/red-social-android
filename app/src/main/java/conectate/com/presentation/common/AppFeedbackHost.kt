@@ -48,6 +48,11 @@ object AppFeedbackBus {
         style = AppFeedbackStyle.Error,
         duration = SnackbarDuration.Long
     )
+
+    fun showError(
+        throwable: Throwable?,
+        fallback: String = "Ocurrió un problema. Inténtalo de nuevo."
+    ) = showError(throwable.toUserFacingMessage(fallback))
 }
 
 @Composable

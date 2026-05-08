@@ -10,6 +10,7 @@ Los snapshots y cuarentenas locales no forman parte del build, del deploy SQL ni
 
 ## Backups detectados
 
+- `backup/20260508_0536_android_error_security_hardening`: snapshot previo a reforzar `network_security_config`, humanizar errores de `StorageService`/live y ampliar el mapper central de errores user-facing.
 - `backup/20260508_0458_android_production_hardening_round`: snapshot documental de la ronda donde `main` volvió a pasar `compileDebugKotlin`, `testDebugUnitTest`, `lintDebug`, `qualityGateDebug`, `assembleDebug` y `assembleRelease`.
 - `backup/20260508_0345_android_obsolete_test_suites`: cuarentena de `RealTestingSuite` y de la suite 2FA vieja que ya no correspondía a la implementación actual ni al árbol activo.
 - `backup/20260508_0330_android_obsolete_enterprise_tests`: cuarentena de `EnterpriseTestSuite.kt`, una suite puesta en `src/test` que mezclaba instrumentation/Compose UI con módulos ya retirados.
@@ -76,5 +77,6 @@ El cierre local del `2026-05-06` confirmo:
 - En esa misma auditoría cruzada del `2026-05-08 00:55` la web volvió a pasar `npm run lint` y `npm run vercel:build` en un worktree limpio después de restaurar variables locales, y además se endurecieron `AppErrorBoundary`, `ErrorBoundary` y `ErrorBoundarySimple` para no filtrar mensajes técnicos crudos al usuario final. La validación Android avanzó más que antes al restaurar `local.properties` y `app/google-services.json`, pero dejó una verdad importante: `main` hoy arrastra errores de compilación heredados en varios módulos Android que deben sanearse antes de volver a hablar de APK lista para producción.
 - La ronda Android del `2026-05-08` cerró precisamente ese frente: se aislaron módulos enterprise/prototipo sin integración real, se corrigieron contratos rotos en `AdvancedMessagingRepository`, `LiveRepository`, `VoiceRoomRepository`, `WebRTCManager`, `MediaUploadGuard` y varios repositorios auxiliares, se reactivó el export de schemas de Room, se quitó la dependencia obligatoria de un `debug.keystore` local y se sanearon suites de test obsoletas que estaban falseando la señal de calidad.
 - El estado verificado al cierre de esa ronda fue: `:app:compileDebugKotlin` OK, `:app:testDebugUnitTest` OK con 67 tests y 0 fallos, `:app:lintDebug` OK, `:app:qualityGateDebug` OK, `:app:assembleDebug` OK y `:app:assembleRelease` OK en este worktree.
+- En la pasada siguiente del `2026-05-08 05:36` se reforzó la seguridad/configuración de red con `network_security_config`, se endureció `StorageService` para no devolver mensajes crudos de sesión/ruta/signed URL, se amplió el mapper `toUserFacingMessage` y `LiveSessionViewModel` empezó a convertir mejor los errores de live a copy entendible. Esa pasada volvió a validar `:app:qualityGateDebug` y `:app:assembleRelease` con éxito.
 
 Los backups historicos siguen congelados a proposito. La referencia vigente queda en `README.md`, `docs/`, `sql/release-manifest.txt` y los reportes generados bajo `build/reports/`.

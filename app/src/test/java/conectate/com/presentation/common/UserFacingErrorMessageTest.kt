@@ -42,4 +42,34 @@ class UserFacingErrorMessageTest {
 
         assertEquals("No se pudo crear el grupo porque faltan miembros.", result)
     }
+
+    @Test
+    fun storagePathIssueBecomesFriendly() {
+        val result = Exception("Invalid storage path").toUserFacingMessage()
+
+        assertEquals(
+            "El archivo seleccionado no es válido o su ruta está dañada. Vuelve a intentarlo con otro archivo.",
+            result
+        )
+    }
+
+    @Test
+    fun mediaPolicyIssueBecomesFriendly() {
+        val result = Exception("media_policy_blocked:403:unsupported file extension").toUserFacingMessage()
+
+        assertEquals(
+            "El archivo fue bloqueado por la política de seguridad. Revisa el tipo, tamaño o extensión antes de volver a intentarlo.",
+            result
+        )
+    }
+
+    @Test
+    fun missingSessionTokenBecomesFriendly() {
+        val result = Exception("No access token available").toUserFacingMessage()
+
+        assertEquals(
+            "Tu sesión venció o dejó de ser válida. Inicia sesión de nuevo.",
+            result
+        )
+    }
 }
