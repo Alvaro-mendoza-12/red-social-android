@@ -21,10 +21,16 @@ Hacer que este repositorio raiz pueda desplegar `Conectate-web` en Vercel sin ob
   - valida `VITE_SUPABASE_URL`
   - valida `VITE_SUPABASE_ANON_KEY`
   - corta el build si solo existen placeholders o si faltan por completo
+- `Conectate-web/.npmrc`:
+  - fija `legacy-peer-deps=true` para evitar que un install limpio se caiga por dependencias de testing incompatibles con React 19
+- `package.json` raiz:
+  - `vercel:install` ahora usa `npm --prefix Conectate-web ci --legacy-peer-deps`
 
 ## Comandos de verificacion local
 
 ```bash
+npm --prefix Conectate-web ci --legacy-peer-deps
+npm --prefix Conectate-web run build
 npm run vercel:build
 ```
 

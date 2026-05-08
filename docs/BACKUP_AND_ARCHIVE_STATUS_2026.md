@@ -10,6 +10,7 @@ Los snapshots y cuarentenas locales no forman parte del build, del deploy SQL ni
 
 ## Backups detectados
 
+- `backup/20260507_2333_main_deploy_install_fix`: snapshot previo a endurecer la instalacion web para un checkout limpio de `main` antes de promover el deploy.
 - `backup/20260507_2257_web_vercel_settings_hardening`: snapshot previo a preparar el repo raíz para Vercel y a reordenar `AccountSettingsPage` con mejor jerarquía visual.
 - `backup/20260507_2234_conectate_web_messages_profile_refine`: snapshot previo a reordenar `Conectate-web` en `MessagesPage`, `ProfilePage` y `index.css` para quitar el aspecto de maqueta en las vistas internas.
 - `backup/20260507_1923_supabase_restriction_runtime_hardening`: snapshot previo a endurecer mensajes persistentes y gating del acceso rapido/QR cuando Supabase restringe el proyecto por cuota o facturacion.
@@ -51,5 +52,6 @@ El cierre local del `2026-05-06` confirmo:
 - Se intento revalidar esta ultima pasada otra vez en hardware real, pero `adb` perdio el handshake aunque Windows siguio viendo la interfaz USB/ADB del mismo telefono. No hubo nueva instalacion ni captura post-cambio porque `adb devices -l` dejo de enumerar un dispositivo utilizable.
 - La pasada web del `2026-05-07 22:34` creo `backup/20260507_2234_conectate_web_messages_profile_refine` antes de reordenar `Conectate-web/src/features/messages/MessagesPage.tsx`, `Conectate-web/src/features/profile/ProfilePage.tsx` y `Conectate-web/src/index.css`. Se verifico `npm run lint` y `npm run build` con exito. La validacion visual autenticada de esas rutas sigue pendiente porque en este entorno no se entrego una sesion web activa para recorrer `messages`/`profile` en navegador real.
 - La pasada web del `2026-05-07 22:57` creo `backup/20260507_2257_web_vercel_settings_hardening` antes de agregar `package.json` y `vercel.json` en la raiz para desplegar `Conectate-web` en Vercel desde este mismo repo, y antes de reordenar `AccountSettingsPage` como dashboard mas navegable. La verificacion honesta incluye `npm run lint`, `npm run build` en `Conectate-web` y `npm run vercel:build` desde la raiz. El CLI global `vercel` no estaba instalado en este entorno.
+- La pasada del `2026-05-07 23:33` creo `backup/20260507_2333_main_deploy_install_fix` antes de promover la web a `main`. En un worktree limpio se detecto que `npm ci` fallaba por conflicto de peer dependencies entre React 19 y tooling de testing. Se endurecio la instalacion con `Conectate-web/.npmrc` (`legacy-peer-deps=true`) y `package.json` raiz usando `npm --prefix Conectate-web ci --legacy-peer-deps`. Despues de eso, `npm ci`, `npm run build` y `npm run vercel:build` pasaron en el worktree limpio de `main`.
 
 Los backups historicos siguen congelados a proposito. La referencia vigente queda en `README.md`, `docs/`, `sql/release-manifest.txt` y los reportes generados bajo `build/reports/`.

@@ -10,7 +10,7 @@
     "lint:web": "npm --prefix Conectate-web run lint",
     "build:web": "npm --prefix Conectate-web run build",
     "preview:web": "npm --prefix Conectate-web run preview",
-    "vercel:install": "npm --prefix Conectate-web ci",
+    "vercel:install": "npm --prefix Conectate-web ci --legacy-peer-deps",
     "vercel:build": "npm --prefix Conectate-web run build"
   }
 }
