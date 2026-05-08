@@ -26,6 +26,11 @@ Hacer que este repositorio raiz pueda desplegar `Conectate-web` en Vercel sin ob
 - `Conectate-web/package.json`:
   - ahora tambien expone `npm run vercel:install` y `npm run vercel:build`
   - esto cubre el caso real en Vercel cuando el proyecto se crea con `Root Directory = Conectate-web`
+- `Conectate-web/vercel.json`:
+  - deja fijados `framework`, `installCommand`, `buildCommand` y `outputDirectory` para el proyecto importado desde el subdirectorio
+  - replica el fallback SPA y los headers de seguridad/cache en la raiz real del proyecto que vera Vercel
+- `Conectate-web/package.json`:
+  - fija `engines.node = 22.x` para que el deploy no dependa del default cambiante de Node en Vercel
 - `package.json` raiz:
   - `vercel:install` ahora usa `npm --prefix Conectate-web ci --legacy-peer-deps`
 
@@ -47,4 +52,5 @@ npm run vercel:build
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
 - Si Vercel usa `Root Directory = Conectate-web`, ya no deberia romperse con `Missing script: vercel:install` porque ese subproyecto ahora declara esos scripts localmente.
+- La guia oficial de Vite en Vercel indica que las SPA necesitan un `vercel.json` en la raiz del proyecto desplegado para habilitar deep linking. Por eso esta pasada agrega tambien `Conectate-web/vercel.json`; si el proyecto se importa apuntando a ese subdirectorio, las rutas como `/app/messages` o `/login?mode=qr` seguiran resolviendo al `index.html`.
 - El fallback SPA ya evita el error tipico de 404 al refrescar rutas como `/app/messages`, `/app/profile` o `/login?mode=qr`.

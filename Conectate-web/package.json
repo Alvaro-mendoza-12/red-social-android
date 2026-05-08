@@ -2,6 +2,9 @@
   "name": "conectate-web",
   "private": true,
   "version": "2.0.0",
+  "engines": {
+    "node": "22.x"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
