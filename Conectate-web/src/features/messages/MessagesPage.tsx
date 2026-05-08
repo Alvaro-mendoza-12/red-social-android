@@ -8,7 +8,12 @@ import {
   runWithRetry,
 } from '../../core/reliability'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import {
   formatDateTime,
@@ -37,6 +42,8 @@ type ConversationItem = {
   unreadCount: number
   isPinned: boolean
   isMuted: boolean
+  isArchived: boolean
+  isFavorite: boolean
   folders: string[]
   openPath?: string
 }
@@ -62,6 +69,25 @@ const tabOptions: Array<{ key: InboxTab; label: string }> = [
   { key: 'voice', label: 'Voz' },
 ]
 
+const inboxTabCopy: Record<InboxTab, { title: string; description: string }> = {
+  chats: {
+    title: 'Bandeja principal conectada con la APK',
+    description: 'Favoritos, archivados, busqueda y lectura viven sobre la misma base de mensajes.',
+  },
+  groups: {
+    title: 'Grupos listos para coordinar equipos y amigos',
+    description: 'La vista web separa mejor conversaciones activas para que moderacion y participacion no compitan.',
+  },
+  communities: {
+    title: 'Comunidades con menos ruido visual',
+    description: 'Jerarquia clara para navegar actividad, abrir salas y entrar a conversaciones compartidas.',
+  },
+  voice: {
+    title: 'Puerta de entrada a voz y llamadas',
+    description: 'Desde aqui puedes saltar a rooms persistentes, historial y modulos de llamada sin perder contexto.',
+  },
+}
+
 const localReadStorageKey = 'conectate-web-chat-last-read'
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
@@ -81,6 +107,21 @@ function toMillis(value: string): number {
   if (!value) return 0
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  return message.includes('column') || message.includes('42703')
+}
+
+function isMissingFunctionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  return (
+    message.includes('could not find') ||
+    message.includes('function') ||
+    message.includes('does not exist') ||
+    message.includes('42883')
+  )
 }
 
 function readLocalReadByChat(): LocalReadByChat {
@@ -283,6 +324,8 @@ async function loadCollection(
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      isArchived: false,
+      isFavorite: false,
       folders: [],
       openPath,
     }
@@ -419,6 +462,8 @@ async function loadRoomCollectionByMembership(options: {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      isArchived: false,
+      isFavorite: false,
       folders: [],
       openPath: `${options.openPathPrefix}${id}`,
     } satisfies ConversationItem
@@ -448,6 +493,8 @@ export function MessagesPage() {
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [localReadByChat, setLocalReadByChat] = useState<LocalReadByChat>(() => readLocalReadByChat())
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(null)
 
@@ -480,12 +527,15 @@ export function MessagesPage() {
       })
       : items
 
-    if (activeTab !== 'chats' || !showUnreadOnly) {
-      return base
-    }
+    if (activeTab !== 'chats') return base
 
-    return base.filter((item) => item.unreadCount > 0)
-  }, [activeTab, items, normalizedSearch, showUnreadOnly])
+    return base.filter((item) => {
+      if (showArchived !== item.isArchived) return false
+      if (showUnreadOnly && item.unreadCount <= 0) return false
+      if (showFavoritesOnly && !item.isFavorite) return false
+      return true
+    })
+  }, [activeTab, items, normalizedSearch, showArchived, showFavoritesOnly, showUnreadOnly])
 
   const showGlobalSearchResults = activeTab === 'chats' && normalizedSearch.length >= 2
   const showNoResultsState =
@@ -495,6 +545,8 @@ export function MessagesPage() {
   useEffect(() => {
     if (activeTab !== 'chats') {
       setShowUnreadOnly(false)
+      setShowArchived(false)
+      setShowFavoritesOnly(false)
       setSearchQuery('')
     }
     setOpenChatMenuId(null)
@@ -542,6 +594,66 @@ export function MessagesPage() {
     () => items.filter((item) => item.unreadCount > 0).length,
     [items],
   )
+  const totalFavoriteChats = useMemo(
+    () => items.filter((item) => item.kind === 'chat' && item.isFavorite).length,
+    [items],
+  )
+  const totalArchivedChats = useMemo(
+    () => items.filter((item) => item.kind === 'chat' && item.isArchived).length,
+    [items],
+  )
+  const totalPinnedChats = useMemo(
+    () => items.filter((item) => item.kind === 'chat' && item.isPinned).length,
+    [items],
+  )
+  const totalMutedChats = useMemo(
+    () => items.filter((item) => item.kind === 'chat' && item.isMuted).length,
+    [items],
+  )
+  const overviewStats = useMemo(() => {
+    if (activeTab === 'chats') {
+      return [
+        { label: 'visibles', value: filteredItems.length },
+        { label: 'no leidos', value: totalUnreadChats },
+        { label: showArchived ? 'archivados' : 'favoritos', value: showArchived ? totalArchivedChats : totalFavoriteChats },
+      ]
+    }
+
+    return [
+      { label: 'visibles', value: filteredItems.length },
+      { label: 'sincronizados', value: items.length },
+      {
+        label: activeTab === 'voice' ? 'salto a voz' : 'atajos',
+        value: activeTab === 'voice' ? 2 : 3,
+      },
+    ]
+  }, [activeTab, filteredItems.length, items.length, showArchived, totalArchivedChats, totalFavoriteChats, totalUnreadChats])
+  const inboxContextPills = useMemo(() => {
+    const pills = [
+      webPreferences.compactInbox ? 'Inbox compacta' : 'Inbox amplia',
+      webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Tiempo real activo',
+    ]
+
+    if (activeTab === 'chats') {
+      pills.push(showUnreadOnly ? 'Filtrando no leidos' : `${totalUnreadChats} chats con pendiente`)
+      pills.push(showFavoritesOnly ? 'Solo favoritos' : showArchived ? 'Vista archivados' : 'Vista activa')
+    } else if (activeTab === 'voice') {
+      pills.push('Preparado para rooms persistentes')
+    } else {
+      pills.push(`Modulo ${title.toLowerCase()}`)
+    }
+
+    return pills
+  }, [
+    activeTab,
+    showArchived,
+    showFavoritesOnly,
+    showUnreadOnly,
+    title,
+    totalUnreadChats,
+    webPreferences.compactInbox,
+    webPreferences.lowDataMode,
+  ])
 
   const supportsSplitLayout =
     !isCompactViewport && (activeTab === 'chats' || activeTab === 'groups' || activeTab === 'communities')
@@ -601,13 +713,37 @@ export function MessagesPage() {
         const chatRows = (chatData ?? []) as GenericRow[]
         const chatIds = chatRows.map((row) => textOf(row, ['id'], '')).filter(Boolean)
 
-        const participantByChat = new Map<string, { isMuted: boolean; isPinned: boolean; lastReadAt: string }>()
+        const participantByChat = new Map<
+          string,
+          {
+            isMuted: boolean
+            isPinned: boolean
+            isArchived: boolean
+            isFavorite: boolean
+            lastReadAt: string
+          }
+        >()
         if (chatIds.length > 0) {
-          const { data: participantRows, error: participantError } = await supabase
+          let participantResult: { data: unknown; error: unknown } = await supabase
             .from('chat_participants')
-            .select('chat_id,is_muted,is_pinned,last_read_at')
+            .select('chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at')
             .eq('user_id', user.id)
             .in('chat_id', chatIds)
+          if (participantResult.error && isMissingColumnError(participantResult.error)) {
+            participantResult = await supabase
+              .from('chat_participants')
+              .select('chat_id,is_muted,is_pinned,is_archived,last_read_at')
+              .eq('user_id', user.id)
+              .in('chat_id', chatIds)
+          }
+          if (participantResult.error && isMissingColumnError(participantResult.error)) {
+            participantResult = await supabase
+              .from('chat_participants')
+              .select('chat_id,is_muted,is_pinned,last_read_at')
+              .eq('user_id', user.id)
+              .in('chat_id', chatIds)
+          }
+          const { data: participantRows, error: participantError } = participantResult
           if (participantError) {
             if (!isMissingTableError(participantError)) throw participantError
           } else {
@@ -617,6 +753,8 @@ export function MessagesPage() {
               participantByChat.set(chatId, {
                 isMuted: Boolean(row.is_muted),
                 isPinned: Boolean(row.is_pinned),
+                isArchived: Boolean(row.is_archived),
+                isFavorite: Boolean(row.is_favorite),
                 lastReadAt: textOf(row, ['last_read_at'], ''),
               })
             })
@@ -696,12 +834,15 @@ export function MessagesPage() {
             unreadCount: unreadByChat.get(id) ?? 0,
             isMuted: participant?.isMuted ?? false,
             isPinned: participant?.isPinned ?? false,
+            isArchived: participant?.isArchived ?? false,
+            isFavorite: participant?.isFavorite ?? false,
             folders: folderNamesByChat.get(id) ?? [],
             openPath: `/app/messages/${id}`,
           } satisfies ConversationItem
         })
 
         mapped.sort((a, b) => {
+          if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
           return toMillis(b.updatedAt) - toMillis(a.updatedAt)
         })
@@ -739,6 +880,7 @@ export function MessagesPage() {
         writeCachedValue(inboxCacheKey, nextItems)
       }
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent(`messages-${activeTab}`, caught)
       if (!options?.silent) {
         setError(friendlyError(caught, `No se pudo cargar ${title.toLowerCase()}`))
       }
@@ -759,25 +901,74 @@ export function MessagesPage() {
     void loadCurrentTab({ silent: false })
   }, [inboxCacheKey, loadCurrentTab])
 
-  const updateChatPreferences = async (chatId: string, isMuted: boolean, isPinned: boolean) => {
+  const updateChatPreferences = async (
+    chatId: string,
+    patch: Partial<Pick<ConversationItem, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>,
+  ) => {
     if (!supabase || !user) return
+    const current = items.find((item) => item.id === chatId)
+    const nextMuted = patch.isMuted ?? current?.isMuted ?? false
+    const nextPinned = patch.isPinned ?? current?.isPinned ?? false
+    const nextArchived = patch.isArchived ?? current?.isArchived ?? false
+    const nextFavorite = patch.isFavorite ?? current?.isFavorite ?? false
     try {
       const { error: rpcError } = await supabase.rpc('secure_set_chat_preferences', {
         p_chat_id: chatId,
-        p_is_muted: isMuted,
-        p_is_pinned: isPinned,
+        p_is_muted: nextMuted,
+        p_is_pinned: nextPinned,
+        p_is_archived: nextArchived,
+        p_is_favorite: nextFavorite,
       })
-      if (rpcError && !isMissingTableError(rpcError)) {
-        const { error: upsertError } = await supabase.from('chat_participants').upsert({
+      if (rpcError && !isMissingFunctionError(rpcError)) throw rpcError
+      if (rpcError && isMissingFunctionError(rpcError)) {
+        const basePayload = {
           chat_id: chatId,
           user_id: user.id,
-          is_muted: isMuted,
-          is_pinned: isPinned
-        }, { onConflict: 'chat_id,user_id' })
-        if (upsertError) throw upsertError
+          joined_at: new Date().toISOString(),
+          is_muted: nextMuted,
+          is_pinned: nextPinned,
+          is_archived: nextArchived,
+          is_favorite: nextFavorite,
+        }
+        const fullFallback = await supabase
+          .from('chat_participants')
+          .upsert(basePayload, { onConflict: 'chat_id,user_id' })
+        if (fullFallback.error && !isMissingColumnError(fullFallback.error)) throw fullFallback.error
+        if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
+          const archiveFallback = await supabase.from('chat_participants').upsert(
+            {
+              chat_id: chatId,
+              user_id: user.id,
+              joined_at: new Date().toISOString(),
+              is_muted: nextMuted,
+              is_pinned: nextPinned,
+              is_archived: nextArchived,
+            },
+            { onConflict: 'chat_id,user_id' },
+          )
+          if (archiveFallback.error && !isMissingColumnError(archiveFallback.error)) {
+            throw archiveFallback.error
+          }
+          if (!archiveFallback.error) {
+            void loadCurrentTab({ silent: true })
+            return
+          }
+          const { error: legacyFallbackError } = await supabase.from('chat_participants').upsert(
+            {
+              chat_id: chatId,
+              user_id: user.id,
+              joined_at: new Date().toISOString(),
+              is_muted: nextMuted,
+              is_pinned: nextPinned,
+            },
+            { onConflict: 'chat_id,user_id' },
+          )
+          if (legacyFallbackError) throw legacyFallbackError
+        }
       }
       void loadCurrentTab({ silent: true })
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('messages-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron actualizar preferencias'))
     }
   }
@@ -901,10 +1092,10 @@ export function MessagesPage() {
         if (refreshTimer) clearTimeout(refreshTimer)
         refreshTimer = scheduleRefresh()
       })
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'messages-live' })
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadCurrentTab, user])
 
@@ -968,7 +1159,10 @@ export function MessagesPage() {
       </div>
       <div className="conversation-status-col">
         {item.unreadCount > 0 && <span className="unread-pill">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
+        {item.isFavorite && <span className="icon-tiny" title="Favorito">★</span>}
         {item.isPinned && <span className="icon-tiny">📌</span>}
+        {item.isMuted && <span className="icon-tiny" title="Silenciado">🔕</span>}
+        {item.isArchived && <span className="icon-tiny" title="Archivado">🗄</span>}
         {item.kind === 'chat' ? (
           <>
             <button
@@ -991,7 +1185,7 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, item.isMuted, !item.isPinned)
+                    void updateChatPreferences(item.id, { isPinned: !item.isPinned })
                     setOpenChatMenuId(null)
                   }}
                 >
@@ -1000,11 +1194,29 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, !item.isMuted, item.isPinned)
+                    void updateChatPreferences(item.id, { isMuted: !item.isMuted })
                     setOpenChatMenuId(null)
                   }}
                 >
                   {item.isMuted ? 'Activar notificaciones' : 'Silenciar chat'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateChatPreferences(item.id, { isFavorite: !item.isFavorite })
+                    setOpenChatMenuId(null)
+                  }}
+                >
+                  {item.isFavorite ? 'Quitar favorito' : 'Marcar favorito'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateChatPreferences(item.id, { isArchived: !item.isArchived })
+                    setOpenChatMenuId(null)
+                  }}
+                >
+                  {item.isArchived ? 'Sacar de archivados' : 'Archivar chat'}
                 </button>
                 <button
                   type="button"
@@ -1048,6 +1260,64 @@ export function MessagesPage() {
       </div>
     </button>
   )
+
+  const renderInboxOverview = () => {
+    const copy = inboxTabCopy[activeTab]
+
+    return (
+      <article className="messages-overview-card">
+        <div className="messages-overview-copy">
+          <div className="section-stack">
+            <div>
+              <span className="brand-tag">Mensajeria web</span>
+              <h3>{copy.title}</h3>
+              <p>{copy.description}</p>
+            </div>
+            <div className="messages-overview-pills">
+              {inboxContextPills.map((pill) => (
+                <span key={pill} className="messages-context-pill">
+                  {pill}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="messages-overview-stats">
+            {overviewStats.map((stat) => (
+              <div key={stat.label} className="messages-overview-stat">
+                <strong>{stat.value}</strong>
+                <span>{stat.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="row-actions wrap messages-overview-actions">
+          <button
+            className="ghost-btn"
+            type="button"
+            onClick={() => {
+              if (activeTab !== 'chats') setActiveTab('chats')
+              setShowArchived(false)
+              setShowFavoritesOnly(false)
+              setShowUnreadOnly(false)
+              setSearchQuery('')
+              window.setTimeout(() => searchInputRef.current?.focus(), 0)
+            }}
+          >
+            Nuevo chat
+          </button>
+          <Link className="ghost-btn" to="/app/calls">
+            Centro de llamadas
+          </Link>
+          <Link className="ghost-btn" to="/app/voice">
+            Salas de voz
+          </Link>
+          <Link className="ghost-btn" to="/app/notifications">
+            Notificaciones
+          </Link>
+        </div>
+      </article>
+    )
+  }
 
   return (
     <section className="section-stack messages-page">
@@ -1104,6 +1374,10 @@ export function MessagesPage() {
               </div>
             </header>
 
+            <div className="messages-overview-shell">
+              {renderInboxOverview()}
+            </div>
+
             <div className="tab-pill-row messages-tab-row">
               {tabOptions.map((tab) => (
                 <button
@@ -1119,13 +1393,31 @@ export function MessagesPage() {
             </div>
 
             {activeTab === 'chats' ? (
-              <input
-                ref={searchInputRef}
-                className="text-input inbox-search-input"
-                placeholder="Buscar un chat o iniciar uno nuevo"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
+              <>
+                <input
+                  ref={searchInputRef}
+                  className="text-input inbox-search-input"
+                  placeholder="Buscar un chat o iniciar uno nuevo"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <div className="inbox-filter-row">
+                  <button
+                    type="button"
+                    className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => setShowFavoritesOnly((current) => !current)}
+                  >
+                    Favoritos
+                  </button>
+                  <button
+                    type="button"
+                    className={showArchived ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => setShowArchived((current) => !current)}
+                  >
+                    {showArchived ? 'Archivados' : 'Activos'}
+                  </button>
+                </div>
+              </>
             ) : null}
 
             {syncing ? <small className="sync-note">Sincronizando...</small> : null}
@@ -1168,8 +1460,44 @@ export function MessagesPage() {
             {!selectedConversationItem ? (
               <div className="messages-empty-state">
                 <div className="messages-empty-icon">💬</div>
+                <span className="brand-tag">Bandeja lista</span>
                 <h3>Tus mensajes</h3>
-                <p>Selecciona una conversación para empezar a chatear.</p>
+                <p>Selecciona una conversación o entra por un atajo rapido para seguir desde la web.</p>
+                <div className="messages-empty-actions">
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => {
+                      if (activeTab !== 'chats') setActiveTab('chats')
+                      setShowArchived(false)
+                      setShowFavoritesOnly(true)
+                      setShowUnreadOnly(false)
+                      window.setTimeout(() => searchInputRef.current?.focus(), 0)
+                    }}
+                  >
+                    Ver favoritos
+                  </button>
+                  <Link className="ghost-btn" to="/app/calls">
+                    Abrir llamadas
+                  </Link>
+                  <Link className="ghost-btn" to="/app/voice">
+                    Ir a voz
+                  </Link>
+                </div>
+                <div className="messages-empty-grid">
+                  <div className="surface-subcard">
+                    <strong>{totalPinnedChats}</strong>
+                    <p>Chats pineados para volver rapido.</p>
+                  </div>
+                  <div className="surface-subcard">
+                    <strong>{totalMutedChats}</strong>
+                    <p>Conversaciones en silencio sin perder historial.</p>
+                  </div>
+                  <div className="surface-subcard">
+                    <strong>{totalArchivedChats}</strong>
+                    <p>Archivados listos para reactivar cuando quieras.</p>
+                  </div>
+                </div>
               </div>
             ) : selectedConversationItem.kind === 'chat' ? (
               <ChatDetailPage key={`chat-${selectedConversationItem.id}`} chatIdOverride={selectedConversationItem.id} embedded />
@@ -1189,6 +1517,7 @@ export function MessagesPage() {
             <h2>Mensajes</h2>
             <p>Chats, grupos y comunidad.</p>
           </header>
+          {renderInboxOverview()}
           {syncing ? <small>Sincronizando...</small> : null}
 
           <div className="tab-pill-row">
@@ -1206,12 +1535,30 @@ export function MessagesPage() {
           </div>
 
           {activeTab === 'chats' ? (
-            <input
-              className="text-input"
-              placeholder="Buscar conversaciones"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
+            <>
+              <input
+                className="text-input"
+                placeholder="Buscar conversaciones"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+              <div className="chip-row">
+                <button
+                  type="button"
+                  className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
+                  onClick={() => setShowFavoritesOnly((current) => !current)}
+                >
+                  Favoritos
+                </button>
+                <button
+                  type="button"
+                  className={showArchived ? 'chip-btn active' : 'chip-btn'}
+                  onClick={() => setShowArchived((current) => !current)}
+                >
+                  {showArchived ? 'Archivados' : 'Activos'}
+                </button>
+              </div>
+            </>
           ) : null}
 
           {showNoResultsState ? (

@@ -2,7 +2,7 @@ export interface CallSignal {
   type: 'offer' | 'answer' | 'ice-candidate' | 'hang-up' | 'busy' | 'reject'
   from: string
   to: string
-  data?: any
+  data?: unknown
   timestamp: number
 }
 
@@ -28,6 +28,8 @@ export interface CallState {
 }
 
 export class WebCallManager {
+  private userId: string
+  private signalingChannel: BroadcastChannel
   private localStream: MediaStream | null = null
   private peerConnection: RTCPeerConnection | null = null
   private dataChannel: RTCDataChannel | null = null
@@ -47,7 +49,9 @@ export class WebCallManager {
   private onIncomingCallCallbacks: ((from: string, participant: CallParticipant) => void)[] = []
   private onCallEndCallbacks: ((reason: string) => void)[] = []
 
-  constructor(private userId: string, private signalingChannel: BroadcastChannel) {
+  constructor(userId: string, signalingChannel: BroadcastChannel) {
+    this.userId = userId
+    this.signalingChannel = signalingChannel
     this.setupSignalingListeners()
   }
 
@@ -97,12 +101,13 @@ export class WebCallManager {
       return
     }
 
+    const data = (signal.data ?? {}) as Record<string, unknown>
     const participant: CallParticipant = {
       id: signal.from,
-      name: signal.data?.name || 'Usuario',
-      avatarUrl: signal.data?.avatarUrl || '',
+      name: String(data.name ?? 'Usuario'),
+      avatarUrl: String(data.avatarUrl ?? ''),
       isAudioEnabled: true,
-      isVideoEnabled: signal.data?.videoEnabled || false,
+      isVideoEnabled: Boolean(data.videoEnabled),
       isSpeaking: false
     }
 
@@ -120,7 +125,7 @@ export class WebCallManager {
   private async handleCallAnswer(signal: CallSignal): Promise<void> {
     if (!this.peerConnection || !this.callState.isOutgoingCall) return
 
-    await this.peerConnection.setRemoteDescription(signal.data)
+    await this.peerConnection.setRemoteDescription(signal.data as RTCSessionDescriptionInit)
     this.notifyCallStateChange()
   }
 
@@ -128,7 +133,7 @@ export class WebCallManager {
     if (!this.peerConnection) return
 
     try {
-      await this.peerConnection.addIceCandidate(signal.data)
+      await this.peerConnection.addIceCandidate(signal.data as RTCIceCandidateInit)
     } catch (error) {
       console.error('Error adding ICE candidate:', error)
     }

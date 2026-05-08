@@ -16,6 +16,21 @@ import { friendlyError } from '../../core/utils'
 
 type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
 
+const loginHighlights = [
+  {
+    title: 'Mensajes y multi-cuenta',
+    description: 'La web ya comparte bandeja, favoritos, archivados y cambio rápido alineado con móvil.',
+  },
+  {
+    title: 'Videos y social',
+    description: 'Feed, reels, perfil estilo Discord y monetización viven sobre el mismo backend.',
+  },
+  {
+    title: 'Acceso flexible',
+    description: 'Puedes entrar por contraseña, correo, QR o una sesión de recuperación compatible.',
+  },
+]
+
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -291,210 +306,263 @@ export function LoginPage() {
   }
 
   return (
-    <section className="auth-shell">
-      <div className="auth-card auth-card-wide">
-        <p className="brand-tag">Conectate-web</p>
-        <div className="section-stack auth-head-copy">
-          <div>
-            <h1>Entrar a tu red social</h1>
+    <section className="auth-shell auth-shell-rich">
+      <div className="auth-layout-grid">
+        <aside className="auth-spotlight">
+          <div className="section-stack auth-spotlight-copy">
+            <p className="brand-tag">Conectate-web</p>
+            <div>
+              <h1>La versión web ya no puede verse como maqueta</h1>
+              <p>
+                Entrar tiene que sentirse claro, sólido y social desde el primer segundo. Este
+                acceso ya acompaña mensajes, videos, perfil y sincronización con la APK.
+              </p>
+            </div>
+          </div>
+
+          <div className="auth-highlight-grid">
+            {loginHighlights.map((entry) => (
+              <article key={entry.title} className="surface-subcard auth-highlight-card">
+                <strong>{entry.title}</strong>
+                <p>{entry.description}</p>
+              </article>
+            ))}
+          </div>
+
+          <article className="surface-subcard auth-spotlight-note">
+            <strong>Paridad útil con Android</strong>
             <p>
-              Puedes iniciar con contraseña, por código enviado al correo o importando una sesión
-              de recuperación.
+              Si ya aprobaste una sesión desde el móvil o recibiste una recuperación, no tienes que
+              repetir todo el flujo: también puedes entrar por QR o importando sesión.
+            </p>
+          </article>
+        </aside>
+
+        <div className="auth-card auth-card-wide auth-panel-card">
+          <div className="section-stack auth-head-copy">
+            <div>
+              <p className="brand-tag auth-panel-tag">Acceso</p>
+              <h1>Entrar a tu red social</h1>
+              <p>
+                Elige el método que te sirva hoy: contraseña, código al correo, QR aprobado desde
+                la app o una sesión de recuperación.
+              </p>
+            </div>
+            <div className="chip-row auth-mode-row auth-mode-grid">
+              <button
+                type="button"
+                className={mode === 'password' ? 'chip-btn active' : 'chip-btn'}
+                onClick={() => changeMode('password')}
+              >
+                Contraseña
+              </button>
+              <button
+                type="button"
+                className={mode === 'code' ? 'chip-btn active' : 'chip-btn'}
+                onClick={() => changeMode('code')}
+              >
+                Código
+              </button>
+              <button
+                type="button"
+                className={mode === 'recovery' ? 'chip-btn active' : 'chip-btn'}
+                onClick={() => changeMode('recovery')}
+              >
+                Vincular sesión
+              </button>
+              <button
+                type="button"
+                className={mode === 'qr' ? 'chip-btn active' : 'chip-btn'}
+                onClick={() => changeMode('qr')}
+              >
+                QR
+              </button>
+            </div>
+          </div>
+
+          <div className="surface-subcard auth-mode-note">
+            <strong>
+              {mode === 'password'
+                ? 'Acceso clásico'
+                : mode === 'code'
+                  ? 'Código temporal'
+                  : mode === 'recovery'
+                    ? 'Importar sesión existente'
+                    : 'Aprobación desde el móvil'}
+            </strong>
+            <p>
+              {mode === 'password'
+                ? 'Ideal si quieres entrar manualmente desde este navegador.'
+                : mode === 'code'
+                  ? 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
+                  : mode === 'recovery'
+                    ? 'Pega un bloque válido con tokens si vienes de un flujo de recuperación o migración.'
+                    : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
             </p>
           </div>
-          <div className="chip-row auth-mode-row">
-            <button
-              type="button"
-              className={mode === 'password' ? 'chip-btn active' : 'chip-btn'}
-              onClick={() => changeMode('password')}
-            >
-              Contraseña
-            </button>
-            <button
-              type="button"
-              className={mode === 'code' ? 'chip-btn active' : 'chip-btn'}
-              onClick={() => changeMode('code')}
-            >
-              Código
-            </button>
-            <button
-              type="button"
-              className={mode === 'recovery' ? 'chip-btn active' : 'chip-btn'}
-              onClick={() => changeMode('recovery')}
-            >
-              Vincular sesión
-            </button>
-            <button
-              type="button"
-              className={mode === 'qr' ? 'chip-btn active' : 'chip-btn'}
-              onClick={() => changeMode('qr')}
-            >
-              QR
-            </button>
-          </div>
+
+          {mode === 'password' ? (
+            <form className="section-stack" onSubmit={handlePasswordSubmit}>
+              <label>
+                Correo
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  autoComplete="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              <label>
+                Contraseña
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={loading} type="submit">
+                {loading ? 'Entrando...' : 'Iniciar sesión'}
+              </button>
+            </form>
+          ) : null}
+
+          {mode === 'code' ? (
+            <form className="section-stack" onSubmit={verifyAccessCode}>
+              <label>
+                Correo de la cuenta
+                <input
+                  type="email"
+                  required
+                  value={codeEmail}
+                  autoComplete="email"
+                  onChange={(event) => setCodeEmail(event.target.value)}
+                />
+              </label>
+              <div className="auth-inline-actions">
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  disabled={sendingCode}
+                  onClick={() => void sendAccessCode()}
+                >
+                  {sendingCode ? 'Enviando...' : 'Enviar código o enlace'}
+                </button>
+              </div>
+              <label>
+                Código de acceso
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="Escribe aquí el código del correo"
+                  value={accessCode}
+                  onChange={(event) => setAccessCode(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={verifyingCode} type="submit">
+                {verifyingCode ? 'Validando...' : 'Entrar con código'}
+              </button>
+              <small className="auth-foot">
+                Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar
+                el enlace.
+              </small>
+            </form>
+          ) : null}
+
+          {mode === 'recovery' ? (
+            <form className="section-stack" onSubmit={importRecoverySession}>
+              <label>
+                Enlace o bloque de recuperación
+                <textarea
+                  className="text-input textarea-input"
+                  rows={5}
+                  placeholder="Pega aquí el enlace conectate://recovery o un JSON con access_token y refresh_token"
+                  value={recoveryPayload}
+                  onChange={(event) => setRecoveryPayload(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={importingRecovery} type="submit">
+                {importingRecovery ? 'Importando...' : 'Vincular e iniciar'}
+              </button>
+              <small className="auth-foot">
+                Este modo sirve para importar una sesión ya emitida desde otro dispositivo o desde un
+                flujo de recuperación compatible.
+              </small>
+            </form>
+          ) : null}
+
+          {mode === 'qr' ? (
+            <div className="section-stack auth-qr-layout">
+              <div className="auth-qr-hero">
+                {creatingQr ? (
+                  <StatusView
+                    title="Generando QR"
+                    description="Preparando un código temporal y seguro para Conectate Web..."
+                  />
+                ) : qrPairing?.qrUrl ? (
+                  <QrCodeTile
+                    value={qrPairing.qrUrl}
+                    title="Escanéalo desde el móvil"
+                    description="Abre Conectate en tu teléfono, toca Escanear código y aprueba esta sesión."
+                  />
+                ) : (
+                  <StatusView
+                    title="QR no disponible"
+                    description="Todavía no pudimos preparar el código. Vuelve a intentarlo."
+                  />
+                )}
+              </div>
+
+              <div className="surface-subcard auth-qr-copy">
+                <strong>Cómo funciona</strong>
+                <p>1. La web genera un QR temporal.</p>
+                <p>2. Lo escaneas desde Conectate móvil.</p>
+                <p>3. El móvil aprueba o rechaza la sesión.</p>
+                <p>4. Si apruebas, esta ventana entra automáticamente.</p>
+              </div>
+
+              <div className="surface-subcard auth-qr-copy">
+                <strong>Estado actual</strong>
+                <p>
+                  {consumingQr
+                    ? 'Aprobado. Importando la sesión web...'
+                    : qrPairing?.status === 'approved'
+                      ? 'Aprobado desde el móvil.'
+                      : qrPairing?.status === 'rejected'
+                        ? 'Rechazado desde el móvil.'
+                        : qrPairing?.status === 'expired'
+                          ? 'Expirado. Necesitas generar otro QR.'
+                          : 'Esperando aprobación desde el móvil.'}
+                </p>
+                <p>{qrPairing?.deviceLabel || 'Este navegador'}</p>
+              </div>
+
+              <div className="auth-inline-actions">
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  disabled={creatingQr || consumingQr}
+                  onClick={() => {
+                    setQrPairing(null)
+                    setQrRefreshKey((current) => current + 1)
+                  }}
+                >
+                  {creatingQr ? 'Generando...' : 'Generar otro QR'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {error ? <p className="error-text">{error}</p> : null}
+          {info ? <p>{info}</p> : null}
+
+          <p className="auth-foot">
+            ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
+          </p>
         </div>
-
-        {mode === 'password' ? (
-          <form className="section-stack" onSubmit={handlePasswordSubmit}>
-            <label>
-              Correo
-              <input
-                type="email"
-                required
-                value={email}
-                autoComplete="email"
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-            <label>
-              Contraseña
-              <input
-                type="password"
-                required
-                value={password}
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            <button className="primary-btn" disabled={loading} type="submit">
-              {loading ? 'Entrando...' : 'Iniciar sesión'}
-            </button>
-          </form>
-        ) : null}
-
-        {mode === 'code' ? (
-          <form className="section-stack" onSubmit={verifyAccessCode}>
-            <label>
-              Correo de la cuenta
-              <input
-                type="email"
-                required
-                value={codeEmail}
-                autoComplete="email"
-                onChange={(event) => setCodeEmail(event.target.value)}
-              />
-            </label>
-            <div className="auth-inline-actions">
-              <button
-                className="ghost-btn"
-                type="button"
-                disabled={sendingCode}
-                onClick={() => void sendAccessCode()}
-              >
-                {sendingCode ? 'Enviando...' : 'Enviar código o enlace'}
-              </button>
-            </div>
-            <label>
-              Código de acceso
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="Escribe aquí el código del correo"
-                value={accessCode}
-                onChange={(event) => setAccessCode(event.target.value)}
-              />
-            </label>
-            <button className="primary-btn" disabled={verifyingCode} type="submit">
-              {verifyingCode ? 'Validando...' : 'Entrar con código'}
-            </button>
-            <small className="auth-foot">
-              Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar
-              el enlace.
-            </small>
-          </form>
-        ) : null}
-
-        {mode === 'recovery' ? (
-          <form className="section-stack" onSubmit={importRecoverySession}>
-            <label>
-              Enlace o bloque de recuperación
-              <textarea
-                className="text-input textarea-input"
-                rows={5}
-                placeholder="Pega aquí el enlace conectate://recovery o un JSON con access_token y refresh_token"
-                value={recoveryPayload}
-                onChange={(event) => setRecoveryPayload(event.target.value)}
-              />
-            </label>
-            <button className="primary-btn" disabled={importingRecovery} type="submit">
-              {importingRecovery ? 'Importando...' : 'Vincular e iniciar'}
-            </button>
-            <small className="auth-foot">
-              Este modo sirve para importar una sesión ya emitida desde otro dispositivo o desde un
-              flujo de recuperación compatible.
-            </small>
-          </form>
-        ) : null}
-
-        {mode === 'qr' ? (
-          <div className="section-stack auth-qr-layout">
-            <div className="auth-qr-hero">
-              {creatingQr ? (
-                <StatusView
-                  title="Generando QR"
-                  description="Preparando un código temporal y seguro para Conectate Web..."
-                />
-              ) : qrPairing?.qrUrl ? (
-                <QrCodeTile
-                  value={qrPairing.qrUrl}
-                  title="Escanéalo desde el móvil"
-                  description="Abre Conectate en tu teléfono, toca Escanear código y aprueba esta sesión."
-                />
-              ) : (
-                <StatusView
-                  title="QR no disponible"
-                  description="Todavía no pudimos preparar el código. Vuelve a intentarlo."
-                />
-              )}
-            </div>
-
-            <div className="surface-subcard auth-qr-copy">
-              <strong>Cómo funciona</strong>
-              <p>1. La web genera un QR temporal.</p>
-              <p>2. Lo escaneas desde Conectate móvil.</p>
-              <p>3. El móvil aprueba o rechaza la sesión.</p>
-              <p>4. Si apruebas, esta ventana entra automáticamente.</p>
-            </div>
-
-            <div className="surface-subcard auth-qr-copy">
-              <strong>Estado actual</strong>
-              <p>
-                {consumingQr
-                  ? 'Aprobado. Importando la sesión web...'
-                  : qrPairing?.status === 'approved'
-                    ? 'Aprobado desde el móvil.'
-                    : qrPairing?.status === 'rejected'
-                      ? 'Rechazado desde el móvil.'
-                      : qrPairing?.status === 'expired'
-                        ? 'Expirado. Necesitas generar otro QR.'
-                        : 'Esperando aprobación desde el móvil.'}
-              </p>
-              <p>{qrPairing?.deviceLabel || 'Este navegador'}</p>
-            </div>
-
-            <div className="auth-inline-actions">
-              <button
-                className="ghost-btn"
-                type="button"
-                disabled={creatingQr || consumingQr}
-                onClick={() => {
-                  setQrPairing(null)
-                  setQrRefreshKey((current) => current + 1)
-                }}
-              >
-                {creatingQr ? 'Generando...' : 'Generar otro QR'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {error ? <p className="error-text">{error}</p> : null}
-        {info ? <p>{info}</p> : null}
-
-        <p className="auth-foot">
-          ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
-        </p>
       </div>
     </section>
   )

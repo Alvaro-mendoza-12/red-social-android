@@ -27,7 +27,7 @@ export function CallInterface() {
       signalingChannelRef.current = channel
       
       const manager = new WebCallManager(user.id, channel)
-      setCallManager(manager)
+      queueMicrotask(() => setCallManager(manager))
 
       // Setup callbacks
       manager.onCallState((state) => {
@@ -68,7 +68,7 @@ export function CallInterface() {
       }
     } catch (error) {
       console.error('Error initializing call manager:', error)
-      setError('No se pudo inicializar el sistema de llamadas')
+      queueMicrotask(() => setError('No se pudo inicializar el sistema de llamadas'))
     }
   }, [user, navigate])
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Search, User, Menu, X, Video, Mic } from 'lucide-react';
+import { Bell, Search, User, Menu, Video, Mic } from 'lucide-react';
 import { cn } from '../../../core/utils/cn';
 
 interface ModernHeaderProps {

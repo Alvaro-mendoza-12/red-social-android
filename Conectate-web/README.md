@@ -9,6 +9,19 @@ Frontend web independiente de tu app móvil Conectate.
 - No depende de archivos de `app/` Android.
 - La única conexión compartida entre móvil y web es Supabase.
 
+## Actualización enterprise 2026-05-07
+
+- Build web productiva verificada con `npm run build`.
+- Lint web verificado con `npm run lint`.
+- TypeScript de producción excluye tests/prototipos legacy para compilar el bundle real de la app.
+- Realtime usa guard centralizado: si Supabase devuelve restricción/cuota, la web pausa canales y muestra banner en vez de entrar en loops.
+- Mensajes web ahora soporta mute, pin, archivado, favoritos, lectura, reply, forward, editar, borrar, view-once, reacciones, stickers y búsqueda.
+- La bandeja de mensajes web ya no queda plana: ahora muestra resumen de estado, contexto de filtros y atajos a llamadas/voz/notificaciones para acercarse al flujo real de la APK.
+- Videos web fuerza máximo 30 segundos antes de subir y bloquea señales de marca de agua conocidas por heurística web: TikTok, Facebook, YouTube, Kwai e Instagram.
+- Perfil web queda alineado con el perfil estilo Discord de móvil: banner, avatar, bio, intereses, juegos, música, libro, deporte, carrera, horario y privacidad online.
+- El perfil web fue reordenado como dashboard: identidad, actividad social, QR, privacidad y monetización ya no compiten en la misma columna sin jerarquía.
+- Nuevo centro `/app/monetization` para creator program, wallet/gifts/premium/ads y earnings sobre el SQL final de Supabase.
+
 ## Stack
 
 - React 19 + TypeScript + Vite
@@ -53,6 +66,8 @@ npm run preview
 - Reels / videos:
   - feed de videos
   - publicación de reel desde web (upload a bucket `videos` + inserción en `videos` con compatibilidad de esquema)
+  - límite duro de 30 segundos antes de subir para mantener paridad con móvil
+  - detección web de señales de marca de agua por nombre/metadatos/texto antes de publicar
   - portada opcional + detección de duración + validación de tamaño antes de publicar
   - generación de portada desde fotograma del video (selector de tiempo)
   - recorte básico de inicio/fin antes de publicar (persistido cuando el esquema lo soporta)
@@ -78,6 +93,7 @@ npm run preview
   - reply, forward, encuestas, view-once, recibos de lectura básicos
 - Bandeja mejorada:
   - mute/pin por chat
+  - archivado/favoritos por usuario con RPC `secure_set_chat_preferences`
   - carpetas y asignación de chats
   - búsqueda de conversaciones por título/último mensaje/carpeta
   - contador no leído basado en `last_read_at`
@@ -133,7 +149,27 @@ npm run preview
   - perfil propio con publicaciones
   - perfil público de otros usuarios (`/app/profile/:profileId`)
   - acciones sociales en perfil público: seguir/dejar de seguir, mensaje directo, reporte
+  - perfil Discord-style con banner, avatar, intereses, juegos, música, libro, deporte, carrera y horario
 - Ajustes de cuenta:
   - editar perfil (nombre/usuario/bio)
+  - editar banner/avatar/intereses/juegos/música/libro/deporte/carrera/horario cuando el SQL final está aplicado
   - privacidad (cuenta privada/visibilidad cuando el backend lo soporta)
+  - privacidad granular de último acceso y estado online
+  - apariencia, escala de texto, idioma, inbox compacta y ahorro de datos
   - cambio de contraseña con Supabase Auth
+
+## Monetización y creadores
+
+- Ruta: `/app/monetization`.
+- Lee y escribe `creator_program_applications`.
+- Lee `creator_payout_accounts`, `creator_earnings`, `wallets`, `gift_transactions`, `premium_subscriptions` y `ad_impressions` si existen.
+- Si una tabla aún no existe o el SQL no está aplicado, la pantalla queda degradada de forma segura en lugar de romper la app.
+
+## Verificación reciente
+
+```bash
+npm run lint
+npm run build
+```
+
+Resultado verificado: lint y build exitosos con ESLint, Vite y TypeScript; salida generada en `dist/`.

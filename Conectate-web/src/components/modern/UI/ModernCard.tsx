@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../core/utils/cn';
+import { cn } from '../../../core/utils/cn';
 
 interface ModernCardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'outlined' | 'elevated';
@@ -73,7 +73,7 @@ export function ModernCardHeader({
   );
 }
 
-interface ModernCardContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+type ModernCardContentProps = React.HTMLAttributes<HTMLDivElement>
 
 export function ModernCardContent({
   className,
@@ -87,7 +87,7 @@ export function ModernCardContent({
   );
 }
 
-interface ModernCardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+type ModernCardFooterProps = React.HTMLAttributes<HTMLDivElement>
 
 export function ModernCardFooter({
   className,

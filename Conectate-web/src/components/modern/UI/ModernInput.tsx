@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../core/utils/cn';
+import { cn } from '../../../core/utils/cn';
 
 interface ModernInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;

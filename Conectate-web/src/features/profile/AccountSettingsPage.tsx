@@ -12,6 +12,18 @@ type SettingsModel = {
   displayName: string
   username: string
   bio: string
+  avatarUrl: string
+  coverUrl: string
+  interestsText: string
+  linkedGamesText: string
+  gameLogoUrlsText: string
+  favoriteMusicUrl: string
+  favoriteBook: string
+  favoriteSport: string
+  career: string
+  availabilitySchedule: string
+  lastSeenVisibility: string
+  onlineStatusVisibility: string
   isPrivate: boolean
   profileVisibility: string
   privacyAccepted: boolean
@@ -24,6 +36,45 @@ function toBoolean(value: unknown): boolean {
   return false
 }
 
+function csvFromArray(value: unknown): string {
+  if (!Array.isArray(value)) return ''
+  return value.map((entry) => String(entry).trim()).filter(Boolean).join(', ')
+}
+
+function csvToArray(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function gameLogoTextFromJson(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+  return Object.entries(value as Record<string, unknown>)
+    .map(([game, url]) => `${game}=${String(url ?? '').trim()}`)
+    .join('\n')
+}
+
+function gameLogoJsonFromText(value: string): Record<string, string> {
+  return Object.fromEntries(
+    value
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const separator = entry.indexOf('=')
+        if (separator === -1) return [entry, ''] as const
+        return [entry.slice(0, separator).trim(), entry.slice(separator + 1).trim()] as const
+      })
+      .filter(([game]) => Boolean(game)),
+  )
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  return message.includes('column') || message.includes('42703')
+}
+
 export function AccountSettingsPage() {
   const { user, session } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
@@ -31,6 +82,18 @@ export function AccountSettingsPage() {
     displayName: '',
     username: '',
     bio: '',
+    avatarUrl: '',
+    coverUrl: '',
+    interestsText: '',
+    linkedGamesText: '',
+    gameLogoUrlsText: '',
+    favoriteMusicUrl: '',
+    favoriteBook: '',
+    favoriteSport: '',
+    career: '',
+    availabilitySchedule: '',
+    lastSeenVisibility: 'everyone',
+    onlineStatusVisibility: 'everyone',
     isPrivate: false,
     profileVisibility: 'everyone',
     privacyAccepted: false,
@@ -81,6 +144,18 @@ export function AccountSettingsPage() {
         displayName: textOf(row, ['display_name', 'displayName', 'full_name'], user.email ?? ''),
         username: textOf(row, ['username'], ''),
         bio: textOf(row, ['bio'], ''),
+        avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
+        coverUrl: textOf(row, ['cover_url', 'banner_url'], ''),
+        interestsText: csvFromArray(row.interests),
+        linkedGamesText: csvFromArray(row.linked_games),
+        gameLogoUrlsText: gameLogoTextFromJson(row.game_logo_urls),
+        favoriteMusicUrl: textOf(row, ['favorite_music_url'], ''),
+        favoriteBook: textOf(row, ['favorite_book'], ''),
+        favoriteSport: textOf(row, ['favorite_sport'], ''),
+        career: textOf(row, ['career'], ''),
+        availabilitySchedule: textOf(row, ['availability_schedule'], ''),
+        lastSeenVisibility: textOf(row, ['last_seen_visibility'], 'everyone'),
+        onlineStatusVisibility: textOf(row, ['online_status_visibility'], 'everyone'),
         isPrivate: toBoolean(row.is_private),
         profileVisibility: textOf(row, ['profile_visibility'], 'everyone'),
         privacyAccepted: toBoolean(row.privacy_policy_accepted),
@@ -106,10 +181,34 @@ export function AccountSettingsPage() {
         display_name: model.displayName.trim() || user.email || 'Usuario',
         username: model.username.trim() || null,
         bio: model.bio.trim() || null,
+        avatar_url: model.avatarUrl.trim() || null,
+        cover_url: model.coverUrl.trim() || null,
+        interests: csvToArray(model.interestsText),
+        linked_games: csvToArray(model.linkedGamesText),
+        game_logo_urls: gameLogoJsonFromText(model.gameLogoUrlsText),
+        favorite_music_url: model.favoriteMusicUrl.trim() || null,
+        favorite_book: model.favoriteBook.trim() || null,
+        favorite_sport: model.favoriteSport.trim() || null,
+        career: model.career.trim() || null,
+        availability_schedule: model.availabilitySchedule.trim() || null,
+        last_seen_visibility: model.lastSeenVisibility,
+        online_status_visibility: model.onlineStatusVisibility,
         updated_at: new Date().toISOString(),
       }
       const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', user.id)
-      if (updateError) throw updateError
+      if (updateError && !isMissingColumnError(updateError)) throw updateError
+      if (updateError && isMissingColumnError(updateError)) {
+        const legacyPayload = {
+          display_name: payload.display_name,
+          username: payload.username,
+          bio: payload.bio,
+          updated_at: payload.updated_at,
+        }
+        const { error: legacyError } = await supabase.from('profiles').update(legacyPayload).eq('id', user.id)
+        if (legacyError) throw legacyError
+        setInfo('Perfil básico guardado. Ejecuta el SQL final para habilitar banner/intereses/gustos en web.')
+        return
+      }
       setInfo('Perfil actualizado.')
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo guardar perfil'))
@@ -126,6 +225,8 @@ export function AccountSettingsPage() {
     try {
       const payload: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
+        last_seen_visibility: model.lastSeenVisibility,
+        online_status_visibility: model.onlineStatusVisibility,
       }
       if (hasIsPrivate) payload.is_private = model.isPrivate
       if (hasProfileVisibility) payload.profile_visibility = model.profileVisibility
@@ -141,7 +242,11 @@ export function AccountSettingsPage() {
       }
 
       const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', user.id)
-      if (updateError) throw updateError
+      if (updateError && !isMissingColumnError(updateError)) throw updateError
+      if (updateError && isMissingColumnError(updateError)) {
+        setInfo('Privacidad básica disponible. Ejecuta el SQL final para habilitar visibilidad granular de último acceso/online.')
+        return
+      }
       setInfo('Privacidad actualizada.')
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo guardar privacidad'))
@@ -260,6 +365,70 @@ export function AccountSettingsPage() {
               value={model.bio}
               onChange={(event) => setModel((current) => ({ ...current, bio: event.target.value }))}
             />
+            <input
+              className="text-input"
+              placeholder="Avatar URL"
+              value={model.avatarUrl}
+              onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
+            />
+            <input
+              className="text-input"
+              placeholder="Banner / cover URL"
+              value={model.coverUrl}
+              onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
+            />
+            <input
+              className="text-input"
+              placeholder="Intereses separados por coma: anime, juegos, música"
+              value={model.interestsText}
+              onChange={(event) => setModel((current) => ({ ...current, interestsText: event.target.value }))}
+            />
+            <input
+              className="text-input"
+              placeholder="Juegos separados por coma"
+              value={model.linkedGamesText}
+              onChange={(event) => setModel((current) => ({ ...current, linkedGamesText: event.target.value }))}
+            />
+            <textarea
+              className="text-input textarea-input"
+              rows={3}
+              placeholder="Logos de juegos: Minecraft=https://..."
+              value={model.gameLogoUrlsText}
+              onChange={(event) => setModel((current) => ({ ...current, gameLogoUrlsText: event.target.value }))}
+            />
+            <div className="settings-mini-grid">
+              <input
+                className="text-input"
+                placeholder="Música favorita URL"
+                value={model.favoriteMusicUrl}
+                onChange={(event) => setModel((current) => ({ ...current, favoriteMusicUrl: event.target.value }))}
+              />
+              <input
+                className="text-input"
+                placeholder="Libro favorito"
+                value={model.favoriteBook}
+                onChange={(event) => setModel((current) => ({ ...current, favoriteBook: event.target.value }))}
+              />
+              <input
+                className="text-input"
+                placeholder="Deporte favorito"
+                value={model.favoriteSport}
+                onChange={(event) => setModel((current) => ({ ...current, favoriteSport: event.target.value }))}
+              />
+              <input
+                className="text-input"
+                placeholder="Carrera / profesión"
+                value={model.career}
+                onChange={(event) => setModel((current) => ({ ...current, career: event.target.value }))}
+              />
+            </div>
+            <textarea
+              className="text-input textarea-input"
+              rows={2}
+              placeholder="Horario disponible"
+              value={model.availabilitySchedule}
+              onChange={(event) => setModel((current) => ({ ...current, availabilitySchedule: event.target.value }))}
+            />
             <button className="ghost-btn" type="button" disabled={savingProfile} onClick={() => void saveProfileBasics()}>
               {savingProfile ? 'Guardando...' : 'Guardar perfil'}
             </button>
@@ -293,6 +462,28 @@ export function AccountSettingsPage() {
               <option value="followers">Seguidores</option>
               <option value="friends">Amigos</option>
               <option value="nobody">Nadie</option>
+            </select>
+            <select
+              className="text-input tiny-input"
+              value={model.lastSeenVisibility}
+              onChange={(event) =>
+                setModel((current) => ({ ...current, lastSeenVisibility: event.target.value }))
+              }
+            >
+              <option value="everyone">Último acceso: todos</option>
+              <option value="contacts">Último acceso: contactos</option>
+              <option value="nobody">Último acceso: nadie</option>
+            </select>
+            <select
+              className="text-input tiny-input"
+              value={model.onlineStatusVisibility}
+              onChange={(event) =>
+                setModel((current) => ({ ...current, onlineStatusVisibility: event.target.value }))
+              }
+            >
+              <option value="everyone">Online: todos</option>
+              <option value="contacts">Online: contactos</option>
+              <option value="nobody">Online: nadie</option>
             </select>
             {hasPrivacyAcceptance ? (
               <label className="checkbox-inline">
@@ -416,6 +607,55 @@ export function AccountSettingsPage() {
               checked={webPreferences.lowDataMode}
               onChange={(event) => updateWebPreferences({ lowDataMode: event.target.checked })}
             />
+          </label>
+          <label className="settings-toggle-card vertical">
+            <div>
+              <strong>Apariencia</strong>
+              <p>Tema claro/oscuro/sistema como en móvil.</p>
+            </div>
+            <select
+              className="text-input tiny-input"
+              value={webPreferences.themeMode}
+              onChange={(event) =>
+                updateWebPreferences({ themeMode: event.target.value as typeof webPreferences.themeMode })
+              }
+            >
+              <option value="system">Sistema</option>
+              <option value="light">Claro</option>
+              <option value="dark">Oscuro</option>
+            </select>
+          </label>
+          <label className="settings-toggle-card vertical">
+            <div>
+              <strong>Escala de texto</strong>
+              <p>Accesibilidad rápida para escritorio y PWA.</p>
+            </div>
+            <select
+              className="text-input tiny-input"
+              value={webPreferences.textScale}
+              onChange={(event) =>
+                updateWebPreferences({ textScale: event.target.value as typeof webPreferences.textScale })
+              }
+            >
+              <option value="compact">Compacta</option>
+              <option value="normal">Normal</option>
+              <option value="large">Grande</option>
+            </select>
+          </label>
+          <label className="settings-toggle-card vertical">
+            <div>
+              <strong>Idioma</strong>
+              <p>Base para localización web y preferencias de cuenta.</p>
+            </div>
+            <select
+              className="text-input tiny-input"
+              value={webPreferences.language}
+              onChange={(event) => updateWebPreferences({ language: event.target.value })}
+            >
+              <option value="es">Español</option>
+              <option value="en">English</option>
+              <option value="pt">Português</option>
+            </select>
           </label>
         </div>
       </article>

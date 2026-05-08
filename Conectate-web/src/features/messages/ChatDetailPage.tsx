@@ -1,7 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import {
   formatDateTime,
   friendlyError,
@@ -54,6 +59,8 @@ type StickerItem = {
 type ChatSettings = {
   isMuted: boolean
   isPinned: boolean
+  isArchived: boolean
+  isFavorite: boolean
   translateEnabled: boolean
   targetLang: string
 }
@@ -128,6 +135,12 @@ function isMissingFunctionError(error: unknown): boolean {
     message.includes('42883') ||
     message.includes('function')
   )
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  return message.includes('column') || message.includes('42703')
 }
 
 function isViewOnceType(contentType: string): boolean {
@@ -310,6 +323,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [settings, setSettings] = useState<ChatSettings>({
     isMuted: false,
     isPinned: false,
+    isArchived: false,
+    isFavorite: false,
     translateEnabled: false,
     targetLang: 'es',
   })
@@ -700,12 +715,32 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const loadChatSettings = useCallback(async () => {
     if (!supabase || !user || !cleanChatId) return
     try {
-      const { data: participantRows } = await supabase
+      let participantResult: { data: unknown; error: unknown } = await supabase
         .from('chat_participants')
-        .select('is_muted,is_pinned')
+        .select('is_muted,is_pinned,is_archived,is_favorite')
         .eq('chat_id', cleanChatId)
         .eq('user_id', user.id)
         .limit(1)
+      if (participantResult.error && isMissingColumnError(participantResult.error)) {
+        participantResult = await supabase
+          .from('chat_participants')
+          .select('is_muted,is_pinned,is_archived')
+          .eq('chat_id', cleanChatId)
+          .eq('user_id', user.id)
+          .limit(1)
+      }
+      if (participantResult.error && isMissingColumnError(participantResult.error)) {
+        participantResult = await supabase
+          .from('chat_participants')
+          .select('is_muted,is_pinned')
+          .eq('chat_id', cleanChatId)
+          .eq('user_id', user.id)
+          .limit(1)
+      }
+      if (participantResult.error && !isMissingTableError(participantResult.error)) {
+        throw participantResult.error
+      }
+      const { data: participantRows } = participantResult
       const participant = ((participantRows ?? []) as GenericRow[])[0]
 
       let translateEnabled = false
@@ -727,10 +762,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       setSettings({
         isMuted: toBoolean(participant?.is_muted),
         isPinned: toBoolean(participant?.is_pinned),
+        isArchived: toBoolean(participant?.is_archived),
+        isFavorite: toBoolean(participant?.is_favorite),
         translateEnabled,
         targetLang: targetLang || 'es',
       })
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('chat-settings', caught)
       setError(friendlyError(caught, 'No se pudieron cargar ajustes del chat'))
     }
   }, [cleanChatId, user])
@@ -945,10 +983,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           })
         },
       )
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: `chat-${cleanChatId}` })
 
     return () => {
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState, user])
 
@@ -1278,8 +1316,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
 
 
-  async function saveChatPreferences(nextMuted: boolean, nextPinned: boolean) {
+  async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
     if (!supabase || !user || !cleanChatId || savingSettings) return
+    const nextMuted = patch.isMuted ?? settings.isMuted
+    const nextPinned = patch.isPinned ?? settings.isPinned
+    const nextArchived = patch.isArchived ?? settings.isArchived
+    const nextFavorite = patch.isFavorite ?? settings.isFavorite
     setSavingSettings(true)
     setError(null)
     try {
@@ -1287,11 +1329,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         p_chat_id: cleanChatId,
         p_is_muted: nextMuted,
         p_is_pinned: nextPinned,
+        p_is_archived: nextArchived,
+        p_is_favorite: nextFavorite,
       })
       if (prefError && !isMissingFunctionError(prefError)) throw prefError
       if (prefError && isMissingFunctionError(prefError)) {
         const nowIso = new Date().toISOString()
-        const { error: fallbackError } = await supabase.from('chat_participants').upsert(
+        const fullFallback = await supabase.from('chat_participants').upsert(
           {
             chat_id: cleanChatId,
             user_id: user.id,
@@ -1299,13 +1343,61 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             last_read_at: nowIso,
             is_muted: nextMuted,
             is_pinned: nextPinned,
+            is_archived: nextArchived,
+            is_favorite: nextFavorite,
           },
           { onConflict: 'chat_id,user_id' },
         )
-        if (fallbackError) throw fallbackError
+        if (fullFallback.error && !isMissingColumnError(fullFallback.error)) throw fullFallback.error
+        if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
+          const archiveFallback = await supabase.from('chat_participants').upsert(
+            {
+              chat_id: cleanChatId,
+              user_id: user.id,
+              joined_at: nowIso,
+              last_read_at: nowIso,
+              is_muted: nextMuted,
+              is_pinned: nextPinned,
+              is_archived: nextArchived,
+            },
+            { onConflict: 'chat_id,user_id' },
+          )
+          if (archiveFallback.error && !isMissingColumnError(archiveFallback.error)) {
+            throw archiveFallback.error
+          }
+          if (!archiveFallback.error) {
+            setSettings((current) => ({
+              ...current,
+              isMuted: nextMuted,
+              isPinned: nextPinned,
+              isArchived: nextArchived,
+              isFavorite: false,
+            }))
+            return
+          }
+          const { error: legacyFallbackError } = await supabase.from('chat_participants').upsert(
+            {
+              chat_id: cleanChatId,
+              user_id: user.id,
+              joined_at: nowIso,
+              last_read_at: nowIso,
+              is_muted: nextMuted,
+              is_pinned: nextPinned,
+            },
+            { onConflict: 'chat_id,user_id' },
+          )
+          if (legacyFallbackError) throw legacyFallbackError
+        }
       }
-      setSettings((current) => ({ ...current, isMuted: nextMuted, isPinned: nextPinned }))
+      setSettings((current) => ({
+        ...current,
+        isMuted: nextMuted,
+        isPinned: nextPinned,
+        isArchived: nextArchived,
+        isFavorite: nextFavorite,
+      }))
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('chat-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron guardar preferencias'))
     } finally {
       setSavingSettings(false)
@@ -1481,15 +1573,27 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                 <div className="row-actions wrap">
                   <button
                     className={settings.isPinned ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences(settings.isMuted, !settings.isPinned)}
+                    onClick={() => void saveChatPreferences({ isPinned: !settings.isPinned })}
                   >
                     {settings.isPinned ? 'Despinear' : 'Pinear'}
                   </button>
                   <button
                     className={settings.isMuted ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences(!settings.isMuted, settings.isPinned)}
+                    onClick={() => void saveChatPreferences({ isMuted: !settings.isMuted })}
                   >
                     {settings.isMuted ? 'Notificaciones' : 'Silenciar'}
+                  </button>
+                  <button
+                    className={settings.isFavorite ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => void saveChatPreferences({ isFavorite: !settings.isFavorite })}
+                  >
+                    {settings.isFavorite ? 'Quitar favorito' : 'Favorito'}
+                  </button>
+                  <button
+                    className={settings.isArchived ? 'chip-btn active' : 'chip-btn'}
+                    onClick={() => void saveChatPreferences({ isArchived: !settings.isArchived })}
+                  >
+                    {settings.isArchived ? 'Desarchivar' : 'Archivar'}
                   </button>
                 </div>
               </section>

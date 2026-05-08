@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -136,6 +141,7 @@ export function FeedPage() {
         writeCachedValue(feedCacheKey, mapped)
       }
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('feed-load', caught)
       if (!options?.silent) {
         setError(friendlyError(caught, 'No se pudo cargar el feed'))
       }
@@ -173,13 +179,13 @@ export function FeedPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'post_comments' }, scheduleRefresh)
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'feed-live' })
 
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current)
       }
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadFeed])
 

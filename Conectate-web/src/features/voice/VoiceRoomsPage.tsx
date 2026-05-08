@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 
@@ -153,6 +158,7 @@ export function VoiceRoomsPage() {
       setRooms(mapped)
       writeCachedValue(roomsCacheKey, mapped)
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('voice-rooms-load', caught)
       if (!options?.silent) {
         setError(friendlyError(caught, 'No se pudieron cargar las salas de voz'))
       }
@@ -193,11 +199,11 @@ export function VoiceRoomsPage() {
     const channel = client
       .channel('conectate-web-voice-rooms-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voice_rooms' }, scheduleRefresh)
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'voice-rooms-live' })
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadRooms])
 

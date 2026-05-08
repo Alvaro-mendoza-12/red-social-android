@@ -7,7 +7,12 @@ import {
   isLikelyTransientError,
   runWithRetry,
 } from '../../core/reliability'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 
@@ -263,6 +268,7 @@ export function NotificationsPage() {
       if (queryError) throw queryError
       setItems(((data ?? []) as GenericRow[]).map(mapNotification))
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('notifications-load', caught)
       if (isMissingTableError(caught)) {
         setError('La tabla notifications no existe en este entorno Supabase.')
       } else {
@@ -289,9 +295,9 @@ export function NotificationsPage() {
           void loadNotifications()
         },
       )
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'notifications-live' })
     return () => {
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadNotifications, user])
 

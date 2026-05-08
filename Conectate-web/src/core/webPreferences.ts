@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 export type WebPreferences = {
   compactInbox: boolean
   lowDataMode: boolean
+  themeMode: 'system' | 'light' | 'dark'
+  textScale: 'compact' | 'normal' | 'large'
+  language: string
 }
 
 const storageKey = 'conectate-web-preferences'
@@ -11,6 +14,9 @@ const changeEventName = 'conectate-web-preferences-changed'
 const defaultPreferences: WebPreferences = {
   compactInbox: false,
   lowDataMode: false,
+  themeMode: 'system',
+  textScale: 'normal',
+  language: 'es',
 }
 
 export function readWebPreferences(): WebPreferences {
@@ -22,6 +28,15 @@ export function readWebPreferences(): WebPreferences {
     return {
       compactInbox: Boolean(parsed.compactInbox),
       lowDataMode: Boolean(parsed.lowDataMode),
+      themeMode:
+        parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'system'
+          ? parsed.themeMode
+          : 'system',
+      textScale:
+        parsed.textScale === 'compact' || parsed.textScale === 'large' || parsed.textScale === 'normal'
+          ? parsed.textScale
+          : 'normal',
+      language: typeof parsed.language === 'string' && parsed.language.trim() ? parsed.language.trim() : 'es',
     }
   } catch {
     return defaultPreferences

@@ -12,7 +12,6 @@ import {
   Home,
   Hash,
   Trophy,
-  Share2,
   Shield,
   LogOut
 } from 'lucide-react';

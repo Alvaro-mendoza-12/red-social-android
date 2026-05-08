@@ -42,6 +42,9 @@ const CommunityChatDetailPage = lazy(() =>
 const VoiceRoomsPage = lazy(() =>
   import('./features/voice/VoiceRoomsPage').then((module) => ({ default: module.VoiceRoomsPage })),
 )
+const CallsPage = lazy(() =>
+  import('./features/calls/CallsPage').then((module) => ({ default: module.CallsPage })),
+)
 const SearchPage = lazy(() =>
   import('./features/search/SearchPage').then((module) => ({ default: module.SearchPage })),
 )
@@ -70,6 +73,11 @@ const PublicProfilePage = lazy(() =>
 const AccountSettingsPage = lazy(() =>
   import('./features/profile/AccountSettingsPage').then((module) => ({
     default: module.AccountSettingsPage,
+  })),
+)
+const MonetizationCenterPage = lazy(() =>
+  import('./features/profile/MonetizationCenterPage').then((module) => ({
+    default: module.MonetizationCenterPage,
   })),
 )
 const AdminModerationPage = lazy(() =>
@@ -223,6 +231,14 @@ function AppRouter() {
             }
           />
           <Route
+            path="calls"
+            element={
+              <RouteSuspense>
+                <CallsPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
             path="voice"
             element={
               <RouteSuspense>
@@ -291,6 +307,14 @@ function AppRouter() {
             element={
               <RouteSuspense>
                 <AccountSettingsPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="monetization"
+            element={
+              <RouteSuspense>
+                <MonetizationCenterPage />
               </RouteSuspense>
             }
           />

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 
@@ -30,10 +35,22 @@ type TrimPreviewFrame = {
 
 type FeedSort = 'new' | 'likes' | 'views'
 type CoverInputMode = 'upload' | 'frame'
+type WatermarkDetectionResult = {
+  detectedBrands: string[]
+  checkedAt: string
+}
 
+const MAX_REEL_DURATION_SECONDS = 30
 const MAX_VIDEO_BYTES = 120 * 1024 * 1024
 const MAX_COVER_BYTES = 10 * 1024 * 1024
 const MIN_TRIM_SPAN_SECONDS = 1
+const knownWatermarkBrands = [
+  { brand: 'TikTok', tokens: ['tiktok', 'douyin', 'vm.tiktok.com'] },
+  { brand: 'Facebook', tokens: ['facebook', 'fb.watch', 'facebook.com', 'meta'] },
+  { brand: 'YouTube', tokens: ['youtube', 'youtu.be', 'youtube.com', 'shorts'] },
+  { brand: 'Kwai', tokens: ['kwai', 'kwai-video'] },
+  { brand: 'Instagram', tokens: ['instagram', 'insta', 'ig_'] },
+]
 
 function mapVideoRow(row: GenericRow): ReelItem {
   const durationSeconds = Number(row.duration_seconds ?? row.duration ?? 0)
@@ -97,6 +114,23 @@ function safeName(name: string): string {
 function formatSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function detectWatermarkBrands(file: File, title: string, description: string): WatermarkDetectionResult {
+  const haystack = [
+    file.name,
+    file.type,
+    title,
+    description,
+  ].join(' ').toLowerCase()
+  const detectedBrands = knownWatermarkBrands
+    .filter((entry) => entry.tokens.some((token) => haystack.includes(token)))
+    .map((entry) => entry.brand)
+
+  return {
+    detectedBrands: Array.from(new Set(detectedBrands)),
+    checkedAt: new Date().toISOString(),
+  }
 }
 
 function toRoundedDuration(value: number): number {
@@ -386,6 +420,7 @@ export function ReelsPage() {
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
+  const [watermarkDetection, setWatermarkDetection] = useState<WatermarkDetectionResult | null>(null)
   const [readingDuration, setReadingDuration] = useState(false)
   const [videoPreviewUrl, setVideoPreviewUrl] = useState('')
   const [coverPreviewUrl, setCoverPreviewUrl] = useState('')
@@ -396,7 +431,13 @@ export function ReelsPage() {
   const [loadingSelectedFramePreview, setLoadingSelectedFramePreview] = useState(false)
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
 
-  const canPublish = useMemo(() => Boolean(user && videoFile && !posting), [posting, user, videoFile])
+  const canPublish = useMemo(
+    () =>
+      Boolean(user && videoFile && !posting) &&
+      (videoDurationSeconds <= 0 || videoDurationSeconds <= MAX_REEL_DURATION_SECONDS) &&
+      (watermarkDetection?.detectedBrands.length ?? 0) === 0,
+    [posting, user, videoDurationSeconds, videoFile, watermarkDetection?.detectedBrands.length],
+  )
   const effectiveTrimEndSeconds = useMemo(() => {
     if (videoDurationSeconds <= 0) return 0
     if (trimEndSeconds <= 0) return videoDurationSeconds
@@ -492,6 +533,7 @@ export function ReelsPage() {
       setItems([])
       writeCachedValue(reelsCacheKey, [])
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('reels-load', caught)
       if (!options?.silent) {
         setError(friendlyError(caught, 'No se pudo cargar reels/videos'))
       }
@@ -529,11 +571,11 @@ export function ReelsPage() {
       .channel('conectate-web-reels-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'videos' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'video_likes' }, scheduleRefresh)
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'reels-live' })
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadVideos])
 
@@ -565,8 +607,10 @@ export function ReelsPage() {
     if (!videoFile) {
       setVideoDurationSeconds(0)
       setReadingDuration(false)
+      setWatermarkDetection(null)
       return
     }
+    setWatermarkDetection(detectWatermarkBrands(videoFile, titleDraft, descriptionDraft))
     setReadingDuration(true)
     void (async () => {
       const duration = await readVideoDurationSeconds(videoFile)
@@ -577,7 +621,7 @@ export function ReelsPage() {
     return () => {
       cancelled = true
     }
-  }, [videoFile])
+  }, [descriptionDraft, titleDraft, videoFile])
 
   useEffect(() => {
     if (videoDurationSeconds <= 0) {
@@ -595,8 +639,9 @@ export function ReelsPage() {
       Math.max(0, Math.min(current, Math.max(0, videoDurationSeconds - MIN_TRIM_SPAN_SECONDS))),
     )
     setTrimEndSeconds((current) => {
-      if (current <= 0) return videoDurationSeconds
-      return Math.min(videoDurationSeconds, Math.max(MIN_TRIM_SPAN_SECONDS, current))
+      const maxClipEnd = Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS)
+      if (current <= 0) return maxClipEnd
+      return Math.min(maxClipEnd, Math.max(MIN_TRIM_SPAN_SECONDS, current))
     })
   }, [videoDurationSeconds])
 
@@ -638,7 +683,10 @@ export function ReelsPage() {
       setTrimEndSeconds(0)
       return
     }
-    const bounded = Math.max(MIN_TRIM_SPAN_SECONDS, Math.min(nextValue, videoDurationSeconds))
+    const bounded = Math.max(
+      MIN_TRIM_SPAN_SECONDS,
+      Math.min(nextValue, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS)),
+    )
     setTrimEndSeconds(bounded)
     setTrimStartSeconds((current) => {
       if (bounded - current < MIN_TRIM_SPAN_SECONDS) {
@@ -772,6 +820,18 @@ export function ReelsPage() {
       if (videoFile.size <= 0 || videoFile.size > MAX_VIDEO_BYTES) {
         throw new Error(`El video supera el límite permitido (${formatSize(MAX_VIDEO_BYTES)}).`)
       }
+      const measuredDurationSeconds =
+        videoDurationSeconds > 0 ? videoDurationSeconds : await readVideoDurationSeconds(videoFile)
+      if (measuredDurationSeconds > MAX_REEL_DURATION_SECONDS) {
+        throw new Error(`El video debe durar máximo ${MAX_REEL_DURATION_SECONDS} segundos antes de subirlo.`)
+      }
+      const detection = detectWatermarkBrands(videoFile, titleDraft, descriptionDraft)
+      setWatermarkDetection(detection)
+      if (detection.detectedBrands.length > 0) {
+        throw new Error(
+          `Detecté posible marca de agua de ${detection.detectedBrands.join(', ')}. Sube un archivo limpio para publicar.`,
+        )
+      }
 
       let selectedCoverFile = coverFile
       if (coverMode === 'frame' && !selectedCoverFile) {
@@ -850,9 +910,7 @@ export function ReelsPage() {
         'Usuario'
       const avatarUrl = textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '')
 
-      const durationSeconds =
-        videoDurationSeconds > 0 ? videoDurationSeconds : await readVideoDurationSeconds(videoFile)
-      const safeDurationSeconds = Math.max(0, durationSeconds)
+      const safeDurationSeconds = Math.max(0, measuredDurationSeconds)
       const safeTrimStart = Math.max(
         0,
         Math.min(trimStartSeconds, Math.max(0, safeDurationSeconds - MIN_TRIM_SPAN_SECONDS)),
@@ -1032,6 +1090,18 @@ export function ReelsPage() {
                     ? `• ${videoDurationSeconds}s`
                     : ''}
               </small>
+              <div className="quality-gate-grid">
+                <span className={videoDurationSeconds > MAX_REEL_DURATION_SECONDS ? 'quality-gate danger' : 'quality-gate ok'}>
+                  Límite web/móvil: máximo {MAX_REEL_DURATION_SECONDS}s
+                </span>
+                {watermarkDetection?.detectedBrands.length ? (
+                  <span className="quality-gate danger">
+                    Marca de agua detectada: {watermarkDetection.detectedBrands.join(', ')}
+                  </span>
+                ) : (
+                  <span className="quality-gate ok">Sin señales de TikTok/Facebook/YouTube/Kwai/Instagram</span>
+                )}
+              </div>
               {videoPreviewUrl ? (
                 <video
                   ref={previewVideoRef}
@@ -1122,9 +1192,12 @@ export function ReelsPage() {
                     className="text-input"
                     type="range"
                     min={0}
-                    max={Math.max(0, videoDurationSeconds)}
+                    max={Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS))}
                     step={1}
-                    value={Math.min(trimEndSeconds || videoDurationSeconds, Math.max(0, videoDurationSeconds))}
+                    value={Math.min(
+                      trimEndSeconds || Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS),
+                      Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS)),
+                    )}
                     disabled={!videoFile || videoDurationSeconds <= 0 || posting}
                     onChange={(event) => applyTrimEnd(Number(event.target.value))}
                   />

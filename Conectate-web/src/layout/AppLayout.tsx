@@ -1,33 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   type DeferredMutation,
   flushDeferredMutations,
   getDeferredMutationCount,
   isBrowserOnline,
 } from '../core/reliability'
-import { supabase } from '../core/supabase'
+import {
+  getSupabaseRestrictionSnapshot,
+  onSupabaseRestrictionChanged,
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
-import { ModernSidebar } from '../components/modern/Layout/ModernSidebar'
-import { ModernHeader } from '../components/modern/Layout/ModernHeader'
-import { ModernNavigation } from '../components/modern/Layout/ModernNavigation'
-import { cn } from '../core/utils/cn'
+import { useWebPreferences } from '../core/webPreferences'
 
 type NavIconName =
   | 'social'
   | 'videos'
   | 'messages'
+  | 'calls'
   | 'profile'
   | 'voice'
   | 'search'
   | 'notifications'
+  | 'monetization'
   | 'settings'
 
 const primaryNavItems = [
   { to: '/app/messages', label: 'Mensajes', icon: 'messages' as NavIconName },
-  { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
   { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
+  { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
+  { to: '/app/calls', label: 'Llamadas', icon: 'calls' as NavIconName },
   { to: '/app/profile', label: 'Perfil', icon: 'profile' as NavIconName },
 ]
 
@@ -35,12 +42,95 @@ const secondaryNavItems = [
   { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
   { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
   { to: '/app/notifications', label: 'Notificaciones', icon: 'notifications' as NavIconName },
+  { to: '/app/monetization', label: 'Monetización', icon: 'monetization' as NavIconName },
   { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
 const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
 const mobileNavItems = primaryNavItems
+
+type ShellRouteMeta = {
+  kicker: string
+  title: string
+  subtitle: string
+  layout: 'wide' | 'full'
+}
+
+const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta: ShellRouteMeta }> = [
+  {
+    match: (pathname) => pathname.startsWith('/app/messages'),
+    meta: {
+      kicker: 'Mensajería',
+      title: 'Bandeja conectada',
+      subtitle: 'Chats, grupos, comunidades y accesos rápidos alineados con la experiencia Android.',
+      layout: 'full',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/social'),
+    meta: {
+      kicker: 'Social',
+      title: 'Feed y comunidad',
+      subtitle: 'Publicaciones, momentos y retos con una jerarquía más clara para web.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/videos') || pathname.startsWith('/app/reels'),
+    meta: {
+      kicker: 'Videos',
+      title: 'Reels y subida controlada',
+      subtitle: 'Feed corto, trim, portada y reglas visibles antes de publicar.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/calls'),
+    meta: {
+      kicker: 'Llamadas',
+      title: 'Audio y video desde la web',
+      subtitle: 'Acceso directo a llamadas 1:1 y preparación de sesiones en tiempo real.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/voice'),
+    meta: {
+      kicker: 'Voz',
+      title: 'Salas persistentes',
+      subtitle: 'Explora y retoma salas tipo comunidad sin perder contexto.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/notifications'),
+    meta: {
+      kicker: 'Actividad',
+      title: 'Alertas accionables',
+      subtitle: 'Mensajes, social y moderación agrupados con rutas claras.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/profile'),
+    meta: {
+      kicker: 'Perfil',
+      title: 'Identidad compartida',
+      subtitle: 'Banner, bio, intereses y módulos de creador visibles también en escritorio.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/settings') || pathname.startsWith('/app/monetization'),
+    meta: {
+      kicker: 'Control',
+      title: 'Cuenta, wallet y ajustes',
+      subtitle: 'Preferencias, seguridad y monetización más ordenadas y menos saturadas.',
+      layout: 'wide',
+    },
+  },
+]
 
 function isMissingFunctionError(error: unknown): boolean {
   const message =
@@ -85,6 +175,25 @@ function readNavCollapsedPreference(): boolean {
   }
 }
 
+function resolveShellRouteMeta(pathname: string): ShellRouteMeta {
+  return (
+    shellRouteMetaCatalog.find((entry) => entry.match(pathname))?.meta ?? {
+      kicker: 'Conectate Web',
+      title: 'Experiencia conectada',
+      subtitle: 'La web comparte backend, sesiones y módulos clave con la app móvil.',
+      layout: 'wide',
+    }
+  )
+}
+
+function displayNameOf(userEmail: string | undefined, metadataDisplayName: unknown): string {
+  const metadataName = String(metadataDisplayName ?? '').trim()
+  if (metadataName) return metadataName
+  const email = String(userEmail ?? '').trim()
+  if (!email) return 'Tu cuenta'
+  return email.split('@')[0] || email
+}
+
 function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -116,6 +225,13 @@ function ShellIcon({ name }: { name: NavIconName }) {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M5 6.5h14v9H9l-4 3v-12zM9 10h6M9 13h4" />
+      </svg>
+    )
+  }
+  if (name === 'calls') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.8 4.8h3.1l1.2 3.6-1.8 1.8a15.2 15.2 0 006.6 6.6l1.8-1.8 3.6 1.2v3.1a1.7 1.7 0 01-1.9 1.7C10.4 20.3 3.7 13.6 3.1 6.7A1.7 1.7 0 014.8 4.8z" />
       </svg>
     )
   }
@@ -154,54 +270,27 @@ function ShellIcon({ name }: { name: NavIconName }) {
       </svg>
     )
   }
+  if (name === 'monetization') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v18M7 7.5h7a3 3 0 010 6h-4a3 3 0 000 6h7M5 12h14" />
+      </svg>
+    )
+  }
   return null
 }
 
 export function AppLayout() {
   const { user, signOut } = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [currentView, setCurrentView] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
+  const [webPreferences] = useWebPreferences()
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [isOnline, setIsOnline] = useState(isBrowserOnline())
   const [pendingDeferredMutations, setPendingDeferredMutations] = useState(getDeferredMutationCount())
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
   const [sidebarAvatarUrl, setSidebarAvatarUrl] = useState('')
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setCurrentView('mobile')
-      } else if (window.innerWidth < 1024) {
-        setCurrentView('tablet')
-      } else {
-        setCurrentView('desktop')
-      }
-    }
-
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
-
-  const handleMenuClick = useCallback(() => {
-    setSidebarOpen(!sidebarOpen)
-  }, [sidebarOpen])
-
-  const closeSidebar = useCallback(() => {
-    setSidebarOpen(false)
-  }, [])
-
-  const isMobileView = currentView === 'mobile'
-  const isTabletView = currentView === 'tablet'
-  const isDesktopView = currentView === 'desktop'
-
-  // Determine if we should show modern layout or legacy layout
-  const useModernLayout = true // Force modern layout
+  const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
 
   const loadShellCounters = useCallback(async () => {
     const client = supabase
@@ -280,6 +369,7 @@ export function AppLayout() {
 
       setMessageUnreadCount(unreadTotal)
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('shell-counters', caught)
       console.warn('loadShellCounters failed', caught)
     }
   }, [user])
@@ -314,13 +404,17 @@ export function AppLayout() {
         { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
         scheduleRefresh,
       )
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'shell-counters' })
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadShellCounters, user])
+
+  useEffect(() => {
+    return onSupabaseRestrictionChanged(setSupabaseRestriction)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -470,6 +564,13 @@ export function AppLayout() {
     }
   }, [isNavCollapsed])
 
+  const shellMeta = useMemo(() => resolveShellRouteMeta(location.pathname), [location.pathname])
+  const displayName = useMemo(
+    () => displayNameOf(user?.email, user?.user_metadata?.display_name ?? user?.user_metadata?.full_name),
+    [user?.email, user?.user_metadata?.display_name, user?.user_metadata?.full_name],
+  )
+  const contentShellClassName = shellMeta.layout === 'full' ? 'content-shell full' : 'content-shell wide'
+
   useEffect(() => {
     const client = supabase
     if (!client || !user) {
@@ -515,10 +616,18 @@ export function AppLayout() {
   const navBadgeByPath: Record<string, number> = {
     '/app/messages': messageUnreadCount,
     '/app/social': notificationUnreadCount,
+    '/app/notifications': notificationUnreadCount,
   }
 
   return (
-    <div className={isNavCollapsed ? 'app-shell nav-collapsed' : 'app-shell'}>
+    <div
+      className={[
+        'app-shell',
+        isNavCollapsed ? 'nav-collapsed' : '',
+        `theme-${webPreferences.themeMode}`,
+        `text-scale-${webPreferences.textScale}`,
+      ].filter(Boolean).join(' ')}
+    >
       <aside className={isNavCollapsed ? 'left-nav collapsed' : 'left-nav'}>
         <button
           className="nav-edge-toggle"
@@ -632,14 +741,61 @@ export function AppLayout() {
           <div className="offline-banner offline">
             Sin conexión. Se guardarán acciones y se sincronizarán al reconectar.
           </div>
+        ) : supabaseRestriction.active ? (
+          <div className="offline-banner restricted">
+            Supabase está restringido por cuota/servicio. La web sigue abierta, pero Realtime y storage se pausan hasta resolverlo.
+          </div>
         ) : pendingDeferredMutations > 0 ? (
           <div className="offline-banner syncing">
             Sincronizando {pendingDeferredMutations} acciones pendientes...
           </div>
         ) : null}
 
+        <header className="shell-topbar">
+          <div className="shell-topbar-copy">
+            <span className="shell-kicker">{shellMeta.kicker}</span>
+            <div className="shell-heading-row">
+              <div>
+                <h1>{shellMeta.title}</h1>
+                <p>{shellMeta.subtitle}</p>
+              </div>
+              <div className="shell-toolbar">
+                <Link className="shell-search-link" to="/app/search">
+                  Buscar usuarios, chats o contenido
+                </Link>
+                <Link className="shell-quick-link" to="/app/calls">
+                  Llamadas
+                </Link>
+                <Link className="shell-quick-link" to="/app/voice">
+                  Salas
+                </Link>
+                <Link className="shell-quick-link" to="/app/notifications">
+                  Alertas
+                  {notificationUnreadCount > 0 ? (
+                    <span className="shell-inline-counter">
+                      {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                    </span>
+                  ) : null}
+                </Link>
+              </div>
+            </div>
+          </div>
+          <div className="shell-status-strip">
+            <span className="shell-status-pill accent">Cuenta: {displayName}</span>
+            <span className="shell-status-pill">
+              {webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Modo web completo'}
+            </span>
+            <span className="shell-status-pill">
+              Tema {webPreferences.themeMode === 'system' ? 'automático' : webPreferences.themeMode}
+            </span>
+            <span className="shell-status-pill">Idioma {webPreferences.language.toUpperCase()}</span>
+          </div>
+        </header>
+
         <main className="content-pane">
-          <Outlet />
+          <div className={contentShellClassName}>
+            <Outlet />
+          </div>
         </main>
 
         <nav className="mobile-nav">
@@ -653,6 +809,7 @@ export function AppLayout() {
                 <span className="mobile-nav-icon">
                   <ShellIcon name={item.icon} />
                 </span>
+                <span className="mobile-item-label">{item.label}</span>
                 {navBadgeByPath[item.to] > 0 ? (
                   <span className="mobile-counter">{navBadgeByPath[item.to] > 99 ? '99+' : navBadgeByPath[item.to]}</span>
                 ) : null}

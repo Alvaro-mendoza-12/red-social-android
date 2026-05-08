@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
+import {
+  removeRealtimeChannel,
+  reportSupabaseServiceRestrictionIfPresent,
+  subscribeRealtimeChannel,
+  supabase,
+} from '../../core/supabase'
 import { formatDateTime, friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
@@ -61,6 +66,7 @@ export function MomentsPage() {
       const feed = await fetchMomentsFeed(user.id)
       setItems(feed)
     } catch (caught) {
+      reportSupabaseServiceRestrictionIfPresent('moments-load', caught)
       setError(friendlyError(caught, 'No se pudieron cargar los momentos'))
     } finally {
       setLoading(false)
@@ -82,9 +88,9 @@ export function MomentsPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'moment_views' }, () => {
         void loadMoments()
       })
-      .subscribe()
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'moments-live' })
     return () => {
-      void client.removeChannel(channel)
+      void removeRealtimeChannel(subscribedChannel ?? channel)
     }
   }, [loadMoments, user])
 

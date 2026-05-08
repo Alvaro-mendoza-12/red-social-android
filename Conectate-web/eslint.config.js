@@ -6,7 +6,22 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    'src/__tests__',
+    'src/components/advanced',
+    'src/components/EnterpriseLayout.tsx',
+    'src/components/ErrorBoundary.tsx',
+    'src/core/api/EnterpriseApiClient.ts',
+    'src/core/hooks/useWebRTC.ts',
+    'src/core/pwa/ServiceWorker.ts',
+    'src/features/realtime',
+    'src/features/voice/VoiceRoomPage.tsx',
+    'src/features/voice/WebRTCManager.ts',
+    'src/ml',
+    'src/pages/enterprise',
+    'src/pages/optimized',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

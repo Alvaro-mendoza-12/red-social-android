@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../core/utils/cn';
+import { cn } from '../../../core/utils/cn';
 import { Loader2 } from 'lucide-react';
 
 interface ModernButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
