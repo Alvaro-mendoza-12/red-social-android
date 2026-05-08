@@ -25,6 +25,8 @@ Frontend web independiente de tu app móvil Conectate.
 - Login web simplificado para producción: el usuario ahora ve solo el panel de acceso, sin columna editorial paralela ni mensajes técnicos crudos de Supabase.
 - Login y registro web ahora muestran el logo real de Conectate y un encabezado de marca consistente para que el acceso se identifique como parte del producto.
 - El acceso web también quedó compactado para alturas de viewport más comunes, para que el panel entre mejor al 100% sin depender de reducir el zoom.
+- La capa web de errores ahora oculta mejor respuestas técnicas del backend y del bridge QR, para que el usuario final no vea detalles crudos de infraestructura.
+- Los error boundaries globales y secundarios también quedaron humanizados: en producción muestran mensajes claros de Conectate y reservan el detalle técnico para desarrollo.
 
 ## Deploy en Vercel desde este repo
 

@@ -55,9 +55,15 @@ internal fun Throwable?.toUserFacingMessage(
         rawMessage.contains("signup requires a valid password", ignoreCase = true) ->
             "La contraseña no cumple los requisitos mínimos."
 
+        looksLikeWebAccessBridgeIssue(rawMessage) ->
+            "La conexión entre la app y la web no está disponible en este momento. Inténtalo más tarde."
+
         rawMessage.contains("secure storage", ignoreCase = true) ||
             rawMessage.contains("almacenamiento seguro", ignoreCase = true) ->
             "El almacenamiento seguro del dispositivo no está disponible. Reinicia el dispositivo o vuelve a intentar en un entorno confiable."
+
+        looksLikeTechnicalBackendMessage(rawMessage) ->
+            "El servicio no está disponible en este momento. Inténtalo nuevamente más tarde."
 
         throwable is ClientRequestException -> when (throwable.response.status.value) {
             401 -> "Tu sesión ya no es válida. Inicia sesión nuevamente."
@@ -70,6 +76,45 @@ internal fun Throwable?.toUserFacingMessage(
         rawMessage.isBlank() -> fallback
         else -> rawMessage
     }
+}
+
+internal fun looksLikeWebAccessBridgeIssue(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("web-login-pairing") ||
+        normalized.contains("pairing") ||
+        normalized.contains("qr") ||
+        normalized.contains("edge function")
+}
+
+internal fun looksLikeTechnicalBackendMessage(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("42p") ||
+        normalized.contains("pgrst") ||
+        normalized.contains("schema cache") ||
+        normalized.contains("could not find the table") ||
+        normalized.contains("json object requested") ||
+        normalized.contains("unexpected token") ||
+        normalized.contains("<!doctype") ||
+        normalized.contains("illegalstateexception") ||
+        normalized.contains("nullpointerexception") ||
+        normalized.contains("stack trace") ||
+        (
+            normalized.contains("function") &&
+                (
+                    normalized.contains("public.") ||
+                        normalized.contains("rpc") ||
+                        normalized.contains("missing")
+                    )
+            ) ||
+        (
+            normalized.contains("relation") &&
+                (
+                    normalized.contains("does not exist") ||
+                        normalized.contains("missing")
+                    )
+            )
 }
 
 internal fun looksLikeSessionIssue(message: String?): Boolean {
