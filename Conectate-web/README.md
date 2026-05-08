@@ -21,6 +21,20 @@ Frontend web independiente de tu app móvil Conectate.
 - Perfil web queda alineado con el perfil estilo Discord de móvil: banner, avatar, bio, intereses, juegos, música, libro, deporte, carrera, horario y privacidad online.
 - El perfil web fue reordenado como dashboard: identidad, actividad social, QR, privacidad y monetización ya no compiten en la misma columna sin jerarquía.
 - Nuevo centro `/app/monetization` para creator program, wallet/gifts/premium/ads y earnings sobre el SQL final de Supabase.
+- Ajustes web ahora tienen resumen, anclas internas y mejor separación entre perfil, privacidad, seguridad, QR y preferencias para que no se sientan aglomerados.
+
+## Deploy en Vercel desde este repo
+
+- El repo raíz ya incluye `package.json` puente y `vercel.json`.
+- Vercel puede construir la web desde la raíz sin mover carpetas:
+  - `installCommand`: `npm run vercel:install`
+  - `buildCommand`: `npm run vercel:build`
+  - `outputDirectory`: `Conectate-web/dist`
+- También queda configurado el fallback SPA para rutas como `/app/messages` y `/login?mode=qr`, más headers de seguridad básicos.
+- Variables que debes cargar en Vercel:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- El build web ahora falla temprano si esas variables faltan o siguen con placeholders.
 
 ## Stack
 
@@ -173,3 +187,10 @@ npm run build
 ```
 
 Resultado verificado: lint y build exitosos con ESLint, Vite y TypeScript; salida generada en `dist/`.
+
+## Verificación extra del bridge para Vercel
+
+```bash
+cd ..
+npm run vercel:build
+```

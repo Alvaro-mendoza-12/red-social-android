@@ -15,6 +15,7 @@ Fecha: 2026-05-07
 - Perfil: banner/avatar/bio/intereses/juegos/música/libro/deporte/carrera/horario/privacidad de estado online.
 - Perfil web: dashboard reorganizado con resumen social, acceso QR, bloque de privacidad, ruta de creador y atajos entre módulos en una sola estructura consistente.
 - Ajustes: cuenta, privacidad, seguridad, QR, preferencias web, apariencia, escala de texto, idioma y ahorro de datos.
+- Ajustes web: resumen superior, navegación por anclas y separación más clara entre bloques largos para reducir saturación visual.
 - Monetización: centro web de creator program, payout, earnings, wallet, gifts, premium y ads.
 
 ## Dependencias de backend
@@ -30,12 +31,15 @@ Fecha: 2026-05-07
 - La web bloquea archivos mayores a 30 segundos antes de subir para que no se publique el original completo sin transcodificar.
 - Las llamadas WebRTC web existen como módulo experimental, pero el flujo principal estable sigue estando en móvil y mensajería.
 - La pasada visual del `2026-05-07 22:34` sí ordena mejor `messages` y `profile`, pero la verificación visual browser de esas rutas sigue incompleta mientras no haya una sesión autenticada disponible en este entorno.
+- El repo raíz ya quedó preparado para desplegar `Conectate-web` en Vercel, pero si el despliegue remoto falla todavía, el siguiente sospechoso real serán variables de entorno faltantes o una mala configuración del proyecto en el panel de Vercel.
+- El build web ahora incluye un preflight de entorno que corta la compilación si `VITE_SUPABASE_URL` o `VITE_SUPABASE_ANON_KEY` no están definidos con valores reales.
 
 ## Verificación
 
 ```bash
 npm run lint
 npm run build
+npm run vercel:build
 ```
 
-Resultado: lint y build exitosos; artefactos generados en `dist/`.
+Resultado: lint y build web exitosos, y el bridge de build desde la raíz también queda ejecutable para Vercel.

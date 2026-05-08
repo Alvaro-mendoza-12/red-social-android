@@ -1,0 +1,16 @@
+{
+  "name": "conectate-deploy-bridge",
+  "private": true,
+  "version": "2026.05.07",
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "scripts": {
+    "dev:web": "npm --prefix Conectate-web run dev",
+    "lint:web": "npm --prefix Conectate-web run lint",
+    "build:web": "npm --prefix Conectate-web run build",
+    "preview:web": "npm --prefix Conectate-web run preview",
+    "vercel:install": "npm --prefix Conectate-web ci",
+    "vercel:build": "npm --prefix Conectate-web run build"
+  }
+}

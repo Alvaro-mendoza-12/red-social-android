@@ -2992,11 +2992,58 @@ button.conversation-row {
   align-items: flex-start;
 }
 
+.settings-page-shell {
+  gap: 1.1rem;
+}
+
 .settings-hero-meta {
   display: grid;
   gap: 0.35rem;
   justify-items: end;
   text-align: right;
+}
+
+.settings-summary-card {
+  gap: 0.95rem;
+}
+
+.settings-summary-head {
+  align-items: flex-start;
+}
+
+.settings-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.settings-summary-item {
+  display: grid;
+  gap: 0.22rem;
+  border: 1px solid #ece7ea;
+  border-radius: 18px;
+  padding: 0.95rem;
+  background: #fffdfb;
+}
+
+.settings-summary-item strong {
+  font-size: 1.05rem;
+  color: #be123c;
+}
+
+.settings-summary-item span {
+  font-size: 0.78rem;
+  color: var(--ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-summary-item p {
+  font-size: 0.88rem;
+}
+
+.settings-anchor-row {
+  justify-content: space-between;
 }
 
 .settings-grid {
@@ -3265,6 +3312,7 @@ button.conversation-row {
   .messages-empty-grid,
   .profile-dashboard-grid,
   .profile-pulse-grid,
+  .settings-summary-grid,
   .social-overview-head,
   .profile-qr-card,
   .profile-enterprise-grid,
@@ -3283,6 +3331,10 @@ button.conversation-row {
   .settings-hero-meta {
     justify-items: start;
     text-align: left;
+  }
+
+  .settings-anchor-row {
+    justify-content: flex-start;
   }
 
   .messages-overview-actions {

@@ -120,6 +120,79 @@ export function AccountSettingsPage() {
     const token = session?.access_token?.trim() ?? ''
     return token ? maskSensitiveToken(token) : 'Sin token activo'
   }, [session?.access_token])
+  const profileCompletion = useMemo(() => {
+    const checks = [
+      model.displayName,
+      model.username,
+      model.bio,
+      model.avatarUrl,
+      model.coverUrl,
+      model.interestsText,
+      model.linkedGamesText,
+      model.favoriteMusicUrl,
+      model.favoriteBook,
+      model.favoriteSport,
+      model.career,
+      model.availabilitySchedule,
+    ]
+    const filled = checks.filter((entry) => entry.trim().length > 0).length
+    return Math.round((filled / checks.length) * 100)
+  }, [
+    model.availabilitySchedule,
+    model.avatarUrl,
+    model.bio,
+    model.career,
+    model.coverUrl,
+    model.displayName,
+    model.favoriteBook,
+    model.favoriteMusicUrl,
+    model.favoriteSport,
+    model.interestsText,
+    model.linkedGamesText,
+    model.username,
+  ])
+  const privacySummary = useMemo(() => {
+    if (hasIsPrivate && model.isPrivate) return 'Cuenta privada'
+    if (hasProfileVisibility) {
+      if (model.profileVisibility === 'followers') return 'Visible a seguidores'
+      if (model.profileVisibility === 'friends') return 'Visible a amigos'
+      if (model.profileVisibility === 'nobody') return 'Oculta'
+    }
+    return 'Visible para todos'
+  }, [hasIsPrivate, hasProfileVisibility, model.isPrivate, model.profileVisibility])
+  const settingsSummaryCards = useMemo(
+    () => [
+      {
+        label: 'Perfil',
+        value: `${profileCompletion}%`,
+        hint: profileCompletion >= 80 ? 'Listo para verse solido en web.' : 'Todavia puedes completar mas campos.',
+      },
+      {
+        label: 'Privacidad',
+        value: privacySummary,
+        hint: `Ultimo acceso: ${model.lastSeenVisibility}`,
+      },
+      {
+        label: 'Acceso',
+        value: currentEmail || 'Sin correo',
+        hint: 'Correo y QR seguros comparten el mismo flujo de sesion.',
+      },
+      {
+        label: 'Web',
+        value: webPreferences.themeMode,
+        hint: `${webPreferences.language.toUpperCase()} · ${webPreferences.textScale}`,
+      },
+    ],
+    [
+      currentEmail,
+      model.lastSeenVisibility,
+      privacySummary,
+      profileCompletion,
+      webPreferences.language,
+      webPreferences.textScale,
+      webPreferences.themeMode,
+    ],
+  )
 
   const loadSettings = useCallback(async () => {
     if (!supabase || !user) {
@@ -314,7 +387,7 @@ export function AccountSettingsPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack settings-page-shell">
       <article className="surface-card settings-hero-card">
         <div className="row-between settings-hero-head">
           <div>
@@ -335,10 +408,36 @@ export function AccountSettingsPage() {
       </article>
 
       {error ? <StatusView title="Ajustes no disponibles" description={error} /> : null}
-      {info ? <p>{info}</p> : null}
+      {info ? <article className="surface-card"><p>{info}</p></article> : null}
+
+      <article className="surface-card settings-summary-card">
+        <div className="row-between settings-summary-head">
+          <div>
+            <h3>Resumen rapido</h3>
+            <p>Todo lo delicado de la cuenta queda agrupado antes de entrar a formularios largos.</p>
+          </div>
+          <span className="folder-tag">Cuenta viva</span>
+        </div>
+        <div className="settings-summary-grid">
+          {settingsSummaryCards.map((card) => (
+            <div key={card.label} className="settings-summary-item">
+              <strong>{card.value}</strong>
+              <span>{card.label}</span>
+              <p>{card.hint}</p>
+            </div>
+          ))}
+        </div>
+        <div className="row-actions wrap settings-anchor-row">
+          <a className="ghost-btn" href="#perfil-ajustes">Perfil</a>
+          <a className="ghost-btn" href="#privacidad-ajustes">Privacidad</a>
+          <a className="ghost-btn" href="#seguridad-ajustes">Seguridad</a>
+          <a className="ghost-btn" href="#acceso-qr-ajustes">Acceso y QR</a>
+          <a className="ghost-btn" href="#preferencias-web-ajustes">Preferencias web</a>
+        </div>
+      </article>
 
       <div className="settings-grid">
-        <article className="surface-card section-stack">
+        <article id="perfil-ajustes" className="surface-card section-stack">
           <div>
             <h3>Perfil</h3>
             <p>Datos visibles para tu comunidad.</p>
@@ -435,7 +534,7 @@ export function AccountSettingsPage() {
           </div>
         </article>
 
-        <article className="surface-card section-stack">
+        <article id="privacidad-ajustes" className="surface-card section-stack">
           <div>
             <h3>Privacidad</h3>
             <p>Define quién te ve y qué señales compartes.</p>
@@ -505,7 +604,7 @@ export function AccountSettingsPage() {
       </div>
 
       <div className="settings-grid">
-        <article className="surface-card section-stack">
+        <article id="seguridad-ajustes" className="surface-card section-stack">
           <div>
             <h3>Seguridad</h3>
             <p>Cambia tu contraseña y protege el acceso a la cuenta.</p>
@@ -533,7 +632,7 @@ export function AccountSettingsPage() {
           </div>
         </article>
 
-        <article className="surface-card section-stack">
+        <article id="acceso-qr-ajustes" className="surface-card section-stack">
           <div>
             <h3>Acceso y QR</h3>
             <p>
@@ -580,7 +679,7 @@ export function AccountSettingsPage() {
         </article>
       </div>
 
-      <article className="surface-card section-stack">
+      <article id="preferencias-web-ajustes" className="surface-card section-stack">
         <div>
           <h3>Preferencias web</h3>
           <p>Pequeños detalles que hacen que escritorio se sienta más pulido y ligero.</p>
