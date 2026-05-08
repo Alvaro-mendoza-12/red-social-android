@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private val intentState = androidx.compose.runtime.mutableStateOf<Intent>(null)
+    private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
     private var presenceHeartbeatJob: Job? = null
     private var presenceOfflineJob: Job? = null
 

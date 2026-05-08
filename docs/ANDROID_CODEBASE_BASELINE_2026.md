@@ -1,6 +1,6 @@
 # Android Codebase Baseline 2026
 
-Fecha de revisión: 2026-04-26
+Fecha de revisión: 2026-05-08
 
 ## Resumen ejecutivo
 
@@ -19,6 +19,25 @@ Riesgos estructurales todavía abiertos:
 - Hay demasiados artefactos SQL/log/documentación histórica en la raíz.
 - La documentación principal no siempre refleja el estado real del código.
 - La seguridad SQL/RLS sigue teniendo deuda importante.
+- El backend compartido con Supabase sigue restringido por cuota, así que la validación online integral continúa condicionada por infraestructura externa.
+
+## Estado verificado 2026-05-08
+
+En la pasada de endurecimiento del `2026-05-08` se recuperó de nuevo el baseline Android de `main` con validación local completa:
+
+- `:app:compileDebugKotlin` OK
+- `:app:testDebugUnitTest` OK
+- `:app:lintDebug` OK
+- `:app:qualityGateDebug` OK
+- `:app:assembleDebug` OK
+- `:app:assembleRelease` OK
+
+Además:
+
+- se aislaron módulos enterprise/prototipo sin integración real dentro de backups fechados;
+- se limpiaron suites de test obsoletas que dependían de clases ya retiradas;
+- se arreglaron bugs reales en validación de media, QR/login, voz/live y mensajería avanzada;
+- el signing debug dejó de depender obligatoriamente de un `debug.keystore` fijo dentro del repo.
 
 ## Métricas actuales del código Android
 

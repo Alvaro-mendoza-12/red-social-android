@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallMissedOutgoing
 import androidx.compose.material.icons.filled.PhoneDisabled
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
 
 import androidx.compose.material3.FilterChip
@@ -92,7 +93,7 @@ class CallHistoryViewModel @Inject constructor(
     }
 }
 
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallHistoryScreen(
     navController: NavController,

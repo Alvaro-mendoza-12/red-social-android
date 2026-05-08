@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
@@ -208,8 +210,6 @@ class PostRepository @Inject constructor(
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 
-@Composable
-@Composable
     suspend fun getPostById(postId: String): Result<Post> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -501,8 +501,6 @@ class PostRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun addComment(postId: String, content: String, parentId: String? = null): Result<conectate.com.data.model.Comment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         var startedAt = System.currentTimeMillis()
         try {

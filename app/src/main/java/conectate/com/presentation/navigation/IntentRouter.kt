@@ -218,6 +218,21 @@ object IntentRouter {
         android.util.Log.d("MainActivity", "Handling Deep Link: $uri")
         android.util.Log.d("MainActivity", "Scheme: ${uri.scheme}, Host: ${uri.host}, Fragment: ${uri.fragment}")
 
+        val isWebLoginQr =
+            (uri.scheme == "conectate" && uri.host == "web-login") ||
+                (
+                    (uri.scheme == "https" || uri.scheme == "http") &&
+                        (uri.host == "conectate.com" || uri.host == "www.conectate.com") &&
+                        uri.pathSegments.firstOrNull() == "web-login"
+                    )
+        if (isWebLoginQr) {
+            val pairId = uri.getQueryParameter("pairId")
+            val nonce = uri.getQueryParameter("nonce")
+            navController.navigate(Screen.WebLoginScanner.createRoute(pairId = pairId, nonce = nonce))
+            clearIntent()
+            return true
+        }
+
         if (uri.scheme == "https" && (uri.host == "conectate.com" || uri.host == "www.conectate.com")) {
             val pathSegments = uri.pathSegments
             if (pathSegments.isNotEmpty()) {

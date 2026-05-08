@@ -66,7 +66,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         productionOptimizer.initializeForProduction()
         
         // Initialize Coil with optimized settings
-        Coil.setImageLoader(newImageLoader(this))
+        Coil.setImageLoader(newImageLoader())
         
         // Initialize crash reporting
         Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
@@ -170,6 +170,8 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        runCatching { productionOptimizer.onTrimMemory(level) }
+            .onFailure { logger.w("SocialApp", "Production optimizer trim hook failed", it) }
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             runCatching { Coil.imageLoader(this).memoryCache?.clear() }
                 .onFailure { logger.w("SocialApp", "Image cache trim failed", it) }
@@ -178,6 +180,8 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onLowMemory() {
         super.onLowMemory()
+        runCatching { productionOptimizer.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
+            .onFailure { logger.w("SocialApp", "Production optimizer low memory hook failed", it) }
         runCatching { Coil.imageLoader(this).memoryCache?.clear() }
             .onFailure { logger.w("SocialApp", "Image cache clear failed", it) }
     }

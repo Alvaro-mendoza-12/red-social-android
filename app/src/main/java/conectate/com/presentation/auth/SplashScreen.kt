@@ -1,5 +1,7 @@
 package conectate.com.presentation.auth
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,9 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import conectate.com.R
 
-
-@Composable
-@Composable
 @Composable
 fun SplashScreen() {
     val infiniteTransition = rememberInfiniteTransition(label = "splash")

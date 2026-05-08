@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.webrtc.EglBase
 import org.webrtc.VideoTrack
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -287,6 +288,7 @@ data class ChatMessage(
 )
 
 data class ReactionEvent(
+    val id: String = UUID.randomUUID().toString(),
     val emoji: String,
     val timestamp: Long,
     val userId: String

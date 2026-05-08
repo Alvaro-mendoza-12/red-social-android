@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import conectate.com.data.local.prefs.AppFontOption
 
 internal val AppTypography = Typography
 
@@ -54,9 +55,15 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun RedSocialTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    fontOption: AppFontOption = AppFontOption.DEFAULT,
+    textScale: Float = 1f,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val typography = buildAppTypography(
+        fontFamily = appFontFamilyFor(fontOption.storageValue),
+        textScale = textScale
+    )
     
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -81,7 +88,7 @@ fun RedSocialTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography,
+        typography = typography,
         content = content
     )
 }

@@ -1,5 +1,7 @@
 package conectate.com.core.stability
 
+import androidx.compose.runtime.Composable
+
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject

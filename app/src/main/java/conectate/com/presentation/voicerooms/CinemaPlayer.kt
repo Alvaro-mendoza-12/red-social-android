@@ -1,5 +1,7 @@
 package conectate.com.presentation.voicerooms
 
+import androidx.compose.runtime.Composable
+
 import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
 import android.media.AudioManager

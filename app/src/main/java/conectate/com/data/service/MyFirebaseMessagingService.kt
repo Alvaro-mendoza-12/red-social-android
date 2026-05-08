@@ -45,6 +45,7 @@ import conectate.com.util.notificationAccountTargetFromRemoteData
 import conectate.com.util.putNotificationAccountTarget
 import conectate.com.util.resolveStoredAccountForTarget
 import conectate.com.util.storedAccountDisplayLabel
+import conectate.com.util.TrustedNavigationIntents.markTrusted
 import conectate.com.services.IncomingCallForegroundService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers

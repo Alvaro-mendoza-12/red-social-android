@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

@@ -10,7 +10,7 @@ import conectate.com.data.repository.CallRepository
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.launch
 
-
+@Composable
 fun CallInvitationOverlayHost(
     isLoggedIn: Boolean,
     navController: NavHostController,

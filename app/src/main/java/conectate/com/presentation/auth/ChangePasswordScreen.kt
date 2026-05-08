@@ -1,5 +1,7 @@
 package conectate.com.presentation.auth
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
@@ -21,7 +23,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import conectate.com.presentation.navigation.Screen
 
 
-
+@Composable
 fun ChangePasswordScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()

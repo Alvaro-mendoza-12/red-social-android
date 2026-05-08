@@ -146,9 +146,10 @@ private fun TextUnit.scaleBy(scale: Float): TextUnit {
 
 fun appFontFamilyFor(storageValue: String): androidx.compose.ui.text.font.FontFamily {
     return when (storageValue) {
-        "sans" -> androidx.compose.ui.text.font.FontFamily.SansSerif
+        "sans", "sans_serif", "rounded", "condensed", "medium", "light", "small_caps", "casual" ->
+            androidx.compose.ui.text.font.FontFamily.SansSerif
         "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-        "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+        "serif_mono", "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
         "cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
         else -> androidx.compose.ui.text.font.FontFamily.Default
     }

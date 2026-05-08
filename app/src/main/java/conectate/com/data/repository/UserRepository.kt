@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -78,16 +80,12 @@ class UserRepository @Inject constructor(
 
     private fun normalizePrivacyUserId(userId: String): String = localStateStore.normalizeUserId(userId)
 
-@Composable
-@Composable
     private fun sanitizeProfileText(value: String?): String? {
         return value
             ?.trim()
             ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
     }
 
-@Composable
-@Composable
     private fun slugifyUsername(value: String?): String {
         val raw = sanitizeProfileText(value) ?: return ""
         var normalized = Normalizer.normalize(raw, Normalizer.Form.NFD)
@@ -179,8 +177,6 @@ class UserRepository @Inject constructor(
         return fallbackCandidate
     }
 
-@Composable
-@Composable
     private suspend fun prepareProfileForPersistence(user: User): User {
         val normalizedId = normalizePrivacyUserId(user.id)
         var sessionSeed = authService.getCurrentUserProfileSeed()
@@ -255,8 +251,6 @@ class UserRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     private fun isMissingPrivacyAcceptedColumn(errorBody: String): Boolean {
         return errorBody.contains("privacy_policy_accepted", ignoreCase = true) &&
             errorBody.contains("does not exist", ignoreCase = true)
@@ -294,8 +288,6 @@ class UserRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     private fun extractMissingProfilesColumn(errorBody: String): String? {
         val patterns = listOf(
             Regex("Could not find the '([a-zA-Z0-9_]+)' column of 'profiles'", RegexOption.IGNORE_CASE),
@@ -994,8 +986,6 @@ class UserRepository @Inject constructor(
             lower.contains("expired token")
     }
 
-@Composable
-@Composable
     private fun isMissingPrivacyColumn(body: String): Boolean {
         var lower = body.lowercase()
         return lower.contains("privacy_policy_accepted") && lower.contains("does not exist")
@@ -1463,7 +1453,7 @@ class UserRepository @Inject constructor(
         var workingBitmap = baseBitmap
         var lastCandidate: ByteArray? = null
         var quality = 92
-        val attempt = 0
+        var attempt = 0
 
         try {
             while (attempt < 10) {
@@ -1564,8 +1554,6 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // SEARCH USERS (name, username, numeric_id)
     // ─────────────────────────────────────────────
-@Composable
-@Composable
     suspend fun searchUsers(query: String): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
             val sanitizedQuery = query.trim()

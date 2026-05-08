@@ -11,7 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import conectate.com.presentation.components.BatteryOptimizationDialog
@@ -23,8 +23,7 @@ import kotlinx.coroutines.withContext
 private const val TEST_RUNTIME_PREFS = "test_runtime_prefs"
 private const val DISABLE_STARTUP_PROMPTS_KEY = "disable_startup_prompts"
 
-
-
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun StartupPrompts() {
     val context = LocalContext.current

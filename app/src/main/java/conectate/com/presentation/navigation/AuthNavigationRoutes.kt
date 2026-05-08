@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import conectate.com.presentation.auth.LoginScreen
 import conectate.com.presentation.auth.RegisterScreen
+import conectate.com.presentation.auth.WebLoginScannerScreen
 import conectate.com.presentation.legal.PrivacyPolicyScreen
 
 internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
@@ -80,6 +81,35 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
 
     composable(Screen.ChangePassword.route) {
         conectate.com.presentation.auth.ChangePasswordScreen(navController = navController)
+    }
+
+    composable(Screen.AddAccountLogin.route) {
+        LoginScreen(
+            navController = navController,
+            isAddAccountMode = true
+        )
+    }
+
+    composable(
+        route = Screen.WebLoginScanner.route,
+        arguments = listOf(
+            navArgument("pairId") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("nonce") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }
+        )
+    ) { backStackEntry ->
+        WebLoginScannerScreen(
+            navController = navController,
+            initialPairId = backStackEntry.arguments?.getString("pairId"),
+            initialNonce = backStackEntry.arguments?.getString("nonce")
+        )
     }
 
     composable(

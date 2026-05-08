@@ -433,16 +433,11 @@ class AuthRepository @Inject constructor(
      * This is a simplified implementation - in production, this should be stored per user
      */
     private suspend fun getStoredTOTPSecret(): String? {
-        // In a real implementation, this would retrieve the secret from the database
-        // For now, we'll use a simplified approach with the TwoFactorAuthManager
-        return try {
-            // This would typically come from the user's profile in the database
-            // For demo purposes, we'll assume the secret is stored in the encrypted prefs
-            null // Placeholder - would be implemented with proper user-specific storage
-        } catch (e: Exception) {
-            android.util.Log.e("AuthRepository", "Error getting TOTP secret", e)
-            null
-        }
+        return runCatching { twoFactorAuthManager.getStoredTOTPSecret() }
+            .onFailure {
+                android.util.Log.e("AuthRepository", "Error getting TOTP secret", it)
+            }
+            .getOrNull()
     }
 
     private suspend fun resolveCurrentSessionUser(

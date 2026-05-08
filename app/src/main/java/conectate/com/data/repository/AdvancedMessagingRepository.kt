@@ -305,7 +305,7 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
                 parameter("on_conflict", "folder_id,chat_id")
                 setBody(buildJsonObject { put("folder_id", cleanFolder); put("chat_id", cleanChat) })
@@ -330,7 +330,7 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("folder_id", "eq.`$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
             }
             if (!r.status.isSuccess()) {
@@ -395,7 +395,7 @@ class AdvancedMessagingRepository @Inject constructor(
                 }
             }
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_translation_settings") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
                 setBody(payload)
             }
             if (!r.status.isSuccess()) throw IllegalStateException("No se pudo guardar traducción")
@@ -549,7 +549,7 @@ class AdvancedMessagingRepository @Inject constructor(
         val remoteDue = loadRemoteDueScheduled(maxBatch)
         var due = (localDue + remoteDue).distinctBy { it.id }.take(maxBatch)
         if (due.isEmpty()) return@withContext Result.success(0)
-        val sent = 0
+        var sent = 0
         var keep = loadLocalScheduled().toMutableList()
         due.forEach { job ->
             val translated = if (!job.translate_to.isNullOrBlank()) {
@@ -594,7 +594,7 @@ class AdvancedMessagingRepository @Inject constructor(
         var due = all.filter { it.owner_id == uid && it.execute_at_epoch_ms <= System.currentTimeMillis() }.take(maxBatch)
         if (due.isEmpty()) return@withContext Result.success(0)
         var keep = all.toMutableList()
-        val deleted = 0
+        var deleted = 0
         due.forEach { task ->
             val res = when (task.scope_type.trim().lowercase()) {
                 "dm" -> messageRepository.deleteMessage(task.message_id, true)
@@ -632,8 +632,9 @@ class AdvancedMessagingRepository @Inject constructor(
     suspend fun getCachedSummary(chatId: String): ChatSummary? = withContext(Dispatchers.IO) { loadSummaryLocal()[chatId.trim().lowercase()] }
 
     private suspend fun upsertSummaryRemote(summary: ChatSummary) {
-        var token = authService.getAccessToken() ?: return supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
-            header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+        val token = authService.getAccessToken() ?: return
+        supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
+            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
             header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
             parameter("on_conflict", "chat_id")
             setBody(buildJsonObject { put("chat_id", summary.chat_id); put("summary", summary.summary.take(1200)); put("source_message_count", summary.source_message_count); put("generated_at", summary.generated_at ?: Instant.now().toString()) })
@@ -641,10 +642,10 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private suspend fun loadRemoteDueScheduled(maxBatch: Int): List<ScheduledMessageJob> {
-        var token = authService.getAccessToken() ?: return emptyList()
+        val token = authService.getAccessToken() ?: return emptyList()
         return runCatching {
-            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,scope_type,target_id,content,content_type,media_url,translate_to,self_destruct_seconds,scheduled_for,status,error_message,created_at,updated_at")
                 parameter("status", "eq.pending")
                 parameter("scheduled_for", "lte.${Instant.now()}")
@@ -657,9 +658,10 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private suspend fun patchRemoteScheduledStatus(jobId: String, status: String, error: String?) {
-        var token = authService.getAccessToken() ?: return runCatching {
+        val token = authService.getAccessToken() ?: return
+        runCatching {
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
                 parameter("id", "eq.$jobId")
                 setBody(

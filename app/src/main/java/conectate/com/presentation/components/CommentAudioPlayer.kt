@@ -1,5 +1,7 @@
 package conectate.com.presentation.components
 
+import androidx.compose.runtime.Composable
+
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import androidx.compose.foundation.background

@@ -168,7 +168,7 @@ class MediaUploadGuard @Inject constructor() {
         if (cleanContentType.isBlank()) {
             return MediaValidationResult(false, "Missing content type")
         }
-        val canonicalType = cleanContentType.substringBefore("")
+        val canonicalType = cleanContentType.substringBefore(";")
         val fileExtension = fileName.substringAfterLast('.', "").lowercase()
 
         val policy = policies[bucketName]

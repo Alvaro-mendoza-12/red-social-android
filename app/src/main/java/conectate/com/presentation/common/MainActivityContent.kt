@@ -41,13 +41,12 @@ import conectate.com.presentation.voicerooms.ActiveVoiceSessionBar
 import conectate.com.presentation.calls.CallInvitationOverlayHost
 import conectate.com.presentation.calls.ActiveCallSessionBar
 import conectate.com.presentation.live.ActiveLiveSessionBubble
-import conectate.com.services.VoiceForegroundService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-
+@Composable
 fun MainActivityContent(
-    currentIntent: Intent,
+    currentIntent: Intent?,
     onIntentConsumed: () -> Unit,
     authRepository: AuthRepository,
     notificationRepository: NotificationRepository,
@@ -62,17 +61,15 @@ fun MainActivityContent(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        var navController = rememberNavController()
+        val navController = rememberNavController()
 
         LaunchedEffect(currentIntent) {
-            currentIntent.let { incomingIntent ->
+            currentIntent?.let { incomingIntent ->
                 IntentRouter.handleIntentNavigation(
-                    context = appContext,
                     incomingIntent = incomingIntent,
                     navController = navController,
                     authRepository = authRepository,
                     activityScope = activityScope,
-                    onPresentCallInvite = { invite -> callRepository.presentIncomingInvite(invite) },
                     clearIntent = onIntentConsumed
                 )
             }
@@ -80,7 +77,7 @@ fun MainActivityContent(
 
         val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
         val session by authRepository.getAuthStateFlow().collectAsStateWithLifecycle(initialValue = null)
-        var isLoggedIn = (session?.user?.id?.isNotBlank() == true) || authRepository.isUserLoggedIn
+        val isLoggedIn = (session?.user?.id?.isNotBlank() == true) || authRepository.isUserLoggedIn
         var showForcedSuspensionDialog by remember { mutableStateOf(false) }
         var forcedSuspensionUntil by remember { mutableStateOf<String?>(null) }
         var forcedSuspensionReason by remember { mutableStateOf<String?>(null) }
@@ -89,7 +86,7 @@ fun MainActivityContent(
         val currentCall by callRepository.activeCall.collectAsStateWithLifecycle()
         val currentLiveSession by liveRepository.activeSession.collectAsStateWithLifecycle()
         val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-        var currentRoom = voiceSession.room ?: voiceSession.roomId?.let { activeRoomId ->
+        val currentRoom = voiceSession.room ?: voiceSession.roomId?.let { activeRoomId ->
             VoiceRoom(
                 id = activeRoomId,
                 name = voiceSession.roomName,
@@ -141,7 +138,7 @@ fun MainActivityContent(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 if (showCallSessionBar) {
-                    var call = currentCall ?: return
+                    currentCall?.let { call ->
                     ActiveCallSessionBar(
                         call = call,
                         onReturnToCall = { callId ->
@@ -155,8 +152,9 @@ fun MainActivityContent(
                             }
                         }
                     )
+                    }
                 } else if (showVoiceSessionBar) {
-                    var room = currentRoom ?: return
+                    currentRoom?.let { room ->
                     ActiveVoiceSessionBar(
                         room = room,
                         isMuted = voiceSession.isMuted,
@@ -171,12 +169,11 @@ fun MainActivityContent(
                         },
                         onHangup = {
                             activityScope.launch {
-                                runCatching {
-                                    VoiceForegroundService.requestHangup(voiceRoomRepository.context)
-                                }
+                                voiceRoomRepository.leaveRoom(room.id)
                             }
                         }
                     )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -185,7 +182,7 @@ fun MainActivityContent(
                     navController = navController,
                     isInitializing = isInitializing,
                     isLoggedIn = isLoggedIn,
-                    hasPendingIntent = IntentRouter.hasPendingNavigationIntent(appContext, currentIntent)
+                    hasPendingIntent = IntentRouter.hasPendingNavigationIntent(currentIntent)
                 )
 
                 if (shouldBlockOfflineRoute) {

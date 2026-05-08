@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import androidx.compose.runtime.Composable
+
 import android.Manifest
 import android.content.Intent
 import android.net.Uri

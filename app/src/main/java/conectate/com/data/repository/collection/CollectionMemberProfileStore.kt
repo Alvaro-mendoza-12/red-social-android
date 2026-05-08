@@ -1,5 +1,7 @@
 package conectate.com.data.repository.collection
 
+import androidx.compose.runtime.Composable
+
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
@@ -16,8 +18,6 @@ internal data class CollectionMemberProfile(
 internal class CollectionMemberProfileStore(
     private val supabaseConfig: SupabaseConfig
 ) {
-@Composable
-@Composable
     suspend fun loadProfiles(userIds: Collection<String>): Map<String, CollectionMemberProfile> = withContext(Dispatchers.IO) {
         val cleanIds = userIds
             .map { it.trim().lowercase() }

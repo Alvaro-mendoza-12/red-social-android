@@ -1,5 +1,7 @@
 package conectate.com.presentation.social
 
+import androidx.compose.runtime.Composable
+
 import conectate.com.presentation.social.ChallengeViewModel
 import conectate.com.presentation.components.Line
 import androidx.compose.foundation.clickable

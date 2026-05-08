@@ -60,7 +60,7 @@ class NotificationRepository @Inject constructor(
         operation: String,
         block: suspend () -> T
     ): Result<T> {
-        return when (var result = repositoryCallHandler.io(operation, block)) {
+        return when (val result = repositoryCallHandler.io(operation, block)) {
             is AppResult.Success -> Result.success(result.data)
             is AppResult.Error -> {
                 val throwable = result.error.cause ?: IllegalStateException(result.error.message)

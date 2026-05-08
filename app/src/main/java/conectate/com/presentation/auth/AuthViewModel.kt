@@ -74,7 +74,9 @@ class AuthViewModel  constructor(
 
     private fun validateSessionHealth() {
         viewModelScope.launch {
-            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) return
+            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) {
+                return@launch
+            }
             authRepository.enforceCurrentSessionIsActive()
                 .onFailure { throwable ->
                     _authState.value = when (throwable) {

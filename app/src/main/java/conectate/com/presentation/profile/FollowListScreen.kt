@@ -1,5 +1,7 @@
 package conectate.com.presentation.profile
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items

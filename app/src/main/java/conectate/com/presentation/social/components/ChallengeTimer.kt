@@ -1,5 +1,7 @@
 package conectate.com.presentation.social.components
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*

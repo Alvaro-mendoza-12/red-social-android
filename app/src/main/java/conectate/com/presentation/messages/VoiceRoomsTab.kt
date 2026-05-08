@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import androidx.compose.runtime.Composable
+
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

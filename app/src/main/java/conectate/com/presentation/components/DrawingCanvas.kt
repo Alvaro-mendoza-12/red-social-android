@@ -1,5 +1,7 @@
 package conectate.com.presentation.components
 
+import androidx.compose.runtime.Composable
+
 import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background

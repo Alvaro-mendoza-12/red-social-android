@@ -1,5 +1,7 @@
 package conectate.com.data.supabase
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -443,8 +445,6 @@ class AuthService @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun signIn(email: String, password: String): Result<Unit> {
         return try {
             ensureSecureStorageAvailable().getOrThrow()
@@ -483,8 +483,6 @@ class AuthService @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun signOut() {
         // Gate logout immediately so navigation/login flow doesn't bounce back due to stale SDK session.
         forceLocalLogout()
@@ -838,8 +836,6 @@ class AuthService @Inject constructor(
 
     fun observeSession(): StateFlow<AuthResponse?> = currentSession
 
-@Composable
-@Composable
     suspend fun clearLocalDataForAccountSwitch() {
         withContext(Dispatchers.IO) {
             runCatching { database.clearAllTables() }

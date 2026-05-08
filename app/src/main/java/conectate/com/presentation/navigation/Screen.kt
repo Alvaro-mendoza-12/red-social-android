@@ -148,6 +148,9 @@ sealed class Screen(val route: String) {
 
     object Notifications : Screen("notifications")
     object Ranking : Screen("ranking")
+    object Call : Screen("call/{callId}") {
+        fun createRoute(callId: String) = "call/$callId"
+    }
     object CallHistory : Screen("call_history")
     object FriendRequests : Screen("friend_requests")
     
@@ -164,6 +167,27 @@ sealed class Screen(val route: String) {
         fun createRoute(liveId: String) = "live_host/$liveId"
     }
     object AddAccountLogin : Screen("add_account_login")
+    object WebLoginScanner : Screen("web_login_scanner?pairId={pairId}&nonce={nonce}") {
+        fun createRoute(
+            pairId: String? = null,
+            nonce: String? = null
+        ): String {
+            return buildString {
+                append("web_login_scanner")
+                val params = mutableListOf<String>()
+                if (!pairId.isNullOrBlank()) {
+                    params.add("pairId=${android.net.Uri.encode(pairId)}")
+                }
+                if (!nonce.isNullOrBlank()) {
+                    params.add("nonce=${android.net.Uri.encode(nonce)}")
+                }
+                if (params.isNotEmpty()) {
+                    append("?")
+                    append(params.joinToString("&"))
+                }
+            }
+        }
+    }
     object NotificationAccountBridge : Screen("notification_account_bridge")
     
     object VideoEditor : Screen("video_editor/{videoUri}") {

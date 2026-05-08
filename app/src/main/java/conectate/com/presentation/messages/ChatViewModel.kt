@@ -458,7 +458,7 @@ class ChatViewModel @Inject constructor(
     private fun syncTypingPresence(text: String) {
         val activeChatId = chatId?.trim()?.lowercase() ?: return
         val state = chatState.value as? ChatUiState.Success ?: return
-        if (state.chat.is_group) return
+        if (state.chat?.is_group == true) return
 
         val trimmed = text.trim()
         typingStopJob?.cancel()
@@ -483,7 +483,7 @@ class ChatViewModel @Inject constructor(
     private fun sendTypingPresence(isTyping: Boolean) {
         val activeChatId = chatId?.trim()?.lowercase() ?: return
         val state = chatState.value as? ChatUiState.Success ?: return
-        if (state.chat.is_group) return
+        if (state.chat?.is_group == true) return
 
         val displayName = currentUserMetadata.value?.displayName
             ?: currentUserMetadata.value?.username

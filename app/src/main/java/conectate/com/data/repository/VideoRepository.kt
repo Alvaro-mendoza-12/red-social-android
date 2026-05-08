@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Video
 import conectate.com.data.model.VideoComment
@@ -220,8 +222,6 @@ class VideoRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-@Composable
-@Composable
     suspend fun getVideo(videoId: String): Result<Video> = withContext(Dispatchers.IO) {
         try {
             var video = supabaseConfig.client.from("videos").select {
@@ -458,8 +458,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun downloadVideoToGallery(video: Video): Result<String> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.httpClient.get(video.videoUrl)
@@ -568,8 +566,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun searchVideos(query: String): Result<List<Video>> = withContext(Dispatchers.IO) {
         try {
             // Using Postgrest 'or' for Title OR Description OR Tags
@@ -769,8 +765,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     private suspend fun subscribeToVideoComments(videoId: String) {
         android.util.Log.d("VideoRepository", "Starting Realtime subscription for video: $videoId")
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -896,8 +890,6 @@ class VideoRepository @Inject constructor(
         )
     }
 
-@Composable
-@Composable
     private suspend fun subscribeToVideoStats(videoId: String) {
         while (currentCoroutineContext().isActive) {
             var channel = supabaseConfig.client.realtime.channel("video_stats_$videoId")
@@ -1245,7 +1237,7 @@ class VideoRepository @Inject constructor(
             
             // Upload Audio
             val bytes = audioFile.readBytes()
-            var filename = "comment_${UUID.randomUUID()}.m4a"
+            val fileName = "comment_${UUID.randomUUID()}.m4a"
             android.util.Log.d("VideoRepository", "Uploading audio file: $fileName, size=${bytes.size} bytes")
             val uploadResult = storageService.uploadFile("video-comments-media", fileName, bytes, "audio/mp4")
             
@@ -2341,8 +2333,6 @@ class VideoRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-@Composable
-@Composable
     suspend fun hasPublicVideos(): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {

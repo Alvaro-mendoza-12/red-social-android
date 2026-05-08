@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import conectate.com.data.model.ActiveCall
 import conectate.com.data.model.CallConnectionState
 
-
+@Composable
 fun ActiveCallSessionBar(
     call: ActiveCall,
     onReturnToCall: (String) -> Unit,

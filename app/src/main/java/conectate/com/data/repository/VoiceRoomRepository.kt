@@ -1283,9 +1283,11 @@ class VoiceRoomRepository @Inject constructor(
                  val textPayload = data.optString("text").trim()
                  if (userIdPayload.isBlank() || textPayload.isBlank()) return@on
                  val msg = conectate.com.presentation.voicerooms.ChatMessage(
+                    id = data.optString("messageId").ifBlank { data.optString("id").ifBlank { UUID.randomUUID().toString() } },
                     userId = userIdPayload,
-                    userName = userNamePayload.ifBlank { "Usuario" },
-                    text = textPayload
+                    text = textPayload,
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis()),
+                    userName = userNamePayload.ifBlank { "Usuario" }
                 )
                 scope.launch { _incomingMessages.emit(msg) }
             }
@@ -1297,8 +1299,9 @@ class VoiceRoomRepository @Inject constructor(
                 if (userIdPayload.isBlank() || emojiPayload.isBlank()) return@on
                 val reaction = conectate.com.presentation.voicerooms.ReactionEvent(
                     id = data.optString("reactionId").ifBlank { data.optString("id") },
-                    userId = userIdPayload,
-                    emoji = emojiPayload
+                    emoji = emojiPayload,
+                    timestamp = System.currentTimeMillis(),
+                    userId = userIdPayload
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
             }
@@ -1868,6 +1871,7 @@ class VoiceRoomRepository @Inject constructor(
             put("userId", reaction.userId)
             put("emoji", reaction.emoji)
             put("reactionId", reactionId)
+            put("timestamp", reaction.timestamp)
         }
     }
 

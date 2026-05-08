@@ -1,5 +1,7 @@
 package conectate.com.presentation.media
 
+import androidx.compose.runtime.Composable
+
 import android.content.ContentValues
 import android.graphics.Bitmap
 import android.net.Uri

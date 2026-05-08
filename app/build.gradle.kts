@@ -70,10 +70,13 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            storeFile = file("../keystores/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            val repoDebugKeystore = rootProject.file("../keystores/debug.keystore")
+            if (repoDebugKeystore.exists()) {
+                storeFile = repoDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
 
         if (hasReleaseSigning) {
@@ -164,6 +167,12 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+    arg("room.generateKotlin", "true")
+}
+
 tasks.register("qualityGateDebug") {
     group = "verification"
     description = "Runs the local quality gate (unit tests + lint) for debug."
@@ -232,6 +241,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation("org.jsoup:jsoup:1.22.1")
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.multiplatform.settings)

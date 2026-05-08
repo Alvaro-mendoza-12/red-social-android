@@ -1,5 +1,7 @@
 package conectate.com.presentation.voicerooms
 
+import androidx.compose.runtime.Composable
+
 import android.Manifest
 import android.content.Intent
 import android.view.ViewGroup

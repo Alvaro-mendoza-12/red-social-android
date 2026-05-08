@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -732,8 +734,6 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun recordView(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("MomentRepository", "========================================")
@@ -793,8 +793,6 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun getMomentViewers(momentId: String): Result<List<MomentView>> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -856,8 +854,6 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun deleteMoment(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))

@@ -1,5 +1,7 @@
 package conectate.com.presentation.home
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Message

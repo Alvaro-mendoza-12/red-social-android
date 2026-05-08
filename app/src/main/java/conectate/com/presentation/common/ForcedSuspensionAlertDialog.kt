@@ -8,7 +8,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-
+@Composable
 fun ForcedSuspensionAlertDialog(
     visible: Boolean,
     suspensionEndDate: String?,

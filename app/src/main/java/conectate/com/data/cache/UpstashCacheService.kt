@@ -1,5 +1,7 @@
 package conectate.com.data.cache
 
+import androidx.compose.runtime.Composable
+
 import android.util.Log
 import conectate.com.BuildConfig
 import io.ktor.client.*
@@ -25,8 +27,6 @@ class UpstashCacheService @Inject constructor(
      * Obtiene un valor de cache (si existe).
      * Retorna null si no encontrado o error.
      */
-@Composable
-@Composable
     suspend fun get(key: String): String? = withContext(Dispatchers.IO) {
         try {
             var response = httpClient.get("$UPSTASH_REST_URL/get") {
@@ -49,8 +49,6 @@ class UpstashCacheService @Inject constructor(
     /**
      * Guarda un valor en cache con TTL en segundos.
      */
-@Composable
-@Composable
     suspend fun set(key: String, value: String, exSeconds: Int = 300): Boolean = withContext(Dispatchers.IO) {
         try {
             var response = httpClient.post("$UPSTASH_REST_URL/set") {
@@ -72,8 +70,6 @@ class UpstashCacheService @Inject constructor(
     /**
      * Elimina una clave de cache.
      */
-@Composable
-@Composable
     suspend fun delete(key: String): Boolean = withContext(Dispatchers.IO) {
         try {
             var response = httpClient.post("$UPSTASH_REST_URL/del") {
@@ -91,8 +87,6 @@ class UpstashCacheService @Inject constructor(
     /**
      * Incrementa un contador (para stats).
      */
-@Composable
-@Composable
     suspend fun increment(key: String, amount: Int = 1): Long? = withContext(Dispatchers.IO) {
         try {
             var response = httpClient.post("$UPSTASH_REST_URL/incrby") {

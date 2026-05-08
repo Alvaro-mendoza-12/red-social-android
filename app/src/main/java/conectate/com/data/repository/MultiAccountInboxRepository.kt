@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.messaging.MessageStatusNormalizer
@@ -159,8 +161,6 @@ class MultiAccountInboxRepository @Inject constructor(
         initialValue = emptyList()
     )
 
-@Composable
-@Composable
     suspend fun refreshInactiveAccounts() = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         var currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase()

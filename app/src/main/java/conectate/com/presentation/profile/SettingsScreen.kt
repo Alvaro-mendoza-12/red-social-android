@@ -1,5 +1,7 @@
 package conectate.com.presentation.profile
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -414,18 +416,6 @@ fun SettingsScreen(
             SettingsSection(title = "General") {
                 val scope = rememberCoroutineScope()
                 
-                if (viewModel.isAdmin) {
-                    Button(
-                        onClick = { mainNavController.navigate(Screen.AdminPanel.route) },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Icon(Icons.Default.Settings, null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Panel de Administración")
-                    }
-                }
-
                 Button(
                     onClick = { 
                         scope.launch {

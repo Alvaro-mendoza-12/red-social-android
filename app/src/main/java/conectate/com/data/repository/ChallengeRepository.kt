@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -39,8 +41,6 @@ class ChallengeRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-@Composable
-@Composable
     suspend fun submitMedia(activeChallenge: ActiveChallenge, bytes: ByteArray, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -82,8 +82,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun getSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Result<List<conectate.com.data.model.ChallengeSubmission>> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ChallengeRepository", "=== getSubmissions START for $activeChallengeId ===")
@@ -191,8 +189,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun toggleVote(activeChallengeId: String, submissionId: String): Result<Pair<Int, Boolean>> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -224,8 +220,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun getMySubmission(activeChallengeId: String, userId: String): Result<conectate.com.data.model.ChallengeSubmission?> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
@@ -265,8 +259,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun submitText(activeChallenge: ActiveChallenge, text: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -291,8 +283,6 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-@Composable
-@Composable
     suspend fun getActiveChallenge(): Result<ActiveChallenge> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -350,8 +340,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun createChallengeMaster(title: String, description: String, type: String, difficulty: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -381,8 +369,6 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-@Composable
-@Composable
     suspend fun getUserChallenges(): Result<List<Challenge>> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -402,8 +388,6 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-@Composable
-@Composable
     suspend fun deleteChallengeMaster(id: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -419,8 +403,6 @@ class ChallengeRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-@Composable
-@Composable
     suspend fun submitDrawing(activeChallenge: ActiveChallenge, lines: List<conectate.com.presentation.components.Line>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -467,8 +449,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun submitMedia(activeChallenge: ActiveChallenge, uri: android.net.Uri, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(uri) 
@@ -482,8 +462,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun submitAudio(activeChallenge: ActiveChallenge, file: java.io.File): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var bytes = file.readBytes()
@@ -493,8 +471,6 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))

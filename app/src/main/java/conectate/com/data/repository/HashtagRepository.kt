@@ -26,8 +26,6 @@ class HashtagRepository @Inject constructor(
         private const val MAX_HASHTAGS_PER_POST = 5
     }
 
-@Composable
-@Composable
     fun extractHashtagsFromText(text: String): List<String> {
         if (text.isBlank()) return emptyList()
         return Regex("#[a-zA-Z0-9_]+")
@@ -39,13 +37,11 @@ class HashtagRepository @Inject constructor(
             .toList()
     }
 
-@Composable
-@Composable
     suspend fun attachHashtagsToPost(postId: String, hashtags: List<String>) = withContext(Dispatchers.IO) {
         if (hashtags.isEmpty()) return@withContext
         runCatching {
             hashtags.forEachIndexed { index, tagName ->
-                var TAG = upsertHashtag(tagName = tagName, incrementPostCount = true)
+                val tag = upsertHashtag(tagName = tagName, incrementPostCount = true)
                 hashtagDao.insertPostHashtag(
                     PostHashtagEntity(
                         postId = postId,
@@ -60,13 +56,11 @@ class HashtagRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun attachHashtagsToVideo(videoId: String, hashtags: List<String>) = withContext(Dispatchers.IO) {
         if (hashtags.isEmpty()) return@withContext
         runCatching {
             hashtags.forEachIndexed { index, tagName ->
-                var TAG = upsertHashtag(tagName = tagName, incrementVideoCount = true)
+                val tag = upsertHashtag(tagName = tagName, incrementVideoCount = true)
                 hashtagDao.insertVideoHashtag(
                     VideoHashtagEntity(
                         videoId = videoId,

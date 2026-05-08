@@ -121,7 +121,10 @@ fun CallScreen(
         }
     }
     LaunchedEffect(active?.callId, hasMicPermission) {
-        if (active?.callId.isNullOrBlank() || !hasMicPermission) return viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
+        if (active?.callId.isNullOrBlank() || !hasMicPermission) {
+            viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
+            return@LaunchedEffect
+        }
     }
 
     BackHandler(enabled = true) {
@@ -135,7 +138,7 @@ fun CallScreen(
             EndedCallSummaryScreen(
                 summary = endedSummary,
                 onSendMessage = {
-                    val targetId = endedSummary.messageTargetId ?: return
+                    val targetId = endedSummary.messageTargetId ?: return@EndedCallSummaryScreen
                     viewModel.clearEndedCallSummary(callId)
                     navController.popBackStack()
                     navController.navigate(Screen.Chat.createRoute(targetId))
@@ -173,9 +176,12 @@ fun CallScreen(
 
     var durationText by remember(active.startedAtEpochMs, active.connectionState) { mutableStateOf("00:00") }
     LaunchedEffect(active.startedAtEpochMs, active.connectionState) {
-        if (active.connectionState != CallConnectionState.CONNECTED || active.startedAtEpochMs == null) return
+        val startedAtEpochMs = active.startedAtEpochMs
+        if (active.connectionState != CallConnectionState.CONNECTED || startedAtEpochMs == null) {
+            return@LaunchedEffect
+        }
         while (true) {
-            val elapsedMs = System.currentTimeMillis() - active.startedAtEpochMs
+            val elapsedMs = System.currentTimeMillis() - startedAtEpochMs
             val totalSeconds = (elapsedMs / 1000).toInt().coerceAtLeast(0)
             val minutes = totalSeconds / 60
             val seconds = totalSeconds % 60

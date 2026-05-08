@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.net.Uri
 import conectate.com.BuildConfig
@@ -1218,8 +1220,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     override suspend fun syncChats(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val chatsResult = getUserChats()
@@ -1242,8 +1242,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     override suspend fun retryPendingMessages(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -1275,8 +1273,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     override suspend fun retryPendingDeletes(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -1444,8 +1440,6 @@ class MessageRepository @Inject constructor(
         } catch (e: Exception) { 0 }
     }
 
-@Composable
-@Composable
     suspend fun setNickname(targetUserId: String, nickname: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1492,8 +1486,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1546,8 +1538,6 @@ class MessageRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
 
-@Composable
-@Composable
     suspend fun getCachedMessages(chatId: String): List<Message> = withContext(Dispatchers.IO) {
         var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
@@ -2331,8 +2321,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2415,8 +2403,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessagesAsDelivered(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2442,8 +2428,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessagesAsRead(chatId: String, messageIds: Collection<String>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2576,8 +2560,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessagesAsRead(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -3125,8 +3107,6 @@ class MessageRepository @Inject constructor(
         return chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() }
     }
     
-@Composable
-@Composable
     suspend fun deleteMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()
@@ -3177,8 +3157,6 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun editMessage(msg: Message, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No hay sesión"))
@@ -3257,8 +3235,6 @@ class MessageRepository @Inject constructor(
         val reactions: Map<String, List<String>>
     )
 
-@Composable
-@Composable
     suspend fun toggleMessageReaction(messageId: String, emoji: String): Result<MessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -3598,14 +3574,10 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun muteChat(chatId: String, isMuted: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         updateChatPreferences(chatId = chatId, isMuted = isMuted, isPinned = null)
     }
 
-@Composable
-@Composable
     suspend fun pinChat(chatId: String, isPinned: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         updateChatPreferences(chatId = chatId, isMuted = null, isPinned = isPinned)
     }
@@ -3752,8 +3724,6 @@ class MessageRepository @Inject constructor(
         return userFromCachedChat(cached)
     }
 
-@Composable
-@Composable
     suspend fun refreshDirectChatIdentity(chatId: String, otherUserId: String): conectate.com.data.model.User? = withContext(Dispatchers.IO) {
         var cleanChatId = chatId.trim().lowercase()
         var cleanUserId = otherUserId.trim().lowercase()

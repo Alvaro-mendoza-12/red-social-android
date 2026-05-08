@@ -1,5 +1,7 @@
 package conectate.com.presentation.videos
 
+import androidx.compose.runtime.Composable
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

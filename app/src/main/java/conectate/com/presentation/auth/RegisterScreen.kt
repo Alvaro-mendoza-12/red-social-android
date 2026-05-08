@@ -1,5 +1,7 @@
 package conectate.com.presentation.auth
 
+import androidx.compose.runtime.Composable
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,7 +37,8 @@ import conectate.com.R
 import conectate.com.presentation.navigation.Screen
 
 
-
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun RegisterScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()

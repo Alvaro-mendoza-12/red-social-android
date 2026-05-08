@@ -1,5 +1,7 @@
 package conectate.com.presentation.auth
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -46,7 +48,7 @@ private fun formatSuspensionDateForUi(raw: String?): String {
 }
 
 
-
+@Composable
 fun LoginScreen(
     navController: NavController,
     isAddAccountMode: Boolean = false,
@@ -85,7 +87,9 @@ fun LoginScreen(
     }
 
     LaunchedEffect(authState, isAddAccountMode) {
-        if (!isAddAccountMode || authState !is AuthState.Success) return
+        if (!isAddAccountMode || authState !is AuthState.Success) {
+            return@LaunchedEffect
+        }
         navController.navigate(Screen.Home.createRoute(startTab = "messages")) {
             popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
             launchSingleTop = true
@@ -271,13 +275,10 @@ fun LoginScreen(
                         viewModel.setAuthError(
                             "Primero inicia sesión o guarda una cuenta en este dispositivo para aprobar un acceso por QR."
                         )
-                        return
+                        return@OutlinedButton
                     }
                     navController.navigate(
-                        Screen.QrScanner.createRoute(
-                            source = "login",
-                            mode = "web_only"
-                        )
+                        Screen.WebLoginScanner.createRoute()
                     ) {
                         launchSingleTop = true
                     }
@@ -470,7 +471,7 @@ fun LoginScreen(
     }
 }
 
-
+@Composable
 private fun SavedAccountsSection(
     accounts: List<StoredAccountSession>,
     switchingAccountId: String?,

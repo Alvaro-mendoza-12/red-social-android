@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut

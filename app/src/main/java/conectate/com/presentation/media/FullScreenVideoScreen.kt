@@ -1,5 +1,7 @@
 package conectate.com.presentation.media
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize

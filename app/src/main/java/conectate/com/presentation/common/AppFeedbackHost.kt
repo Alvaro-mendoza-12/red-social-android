@@ -50,7 +50,7 @@ object AppFeedbackBus {
     )
 }
 
-
+@Composable
 fun AppFeedbackHost(
     modifier: Modifier = Modifier
 ) {

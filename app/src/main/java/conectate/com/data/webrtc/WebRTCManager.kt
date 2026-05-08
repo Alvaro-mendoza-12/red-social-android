@@ -1457,7 +1457,7 @@ class WebRTCManager(
 
     fun startVideo(
         isScreen: Boolean,
-        intent: android.content.Intent = null,
+        intent: android.content.Intent? = null,
         isFront: Boolean = true,
         targetWidth: Int? = null,
         targetHeight: Int? = null,

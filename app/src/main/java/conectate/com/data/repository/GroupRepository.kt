@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import androidx.compose.runtime.Composable
+
 import android.content.Context
 import android.content.Intent
 import android.app.PendingIntent
@@ -701,8 +703,6 @@ class GroupRepository @Inject constructor(
     // --- NOTIFICATIONS (SYSTEM) ---
     
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-@Composable
     private suspend fun showNotification(msg: GroupMessage, groupName: String) {
         withContext(Dispatchers.Main) {
             try {
@@ -782,8 +782,6 @@ class GroupRepository @Inject constructor(
     /**
      * Obtiene un grupo por su ID (Optimizado).
      */
-@Composable
-@Composable
     suspend fun getGroupById(id: String): Group? = withContext(Dispatchers.IO) {
         var cleanId = id.trim().lowercase()
         var group = groupDao.getGroupById(cleanId)?.toDomain() ?: try {
@@ -822,8 +820,6 @@ class GroupRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
     
-@Composable
-@Composable
     suspend fun getCachedMessages(groupId: String): List<GroupMessage> = withContext(Dispatchers.IO) {
         var cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
@@ -1034,8 +1030,6 @@ class GroupRepository @Inject constructor(
 
     // --- ACTIONS ---
 
-@Composable
-@Composable
     suspend fun markAsRead(groupId: String, messageIds: Collection<String>) {
         var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1081,8 +1075,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markAsRead(groupId: String) {
         var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1113,8 +1105,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessageAsDelivered(groupId: String, messageId: String) {
         var cleanId = groupId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
@@ -1140,8 +1130,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun markMessagesAsDelivered(groupId: String) {
         var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1510,8 +1498,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun editGroupMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1540,8 +1526,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun deleteGroupMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1621,8 +1605,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun getGroupMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
         var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         collectionMessageEngagementStore.getMessageReadReceipts(
@@ -1653,8 +1635,6 @@ class GroupRepository @Inject constructor(
         val reactions: Map<String, List<String>>
     )
 
-@Composable
-@Composable
     suspend fun toggleGroupMessageReaction(messageId: String, emoji: String): Result<GroupMessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -1713,8 +1693,6 @@ class GroupRepository @Inject constructor(
         syncGroupMessages(groupId, currentSessionUserId())
     }
 
-@Composable
-@Composable
     private suspend fun syncGroupMessages(groupId: String, sessionUserId: String?) {
         var cleanId = groupId.trim().lowercase()
         val normalizedSessionUserId = SessionWriteGuard.normalizeAccountId(sessionUserId) ?: return
@@ -1804,8 +1782,6 @@ class GroupRepository @Inject constructor(
             contentType = "audio/mpeg"
         )
 
-@Composable
-@Composable
     override suspend fun syncGroups(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = (authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))).trim().lowercase()
@@ -1934,8 +1910,6 @@ class GroupRepository @Inject constructor(
     /**
      * Crea un nuevo grupo en Supabase e inserta al creador como admin.
      */
-@Composable
-@Composable
     suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>): Result<String> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("GroupRepository", "[GOD] Creando grupo: $name para integrantes: $members")
@@ -2020,8 +1994,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.client.postgrest["group_members"].select {
@@ -2074,8 +2046,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun leaveGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
         CollectionMembershipMutationSupport.leaveCurrentUserCollection(
@@ -2099,8 +2069,6 @@ class GroupRepository @Inject constructor(
         )
     }
 
-@Composable
-@Composable
     suspend fun addMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2129,8 +2097,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun removeMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2166,8 +2132,6 @@ class GroupRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun deleteGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2212,8 +2176,6 @@ class GroupRepository @Inject constructor(
         groupDao.deleteGroup(cleanId)
     }
 
-@Composable
-@Composable
     suspend fun updateMemberRole(groupId: String, userId: String, newRole: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))

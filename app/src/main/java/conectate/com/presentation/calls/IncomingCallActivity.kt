@@ -50,9 +50,12 @@ import conectate.com.MainActivity
 import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
+import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.theme.RedSocialTheme
 import conectate.com.services.IncomingCallForegroundService
+import conectate.com.util.TrustedNavigationIntents.markTrusted
 
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -121,11 +124,19 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun acceptInvite(invite: CallInvite) {
-        var scope = lifecycleScope
-        scope.launch {
+        lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this)
-            callRepository.acceptIncomingCall(invite)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            val result = callRepository.acceptIncomingCall(invite)
+            if (result.isFailure) {
+                AppFeedbackBus.showError(
+                    result.exceptionOrNull()?.toUserFacingMessage(
+                        "No se pudo conectar la llamada en este momento."
+                    ) ?: "No se pudo conectar la llamada en este momento."
+                )
+                finish()
+                return@launch
+            }
             callRepository.refreshAudioSession()
             delay(300)
             callRepository.refreshAudioSessionRepeatedly(attempts = 2, delayMs = 500)
@@ -135,22 +146,21 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun declineInvite(invite: CallInvite) {
-        var scope = lifecycleScope
-        scope.launch {
+        lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity)
             callRepository.declineIncomingCall(invite)
             finish()
         }
     }
 
     private fun navigateToCall(callId: String) {
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val navigationIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("type", "call_return")
             putExtra("call_id", callId)
         }.also { markTrusted(this, it) }
-        startActivity(intent)
+        startActivity(navigationIntent)
     }
 
     private fun clearIncomingCallNotification(callId: String) {
@@ -270,7 +280,7 @@ private fun IncomingCallScreen(
             ) {
                 Button(
                     onClick = {
-                        if (isHandling) return
+                        if (isHandling) return@Button
                         isHandling = true
                         scope.launch {
                             onDecline()
@@ -289,7 +299,7 @@ private fun IncomingCallScreen(
 
                 Button(
                     onClick = {
-                        if (isHandling) return
+                        if (isHandling) return@Button
                         isHandling = true
                         scope.launch {
                             onAccept()

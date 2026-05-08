@@ -1,5 +1,7 @@
 package conectate.com.presentation.search
 
+import androidx.compose.runtime.Composable
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

@@ -1,5 +1,7 @@
 package conectate.com.presentation.navigation
 
+import androidx.compose.runtime.Composable
+
 import android.net.Uri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -171,12 +173,6 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         )
     }
 
-    composable(Screen.AdminPanel.route) {
-        RequireLoggedIn(isLoggedIn, navController) {
-            conectate.com.presentation.admin.AdminPanelScreen(navController = navController)
-        }
-    }
-
     composable(Screen.Settings.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.profile.SettingsScreen(
@@ -247,9 +243,30 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(
+        route = Screen.Call.route,
+        arguments = listOf(
+            navArgument("callId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val callId = backStackEntry.arguments?.getString("callId") ?: return@composable
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.calls.CallScreen(
+                navController = navController,
+                callId = callId
+            )
+        }
+    }
+
     composable(Screen.Ranking.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.ranking.RankingScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.CallHistory.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.calls.CallHistoryScreen(navController = navController)
         }
     }
 
