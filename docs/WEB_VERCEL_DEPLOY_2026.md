@@ -23,6 +23,9 @@ Hacer que este repositorio raiz pueda desplegar `Conectate-web` en Vercel sin ob
   - corta el build si solo existen placeholders o si faltan por completo
 - `Conectate-web/.npmrc`:
   - fija `legacy-peer-deps=true` para evitar que un install limpio se caiga por dependencias de testing incompatibles con React 19
+- `Conectate-web/package.json`:
+  - ahora tambien expone `npm run vercel:install` y `npm run vercel:build`
+  - esto cubre el caso real en Vercel cuando el proyecto se crea con `Root Directory = Conectate-web`
 - `package.json` raiz:
   - `vercel:install` ahora usa `npm --prefix Conectate-web ci --legacy-peer-deps`
 
@@ -31,6 +34,8 @@ Hacer que este repositorio raiz pueda desplegar `Conectate-web` en Vercel sin ob
 ```bash
 npm --prefix Conectate-web ci --legacy-peer-deps
 npm --prefix Conectate-web run build
+npm --prefix Conectate-web run vercel:install
+npm --prefix Conectate-web run vercel:build
 npm run vercel:build
 ```
 
@@ -41,4 +46,5 @@ npm run vercel:build
 - Si el deploy remoto sigue fallando despues de esto, lo mas probable ya no sera la deteccion del proyecto web, sino variables de entorno faltantes en Vercel:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+- Si Vercel usa `Root Directory = Conectate-web`, ya no deberia romperse con `Missing script: vercel:install` porque ese subproyecto ahora declara esos scripts localmente.
 - El fallback SPA ya evita el error tipico de 404 al refrescar rutas como `/app/messages`, `/app/profile` o `/login?mode=qr`.

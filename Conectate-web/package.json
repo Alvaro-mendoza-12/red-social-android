@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "vercel:install": "npm ci --legacy-peer-deps",
+    "vercel:build": "npm run build",
     "prebuild": "node ./scripts/ensure-web-build-env.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
