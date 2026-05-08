@@ -330,11 +330,20 @@ export function LoginPage() {
         <div className="auth-card auth-login-card">
           <div className="section-stack auth-head-copy">
             <div>
-              <p className="brand-tag auth-panel-tag">Acceso</p>
-              <h1>Entrar a tu red social</h1>
+              <div className="auth-brand-lockup">
+                <div className="auth-brand-mark">
+                  <img src="/conectate-logo.svg" alt="Conectate" className="auth-brand-logo" />
+                </div>
+                <div className="auth-brand-copy">
+                  <p className="brand-tag auth-panel-tag">Conectate Web</p>
+                  <strong>Conectate</strong>
+                  <span>Mensajes, perfil y comunidad sincronizados con tu app.</span>
+                </div>
+              </div>
+              <h1>Inicia sesión en Conectate</h1>
               <p>
-                Elige el método que te sirva hoy: contraseña, código, QR aprobado desde la app o
-                una sesión de recuperación.
+                Entra a tu cuenta desde la web con contraseña, código temporal, QR aprobado desde
+                la app o una sesión de recuperación.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid">
@@ -397,7 +406,7 @@ export function LoginPage() {
                 />
               </label>
               <button className="primary-btn" disabled={loading} type="submit">
-                {loading ? 'Entrando...' : 'Iniciar sesión'}
+                {loading ? 'Entrando en Conectate...' : 'Iniciar sesión en Conectate'}
               </button>
             </form>
           ) : null}

@@ -43,11 +43,24 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="auth-shell">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <p className="brand-tag">Conectate-web</p>
-        <h1>Crear cuenta</h1>
-        <p>Usa el mismo backend Supabase del móvil.</p>
+    <section className="auth-shell auth-shell-rich auth-shell-login">
+      <form className="auth-card auth-login-card" onSubmit={handleSubmit}>
+        <div className="section-stack auth-head-copy">
+          <div>
+            <div className="auth-brand-lockup">
+              <div className="auth-brand-mark">
+                <img src="/conectate-logo.svg" alt="Conectate" className="auth-brand-logo" />
+              </div>
+              <div className="auth-brand-copy">
+                <p className="brand-tag auth-panel-tag">Conectate Web</p>
+                <strong>Conectate</strong>
+                <span>Tu identidad social vive igual en web y móvil.</span>
+              </div>
+            </div>
+            <h1>Crea tu cuenta en Conectate</h1>
+            <p>Abre tu perfil, mensajes y comunidad con el mismo backend compartido.</p>
+          </div>
+        </div>
         <label>
           Nombre visible
           <input
@@ -78,9 +91,14 @@ export function RegisterPage() {
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {error ? <p className="error-text">{error}</p> : null}
+        {error ? (
+          <div className="auth-banner auth-banner-error" role="alert">
+            <strong>No pudimos crear tu cuenta</strong>
+            <p>{error}</p>
+          </div>
+        ) : null}
         <button className="primary-btn" disabled={loading} type="submit">
-          {loading ? 'Creando...' : 'Crear cuenta'}
+          {loading ? 'Creando tu acceso...' : 'Crear cuenta en Conectate'}
         </button>
         <p className="auth-foot">
           ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
