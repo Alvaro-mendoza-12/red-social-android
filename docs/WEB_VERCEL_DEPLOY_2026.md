@@ -19,6 +19,9 @@ Hacer que este repositorio raiz pueda desplegar `Conectate-web` en Vercel sin ob
   - agrega fallback SPA a `index.html`
   - agrega headers de seguridad y cache
   - permite conexiones de Supabase y del signaling WebRTC `voice.srv1495648.hstgr.cloud` en CSP
+- `Conectate-web/vercel.json`:
+  - replica la configuracion activa para proyectos Vercel cuyo Root Directory apunta directamente a `Conectate-web`
+  - evita que headers y rewrites se pierdan cuando Vercel ignora la configuracion de la raiz por configuracion de proyecto
 - `Conectate-web/scripts/ensure-web-build-env.mjs`:
   - valida `VITE_SUPABASE_URL`
   - valida `VITE_SUPABASE_ANON_KEY`

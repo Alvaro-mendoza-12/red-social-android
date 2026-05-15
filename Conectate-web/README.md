@@ -30,6 +30,7 @@ Frontend web independiente de tu app móvil Conectate.
   - `installCommand`: `npm ci --legacy-peer-deps`
   - `buildCommand`: `npm run build`
   - `outputDirectory`: `dist`
+- `Conectate-web/vercel.json` es la configuración que Vercel consume cuando el Root Directory apunta a esta carpeta; el `vercel.json` raíz queda como respaldo si el proyecto se configura desde la raíz del repo.
 - También queda configurado el fallback SPA para rutas como `/app/messages` y `/login?mode=qr`, más headers de seguridad básicos.
 - Variables que debes cargar en Vercel:
   - `VITE_SUPABASE_URL`
