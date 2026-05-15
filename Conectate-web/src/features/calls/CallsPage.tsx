@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { CallInterface } from './CallInterface'
@@ -35,7 +35,14 @@ const readinessChecklist = [
 export function CallsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [activeCall, setActiveCall] = useState(false)
+  const [searchParams] = useSearchParams()
+  const initialCallId = searchParams.get('callId')?.trim() ?? ''
+  const initialTargetId = searchParams.get('target')?.trim() ?? ''
+  const initialTargetName = searchParams.get('name')?.trim() ?? ''
+  const initialKind = searchParams.get('kind')?.trim().toLowerCase()
+  const initialVideoEnabled = initialKind === 'video'
+  const shouldJoinExistingCall = searchParams.get('join') === '1'
+  const [activeCall, setActiveCall] = useState(Boolean(initialTargetId || initialCallId))
 
   const displayName = useMemo(() => {
     const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
@@ -78,7 +85,13 @@ export function CallsPage() {
         </article>
 
         <section className="calls-live-shell">
-          <CallInterface />
+          <CallInterface
+            initialCallId={initialCallId}
+            initialRemoteUserId={initialTargetId}
+            initialRemoteName={initialTargetName}
+            initialVideoEnabled={initialVideoEnabled}
+            joinExisting={shouldJoinExistingCall}
+          />
         </section>
       </section>
     )

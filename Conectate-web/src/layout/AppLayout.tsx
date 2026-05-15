@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   type DeferredMutation,
   flushDeferredMutations,
@@ -17,6 +17,8 @@ import {
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
 import { useWebPreferences } from '../core/webPreferences'
+import { sendCallResponse, type CallInvitePayload } from '../features/calls/callRealtime'
+import '../features/calls/incomingCallOverlay.css'
 
 type NavIconName =
   | 'social'
@@ -49,6 +51,10 @@ const secondaryNavItems = [
 const localReadStorageKey = 'conectate-web-chat-last-read'
 const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
 const mobileNavItems = primaryNavItems
+
+type IncomingCallInvite = CallInvitePayload & {
+  receivedAt: number
+}
 
 type ShellRouteMeta = {
   kicker: string
@@ -283,6 +289,7 @@ function ShellIcon({ name }: { name: NavIconName }) {
 export function AppLayout() {
   const { user, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [webPreferences] = useWebPreferences()
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
@@ -291,6 +298,7 @@ export function AppLayout() {
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
   const [sidebarAvatarUrl, setSidebarAvatarUrl] = useState('')
   const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
+  const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
 
   const loadShellCounters = useCallback(async () => {
     const client = supabase
@@ -415,6 +423,78 @@ export function AppLayout() {
   useEffect(() => {
     return onSupabaseRestrictionChanged(setSupabaseRestriction)
   }, [])
+
+  useEffect(() => {
+    const client = supabase
+    if (!client || !user) {
+      setIncomingCall(null)
+      return
+    }
+
+    const channel = client
+      .channel(`conectate-web-call-user-${user.id}`)
+      .on('broadcast', { event: 'call_invite' }, (event) => {
+        const payload = (event.payload ?? {}) as Partial<CallInvitePayload>
+        const callId = String(payload.callId ?? '').trim()
+        const callerUserId = String(payload.callerUserId ?? '').trim()
+        if (!callId || !callerUserId || callerUserId === user.id) return
+
+        setIncomingCall({
+          callId,
+          title: String(payload.title ?? '').trim() || 'Llamada',
+          callerUserId,
+          callerName: String(payload.callerName ?? '').trim() || 'Usuario',
+          callerAvatarUrl: String(payload.callerAvatarUrl ?? '').trim(),
+          contextType: String(payload.contextType ?? '').trim() || 'dm',
+          contextId: String(payload.contextId ?? '').trim(),
+          isVideo: Boolean(payload.isVideo),
+          receivedAt: Date.now(),
+        })
+      })
+      .on('broadcast', { event: 'call_response' }, (event) => {
+        const payload = (event.payload ?? {}) as { callId?: string; action?: string }
+        if (incomingCall?.callId && payload.callId === incomingCall.callId) {
+          setIncomingCall(null)
+        }
+      })
+
+    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'web-call-user' })
+    return () => {
+      void removeRealtimeChannel(subscribedChannel ?? channel)
+    }
+  }, [incomingCall?.callId, user])
+
+  const acceptIncomingCall = useCallback(() => {
+    const invite = incomingCall
+    const client = supabase
+    if (!invite || !client || !user) return
+    setIncomingCall(null)
+    void sendCallResponse(client, invite.callerUserId, {
+      callId: invite.callId,
+      action: 'accept',
+      fromUserId: user.id,
+    })
+    const params = new URLSearchParams({
+      callId: invite.callId,
+      join: '1',
+      target: invite.callerUserId,
+      name: invite.callerName,
+      kind: invite.isVideo ? 'video' : 'audio',
+    })
+    navigate(`/app/calls?${params.toString()}`)
+  }, [incomingCall, navigate, user])
+
+  const declineIncomingCall = useCallback(() => {
+    const invite = incomingCall
+    const client = supabase
+    if (!invite || !client || !user) return
+    setIncomingCall(null)
+    void sendCallResponse(client, invite.callerUserId, {
+      callId: invite.callId,
+      action: 'decline',
+      fromUserId: user.id,
+    })
+  }, [incomingCall, user])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -628,6 +708,33 @@ export function AppLayout() {
         `text-scale-${webPreferences.textScale}`,
       ].filter(Boolean).join(' ')}
     >
+      {incomingCall ? (
+        <div className="incoming-call-overlay" role="dialog" aria-modal="true" aria-label="Llamada entrante">
+          <div className="incoming-call-panel">
+            <div className="incoming-call-avatar">
+              {incomingCall.callerAvatarUrl ? (
+                <img src={incomingCall.callerAvatarUrl} alt="" />
+              ) : (
+                <span>{incomingCall.callerName.trim().charAt(0).toUpperCase() || 'U'}</span>
+              )}
+            </div>
+            <div className="incoming-call-copy">
+              <span>{incomingCall.isVideo ? 'Videollamada entrante' : 'Llamada entrante'}</span>
+              <strong>{incomingCall.callerName}</strong>
+              <p>{incomingCall.title || 'Conectate'}</p>
+            </div>
+            <div className="incoming-call-actions">
+              <button className="incoming-call-btn decline" type="button" onClick={declineIncomingCall}>
+                Rechazar
+              </button>
+              <button className="incoming-call-btn accept" type="button" onClick={acceptIncomingCall}>
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <aside className={isNavCollapsed ? 'left-nav collapsed' : 'left-nav'}>
         <button
           className="nav-edge-toggle"

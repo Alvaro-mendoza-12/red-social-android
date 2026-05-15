@@ -2,52 +2,73 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { supabase } from '../../core/supabase'
+import { sendCallInvite, sendCallResponse } from './callRealtime'
 import WebCallManager, { type CallState, type CallParticipant } from './WebCallManager'
 
-export function CallInterface() {
-  const { user } = useAuth()
+type CallInterfaceProps = {
+  initialCallId?: string
+  initialRemoteUserId?: string
+  initialRemoteName?: string
+  initialVideoEnabled?: boolean
+  joinExisting?: boolean
+}
+
+export function CallInterface({
+  initialCallId = '',
+  initialRemoteUserId = '',
+  initialRemoteName = '',
+  initialVideoEnabled = true,
+  joinExisting = false,
+}: CallInterfaceProps) {
+  const { user, session } = useAuth()
   const navigate = useNavigate()
   const [callState, setCallState] = useState<CallState | null>(null)
   const [callManager, setCallManager] = useState<WebCallManager | null>(null)
-  const [remoteUserId, setRemoteUserId] = useState<string>('')
+  const [remoteUserId, setRemoteUserId] = useState<string>(initialRemoteUserId)
+  const [videoEnabled, setVideoEnabled] = useState(initialVideoEnabled)
   const [participantInfo, setParticipantInfo] = useState<CallParticipant | null>(null)
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
-  const signalingChannelRef = useRef<BroadcastChannel | null>(null)
+  const autoStartedRef = useRef(false)
 
-  // Initialize call manager
+  const displayName =
+    String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim() ||
+    user?.email?.split('@')[0] ||
+    'Usuario'
+  const avatarUrl = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
+  const signalingBaseUrl = String(import.meta.env.VITE_CALL_SIGNALING_URL ?? import.meta.env.VITE_SIGNALING_URL ?? '').trim()
+
   useEffect(() => {
-    if (!user) return
+    if (!user || !session?.access_token) return
 
     try {
-      const channel = new BroadcastChannel('conectate-calls')
-      signalingChannelRef.current = channel
-      
-      const manager = new WebCallManager(user.id, channel)
+      const manager = new WebCallManager({
+        userId: user.id,
+        accessToken: session.access_token,
+        displayName,
+        avatarUrl,
+        signalingBaseUrl,
+      })
       queueMicrotask(() => setCallManager(manager))
 
-      // Setup callbacks
       manager.onCallState((state) => {
         setCallState(state)
         setError(null)
       })
 
-      manager.onIncomingCall((from, participant) => {
-        setRemoteUserId(from)
+      manager.onLocalStream((stream) => {
+        setLocalStream(stream)
+      })
+
+      manager.onRemoteStream((stream, participant) => {
+        setRemoteStream(stream)
         setParticipantInfo(participant)
-        setCallState({
-          isIncomingCall: true,
-          isOutgoingCall: false,
-          currentCallId: `${from}-${user.id}-${Date.now()}`,
-          remoteParticipant: participant,
-          duration: 0,
-          isMuted: false,
-          isVideoEnabled: participant.isVideoEnabled,
-          isScreenSharing: false
-        })
       })
 
       manager.onCallEnd((reason) => {
@@ -55,8 +76,9 @@ export function CallInterface() {
         setCallState(null)
         setRemoteUserId('')
         setParticipantInfo(null)
-        
-        // Navigate back after a short delay
+        setLocalStream(null)
+        setRemoteStream(null)
+
         setTimeout(() => {
           navigate('/app/messages')
         }, 2000)
@@ -64,34 +86,27 @@ export function CallInterface() {
 
       return () => {
         manager.cleanup()
-        channel.close()
       }
     } catch (error) {
       console.error('Error initializing call manager:', error)
       queueMicrotask(() => setError('No se pudo inicializar el sistema de llamadas'))
     }
-  }, [user, navigate])
+  }, [avatarUrl, displayName, navigate, session?.access_token, signalingBaseUrl, user])
 
-  // Handle local video stream
   useEffect(() => {
-    if (!callManager) return
-
-    const setupLocalVideo = async () => {
-      try {
-        const stream = callManager.getLocalStream()
-        if (stream && localVideoRef.current) {
-          localVideoRef.current.srcObject = stream
-        }
-      } catch (error) {
-        console.error('Error setting up local video:', error)
-      }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream
     }
+  }, [localStream])
 
-    setupLocalVideo()
-  }, [callManager])
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream
+    }
+  }, [remoteStream])
 
   const initiateCall = useCallback(async () => {
-    if (!callManager || !remoteUserId.trim()) {
+    if (!callManager || !user || !supabase || !remoteUserId.trim()) {
       setError('Ingresa un ID de usuario válido')
       return
     }
@@ -100,45 +115,101 @@ export function CallInterface() {
     setError(null)
 
     try {
-      // In a real implementation, you would fetch user info from database
+      const callId = initialCallId || crypto.randomUUID()
       const mockParticipantInfo: CallParticipant = {
         id: remoteUserId,
-        name: `Usuario ${remoteUserId}`,
+        name: initialRemoteName || `Usuario ${remoteUserId}`,
         avatarUrl: '',
         isAudioEnabled: true,
-        isVideoEnabled: true,
-        isSpeaking: false
+        isVideoEnabled: videoEnabled,
+        isSpeaking: false,
       }
 
-      await callManager.initiateCall(remoteUserId, {
+      await callManager.initiateCall(callId, remoteUserId, {
         name: mockParticipantInfo.name,
         avatarUrl: mockParticipantInfo.avatarUrl,
-        videoEnabled: true
+        videoEnabled,
+      })
+
+      await sendCallInvite(supabase, remoteUserId, {
+        callId,
+        title: mockParticipantInfo.name,
+        callerUserId: user.id,
+        callerName: displayName,
+        callerAvatarUrl: avatarUrl,
+        contextType: 'dm',
+        contextId: remoteUserId,
+        isVideo: videoEnabled,
       })
 
       setParticipantInfo(mockParticipantInfo)
       setIsInitializing(false)
     } catch (error) {
       console.error('Error initiating call:', error)
-      setError('No se pudo iniciar la llamada')
+      setError(error instanceof Error ? error.message : 'No se pudo iniciar la llamada')
       setIsInitializing(false)
     }
-  }, [callManager, remoteUserId])
+  }, [avatarUrl, callManager, displayName, initialCallId, initialRemoteName, remoteUserId, user, videoEnabled])
 
-  const answerCall = useCallback(async () => {
-    if (!callManager || !callState?.isIncomingCall) return
+  const joinCall = useCallback(async () => {
+    if (!callManager || !initialCallId.trim()) return
 
     setIsInitializing(true)
+    setError(null)
 
     try {
-      await callManager.answerCall(callState.isVideoEnabled)
+      await callManager.joinExistingCall(initialCallId, {
+        id: initialRemoteUserId,
+        name: initialRemoteName || 'Usuario',
+        avatarUrl: '',
+        videoEnabled,
+      })
       setIsInitializing(false)
     } catch (error) {
-      console.error('Error answering call:', error)
-      setError('No se pudo contestar la llamada')
+      console.error('Error joining call:', error)
+      setError(error instanceof Error ? error.message : 'No se pudo contestar la llamada')
       setIsInitializing(false)
     }
-  }, [callManager, callState])
+  }, [callManager, initialCallId, initialRemoteName, initialRemoteUserId, videoEnabled])
+
+  useEffect(() => {
+    if (!callManager || autoStartedRef.current) return
+    if (joinExisting && initialCallId) {
+      autoStartedRef.current = true
+      window.setTimeout(() => {
+        void joinCall()
+      }, 0)
+      return
+    }
+    if (initialRemoteUserId && !joinExisting) {
+      autoStartedRef.current = true
+      window.setTimeout(() => {
+        void initiateCall()
+      }, 0)
+    }
+  }, [callManager, initialCallId, initialRemoteUserId, initiateCall, joinCall, joinExisting])
+
+  useEffect(() => {
+    if (!supabase || !user || !callState?.currentCallId) return
+    const channel = supabase
+      .channel(`call-user:${user.id}`)
+      .on('broadcast', { event: 'call_response' }, (event) => {
+        const payload = (event.payload ?? {}) as { callId?: string; action?: string }
+        if (payload.callId !== callState.currentCallId) return
+        if (payload.action === 'decline' || payload.action === 'cancel' || payload.action === 'end') {
+          callManager?.endCall(payload.action)
+        }
+      })
+
+    channel.subscribe()
+    return () => {
+      void supabase?.removeChannel(channel)
+    }
+  }, [callManager, callState?.currentCallId, user])
+
+  const answerCall = useCallback(async () => {
+    await joinCall()
+  }, [joinCall])
 
   const rejectCall = useCallback(() => {
     if (!callManager) return
@@ -157,11 +228,18 @@ export function CallInterface() {
     if (!callManager) return
 
     try {
+      if (supabase && user && participantInfo?.id && callState?.currentCallId) {
+        void sendCallResponse(supabase, participantInfo.id, {
+          callId: callState.currentCallId,
+          action: 'end',
+          fromUserId: user.id,
+        })
+      }
       callManager.endCall('user_hang_up')
     } catch (error) {
       console.error('Error ending call:', error)
     }
-  }, [callManager])
+  }, [callManager, callState, participantInfo, user])
 
   const toggleMute = useCallback(() => {
     if (!callManager) return
@@ -229,12 +307,20 @@ export function CallInterface() {
             </div>
 
             <div className="dialer-actions">
+              <label className="call-mode-toggle">
+                <input
+                  type="checkbox"
+                  checked={videoEnabled}
+                  onChange={(event) => setVideoEnabled(event.target.checked)}
+                />
+                <span>Video</span>
+              </label>
               <button
                 className="call-btn primary"
                 onClick={initiateCall}
                 disabled={!remoteUserId.trim() || isInitializing}
               >
-                {isInitializing ? 'Llamando...' : '📞 Llamar'}
+                {isInitializing ? 'Llamando...' : videoEnabled ? 'Videollamar' : 'Llamar'}
               </button>
             </div>
           </div>
@@ -262,7 +348,7 @@ export function CallInterface() {
             height: 100vh;
             display: flex;
             flex-direction: column;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #121212 0%, #221a1a 48%, #3a1d1d 100%);
             color: white;
           }
 
@@ -327,7 +413,18 @@ export function CallInterface() {
           }
 
           .dialer-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            justify-content: center;
             text-align: center;
+          }
+
+          .call-mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-weight: 600;
           }
 
           .call-btn {
@@ -412,6 +509,7 @@ export function CallInterface() {
           <p>
             {participantInfo?.name || 'Usuario Desconocido'} • 
             {Math.floor(callState.duration / 60)}:{(callState.duration % 60).toString().padStart(2, '0')}
+            {callState.connectionLabel ? ` • ${callState.connectionLabel}` : ''}
           </p>
         </div>
         <div className="call-status">
@@ -526,7 +624,7 @@ export function CallInterface() {
           height: 100vh;
           display: flex;
           flex-direction: column;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, #121212 0%, #221a1a 48%, #3a1d1d 100%);
           color: white;
         }
 
