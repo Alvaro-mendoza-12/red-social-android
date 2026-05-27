@@ -52,6 +52,9 @@ private object LatestSchemaNormalizer {
             ColumnSpec("is_online", "0"),
             ColumnSpec("last_seen", "NULL", coalesceNulls = false),
             ColumnSpec("updated_at", "CAST(strftime('%s','now') AS INTEGER) * 1000")
+        ),
+        indexSql = listOf(
+            "CREATE INDEX IF NOT EXISTS `index_users_username` ON `users` (`username`)"
         )
     )
 

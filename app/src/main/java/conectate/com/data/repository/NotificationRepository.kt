@@ -43,6 +43,10 @@ class NotificationRepository @Inject constructor(
     init {
         // Automatically start observing if we have a user
         scope.launch {
+            if (authService.isLocalFallbackSession()) {
+                _unreadCount.value = 0
+                return@launch
+            }
             authService.getCurrentUserId()?.let {
                 updateUnreadCount()
             }
@@ -104,6 +108,11 @@ class NotificationRepository @Inject constructor(
      */
     suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
         return try {
+            if (authService.isLocalFallbackSession()) {
+                _unreadCount.value = 0
+                return Result.success(emptyList())
+            }
+
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
@@ -181,6 +190,10 @@ class NotificationRepository @Inject constructor(
     }
 
     suspend fun markAsRead(notificationId: String): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            return Result.success(Unit)
+        }
+
         return safeRepositoryCall("notifications.markAsRead") {
             var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
             var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
@@ -213,6 +226,11 @@ class NotificationRepository @Inject constructor(
     }
 
     suspend fun markAllAsRead(): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            _unreadCount.value = 0
+            return Result.success(Unit)
+        }
+
         return safeRepositoryCall("notifications.markAllAsRead") {
             var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
             var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
@@ -247,6 +265,10 @@ class NotificationRepository @Inject constructor(
         actorId: String? = null,
         targetId: String? = null
     ): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            return Result.success(Unit)
+        }
+
         return safeRepositoryCall("notifications.markMatchingAsRead") {
             val normalizedTypes = types
                 .map { it.trim().lowercase() }
@@ -291,10 +313,20 @@ class NotificationRepository @Inject constructor(
     }
 
     suspend fun updateUnreadCount(): Result<Int> {
+        if (authService.isLocalFallbackSession()) {
+            _unreadCount.value = 0
+            return Result.success(0)
+        }
+
         return getUnreadCount()
     }
 
     suspend fun getUnreadCount(): Result<Int> {
+        if (authService.isLocalFallbackSession()) {
+            _unreadCount.value = 0
+            return Result.success(0)
+        }
+
         return safeRepositoryCall("notifications.getUnreadCount") {
             var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
             var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
@@ -323,6 +355,11 @@ class NotificationRepository @Inject constructor(
      * Observable flow of incoming notifications for the current user.
      */
     fun observeNotifications(): Flow<conectate.com.data.model.Notification> = flow {
+        if (authService.isLocalFallbackSession()) {
+            _unreadCount.value = 0
+            return@flow
+        }
+
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
         Log.d("NotificationRepository", "🏠 Starting observeNotifications for user: $userId")
         

@@ -1,9 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm ci --legacy-peer-deps",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "installCommand": "npm --prefix Conectate-web ci --legacy-peer-deps",
+  "buildCommand": "npm run vercel:build",
+  "outputDirectory": "Conectate-web/dist",
   "headers": [
     {
       "source": "/(.*)",
@@ -42,7 +42,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://voice.srv1495648.hstgr.cloud wss://voice.srv1495648.hstgr.cloud; worker-src 'self' blob:; manifest-src 'self';"
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://voice.srv1495648.hstgr.cloud wss://voice.srv1495648.hstgr.cloud https://celtic-poise-omission.ngrok-free.dev; worker-src 'self' blob:; manifest-src 'self';"
         }
       ]
     },
