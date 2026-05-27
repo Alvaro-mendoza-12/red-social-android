@@ -27,6 +27,8 @@ fun ConversationItem(
     onClick: () -> Unit,
     onMute: () -> Unit = {},
     onPin: () -> Unit = {},
+    onFavorite: () -> Unit = {},
+    onArchive: () -> Unit = {},
     onBlock: () -> Unit = {},
     onManageFolders: (() -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -109,6 +111,15 @@ fun ConversationItem(
                             contentDescription = "Chat fijado",
                             modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (conversation.chat.is_favorite) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Chat favorito",
+                            modifier = Modifier.size(14.dp),
+                            tint = Color(0xFFFFB300)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
@@ -243,6 +254,32 @@ fun ConversationItem(
                     },
                     leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) }
                 )
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_favorite) "Quitar de favoritos" else "Agregar a favoritos") },
+                    onClick = {
+                        showMenu = false
+                        onFavorite()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (conversation.chat.is_favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = null
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_archived) "Desarchivar" else "Archivar") },
+                    onClick = {
+                        showMenu = false
+                        onArchive()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (conversation.chat.is_archived) Icons.Default.Unarchive else Icons.Default.Archive,
+                            contentDescription = null
+                        )
+                    }
+                )
                 if (onManageFolders != null) {
                     DropdownMenuItem(
                         text = { Text("Añadir a carpeta") },
@@ -318,6 +355,8 @@ fun ConversationItemWithSwipe(
     onClick: () -> Unit,
     onMute: () -> Unit,
     onPin: () -> Unit,
+    onFavorite: () -> Unit,
+    onArchive: () -> Unit,
     onBlock: () -> Unit,
     onManageFolders: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -353,6 +392,8 @@ fun ConversationItemWithSwipe(
                onClick = onClick,
                onMute = onMute,
                onPin = onPin,
+               onFavorite = onFavorite,
+               onArchive = onArchive,
                onBlock = onBlock,
                onManageFolders = onManageFolders,
                onDelete = onDelete,

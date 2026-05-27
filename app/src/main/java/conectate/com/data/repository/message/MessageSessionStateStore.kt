@@ -1,14 +1,18 @@
 package conectate.com.data.repository.message
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
+import javax.inject.Singleton
 
-internal class MessageSessionStateStore(
-    private val context: Context
+@Singleton
+class MessageSessionStateStore @Inject constructor(
+    @ApplicationContext private val context: Context
 ) {
     companion object {
         private const val VIEW_ONCE_PREFS = "view_once_guard"

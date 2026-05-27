@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.R
 import conectate.com.data.model.StoredAccountSession
+import conectate.com.data.supabase.mapSupabaseServiceRestrictionMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import java.time.Instant
@@ -47,6 +48,7 @@ private fun formatSuspensionDateForUi(raw: String?): String {
 
 
 
+@Composable
 fun LoginScreen(
     navController: NavController,
     isAddAccountMode: Boolean = false,
@@ -56,7 +58,11 @@ fun LoginScreen(
     var loginType by rememberSaveable { mutableStateOf(if (isAddAccountMode) "email" else null) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var twoFactorCode by rememberSaveable { mutableStateOf("") }
+    var backupCode by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var showTwoFactorInputs by rememberSaveable { mutableStateOf(false) }
+    var useBackupCode by rememberSaveable { mutableStateOf(false) }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
     var switchingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     
@@ -71,10 +77,18 @@ fun LoginScreen(
         authErrorText.contains("suspendida", ignoreCase = true) ||
         authErrorText.contains("inhabilitada", ignoreCase = true) ||
         authErrorText.contains("ACCOUNT_SUSPENDED", ignoreCase = true)
+    val requiresTwoFactor = authErrorText.contains("2FA", ignoreCase = true)
+    val serviceRestrictionMessage =
+        mapSupabaseServiceRestrictionMessage(accountSwitchMessage, fallback = null)
+            ?: mapSupabaseServiceRestrictionMessage(authErrorText, fallback = null)
+    val quickAccessRestricted = !serviceRestrictionMessage.isNullOrBlank()
 
     LaunchedEffect(authErrorText, suspendedState) {
         if (isSuspensionError) {
             showSuspendedDialog = true
+        }
+        if (requiresTwoFactor) {
+            showTwoFactorInputs = true
         }
     }
 
@@ -85,7 +99,7 @@ fun LoginScreen(
     }
 
     LaunchedEffect(authState, isAddAccountMode) {
-        if (!isAddAccountMode || authState !is AuthState.Success) return
+        if (!isAddAccountMode || authState !is AuthState.Success) return@LaunchedEffect
         navController.navigate(Screen.Home.createRoute(startTab = "messages")) {
             popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
             launchSingleTop = true
@@ -125,6 +139,8 @@ fun LoginScreen(
                         viewModel.resetAuthState()
                         email = ""
                         password = ""
+                        twoFactorCode = ""
+                        backupCode = ""
                         loginType = "email"
                     }
                 ) {
@@ -171,13 +187,14 @@ fun LoginScreen(
         }
 
         if (!accountSwitchMessage.isNullOrBlank()) {
+            val isPositiveFeedback = isPositiveAccountSwitchMessage(accountSwitchMessage)
             Spacer(modifier = Modifier.height(16.dp))
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (authState is AuthState.Error) {
-                        MaterialTheme.colorScheme.errorContainer
-                    } else {
+                    containerColor = if (isPositiveFeedback) {
                         MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
                     }
                 ),
                 modifier = Modifier.fillMaxWidth()
@@ -185,17 +202,18 @@ fun LoginScreen(
                 Text(
                     text = accountSwitchMessage.orEmpty(),
                     modifier = Modifier.padding(16.dp),
-                    color = if (authState is AuthState.Error) {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    } else {
+                    color = if (isPositiveFeedback) {
                         MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onErrorContainer
                     },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             LaunchedEffect(accountSwitchMessage) {
-                if (!accountSwitchMessage.isNullOrBlank()) {
-                    kotlinx.coroutines.delay(2600)
+                val autoClearDelayMs = accountSwitchMessageAutoClearDelayMs(accountSwitchMessage)
+                if (autoClearDelayMs != null) {
+                    kotlinx.coroutines.delay(autoClearDelayMs)
                     viewModel.clearAccountSwitchMessage()
                 }
             }
@@ -205,10 +223,29 @@ fun LoginScreen(
 
         // Show method selection or login form
         if (!isAddAccountMode && loginType == null) {
+            if (accountSwitchMessage.isNullOrBlank() && !serviceRestrictionMessage.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = serviceRestrictionMessage,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
             if (storedAccounts.isNotEmpty()) {
                 SavedAccountsSection(
                     accounts = storedAccounts,
                     switchingAccountId = switchingAccountId,
+                    quickAccessEnabled = !quickAccessRestricted,
+                    restrictionMessage = serviceRestrictionMessage,
                     onUseAccount = { account ->
                         switchingAccountId = account.id
                         viewModel.switchAccount(account.id)
@@ -271,20 +308,14 @@ fun LoginScreen(
                         viewModel.setAuthError(
                             "Primero inicia sesión o guarda una cuenta en este dispositivo para aprobar un acceso por QR."
                         )
-                        return
+                        return@OutlinedButton
                     }
-                    navController.navigate(
-                        Screen.QrScanner.createRoute(
-                            source = "login",
-                            mode = "web_only"
-                        )
-                    ) {
-                        launchSingleTop = true
-                    }
+                    navController.navigate(Screen.WebLoginScanner.createRoute())
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(56.dp),
+                enabled = !quickAccessRestricted
             ) {
                 Icon(
                     imageVector = Icons.Default.QrCodeScanner,
@@ -292,8 +323,18 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Escanear QR de Conectate Web",
+                    text = "Escanear código para iniciar en modo web",
                     style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            if (!serviceRestrictionMessage.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "El acceso rápido y la aprobación por QR quedan pausados mientras el proyecto siga restringido en Supabase.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
                 )
             }
 
@@ -340,11 +381,53 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (showTwoFactorInputs) {
+                OutlinedTextField(
+                    value = if (useBackupCode) backupCode else twoFactorCode,
+                    onValueChange = {
+                        if (useBackupCode) {
+                            backupCode = it
+                        } else {
+                            twoFactorCode = it.filter(Char::isDigit).take(6)
+                        }
+                    },
+                    label = {
+                        Text(if (useBackupCode) "Código de respaldo" else "Código 2FA")
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = if (useBackupCode) KeyboardType.Text else KeyboardType.Number
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = { useBackupCode = !useBackupCode }
+                ) {
+                    Text(
+                        if (useBackupCode) {
+                            "Usar código 2FA de la app"
+                        } else {
+                            "Usar código de respaldo"
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // Login Button
             Button(
                 onClick = {
                     if (email.isNotBlank() && password.isNotBlank()) {
-                        viewModel.signInWithEmail(email, password)
+                        viewModel.signInWithEmail(
+                            email = email,
+                            password = password,
+                            twoFactorCode = twoFactorCode.takeIf { showTwoFactorInputs && !useBackupCode && it.isNotBlank() },
+                            backupCode = backupCode.takeIf { showTwoFactorInputs && useBackupCode && it.isNotBlank() }
+                        )
                     }
                 },
                 modifier = Modifier
@@ -458,12 +541,21 @@ fun LoginScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = (authState as AuthState.Error).message,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = (authState as AuthState.Error).message,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (requiresTwoFactor) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Completa el codigo de tu app autenticadora o usa un codigo de respaldo.",
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -471,9 +563,12 @@ fun LoginScreen(
 }
 
 
+@Composable
 private fun SavedAccountsSection(
     accounts: List<StoredAccountSession>,
     switchingAccountId: String?,
+    quickAccessEnabled: Boolean,
+    restrictionMessage: String?,
     onUseAccount: (StoredAccountSession) -> Unit,
     onRemoveAccount: (StoredAccountSession) -> Unit
 ) {
@@ -487,10 +582,22 @@ private fun SavedAccountsSection(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Toca una cuenta para entrar rápido sin volver a escribir correo y contraseña.",
+            text = if (quickAccessEnabled) {
+                "Toca una cuenta para entrar rápido sin volver a escribir correo y contraseña."
+            } else {
+                "El acceso rápido está pausado porque el backend del proyecto está temporalmente restringido."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f)
         )
+
+        if (!restrictionMessage.isNullOrBlank()) {
+            Text(
+                text = restrictionMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
 
         accounts.forEach { account ->
             Card(
@@ -535,7 +642,7 @@ private fun SavedAccountsSection(
                     }
                     Button(
                         onClick = { onUseAccount(account) },
-                        enabled = switchingAccountId != account.id
+                        enabled = quickAccessEnabled && switchingAccountId != account.id
                     ) {
                         if (switchingAccountId == account.id) {
                             CircularProgressIndicator(

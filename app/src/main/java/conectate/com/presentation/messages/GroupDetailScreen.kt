@@ -172,15 +172,16 @@ fun GroupDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            if (!group?.image.isNullOrEmpty()) {
+                            val groupImage = group?.image
+                            if (!groupImage.isNullOrEmpty()) {
                                 AsyncImage(
-                                    model = group?.image,
+                                    model = groupImage,
                                     contentDescription = "Imagen del grupo",
                                     modifier = Modifier
                                         .size(100.dp)
                                         .clip(androidx.compose.foundation.shape.CircleShape)
                                         .clickable {
-                                            navController.navigate(Screen.FullScreenImage.createRoute(group!!.image!!))
+                                            navController.navigate(Screen.FullScreenImage.createRoute(groupImage))
                                         },
                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                 )
@@ -198,9 +199,9 @@ fun GroupDetailScreen(
                                 style = MaterialTheme.typography.headlineSmall
                             )
                             
-                            if (group?.description != null) {
+                            group?.description?.let { description ->
                                 Text(
-                                    text = group!!.description!!,
+                                    text = description,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -274,9 +275,10 @@ fun GroupDetailScreen(
         )
     }
 
-    if (showEditGroupDialog) {
+    val editableGroup = group
+    if (showEditGroupDialog && editableGroup != null) {
         EditGroupDialog(
-            group = group!!,
+            group = editableGroup,
             onDismiss = { showEditGroupDialog = false },
             onConfirm = { name, desc, img, onlyAdmins ->
                 viewModel.updateGroupInfo(name, desc, img, onlyAdmins) {

@@ -35,7 +35,6 @@
     "src/core/pwa/ServiceWorker.ts",
     "src/features/calls/WebCallManager.ts",
     "src/features/realtime",
-    "src/features/voice/VoiceRoomPage.tsx",
     "src/features/voice/WebRTCManager.ts",
     "src/ml",
     "src/pages/enterprise",

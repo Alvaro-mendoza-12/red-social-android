@@ -130,35 +130,93 @@ class SocialViewModel @Inject constructor(
     }
 
     fun toggleLike(post: Post) {
+        val currentReaction = post.myReaction?.uppercase()?.ifBlank { null }
+            ?: if (post.likedByMe) "LIKE" else null
+        if (currentReaction != null) {
+            clearReaction(post)
+        } else {
+            selectReaction(post, "LIKE")
+        }
+    }
+
+    fun selectReaction(post: Post, reactionType: String) {
+        updatePostReaction(post, reactionType)
+    }
+
+    fun clearReaction(post: Post) {
+        updatePostReaction(post, null)
+    }
+
+    private fun updatePostReaction(post: Post, reactionType: String?) {
         if (!likeRequestsInFlight.add(post.id)) return
         viewModelScope.launch {
+            val previousReaction = post.myReaction?.uppercase()?.ifBlank { null }
+                ?: if (post.likedByMe) "LIKE" else null
+            val nextReaction = reactionType?.uppercase()?.ifBlank { null }
             try {
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
-                
                 _posts.value = _posts.value.map {
-                    if (it.id == post.id) it.copy(likedByMe = !wasLiked, likeCount = newLikeCount) else it
+                    if (it.id == post.id) applyReactionState(it, previousReaction, nextReaction) else it
                 }
-                feedSignalTracker.recordInteraction(
-                    post = post,
-                    action = if (wasLiked) FeedInteractionAction.UNLIKE else FeedInteractionAction.LIKE
-                )
+                if (previousReaction == null && nextReaction != null) {
+                    feedSignalTracker.recordInteraction(post = post, action = FeedInteractionAction.LIKE)
+                } else if (previousReaction != null && nextReaction == null) {
+                    feedSignalTracker.recordInteraction(post = post, action = FeedInteractionAction.UNLIKE)
+                }
 
-                val result = postRepository.toggleLike(post.id, wasLiked)
+                val result = postRepository.setPostReaction(
+                    postId = post.id,
+                    reactionType = nextReaction,
+                    wasReacted = previousReaction != null
+                )
                 if (result.isFailure) {
                     _posts.value = _posts.value.map {
-                        if (it.id == post.id) it.copy(likedByMe = wasLiked, likeCount = post.likeCount) else it
+                        if (it.id == post.id) post else it
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SocialViewModel", "Error toggling like", e)
+                android.util.Log.e("SocialViewModel", "Error updating reaction", e)
                 _posts.value = _posts.value.map {
-                    if (it.id == post.id) it.copy(likedByMe = post.likedByMe, likeCount = post.likeCount) else it
+                    if (it.id == post.id) post else it
                 }
             } finally {
                 likeRequestsInFlight.remove(post.id)
             }
         }
+    }
+
+    private fun applyReactionState(
+        post: Post,
+        previousReaction: String?,
+        nextReaction: String?
+    ): Post {
+        if (previousReaction == nextReaction) return post
+
+        val counts = post.reactionCounts.toMutableMap()
+        if (counts.isEmpty() && post.likeCount > 0) {
+            counts["LIKE"] = post.likeCount
+        }
+
+        if (previousReaction != null) {
+            val previousCount = maxOf(0, (counts[previousReaction] ?: 1) - 1)
+            if (previousCount == 0) counts.remove(previousReaction) else counts[previousReaction] = previousCount
+        }
+
+        if (nextReaction != null) {
+            counts[nextReaction] = (counts[nextReaction] ?: 0) + 1
+        }
+
+        val countDelta = when {
+            previousReaction == null && nextReaction != null -> 1
+            previousReaction != null && nextReaction == null -> -1
+            else -> 0
+        }
+
+        return post.copy(
+            likedByMe = nextReaction != null,
+            myReaction = nextReaction,
+            reactionCounts = counts.toMap(),
+            likeCount = maxOf(0, post.likeCount + countDelta)
+        )
     }
 
     fun togglePostShare(post: Post) {

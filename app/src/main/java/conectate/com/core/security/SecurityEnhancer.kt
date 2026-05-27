@@ -19,7 +19,7 @@ class SecurityEnhancer(private val context: Context) {
     
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .setKeySize(256)
+
         .build()
     
     private val encryptedPrefs = EncryptedSharedPreferences.create(
@@ -97,7 +97,7 @@ class SecurityEnhancer(private val context: Context) {
                 "jpg", "jpeg" -> bytes.contentEquals(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
                 "png" -> bytes.contentEquals(byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte()))
                 "gif" -> bytes.contentEquals(byteArrayOf(0x47.toByte(), 0x49.toByte(), 0x46.toByte()))
-                "mp4" -> bytes.startsWith("ftyp".toByteArray())
+                "mp4" -> bytes.size >= 4 && bytes.sliceArray(0 until 4).contentEquals("ftyp".toByteArray())
                 else -> true // Permitir otros formatos por ahora
             }
         } catch (e: Exception) {

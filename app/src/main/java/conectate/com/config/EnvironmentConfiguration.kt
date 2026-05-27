@@ -1,5 +1,6 @@
 package conectate.com.config
 
+import conectate.com.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
@@ -27,6 +28,8 @@ class EnvironmentConfiguration @Inject constructor() {
     
     // 🔥 CURRENT ENVIRONMENT DETECTION
     val currentEnvironment: Environment = detectEnvironment()
+    private val configuredSupabaseUrl = BuildConfig.SUPABASE_URL.trim()
+    private val configuredSupabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY.trim()
     
     private fun detectEnvironment(): Environment {
         return when (System.getProperty("app.env") ?: "development") {
@@ -47,25 +50,25 @@ class EnvironmentConfiguration @Inject constructor() {
     
     val supabaseConfig: SupabaseConfig = when (currentEnvironment) {
         Environment.DEVELOPMENT -> SupabaseConfig(
-            url = "https://dev-conectate.supabase.co",
-            anonKey = "dev_anon_key_placeholder",
-            serviceKey = "dev_service_key_placeholder",
-            databaseUrl = "postgresql://dev_user:dev_pass@dev-db.supabase.co:5432/postgres",
-            storageUrl = "https://dev-conectate.supabase.co/storage/v1"
+            url = configuredSupabaseUrl,
+            anonKey = configuredSupabaseAnonKey,
+            serviceKey = "",
+            databaseUrl = "",
+            storageUrl = configuredSupabaseUrl.takeIf { it.isNotBlank() }?.let { "$it/storage/v1" }.orEmpty()
         )
         Environment.STAGING -> SupabaseConfig(
-            url = "https://staging-conectate.supabase.co",
-            anonKey = "staging_anon_key_placeholder",
-            serviceKey = "staging_service_key_placeholder",
-            databaseUrl = "postgresql://staging_user:staging_pass@staging-db.supabase.co:5432/postgres",
-            storageUrl = "https://staging-conectate.supabase.co/storage/v1"
+            url = configuredSupabaseUrl,
+            anonKey = configuredSupabaseAnonKey,
+            serviceKey = "",
+            databaseUrl = "",
+            storageUrl = configuredSupabaseUrl.takeIf { it.isNotBlank() }?.let { "$it/storage/v1" }.orEmpty()
         )
         Environment.PRODUCTION -> SupabaseConfig(
-            url = "https://conectate.supabase.co",
-            anonKey = "prod_anon_key_placeholder",
-            serviceKey = "prod_service_key_placeholder",
-            databaseUrl = "postgresql://prod_user:prod_pass@prod-db.supabase.co:5432/postgres",
-            storageUrl = "https://conectate.supabase.co/storage/v1"
+            url = configuredSupabaseUrl,
+            anonKey = configuredSupabaseAnonKey,
+            serviceKey = "",
+            databaseUrl = "",
+            storageUrl = configuredSupabaseUrl.takeIf { it.isNotBlank() }?.let { "$it/storage/v1" }.orEmpty()
         )
     }
     
@@ -81,21 +84,21 @@ class EnvironmentConfiguration @Inject constructor() {
     val firebaseConfig: FirebaseConfig = when (currentEnvironment) {
         Environment.DEVELOPMENT -> FirebaseConfig(
             projectId = "conectate-dev",
-            apiKey = "dev_api_key_placeholder",
+            apiKey = "",
             applicationId = "conectate.com.dev",
             messagingSenderId = "123456789",
             storageBucket = "conectate-dev.appspot.com"
         )
         Environment.STAGING -> FirebaseConfig(
             projectId = "conectate-staging",
-            apiKey = "staging_api_key_placeholder",
+            apiKey = "",
             applicationId = "conectate.com.staging",
             messagingSenderId = "987654321",
             storageBucket = "conectate-staging.appspot.com"
         )
         Environment.PRODUCTION -> FirebaseConfig(
             projectId = "conectate-prod",
-            apiKey = "prod_api_key_placeholder",
+            apiKey = "",
             applicationId = "conectate.com",
             messagingSenderId = "555666777",
             storageBucket = "conectate-prod.appspot.com"
@@ -314,7 +317,6 @@ class EnvironmentConfiguration @Inject constructor() {
         
         // Validar Firebase config
         if (firebaseConfig.projectId.isBlank()) issues.add("Firebase project ID is required")
-        if (firebaseConfig.apiKey.isBlank()) issues.add("Firebase API key is required")
         
         // Validar API config
         if (apiConfig.baseUrl.isBlank()) issues.add("API base URL is required")

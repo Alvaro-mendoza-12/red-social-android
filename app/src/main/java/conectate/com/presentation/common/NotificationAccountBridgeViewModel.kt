@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 
-class NotificationAccountBridgeViewModel  constructor(
+@HiltViewModel
+class NotificationAccountBridgeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val multiAccountInboxRepository: MultiAccountInboxRepository
 ) : ViewModel() {

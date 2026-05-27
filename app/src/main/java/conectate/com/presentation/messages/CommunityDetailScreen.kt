@@ -53,9 +53,10 @@ fun CommunityDetailScreen(
 
     // Detectar si la comunidad ha sido eliminada o el usuario expulsado
     LaunchedEffect(community, members, isLoading) {
-        if (!isLoading && community != null && currentUserId != null) {
+        val currentCommunity = community
+        if (!isLoading && currentCommunity != null && currentUserId != null) {
             val isStillMember = members.any { it.user_id == currentUserId }
-            if (community?.is_deleted == true || (!community?.is_public!! && members.isNotEmpty() && !isStillMember)) {
+            if (currentCommunity.is_deleted || (!currentCommunity.is_public && members.isNotEmpty() && !isStillMember)) {
                 showDeletedByOtherAlert = true
             }
         } else if (!isLoading && community == null) {
@@ -155,15 +156,16 @@ fun CommunityDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            if (!community?.image.isNullOrEmpty()) {
+                            val communityImage = community?.image
+                            if (!communityImage.isNullOrEmpty()) {
                                 AsyncImage(
-                                    model = community?.image,
+                                    model = communityImage,
                                     contentDescription = "Imagen de la comunidad",
                                     modifier = Modifier
                                         .size(100.dp)
                                         .clip(androidx.compose.foundation.shape.CircleShape)
                                         .clickable {
-                                            navController.navigate(Screen.FullScreenImage.createRoute(community!!.image!!))
+                                            navController.navigate(Screen.FullScreenImage.createRoute(communityImage))
                                         },
                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                 )
@@ -181,18 +183,18 @@ fun CommunityDetailScreen(
                                 style = MaterialTheme.typography.headlineSmall
                             )
                             
-                            if (community?.description != null) {
+                            community?.description?.let { description ->
                                 Text(
-                                    text = community!!.description!!,
+                                    text = description,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             
-                            if (community?.category != null) {
+                            community?.category?.let { category ->
                                 AssistChip(
                                     onClick = { },
-                                    label = { Text(community!!.category!!) },
+                                    label = { Text(category) },
                                     enabled = false
                                 )
                             }
@@ -270,9 +272,10 @@ fun CommunityDetailScreen(
         }
     }
 
-    if (showEditCommunityDialog) {
+    val editableCommunity = community
+    if (showEditCommunityDialog && editableCommunity != null) {
         EditCommunityDialog(
-            community = community!!,
+            community = editableCommunity,
             onDismiss = { showEditCommunityDialog = false },
             onConfirm = { name, desc, img, isPub, onlyAdmins ->
                 viewModel.updateCommunityInfo(name, desc, img, isPub, onlyAdmins) {

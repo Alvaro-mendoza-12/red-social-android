@@ -110,6 +110,7 @@ class WebRTCManager(
             Log.e("WebRTCManager", "EGL init failed video rendering will stay disabled", throwable)
         }
         .getOrNull()
+    val eglContext: EglBase.Context? get() = rootEglBase?.eglBaseContext
     private var audioDeviceModule: JavaAudioDeviceModule? = null
     
     private var localAudioTrack: AudioTrack? = null
@@ -1455,9 +1456,33 @@ class WebRTCManager(
 
     // --- MEDIA CONTROL ---
 
+    fun setVideoEnabled(enabled: Boolean) {
+        executor.execute {
+            if (outgoingVideoEnabled == enabled && _localVideoTrackFlow.value != null == enabled) return@execute
+            outgoingVideoEnabled = enabled
+            if (enabled) {
+                if (_localVideoTrackFlow.value == null) {
+                    startVideo(isScreen = false)
+                } else {
+                    _localVideoTrackFlow.value?.setEnabled(true)
+                }
+            } else {
+                _localVideoTrackFlow.value?.setEnabled(false)
+            }
+            updateLocalVideoSenders(if (enabled) _localVideoTrackFlow.value else null)
+        }
+    }
+
+    fun switchCamera() {
+        executor.execute {
+            (videoCapturer as? CameraVideoCapturer)?.switchCamera(null)
+        }
+    }
+
+
     fun startVideo(
         isScreen: Boolean,
-        intent: android.content.Intent = null,
+        intent: android.content.Intent? = null,
         isFront: Boolean = true,
         targetWidth: Int? = null,
         targetHeight: Int? = null,
@@ -1805,7 +1830,9 @@ class WebRTCManager(
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             routeSpeakerphone(audioManager, enabled = on)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w("WebRTCManager", "Failed to route speakerphone to on=$on", e)
+        }
     }
 
     open class SdpObserverAdapter : SdpObserver {
@@ -1865,7 +1892,12 @@ class WebRTCManager(
             // Wait with short timeout to aggregate
             try {
                 latch.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } catch (e: Exception) {}
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Log.w("WebRTCManager", "Interrupted while waiting for remote audio levels", e)
+            } catch (e: Exception) {
+                Log.w("WebRTCManager", "Failed while waiting for remote audio levels", e)
+            }
             
             callback(levels)
         }

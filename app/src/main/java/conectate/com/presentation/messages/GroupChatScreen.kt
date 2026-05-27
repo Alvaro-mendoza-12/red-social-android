@@ -740,11 +740,11 @@ fun GroupChatScreen(
         }
     }
 
-    if (fullScreenImageInitialIndex != null) {
+    fullScreenImageInitialIndex?.let { initialIndex ->
         val activeMediaItems = if (oneTimeMediaItems.isNotEmpty()) oneTimeMediaItems else fullScreenMediaItems
         FullScreenImageDialog(
             mediaItems = activeMediaItems,
-            initialIndex = fullScreenImageInitialIndex!!,
+            initialIndex = initialIndex,
             onDismiss = {
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
@@ -765,7 +765,7 @@ fun GroupChatScreen(
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 
-                                viewModel.onEditMessage(selectedMessage!!) 
+                                selectedMessage?.let { viewModel.onEditMessage(it) }
                                 viewModel.dismissMessageActions()
                             }
                             .padding(16.dp),
@@ -781,7 +781,7 @@ fun GroupChatScreen(
                     Row(modifier = Modifier
                         .fillMaxWidth()
                         .clickable { 
-                            viewModel.deleteMessageForMe(selectedMessage!!) 
+                            selectedMessage?.let { viewModel.deleteMessageForMe(it) }
                             viewModel.dismissMessageActions()
                         }
                         .padding(16.dp),
@@ -797,7 +797,7 @@ fun GroupChatScreen(
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 
-                                viewModel.deleteMessageForEveryone(selectedMessage!!) 
+                                selectedMessage?.let { viewModel.deleteMessageForEveryone(it) }
                                 viewModel.dismissMessageActions()
                             }
                             .padding(16.dp),
@@ -814,7 +814,7 @@ fun GroupChatScreen(
                      Row(modifier = Modifier
                         .fillMaxWidth()
                         .clickable { 
-                            viewModel.deleteMessageForMe(selectedMessage!!) 
+                            selectedMessage?.let { viewModel.deleteMessageForMe(it) }
                             viewModel.dismissMessageActions()
                         }
                         .padding(16.dp),
@@ -877,7 +877,7 @@ fun GroupChatScreen(
                  Row(modifier = Modifier
                     .fillMaxWidth()
                     .clickable { 
-                        viewModel.onSwipeToReply(selectedMessage!!)
+                        selectedMessage?.let { viewModel.onSwipeToReply(it) }
                         viewModel.dismissMessageActions()
                     }
                     .padding(16.dp),
@@ -893,7 +893,7 @@ fun GroupChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                viewModel.openMessageInfo(selectedMessage!!)
+                                selectedMessage?.let { viewModel.openMessageInfo(it) }
                                 viewModel.dismissMessageActions()
                             }
                             .padding(16.dp),
@@ -1009,10 +1009,12 @@ fun GroupChatScreen(
         )
     }
 
-    if (pendingMediaUri != null && pendingMediaType != null) {
+    val selectedMediaUri = pendingMediaUri
+    val selectedMediaType = pendingMediaType
+    if (selectedMediaUri != null && selectedMediaType != null) {
         MediaCaptionPreviewDialog(
-            mediaUri = pendingMediaUri!!,
-            mediaType = pendingMediaType!!,
+            mediaUri = selectedMediaUri,
+            mediaType = selectedMediaType,
             caption = pendingMediaCaption,
             onCaptionChange = { pendingMediaCaption = it },
             onDismiss = {

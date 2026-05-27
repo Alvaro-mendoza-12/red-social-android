@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import java.util.UUID
@@ -48,25 +50,56 @@ class PostRepository @Inject constructor(
     private val upstashCache: UpstashCacheService,
     @ApplicationContext private val context: Context
 ) {
+    private val cacheJson = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        encodeDefaults = true
+    }
+
+    @Serializable
+    private data class PostReactionRequest(
+        @SerialName("post_id") val postId: String,
+        @SerialName("user_id") val userId: String,
+        @SerialName("reaction_type") val reactionType: String
+    )
+
+    private data class PostReactionSnapshot(
+        val myReaction: String?,
+        val counts: Map<String, Int>
+    )
+
+    private data class MutablePostReactionSnapshot(
+        var myReaction: String? = null,
+        val counts: MutableMap<String, Int> = mutableMapOf()
+    )
+
+    private val supportedPostReactions = setOf(
+        "LIKE",
+        "LOVE",
+        "HAHA",
+        "WOW",
+        "SAD",
+        "ANGRY",
+        "CARE",
+        "FIRE"
+    )
 
     fun getGlobalPosts(offset: Int = 0, limit: Int = 20): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
         val cacheKey = "posts:global:offset=$offset:limit=$limit"
         
         try {
-            // 1. Intentar cache primero (solo para primera página)
             if (offset == 0) {
                 val cachedJson = upstashCache.get(cacheKey)
-                if (cachedJson != null) {
-                    // Parse JSON a lista de Posts (requiere serialización)
-                    // Por ahora, skip por complejidad de deserialización sin Json object
-                    // En producción, usar kotlinx.serialization.decodeFromString<List<Post>>()
-                    // Por ahora solo emitimos vacío y recargamos
-                    // emit(emptyList()) // No emitimos cache hasta tener deserialización
+                val cachedPosts = cachedJson
+                    ?.let { runCatching { cacheJson.decodeFromString<List<Post>>(it) }.getOrNull() }
+                    ?.takeIf { it.isNotEmpty() }
+                if (cachedPosts != null) {
+                    appMetrics.incrementCounter("posts_cache_hit")
+                    emit(cachedPosts)
                 }
             }
 
-            // 2. Fetch desde Supabase
             var accessToken = authService.getAccessToken()
             if (accessToken != null) {
                 var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
@@ -88,14 +121,15 @@ class PostRepository @Inject constructor(
                         var sharedIds = getUserSharedContentIds(currentUserId, "post")
                         rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = sharedIds.contains(it.id)) }
                     } else rawPosts
+                    posts = enrichPostReactions(accessToken, posts, currentUserId)
 
-                    // 3. Cachear si es primera página
                     if (offset == 0 && posts.isNotEmpty()) {
-                        // Serializar a JSON (pendiente: implementar con kotlinx.serialization)
-                        // var json = Json.encodeToString(posts)
-                        // upstashCache.set(cacheKey, json, 300) // 5 min TTL
-                        // Por ahora solo metric
-                        appMetrics.incrementCounter("posts_cache_store")
+                        val stored = runCatching {
+                            upstashCache.set(cacheKey, cacheJson.encodeToString(posts), 300)
+                        }.getOrDefault(false)
+                        if (stored) {
+                            appMetrics.incrementCounter("posts_cache_store")
+                        }
                     }
 
                     appMetrics.incrementCounter(
@@ -155,6 +189,7 @@ class PostRepository @Inject constructor(
                         var sharedIds = getUserSharedContentIds(currentUserId, "post")
                         rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = sharedIds.contains(it.id)) }
                     } else rawPosts
+                    posts = enrichPostReactions(accessToken, posts, currentUserId)
                     
                     emit(posts)
                 } else {
@@ -199,6 +234,7 @@ class PostRepository @Inject constructor(
                     // Note: sharedIds already contains the IDs for this user, so sharedByMe is true for all
                     rawPosts.map { it.copy(likedByMe = likedIds.contains(it.id), sharedByMe = true) }
                 } else rawPosts
+                posts = enrichPostReactions(accessToken, posts, currentUserId)
                 
                 emit(posts)
             }
@@ -208,8 +244,8 @@ class PostRepository @Inject constructor(
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 
-@Composable
-@Composable
+
+
     suspend fun getPostById(postId: String): Result<Post> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -231,7 +267,7 @@ class PostRepository @Inject constructor(
                         post.copy(likedByMe = likedIds.contains(post.id), sharedByMe = sharedIds.contains(post.id))
                     } else post
                 
-                Result.success(enrichedPost)
+                Result.success(enrichPostReactions(accessToken, listOf(enrichedPost), currentUserId).first())
             } else {
                 Result.failure(Exception("Error al buscar publicación: ${response.status}"))
             }
@@ -280,6 +316,97 @@ class PostRepository @Inject constructor(
         } catch (e: Exception) {
             emptySet()
         }
+    }
+
+    private suspend fun enrichPostReactions(
+        accessToken: String,
+        posts: List<Post>,
+        currentUserId: String?
+    ): List<Post> {
+        if (posts.isEmpty()) return posts
+
+        val snapshots = getPostReactionSnapshots(
+            accessToken = accessToken,
+            postIds = posts.map { it.id },
+            currentUserId = currentUserId
+        )
+
+        return posts.map { post ->
+            val snapshot = snapshots[post.id]
+            val detailedCounts = snapshot?.counts.orEmpty()
+            val legacyReaction = if (post.likedByMe) "LIKE" else null
+            val fallbackCounts = if (post.likeCount > 0) mapOf("LIKE" to post.likeCount) else emptyMap()
+            val reactionCounts = detailedCounts.takeIf { it.isNotEmpty() } ?: fallbackCounts
+            val reactionTotal = reactionCounts.values.sum()
+
+            post.copy(
+                likedByMe = post.likedByMe || snapshot?.myReaction != null,
+                myReaction = snapshot?.myReaction ?: post.myReaction ?: legacyReaction,
+                reactionCounts = reactionCounts,
+                likeCount = maxOf(post.likeCount, reactionTotal)
+            )
+        }
+    }
+
+    private suspend fun getPostReactionSnapshots(
+        accessToken: String,
+        postIds: List<String>,
+        currentUserId: String?
+    ): Map<String, PostReactionSnapshot> {
+        val cleanPostIds = postIds
+            .map { it.trim() }
+            .filter { it.matches(Regex("^[0-9a-fA-F-]{32,36}$")) }
+            .distinct()
+
+        if (cleanPostIds.isEmpty()) return emptyMap()
+
+        return try {
+            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_reactions") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("select", "post_id,user_id,reaction_type")
+                parameter("post_id", cleanPostIds.joinToString(prefix = "in.(", postfix = ")"))
+            }
+
+            if (!response.status.isSuccess()) {
+                android.util.Log.w("PostRepository", "post_reactions unavailable: ${response.status}")
+                return emptyMap()
+            }
+
+            val rows: List<JsonObject> = response.body()
+            val snapshots = mutableMapOf<String, MutablePostReactionSnapshot>()
+            rows.forEach { row ->
+                val postId = row["post_id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                val userId = row["user_id"]?.jsonPrimitive?.contentOrNull
+                val reaction = normalizePostReaction(row["reaction_type"]?.jsonPrimitive?.contentOrNull)
+                    ?: return@forEach
+
+                val snapshot = snapshots.getOrPut(postId) { MutablePostReactionSnapshot() }
+                snapshot.counts[reaction] = (snapshot.counts[reaction] ?: 0) + 1
+                if (currentUserId != null && userId == currentUserId) {
+                    snapshot.myReaction = reaction
+                }
+            }
+
+            snapshots.mapValues { (_, snapshot) ->
+                PostReactionSnapshot(
+                    myReaction = snapshot.myReaction,
+                    counts = snapshot.counts.toMap()
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("PostRepository", "Failed to load post reactions", e)
+            emptyMap()
+        }
+    }
+
+    private fun normalizePostReaction(reactionType: String?): String? {
+        val normalized = reactionType
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return normalized.takeIf { it in supportedPostReactions }
     }
 
     suspend fun createPost(content: String, mediaUris: List<Uri>, visibility: String = "public"): Result<Post> {
@@ -423,32 +550,195 @@ class PostRepository @Inject constructor(
     }
 
     suspend fun toggleLike(postId: String, isLiked: Boolean): Result<Unit> {
+        return setPostReaction(
+            postId = postId,
+            reactionType = if (isLiked) null else "LIKE",
+            wasReacted = isLiked
+        )
+    }
+
+    suspend fun setPostReaction(
+        postId: String,
+        reactionType: String?,
+        wasReacted: Boolean
+    ): Result<Unit> {
         return try {
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            val normalizedReaction = normalizePostReaction(reactionType)
 
-            if (isLiked) {
-                // Unlike
-                supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
-                    header("Authorization", "Bearer $accessToken")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    parameter("post_id", "eq.$postId")
-                    parameter("user_id", "eq.$userId")
+            if (normalizedReaction == null) {
+                val detailedResult = deletePostReactionRow(accessToken, userId, postId)
+                val legacyResult = if (wasReacted) {
+                    deleteLegacyPostLike(accessToken, userId, postId)
+                } else {
+                    Result.success(Unit)
+                }
+
+                if (detailedResult.isFailure && legacyResult.isFailure) {
+                    return Result.failure(
+                        legacyResult.exceptionOrNull()
+                            ?: detailedResult.exceptionOrNull()
+                            ?: Exception("No se pudo quitar la reacción")
+                    )
                 }
             } else {
-                // Like
-                supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
-                    header("Authorization", "Bearer $accessToken")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    setBody(mapOf("post_id" to postId, "user_id" to userId))
+                val detailedResult = upsertPostReactionRow(
+                    accessToken = accessToken,
+                    userId = userId,
+                    postId = postId,
+                    reactionType = normalizedReaction
+                )
+                val legacyResult = if (!wasReacted) {
+                    insertLegacyPostLike(accessToken, userId, postId)
+                } else {
+                    Result.success(Unit)
                 }
-                
-                // Trigger notification removed - handled by DB trigger notify_on_post_like
+
+                if (detailedResult.isFailure && legacyResult.isFailure) {
+                    return Result.failure(
+                        legacyResult.exceptionOrNull()
+                            ?: detailedResult.exceptionOrNull()
+                            ?: Exception("No se pudo guardar la reacción")
+                    )
+                }
             }
+
+            invalidateGlobalPostCache()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private suspend fun upsertPostReactionRow(
+        accessToken: String,
+        userId: String,
+        postId: String,
+        reactionType: String
+    ): Result<Unit> {
+        return try {
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_reactions") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                header("Prefer", "resolution=merge-duplicates")
+                parameter("on_conflict", "post_id,user_id")
+                setBody(
+                    PostReactionRequest(
+                        postId = postId,
+                        userId = userId,
+                        reactionType = reactionType
+                    )
+                )
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                val body = response.bodyAsText()
+                if (isPostReactionSchemaMissing(response.status.value, body)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(Exception("post_reactions upsert failed: ${response.status} $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun deletePostReactionRow(
+        accessToken: String,
+        userId: String,
+        postId: String
+    ): Result<Unit> {
+        return try {
+            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/post_reactions") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("post_id", "eq.$postId")
+                parameter("user_id", "eq.$userId")
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                val body = response.bodyAsText()
+                if (isPostReactionSchemaMissing(response.status.value, body)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(Exception("post_reactions delete failed: ${response.status} $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun insertLegacyPostLike(
+        accessToken: String,
+        userId: String,
+        postId: String
+    ): Result<Unit> {
+        return try {
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                header("Prefer", "resolution=ignore-duplicates")
+                parameter("on_conflict", "post_id,user_id")
+                setBody(mapOf("post_id" to postId, "user_id" to userId))
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                val body = response.bodyAsText()
+                Result.failure(Exception("post_likes insert failed: ${response.status} $body"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun deleteLegacyPostLike(
+        accessToken: String,
+        userId: String,
+        postId: String
+    ): Result<Unit> {
+        return try {
+            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/post_likes") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("post_id", "eq.$postId")
+                parameter("user_id", "eq.$userId")
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                val body = response.bodyAsText()
+                Result.failure(Exception("post_likes delete failed: ${response.status} $body"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun isPostReactionSchemaMissing(statusCode: Int, body: String): Boolean {
+        val lowerBody = body.lowercase()
+        return statusCode == 404 ||
+            lowerBody.contains("post_reactions") && (
+                lowerBody.contains("does not exist") ||
+                    lowerBody.contains("schema cache") ||
+                    lowerBody.contains("could not find")
+            )
+    }
+
+    private suspend fun invalidateGlobalPostCache() {
+        runCatching {
+            upstashCache.delete("posts:global:offset=0:limit=20")
         }
     }
 
@@ -501,8 +791,8 @@ class PostRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun addComment(postId: String, content: String, parentId: String? = null): Result<conectate.com.data.model.Comment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         var startedAt = System.currentTimeMillis()
         try {
@@ -626,26 +916,20 @@ class PostRepository @Inject constructor(
 
     suspend fun addAudioComment(postId: String, audioFile: File): Result<Unit> {
         return try {
-            authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: return Result.failure(Exception("No user"))
             
             // Upload Audio
             var bytes = audioFile.readBytes()
-            var fileName = "comment_${UUID.randomUUID()}.m4a"
+            var fileName = "$userId/comment_${UUID.randomUUID()}.m4a"
             var uploadResult = storageService.uploadFile("post-comments-media", fileName, bytes, "audio/mp4")
             
             if (uploadResult.isSuccess) {
                  val publicUrl = storageService.getPublicUrl("post-comments-media", fileName)
                  
-                 // Reuse addComment but currently it only takes content text.
-                 // We will overload content to include the audio marker or url.
-                 // Ideally we should have media_url column. 
-                 // For now, we put [Audio] as content and try to put media_url in JSON if possible or just in content.
-                 // However, without schema change, we can't save media_url column.
+                 // add_audio_to_post_comments.sql is part of the release manifest, so audio comments
+                 // store both a stable text marker and the media metadata columns.
                  
-                 // If the schema update (add_audio_to_post_comments.sql) is applied, we can send media_url.
-                 // We'll try to send it in the body map.
-                 
-                 var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
                  var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
                  var queryParams = mutableMapOf(
@@ -676,12 +960,9 @@ class PostRepository @Inject constructor(
                      }
                      Result.success(Unit)
                  } else {
-                     // Fallback if media_url column doesn't exist?
-                     // If 400 error about undefined column, we might need a fallback. 
-                     // But for now let's hope the user applies the SQL.
                      var errorBody = response.body<String>()
                      if (errorBody.contains("undefined column")) {
-                         // Fallback: Embed in content
+                         // Graceful fallback for devices pointed to a DB that has not run the manifest yet.
                          return addComment(postId, "[Audio]$publicUrl").map { Unit }
                      }
                      Result.failure(Exception("Error adding audio comment: ${response.status}"))

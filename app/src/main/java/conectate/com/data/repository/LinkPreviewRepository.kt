@@ -196,15 +196,17 @@ class LinkPreviewRepository @Inject constructor(
     }
     
     private fun detectContentType(doc: Document, url: String): String {
-        // Check Open Graph type
-        doc.select("meta[property=og:type]").firstOrNull()?.attr("content")?.let {
-            return when (it.lowercase()) {
+        val ogType = doc.select("meta[property=og:type]").firstOrNull()?.attr("content")
+        val ogTypeResult: String? = if (ogType != null) {
+            when (ogType.lowercase()) {
                 "video", "video.movie", "video.episode", "video.tv_show", "video.other" -> "video"
                 "music.song", "music.album", "music.playlist", "music.radio_station" -> "music"
-                "article", "book", "profile" -> it.lowercase()
-                else -> "website"
+                "article", "book", "profile" -> ogType.lowercase()
+                else -> null
             }
-        }
+        } else null
+
+        if (ogTypeResult != null) return ogTypeResult
         
         // Detect by domain
         return when {

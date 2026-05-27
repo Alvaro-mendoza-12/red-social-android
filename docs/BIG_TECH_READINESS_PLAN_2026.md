@@ -1,5 +1,7 @@
 # Big Tech Readiness Plan (2026)
 
+Status update 2026-05-06: Sprint 1-5 closure added real Supabase wallet/gifts integration in lives, a Premium/Ads monetization center, hardened wallet RPCs, hardened premium/ads RLS/RPCs, per-user chat archive/favorite persistence and saved bottom navigation customization in the release manifest/app shell. Remaining work in this plan should now be interpreted as scale/quality debt, not missing Sprint 1-5 baseline wiring.
+
 ## 1) North Star
 Convert the app into a production-grade mobile platform with deterministic quality gates, measurable reliability, and safe delivery discipline.
 
@@ -157,6 +159,6 @@ Acceptance criteria:
 - Historical SQL inventory:
   - `python tools/security_sql_audit.py --root . --report build/reports/security/sql_security_inventory.md --json build/reports/security/sql_security_inventory.json --fail-threshold HIGH`
 - Performance budget check:
-  - `python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json`
+  - `python tools/performance_budget_check.py --apk app/build/outputs/apk/release --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json`
 - CI gate task:
   - `:app:qualityGateDebug`

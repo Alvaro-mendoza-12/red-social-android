@@ -6,6 +6,10 @@
     "node": ">=20 <23"
   },
   "scripts": {
+    "repo:hygiene": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/repo_hygiene_check.ps1",
+    "repo:hygiene:strict": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/repo_hygiene_check.ps1 -Strict",
+    "quality:android": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/quality_gate.ps1 -DebugOnly",
+    "quality:full": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/quality_gate.ps1",
     "dev:web": "npm --prefix Conectate-web run dev",
     "lint:web": "npm --prefix Conectate-web run lint",
     "build:web": "npm --prefix Conectate-web run build",

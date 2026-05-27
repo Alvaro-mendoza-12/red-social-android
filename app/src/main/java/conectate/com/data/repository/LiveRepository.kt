@@ -140,7 +140,7 @@ class LiveRepository @Inject constructor(
     private val _eglBaseContext = MutableStateFlow<EglBase.Context?>(null)
     val eglBaseContext: StateFlow<EglBase.Context?> = _eglBaseContext.asStateFlow()
 
-    private var lastScreenShareIntent: Intent = null
+    private var lastScreenShareIntent: Intent? = null
 
     init {
         scope.launch {
@@ -149,8 +149,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun refreshActiveStreams() = withContext(Dispatchers.IO) {
         try {
             reconcileOwnedGhostStreamsIfNeeded()
@@ -162,7 +162,11 @@ class LiveRepository @Inject constructor(
             val normalized = normalizeActiveStreams(streams)
             _activeStreams.value = filterToServerActiveStreams(normalized)
         } catch (e: Exception) {
-            android.util.Log.e("LiveRepository", "Error refreshing live streams", e)
+            if (supabaseConfig.reportServiceRestrictionIfPresent("live-streams-refresh", e)) {
+                android.util.Log.w("LiveRepository", "Live streams unavailable because the Supabase project is restricted.")
+            } else {
+                android.util.Log.e("LiveRepository", "Error refreshing live streams", e)
+            }
         }
     }
 
@@ -313,8 +317,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     private suspend fun subscribeToLiveStreams() {
         var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
         while (currentCoroutineContext().isActive) {
@@ -357,8 +361,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getLiveStreamById(id: String): Result<LiveStream> = withContext(Dispatchers.IO) {
         try {
             var stream = supabaseConfig.client.postgrest["live_streams"].select {
@@ -448,8 +452,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun hostLive(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -502,8 +506,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun joinLiveAsViewer(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -626,7 +630,7 @@ class LiveRepository @Inject constructor(
         emitLiveState()
     }
 
-    fun resumeLive(screenIntent: Intent = null): Boolean {
+    fun resumeLive(screenIntent: Intent? = null): Boolean {
         var session = _activeSession.value ?: return false
         if (session.role != LiveRole.HOST) return false
         _isPaused.value = false
@@ -656,7 +660,7 @@ class LiveRepository @Inject constructor(
         source: LiveSource,
         micEnabled: Boolean,
         videoEnabled: Boolean,
-        projectionIntent: Intent = null
+        projectionIntent: Intent? = null
     ): Boolean {
         var session = _activeSession.value ?: return false
         if (session.role != LiveRole.HOST) return false
@@ -715,8 +719,8 @@ class LiveRepository @Inject constructor(
         return started
     }
 
-@Composable
-@Composable
+
+
     suspend fun sendComment(content: String): Result<Unit> = withContext(Dispatchers.IO) {
         var session = _activeSession.value ?: return@withContext Result.failure(Exception("No hay live activo"))
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -760,8 +764,8 @@ class LiveRepository @Inject constructor(
         runCatching { socket?.emit("send-reaction", payload) }
     }
 
-@Composable
-@Composable
+
+
     suspend fun endLive(): Result<Unit> = withContext(Dispatchers.IO) {
         var session = _activeSession.value ?: return@withContext Result.success(Unit)
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -834,6 +838,7 @@ class LiveRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10_000
+                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
             socket = IO.socket(signalingUrl, options)
@@ -1282,7 +1287,7 @@ class LiveRepository @Inject constructor(
         return type
     }
 
-    private fun startConfiguredVideo(projectionIntent: Intent = null): Boolean {
+    private fun startConfiguredVideo(projectionIntent: Intent? = null): Boolean {
         return when (_currentSource.value) {
             LiveSource.CAMERA -> startCamera()
             LiveSource.SCREEN -> {

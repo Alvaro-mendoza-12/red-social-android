@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Parcelable
 import androidx.navigation.NavHostController
 import conectate.com.data.repository.AuthRepository
+import conectate.com.presentation.profile.SocialQrPayloadParser
+import conectate.com.presentation.profile.SocialQrTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -25,12 +27,13 @@ object IntentRouter {
     }
 
     fun handleIntentNavigation(
-        incomingIntent: Intent,
+        incomingIntent: Intent?,
         navController: NavHostController,
         authRepository: AuthRepository,
         activityScope: CoroutineScope,
         clearIntent: () -> Unit
     ): Boolean {
+        incomingIntent ?: return false
         if (handleNotificationIntent(incomingIntent, navController, clearIntent)) return true
         if (handleUriIntent(incomingIntent, navController, authRepository, activityScope, clearIntent)) return true
         if (handleIncomingShareIntent(incomingIntent, navController, clearIntent)) return true
@@ -217,6 +220,30 @@ object IntentRouter {
         val uri = incomingIntent.data ?: return false
         android.util.Log.d("MainActivity", "Handling Deep Link: $uri")
         android.util.Log.d("MainActivity", "Scheme: ${uri.scheme}, Host: ${uri.host}, Fragment: ${uri.fragment}")
+
+        val isWebLoginQr =
+            (uri.scheme == "conectate" && uri.host == "web-login") ||
+                (
+                    (uri.scheme == "https" || uri.scheme == "http") &&
+                        (uri.host == "conectate.com" || uri.host == "www.conectate.com") &&
+                        uri.pathSegments.firstOrNull() == "web-login"
+                    )
+        if (isWebLoginQr) {
+            val pairId = uri.getQueryParameter("pairId")
+            val nonce = uri.getQueryParameter("nonce")
+            navController.navigate(Screen.WebLoginScanner.createRoute(pairId = pairId, nonce = nonce))
+            clearIntent()
+            return true
+        }
+
+        SocialQrPayloadParser.parse(uri.toString())?.let { socialPayload ->
+            when (socialPayload.target) {
+                SocialQrTarget.PROFILE -> navController.navigate(Screen.UserProfile.createRoute(socialPayload.userId))
+                SocialQrTarget.CHAT -> navController.navigate(Screen.Chat.createRoute(socialPayload.userId))
+            }
+            clearIntent()
+            return true
+        }
 
         if (uri.scheme == "https" && (uri.host == "conectate.com" || uri.host == "www.conectate.com")) {
             val pathSegments = uri.pathSegments

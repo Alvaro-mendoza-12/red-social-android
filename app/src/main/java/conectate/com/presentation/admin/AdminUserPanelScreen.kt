@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
 package conectate.com.presentation.admin
 
 import androidx.compose.foundation.background
@@ -28,6 +29,7 @@ import java.text.DecimalFormat
 
 
 
+@Composable
 fun AdminUserPanelScreen(
     navController: NavController,
     viewModel: AdminUserPanelViewModel = hiltViewModel()

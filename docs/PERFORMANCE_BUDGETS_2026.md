@@ -10,6 +10,19 @@ Release artifact budgets for Android APK packaging size growth control.
   - `build/reports/perf/performance_budget_report.md`
   - `build/reports/perf/performance_budget_report.json`
 
+## Last Local Release Validation
+
+Generated report: `2026-05-07T05:34:20Z`.
+
+`assembleRelease --no-daemon --console=plain --max-workers=1` finished successfully on `2026-05-07` local time and regenerated four unsigned split APKs:
+
+- `app-arm64-v8a-release-unsigned.apk`: `53,973,534` bytes (`51.47 MiB`)
+- `app-armeabi-v7a-release-unsigned.apk`: `38,963,366` bytes (`37.16 MiB`)
+- `app-x86-release-unsigned.apk`: `53,277,250` bytes (`50.81 MiB`)
+- `app-x86_64-release-unsigned.apk`: `56,766,234` bytes (`54.14 MiB`)
+
+All APK size, total DEX size (`12,442,508` bytes / `11.87 MiB`) and largest native `.so` ABI slice checks passed.
+
 ## Current Budgets
 - APK size (`max_apk_bytes`): `62,914,560` bytes (`60.00 MiB`)
 - AAB size (`max_bundle_bytes`): `83,886,080` bytes (`80.00 MiB`)
@@ -26,7 +39,7 @@ Build release APK:
 Run budget check:
 
 ```bash
-python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+python tools/performance_budget_check.py --apk app/build/outputs/apk/release --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
 ```
 
 Gate policy:

@@ -7,6 +7,7 @@
 
 # Supabase / Realtime transitively references SLF4J binder implementations that are absent on Android.
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+-dontwarn org.slf4j.impl.StaticMDCBinder
 
 # Reactor may reference optional BlockHound integration classes that are not packaged on Android.
 -dontwarn reactor.blockhound.integration.BlockHoundIntegration

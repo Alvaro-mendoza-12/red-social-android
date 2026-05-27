@@ -129,7 +129,7 @@ object VideoValidator {
         }
     }
     
-    private fun formatFileSize(bytes: Long): String {
+    fun formatFileSize(bytes: Long): String {
         return when {
             bytes >= 1024 * 1024 * 1024 -> String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024))
             bytes >= 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024))

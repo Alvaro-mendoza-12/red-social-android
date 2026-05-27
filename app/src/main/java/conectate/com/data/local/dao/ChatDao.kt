@@ -28,11 +28,11 @@ interface ChatDao {
     fun getChatByIdFlow(chatId: String): Flow<ChatEntity?>
 
     @androidx.room.Transaction
-    @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_pinned DESC, last_message_at DESC")
+    @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_archived ASC, is_pinned DESC, is_favorite DESC, last_message_at DESC")
     fun getAllChatsFlow(): Flow<List<ChatWithUserProfile>>
 
     @androidx.room.Transaction
-    @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_pinned DESC, last_message_at DESC")
+    @Query("SELECT * FROM chats WHERE is_deleted = 0 ORDER BY is_archived ASC, is_pinned DESC, is_favorite DESC, last_message_at DESC")
     suspend fun getAllChatsWithUsers(): List<ChatWithUserProfile>
 
     suspend fun getAllChatsWithLastMessage(): List<ChatWithLastMessage> =
@@ -84,6 +84,12 @@ interface ChatDao {
 
     @Query("UPDATE chats SET is_pinned = :isPinned WHERE LOWER(id) = LOWER(:chatId)")
     suspend fun updatePinState(chatId: String, isPinned: Boolean)
+
+    @Query("UPDATE chats SET is_archived = :isArchived WHERE LOWER(id) = LOWER(:chatId)")
+    suspend fun updateArchiveState(chatId: String, isArchived: Boolean)
+
+    @Query("UPDATE chats SET is_favorite = :isFavorite WHERE LOWER(id) = LOWER(:chatId)")
+    suspend fun updateFavoriteState(chatId: String, isFavorite: Boolean)
 
     // NUCLEAR: Clear local cache to force re-sync
     @Query("DELETE FROM chats")

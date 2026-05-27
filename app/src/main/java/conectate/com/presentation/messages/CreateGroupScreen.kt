@@ -291,9 +291,9 @@ fun CreateGroupScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         
-                        if (errorMessage != null) {
+                        errorMessage?.let { message ->
                             Text(
-                                text = errorMessage!!,
+                                text = message,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(top = 16.dp),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center

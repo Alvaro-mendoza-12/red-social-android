@@ -159,8 +159,8 @@ class MultiAccountInboxRepository @Inject constructor(
         initialValue = emptyList()
     )
 
-@Composable
-@Composable
+
+
     suspend fun refreshInactiveAccounts() = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         var currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase()
@@ -366,7 +366,8 @@ class MultiAccountInboxRepository @Inject constructor(
                             focusMessageId = messageId,
                             receivedAt = createdAt.toSortableEpochMillis()
                         )
-                        if (latestUnreadDestination == null || destination.receivedAt >= latestUnreadDestination!!.receivedAt) {
+                        val latestDestination = latestUnreadDestination
+                        if (latestDestination == null || destination.receivedAt >= latestDestination.receivedAt) {
                             latestUnreadDestination = destination
                         }
                     }
@@ -572,7 +573,8 @@ class MultiAccountInboxRepository @Inject constructor(
                             focusMessageId = messageId,
                             receivedAt = createdAt.toSortableEpochMillis()
                         )
-                        if (latestUnreadDestination == null || destination.receivedAt >= latestUnreadDestination!!.receivedAt) {
+                        val latestDestination = latestUnreadDestination
+                        if (latestDestination == null || destination.receivedAt >= latestDestination.receivedAt) {
                             latestUnreadDestination = destination
                         }
                     }
@@ -681,7 +683,8 @@ internal fun mergeInactiveUnreadSnapshots(
     snapshots.forEach { snapshot ->
         mergedKeys += snapshot.pendingConversationKeys
         val candidate = snapshot.latestPendingDestination ?: return@forEach
-        if (latestDestination == null || candidate.receivedAt >= latestDestination!!.receivedAt) {
+        val currentLatest = latestDestination
+        if (currentLatest == null || candidate.receivedAt >= currentLatest.receivedAt) {
             latestDestination = candidate
         }
     }

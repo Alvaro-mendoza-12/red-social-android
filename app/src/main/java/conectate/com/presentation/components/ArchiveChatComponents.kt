@@ -24,6 +24,7 @@ import coil.compose.AsyncImage
 import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.util.TimeUtils
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArchivedChatsScreen(
     archivedChats: List<ChatWithLastMessage>,
@@ -144,7 +145,7 @@ private fun ArchivedChatItem(
             // Avatar
             Box {
                 AsyncImage(
-                    model = chat.otherUserAvatar,
+                    model = chat.otherUserImage,
                     contentDescription = null,
                     modifier = Modifier
                         .size(56.dp)
@@ -183,7 +184,7 @@ private fun ArchivedChatItem(
                 )
                 
                 Text(
-                    text = chat.chat.last_message ?: "Sin mensajes",
+                    text = chat.lastMessage?.content ?: "Sin mensajes",
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -191,7 +192,7 @@ private fun ArchivedChatItem(
                 )
                 
                 Text(
-                    text = "Archivado el ${TimeUtils.formatDate(chat.chat.last_message_at ?: "")}",
+                    text = "Archivado el ${TimeUtils.formatTimestamp(chat.lastMessage?.created_at ?: "")}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
@@ -317,25 +318,4 @@ fun UnarchiveChatConfirmationDialog(
             }
         }
     )
-}
-
-// Helper extension to add archive actions to chat list items
-object ArchiveChatActions {
-    fun archiveChat(
-        chatId: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        // Implementation would call repository
-        // This is a placeholder for the action pattern
-        onSuccess()
-    }
-    
-    fun unarchiveChat(
-        chatId: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        onSuccess()
-    }
 }

@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -78,16 +79,12 @@ class UserRepository @Inject constructor(
 
     private fun normalizePrivacyUserId(userId: String): String = localStateStore.normalizeUserId(userId)
 
-@Composable
-@Composable
     private fun sanitizeProfileText(value: String?): String? {
         return value
             ?.trim()
             ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
     }
 
-@Composable
-@Composable
     private fun slugifyUsername(value: String?): String {
         val raw = sanitizeProfileText(value) ?: return ""
         var normalized = Normalizer.normalize(raw, Normalizer.Form.NFD)
@@ -179,8 +176,6 @@ class UserRepository @Inject constructor(
         return fallbackCandidate
     }
 
-@Composable
-@Composable
     private suspend fun prepareProfileForPersistence(user: User): User {
         val normalizedId = normalizePrivacyUserId(user.id)
         var sessionSeed = authService.getCurrentUserProfileSeed()
@@ -255,8 +250,6 @@ class UserRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     private fun isMissingPrivacyAcceptedColumn(errorBody: String): Boolean {
         return errorBody.contains("privacy_policy_accepted", ignoreCase = true) &&
             errorBody.contains("does not exist", ignoreCase = true)
@@ -271,7 +264,7 @@ class UserRepository @Inject constructor(
                 )
     }
 
-    private fun buildProfileUpdateFields(
+    internal fun buildProfileUpdateFields(
         request: UpdateProfileRequest,
         lastNameChange: String?
     ): LinkedHashMap<String, JsonElement> {
@@ -283,6 +276,21 @@ class UserRepository @Inject constructor(
             request.bio?.let { put("bio", JsonPrimitive(it)) }
             request.country?.let { put("country", JsonPrimitive(it)) }
             request.city?.let { put("city", JsonPrimitive(it)) }
+            request.status?.let { put("status", JsonPrimitive(it)) }
+            request.interests?.let { values ->
+                put("interests", JsonArray(values.map { JsonPrimitive(it) }))
+            }
+            request.linked_games?.let { values ->
+                put("linked_games", JsonArray(values.map { JsonPrimitive(it) }))
+            }
+            request.game_logo_urls?.let { logos ->
+                put("game_logo_urls", JsonObject(logos.mapValues { JsonPrimitive(it.value) }))
+            }
+            request.favorite_music_url?.let { put("favorite_music_url", JsonPrimitive(it)) }
+            request.favorite_book?.let { put("favorite_book", JsonPrimitive(it)) }
+            request.favorite_sport?.let { put("favorite_sport", JsonPrimitive(it)) }
+            request.career?.let { put("career", JsonPrimitive(it)) }
+            request.availability_schedule?.let { put("availability_schedule", JsonPrimitive(it)) }
             request.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             request.cover_url?.let { put("cover_url", JsonPrimitive(it)) }
             lastNameChange?.let { put("last_name_change", JsonPrimitive(it)) }
@@ -294,8 +302,6 @@ class UserRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     private fun extractMissingProfilesColumn(errorBody: String): String? {
         val patterns = listOf(
             Regex("Could not find the '([a-zA-Z0-9_]+)' column of 'profiles'", RegexOption.IGNORE_CASE),
@@ -638,6 +644,42 @@ class UserRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun deleteOwnAccount(): Result<Unit> {
+        return try {
+            var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
+                ?: return Result.failure(Exception("No user"))
+
+            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/delete_own_account") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token")
+                header("Content-Type", "application/json")
+                setBody(buildJsonObject {})
+            }
+            val body = runCatching { response.bodyAsText() }.getOrDefault("")
+
+            if (response.status.isSuccess()) {
+                localStateStore.clearAll()
+                Result.success(Unit)
+            } else if (isMissingRpcFunction(response.status.value, body, "delete_own_account")) {
+                // Keep the UI honest on databases that have not applied the production RPC yet.
+                Result.failure(Exception("Falta aplicar la migración SQL delete_own_account para eliminar la cuenta de forma segura."))
+            } else {
+                Result.failure(Exception("No se pudo eliminar la cuenta (${response.status.value}): $body"))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UserRepository", "deleteOwnAccount exception", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun isMissingRpcFunction(statusCode: Int, body: String, functionName: String): Boolean {
+        if (statusCode != 400 && statusCode != 404) return false
+        val cleanBody = body.lowercase()
+        return cleanBody.contains(functionName.lowercase()) &&
+            (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
     suspend fun getUsersByIds(userIds: List<String>): Result<List<User>> {
@@ -994,8 +1036,6 @@ class UserRepository @Inject constructor(
             lower.contains("expired token")
     }
 
-@Composable
-@Composable
     private fun isMissingPrivacyColumn(body: String): Boolean {
         var lower = body.lowercase()
         return lower.contains("privacy_policy_accepted") && lower.contains("does not exist")
@@ -1273,8 +1313,8 @@ class UserRepository @Inject constructor(
 
             suspend fun attemptPatch(accessToken: String): Pair<HttpResponse, String> {
                 var payload = buildJsonObject {
-                    normalizedLastSeen?.let { put("last_seen_visibility", it) }
-                    normalizedOnline?.let { put("online_status_visibility", it) }
+                    normalizedLastSeen?.let { put("last_seen_visibility", JsonPrimitive(it)) }
+                    normalizedOnline?.let { put("online_status_visibility", JsonPrimitive(it)) }
                 }
                 var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                     header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1463,7 +1503,7 @@ class UserRepository @Inject constructor(
         var workingBitmap = baseBitmap
         var lastCandidate: ByteArray? = null
         var quality = 92
-        val attempt = 0
+        var attempt = 0
 
         try {
             while (attempt < 10) {
@@ -1564,8 +1604,6 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // SEARCH USERS (name, username, numeric_id)
     // ─────────────────────────────────────────────
-@Composable
-@Composable
     suspend fun searchUsers(query: String): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
             val sanitizedQuery = query.trim()

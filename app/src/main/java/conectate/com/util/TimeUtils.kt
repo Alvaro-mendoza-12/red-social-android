@@ -66,6 +66,15 @@ object TimeUtils {
         }
     }
 
+    fun getRelativeTime(timestamp: Long): String {
+        return try {
+            val instant = Instant.ofEpochMilli(timestamp)
+            getRelativeTimeSpanString(instant.toString())
+        } catch (e: Exception) {
+            "hace un momento"
+        }
+    }
+
     /**
      * Returns true if the lastSeen timestamp is within the recent threshold.
      * Useful to avoid showing "Conectado" when presence data is stale.

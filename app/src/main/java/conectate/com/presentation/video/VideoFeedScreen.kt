@@ -67,7 +67,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
@@ -316,7 +315,7 @@ fun VideoFeedScreen(
                 exoPlayer.play()
             }
             
-            viewModel.incrementVideoViews(video.id)
+            viewModel.onVideoFocused(video)
             
             // Infinite scroll trigger
             if (pagerState.currentPage >= currentVideos.size - 3) {
@@ -339,8 +338,8 @@ fun VideoFeedScreen(
     LaunchedEffect(showInternalShareDialog, pendingNavigationRoute) {
         android.util.Log.d("VideoFeedScreen", "Nav Effect: showDialog=$showInternalShareDialog, pendingRoute=${pendingNavigationRoute != null}")
         
-        if (!showInternalShareDialog && pendingNavigationRoute != null) {
-            val route = pendingNavigationRoute!!
+        val route = pendingNavigationRoute
+        if (!showInternalShareDialog && route != null) {
             android.util.Log.d("VideoFeedScreen", "🚀 STARTING NAVIGATION SEQUENCE to: $route")
             
             // 1. Mark system as busy (hides heavy UI bits)
@@ -379,11 +378,10 @@ fun VideoFeedScreen(
     // Comments Sheet
     val videoForComments = selectedVideoForComments
     if (commentsSheetOpen && videoForComments != null) {
-        val videoIdForComments = videoForComments.id  // ✅ FIXED: Extract ID first
+        val videoIdForComments = videoForComments.id
         conectate.com.presentation.videos.CommentSheet(
             comments = comments,
             onAddComment = { content ->
-                // ✅ FIXED: No more !!
                 viewModel.addComment(videoIdForComments, content)
             },
             onDismiss = { 
@@ -461,8 +459,7 @@ fun VideoFeedScreen(
         )
     }
 
-    if (selectedVideoForReport != null) {
-        val targetVideo = selectedVideoForReport!!
+    selectedVideoForReport?.let { targetVideo ->
         VideoReportDialog(
             alreadyReported = reportedVideoIds.contains(targetVideo.id),
             onDismiss = { selectedVideoForReport = null },
@@ -958,7 +955,7 @@ fun VideoItem(
                         },
                         leadingIcon = { 
                             Icon(
-                                imageVector = if (video.sharedByMe) androidx.compose.material.icons.Icons.Default.RepeatOn else androidx.compose.material.icons.Icons.Default.Repeat,
+                                imageVector = if (video.sharedByMe) Icons.Default.Refresh else Icons.Default.Repeat,
                                 contentDescription = null, 
                                 modifier = Modifier.size(18.dp),
                                 tint = if (video.sharedByMe) Color(0xFF00bcd4) else MaterialTheme.colorScheme.onSurface

@@ -134,6 +134,7 @@ class IncomingCallForegroundService : Service() {
                 putExtra("call_title", invite.title)
                 putExtra("call_context_type", invite.contextType)
                 putExtra("call_context_id", invite.contextId ?: "")
+                putExtra("call_is_video", invite.isVideo)
                 avatarBytes?.let {
                     putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
                 }
@@ -155,6 +156,7 @@ private fun Intent.toInviteOrNull(): CallInvite? {
     val title = getStringExtra("call_title")?.trim().orEmpty().ifBlank { callerName }
     val contextType = getStringExtra("call_context_type")?.trim().orEmpty().ifBlank { "dm" }
     val contextId = getStringExtra("call_context_id")?.trim().orEmpty().ifBlank { null }
+    val isVideo = getBooleanExtra("call_is_video", false)
 
     if (callId.isBlank() || callerUserId.isBlank()) return null
     return CallInvite(
@@ -164,7 +166,8 @@ private fun Intent.toInviteOrNull(): CallInvite? {
         callerName = callerName.ifBlank { "Usuario" },
         callerAvatarUrl = callerAvatarUrl,
         contextType = contextType,
-        contextId = contextId
+        contextId = contextId,
+        isVideo = isVideo
     )
 }
 

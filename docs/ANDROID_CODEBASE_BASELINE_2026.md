@@ -1,6 +1,6 @@
 # Android Codebase Baseline 2026
 
-Fecha de revisión: 2026-04-26
+Fecha de revisión: 2026-05-06
 
 ## Resumen ejecutivo
 
@@ -8,17 +8,16 @@ La base Android de Conéctate ya es funcional y bastante más madura que un proy
 
 Fortalezas actuales:
 - Compose + Hilt + navegación moderna ya están consolidados.
-- El proyecto compila y hoy pasa `compileDebugKotlin`, `assembleDebug`, `testDebugUnitTest`, `lintDebug` y `qualityGateDebug`.
-- La cadena release local también quedó validada con `assembleRelease`, `bundleRelease` y `tools/performance_budget_check.py`.
+- El proyecto compila y hoy pasa `compileDebugKotlin`, `testDebugUnitTest`, `assembleRelease`, auditoría SQL del release manifest y `tools/performance_budget_check.py`.
 - Hay reutilización visible en mensajes, perfil y ajustes.
 - Varias pantallas críticas ya manejan mejor estados vacíos, errores y offline.
 
 Riesgos estructurales todavía abiertos:
 - Persisten repositorios y ViewModels demasiado grandes.
 - La cobertura de tests es baja para el tamaño del sistema.
-- Hay demasiados artefactos SQL/log/documentación histórica en la raíz.
-- La documentación principal no siempre refleja el estado real del código.
-- La seguridad SQL/RLS sigue teniendo deuda importante.
+- Hay artefactos SQL/log/documentación histórica todavía presentes, pero la ruta deployable queda acotada por `sql/release-manifest.txt`.
+- La documentación principal se actualizó para separar estado activo, backups y archivos legacy.
+- La seguridad SQL/RLS deployable pasa gate con baseline; la deuda restante es principalmente histórica/fuera del manifest.
 
 ## Métricas actuales del código Android
 
@@ -96,13 +95,44 @@ Dirección sugerida:
 
 Se cerró una ronda de saneamiento enfocada en recuperar el baseline completo de build y aislar superficies incompletas:
 
-- `wallet` y descubrimiento público de hashtags quedaron feature-gateados con placeholders compile-safe.
-- `HashtagRepository` quedó reducido a extracción y asociación en posts/videos, sin discovery público activo.
+- Descubrimiento público de hashtags fue reactivado despues del rescate: `HashtagRepository` consulta RPCs Supabase para busqueda/trending/contenido por hashtag y conserva fallback Room.
+- `HashtagRepository` ya no queda reducido a extracción local: posts/videos por hashtag se resuelven con `get_posts_by_hashtag` y `get_videos_by_hashtag`.
 - `VideoRepository` recuperó fachadas públicas estables para perfil/video (`getUserVideos`, `getSharedVideos`, `hasPublicVideos`).
 - `MessageRepository` volvió a orquestar `MessageSessionStateStore`, `MessageMediaResolver` y `MessageReportStore` sin duplicación de inyección.
 - El servicio push canónico quedó fijado en `conectate.com.data.service.MyFirebaseMessagingService`.
 - Se alineó Hilt a `2.51` entre plugin y dependencias, y se corrigió `jacocoTestReport` para Gradle `8.11`.
 - Release quedó desbloqueado en R8 con reglas explícitas para la integración opcional de BlockHound/ Reactor.
+
+### Sprint 1-5 cierre 2026-05-06
+
+Se cerró una pasada de producto enfocada en que la implementación ya no contradiga el contrato de Sprint 1-5:
+
+- `WalletRepository` dejó de simular 1000 monedas locales y ahora lee saldo real desde Supabase.
+- `GiftSelectionDialog` carga regalos activos desde `virtual_gifts` y envia con `send_virtual_gift`.
+- `LiveViewerScreen` expone la acción `Regalar` contra el host del live.
+- `sql/migrations/20260506_wallet_gifts_rpc_security_hardening.sql` agrega `wallet_get_or_create` y endurece `wallet_add_diamonds`, `wallet_spend_diamonds` y `send_virtual_gift`.
+- `MessageNotificationService` elimina el `TODO()` ejecutable y publica notificaciones reales con `MessageNotificationFactory`, acciones inline, respeto de mutes y permiso `POST_NOTIFICATIONS`.
+- `MessageSessionStateStore` queda inyectado como singleton compartido entre `MessageRepository` y `MessageNotificationService`, por lo que el chat visible ya evita alertas redundantes.
+- `MessagePolicyEngine` reemplaza placeholders de anti-spam/deduplicacion por una ventana en memoria para envios recientes.
+- `StorageService` corrige la normalizacion de `Content-Type` para uploads reales y `PostRepository.addAudioComment` guarda audios bajo carpeta del usuario.
+- `sql/migrations/add_audio_to_post_comments.sql` queda en el manifest con columnas `media_url`/`content_type`, constraint de tipo y policies de storage por carpeta del owner.
+- `MonetizationRepository`, `MonetizationCenterViewModel` y `MonetizationCenterScreen` conectan planes premium, suscripcion actual, anuncios activos e impresiones de ads con Supabase.
+- `sql/migrations/20260506_monetization_premium_ads_security_hardening.sql` agrega RLS/policies y endurece `subscribe_to_plan` para que el cliente solo pueda suscribirse con su propia cuenta.
+- `gradle.properties` sube el heap del daemon a 4 GiB para que `minifyReleaseWithR8` complete el release sin caerse por memoria.
+- `sql/release-manifest.txt` incluye el hardening nuevo para que la ruta deployable quede cerrada.
+- Documentación viva actualizada: `README.md`, `docs/SPRINT_1_TO_5_IMPLEMENTATION_STATUS_2026.md`, `sql/README.md` y `docs/BACKUP_AND_ARCHIVE_STATUS_2026.md`.
+
+### Cierre de huecos 2026-05-06 noche
+
+Se cerraron rutas que aun se sentian funcionales en UI pero no persistian estado completo:
+
+- `ConversationRepository` deja de ser un stub y opera sobre `ChatDao` para listar, archivar, marcar favorito, fijar, silenciar, marcar como leido y borrar conversaciones locales.
+- Chats archivados quedan como preferencia por usuario: `Chat`, `ChatEntity`, Room v39, `MessageRepository.archiveChat`, filtro UI `Archivados` y SQL `20260506_chat_archive_preferences_2026.sql`.
+- Favoritos de chat quedan como preferencia por usuario: `Chat`, `ChatEntity`, Room v40, `MessageRepository.favoriteChat`, filtro UI `Favoritos`, estrella visible y SQL `20260506_chat_favorites_preferences_2026.sql`.
+- `secure_set_chat_preferences` queda extendido para `is_archived` e `is_favorite`, manteniendo `auth.uid()` y validacion de pertenencia al chat.
+- `CustomizeAppScreen` deja de ser mock: guarda layout/orden de barra inferior en `AppSettingsPreferences`, y `HomeScreen` aplica ese orden en runtime.
+- Reportar chat desde `ChatViewModel` usa `MessageRepository.reportContent`/`submitReport` y ya no queda como funcion vacia.
+- Feed posts/videos cachea JSON real en Upstash y hashtags publicos usan backend con fallback local.
 
 ### UserRepository
 
@@ -200,7 +230,7 @@ Prioridad alta:
 
 1. Extraer bloques internos de `MessageRepository`
 2. Subir cobertura de tests en mensajes, perfil, auth y videos
-3. Cerrar deuda SQL/RLS crítica en backend
+3. Mantener el release manifest limpio y reducir deuda SQL/RLS histórica fuera del deploy path
 4. Reducir logging sensible y observabilidad dispersa
 5. Evaluar modularización gradual si el alcance del producto sigue creciendo
 

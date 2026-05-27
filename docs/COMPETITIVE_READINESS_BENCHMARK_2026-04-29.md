@@ -1,5 +1,7 @@
 # Competitive Readiness Benchmark - 2026-04-29
 
+Status update 2026-05-06: this benchmark is retained as historical context. The active Sprint 1-5 status is `docs/SPRINT_1_TO_5_IMPLEMENTATION_STATUS_2026.md`; release SQL is governed by `sql/release-manifest.txt`, including the wallet/gifts and premium/ads hardening migrations added on 2026-05-06.
+
 ## Scope
 
 This benchmark evaluates Conectate against core expectations of modern social platforms (WhatsApp, Discord, Instagram, TikTok, Facebook, X) across reliability, security, feature depth, and web UX consistency.
@@ -34,7 +36,7 @@ Validation inputs used in this pass:
 ## Overall readiness estimate
 
 - Aggregate readiness: **6.9/10**
-- Estimated gap to ìface-to-faceî global competitor level: **~30-40%**
+- Estimated gap to ‚Äúface-to-face‚Äù global competitor level: **~30-40%**
 
 This means the platform is now in a strong product-engineering stage, but not yet at elite social-network maturity for global scale and reliability.
 

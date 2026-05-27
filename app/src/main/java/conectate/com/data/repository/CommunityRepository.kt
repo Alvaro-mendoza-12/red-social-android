@@ -688,8 +688,8 @@ class CommunityRepository @Inject constructor(
     // --- NOTIFICATIONS (SYSTEM) ---
     
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-@Composable
+
+
     private suspend fun showNotification(msg: CommunityMessage, communityName: String) {
         withContext(Dispatchers.Main) {
             try {
@@ -732,8 +732,8 @@ class CommunityRepository @Inject constructor(
 
     // --- FLOWS ---
 
-@Composable
-@Composable
+
+
     suspend fun getCachedMessages(communityId: String): List<CommunityMessage> = withContext(Dispatchers.IO) {
         var cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
@@ -1006,8 +1006,8 @@ class CommunityRepository @Inject constructor(
 
     // --- SYNC ---
 
-@Composable
-@Composable
+
+
     override suspend fun syncCommunities(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = (authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))).trim().lowercase()
@@ -1229,8 +1229,8 @@ class CommunityRepository @Inject constructor(
         communityDao.deleteCommunity(communityId)
     }
 
-@Composable
-@Composable
+
+
     suspend fun markAsRead(communityId: String, messageIds: Collection<String>) {
         var cleanId = communityId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1277,8 +1277,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markAsRead(communityId: String) {
         var cleanId = communityId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1310,8 +1310,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessageAsDelivered(communityId: String, messageId: String) {
         var cleanId = communityId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
@@ -1337,8 +1337,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessagesAsDelivered(communityId: String) {
         var cleanId = communityId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1386,8 +1386,8 @@ class CommunityRepository @Inject constructor(
 
 
 
-@Composable
-@Composable
+
+
     suspend fun searchCommunities(query: String): Result<List<Community>> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.client.postgrest["communities"].select {
@@ -1488,8 +1488,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun leaveCommunity(communityId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
         CollectionMembershipMutationSupport.leaveCurrentUserCollection(
@@ -1521,8 +1521,8 @@ class CommunityRepository @Inject constructor(
             contentType = "audio/m4a"
         )
 
-@Composable
-@Composable
+
+
     suspend fun removeMember(communityId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -1558,8 +1558,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun updateMemberRole(communityId: String, userId: String, newRole: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -1594,8 +1594,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun joinCommunity(communityId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
         var joinedAt = java.time.Instant.now().toString()
@@ -1620,8 +1620,8 @@ class CommunityRepository @Inject constructor(
         )
     }
 
-@Composable
-@Composable
+
+
     suspend fun deleteCommunity(communityId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -2031,8 +2031,8 @@ class CommunityRepository @Inject constructor(
             filePrefix = "media_comm"
         )
 
-@Composable
-@Composable
+
+
     suspend fun editCommunityMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var updateJson = buildJsonObject {
@@ -2048,8 +2048,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun deleteCommunityMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2126,8 +2126,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getCommunityMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
         var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         collectionMessageEngagementStore.getMessageReadReceipts(
@@ -2158,8 +2158,8 @@ class CommunityRepository @Inject constructor(
         val reactions: Map<String, List<String>>
     )
 
-@Composable
-@Composable
+
+
     suspend fun toggleCommunityMessageReaction(messageId: String, emoji: String): Result<CommunityMessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2214,8 +2214,8 @@ class CommunityRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getCommunityMembers(communityId: String): Result<List<CommunityMember>> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.client.postgrest["community_members"].select {

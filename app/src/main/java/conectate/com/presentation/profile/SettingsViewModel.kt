@@ -2,6 +2,11 @@ package conectate.com.presentation.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.auth.twoFactor.TwoFactorAuthManager
+import conectate.com.auth.twoFactor.TwoFactorAuthStatus
+import conectate.com.data.local.prefs.AppFontOption
+import conectate.com.data.local.prefs.AppSettingsPreferences
+import conectate.com.data.local.prefs.MessagesPreferences
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.UserRepository
@@ -21,18 +26,131 @@ sealed class SettingsUiState {
     data class Error(val message: String) : SettingsUiState()
 }
 
+data class TwoFactorSetupUiState(
+    val isLoading: Boolean = false,
+    val secret: String? = null,
+    val qrCodeUrl: String? = null,
+    val otpauthUrl: String? = null,
+    val backupCodes: List<String> = emptyList(),
+    val message: String? = null
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val authRepository: AuthRepository,
     private val messageRepository: conectate.com.data.repository.MessageRepository,
-    private val themePreferences: conectate.com.data.local.prefs.ThemePreferences
+    private val themePreferences: conectate.com.data.local.prefs.ThemePreferences,
+    private val messagesPreferences: MessagesPreferences,
+    private val appSettingsPreferences: AppSettingsPreferences,
+    private val twoFactorAuthManager: TwoFactorAuthManager
 ) : ViewModel() {
 
     val isDarkMode: StateFlow<Boolean> = themePreferences.isDarkMode
+    val fontOption: StateFlow<AppFontOption> = themePreferences.fontOption
+    val textScale: StateFlow<Float> = themePreferences.textScale
+    val compactMode: StateFlow<Boolean> = messagesPreferences.compactMode
+    val chatSoundsEnabled: StateFlow<Boolean> = messagesPreferences.chatSoundsEnabled
+    val typingIndicatorsEnabled: StateFlow<Boolean> = messagesPreferences.typingIndicatorsEnabled
+    val connectivityHintsEnabled: StateFlow<Boolean> = messagesPreferences.connectivityHintsEnabled
+    val crossAccountSuggestionsEnabled: StateFlow<Boolean> = messagesPreferences.crossAccountSuggestionsEnabled
+    val enterToSendEnabled: StateFlow<Boolean> = messagesPreferences.enterToSendEnabled
+    val mediaAutoDownloadEnabled: StateFlow<Boolean> = messagesPreferences.mediaAutoDownloadEnabled
+    val readReceiptsEnabled: StateFlow<Boolean> = messagesPreferences.readReceiptsEnabled
+    val messageNotificationsEnabled: StateFlow<Boolean> = appSettingsPreferences.messageNotificationsEnabled
+    val callNotificationsEnabled: StateFlow<Boolean> = appSettingsPreferences.callNotificationsEnabled
+    val socialNotificationsEnabled: StateFlow<Boolean> = appSettingsPreferences.socialNotificationsEnabled
+    val liveNotificationsEnabled: StateFlow<Boolean> = appSettingsPreferences.liveNotificationsEnabled
+    val dataSaverEnabled: StateFlow<Boolean> = appSettingsPreferences.dataSaverEnabled
+    val autoDownloadOnWifi: StateFlow<Boolean> = appSettingsPreferences.autoDownloadOnWifi
+    val autoDownloadOnMobile: StateFlow<Boolean> = appSettingsPreferences.autoDownloadOnMobile
+    val language: StateFlow<String> = appSettingsPreferences.language
+    val reduceMotionEnabled: StateFlow<Boolean> = appSettingsPreferences.reduceMotionEnabled
+    val bottomNavigationLayout: StateFlow<Int> = appSettingsPreferences.bottomNavigationLayout
+    val bottomNavigationOrder: StateFlow<List<String>> = appSettingsPreferences.bottomNavigationOrder
 
     fun setDarkMode(enabled: Boolean) {
         themePreferences.setDarkMode(enabled)
+    }
+
+    fun setFontOption(option: AppFontOption) {
+        themePreferences.setFontOption(option)
+    }
+
+    fun setTextScale(scale: Float) {
+        themePreferences.setTextScale(scale)
+    }
+
+    fun setCompactMode(enabled: Boolean) {
+        messagesPreferences.setCompactMode(enabled)
+    }
+
+    fun setChatSoundsEnabled(enabled: Boolean) {
+        messagesPreferences.setChatSoundsEnabled(enabled)
+    }
+
+    fun setTypingIndicatorsEnabled(enabled: Boolean) {
+        messagesPreferences.setTypingIndicatorsEnabled(enabled)
+    }
+
+    fun setConnectivityHintsEnabled(enabled: Boolean) {
+        messagesPreferences.setConnectivityHintsEnabled(enabled)
+    }
+
+    fun setCrossAccountSuggestionsEnabled(enabled: Boolean) {
+        messagesPreferences.setCrossAccountSuggestionsEnabled(enabled)
+    }
+
+    fun setEnterToSendEnabled(enabled: Boolean) {
+        messagesPreferences.setEnterToSendEnabled(enabled)
+    }
+
+    fun setMediaAutoDownloadEnabled(enabled: Boolean) {
+        messagesPreferences.setMediaAutoDownloadEnabled(enabled)
+    }
+
+    fun setReadReceiptsEnabled(enabled: Boolean) {
+        messagesPreferences.setReadReceiptsEnabled(enabled)
+    }
+
+    fun setMessageNotificationsEnabled(enabled: Boolean) {
+        appSettingsPreferences.setMessageNotificationsEnabled(enabled)
+    }
+
+    fun setCallNotificationsEnabled(enabled: Boolean) {
+        appSettingsPreferences.setCallNotificationsEnabled(enabled)
+    }
+
+    fun setSocialNotificationsEnabled(enabled: Boolean) {
+        appSettingsPreferences.setSocialNotificationsEnabled(enabled)
+    }
+
+    fun setLiveNotificationsEnabled(enabled: Boolean) {
+        appSettingsPreferences.setLiveNotificationsEnabled(enabled)
+    }
+
+    fun setDataSaverEnabled(enabled: Boolean) {
+        appSettingsPreferences.setDataSaverEnabled(enabled)
+    }
+
+    fun setAutoDownloadOnWifi(enabled: Boolean) {
+        appSettingsPreferences.setAutoDownloadOnWifi(enabled)
+    }
+
+    fun setAutoDownloadOnMobile(enabled: Boolean) {
+        appSettingsPreferences.setAutoDownloadOnMobile(enabled)
+    }
+
+    fun setLanguage(language: String) {
+        appSettingsPreferences.setLanguage(language)
+    }
+
+    fun setReduceMotionEnabled(enabled: Boolean) {
+        appSettingsPreferences.setReduceMotionEnabled(enabled)
+    }
+
+    fun setBottomNavigation(layout: Int, order: List<String>) {
+        appSettingsPreferences.setBottomNavigation(layout, order)
     }
 
     private val _settingsState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -45,6 +163,14 @@ class SettingsViewModel @Inject constructor(
     val privacyAccepted: StateFlow<Boolean> = _privacyAccepted.asStateFlow()
     private val _privacyMessage = MutableStateFlow<String?>(null)
     val privacyMessage: StateFlow<String?> = _privacyMessage.asStateFlow()
+    private val _accountActionMessage = MutableStateFlow<String?>(null)
+    val accountActionMessage: StateFlow<String?> = _accountActionMessage.asStateFlow()
+    private val _isDeletingAccount = MutableStateFlow(false)
+    val isDeletingAccount: StateFlow<Boolean> = _isDeletingAccount.asStateFlow()
+    private val _twoFactorStatus = MutableStateFlow(authRepository.getTwoFactorAuthStatus())
+    val twoFactorStatus: StateFlow<TwoFactorAuthStatus> = _twoFactorStatus.asStateFlow()
+    private val _twoFactorSetup = MutableStateFlow(TwoFactorSetupUiState())
+    val twoFactorSetup: StateFlow<TwoFactorSetupUiState> = _twoFactorSetup.asStateFlow()
     
     private var currentUser: User? = null
 
@@ -52,6 +178,7 @@ class SettingsViewModel @Inject constructor(
         loadUserSettings()
         loadAdditionalLoginEmails()
         resolveAdminIds()
+        refreshTwoFactorStatus()
     }
 
     private val _conectateAdminId = MutableStateFlow<String?>(null)
@@ -214,37 +341,178 @@ class SettingsViewModel @Inject constructor(
         _emailSettingsMessage.value = null
     }
 
+    fun deleteOwnAccount(onDeleted: () -> Unit = {}) {
+        if (_isDeletingAccount.value) return
 
+        viewModelScope.launch {
+            _isDeletingAccount.value = true
+            _accountActionMessage.value = null
+
+            val result = userRepository.deleteOwnAccount()
+            if (result.isSuccess) {
+                _accountActionMessage.value = "Cuenta eliminada correctamente."
+                runCatching { authRepository.signOut() }
+                onDeleted()
+            } else {
+                _accountActionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo eliminar la cuenta."
+            }
+
+            _isDeletingAccount.value = false
+        }
+    }
+
+    fun clearAccountActionMessage() {
+        _accountActionMessage.value = null
+    }
 
     fun updatePrivacy(isPrivate: Boolean) {
-        // Feature disabled: Column 'is_private' missing in DB
-        /*
         val user = currentUser ?: return
         viewModelScope.launch {
-            // Using UpdateProfileRequest with other fields null (omitted via encodeDefaults=false)
             val result = userRepository.updateProfile(user.id, UpdateProfileRequest(is_private = isPrivate))
             if (result.isSuccess) {
                  val updatedUser = user.copy(is_private = isPrivate)
                  currentUser = updatedUser
                  _settingsState.value = SettingsUiState.Success(updatedUser)
+            } else {
+                _privacyMessage.value = result.exceptionOrNull()?.message ?: "No se pudo actualizar la privacidad."
             }
         }
-        */
     }
 
     fun updateVisibility(visibility: String) {
-        // Feature disabled: Column 'profile_visibility' missing in DB
-        /*
         val user = currentUser ?: return
         viewModelScope.launch {
             val result = userRepository.updateProfile(user.id, UpdateProfileRequest(profile_visibility = visibility))
             if (result.isSuccess) {
-                val updatedUser = user.copy(profile_visibility = visibility)  // ✅ FIXED: Intermediate variable
+                val updatedUser = user.copy(profile_visibility = visibility)
                 currentUser = updatedUser
-                _settingsState.value = SettingsUiState.Success(updatedUser)  // ✅ FIXED: No more !!
+                _settingsState.value = SettingsUiState.Success(updatedUser)
+            } else {
+                _privacyMessage.value = result.exceptionOrNull()?.message ?: "No se pudo actualizar la visibilidad del perfil."
             }
         }
-        */
+    }
+
+    fun updatePresenceVisibility(
+        lastSeenVisibility: String? = null,
+        onlineStatusVisibility: String? = null
+    ) {
+        val user = currentUser ?: return
+        viewModelScope.launch {
+            val result = userRepository.updatePresenceVisibility(
+                userId = user.id,
+                lastSeenVisibility = lastSeenVisibility,
+                onlineStatusVisibility = onlineStatusVisibility
+            )
+            if (result.isSuccess) {
+                val updatedUser = user.copy(
+                    last_seen_visibility = lastSeenVisibility ?: user.last_seen_visibility,
+                    online_status_visibility = onlineStatusVisibility ?: user.online_status_visibility
+                )
+                currentUser = updatedUser
+                _settingsState.value = SettingsUiState.Success(updatedUser)
+            } else {
+                _privacyMessage.value = result.exceptionOrNull()?.message ?: "No se pudo guardar la visibilidad de presencia."
+            }
+        }
+    }
+
+    fun refreshTwoFactorStatus() {
+        _twoFactorStatus.value = authRepository.getTwoFactorAuthStatus()
+    }
+
+    fun startTwoFactorSetup() {
+        val accountEmail = currentUser?.email?.ifBlank { null }
+            ?: authRepository.getCurrentUserEmail()
+            ?: return
+
+        viewModelScope.launch {
+            _twoFactorSetup.value = _twoFactorSetup.value.copy(isLoading = true, message = null)
+            val result = authRepository.setupTwoFactorAuth(accountEmail)
+            _twoFactorSetup.value = result.fold(
+                onSuccess = { setup ->
+                    TwoFactorSetupUiState(
+                        isLoading = false,
+                        secret = setup.secret ?: twoFactorAuthManager.getPendingSecret(),
+                        qrCodeUrl = setup.qrCodeUrl ?: twoFactorAuthManager.getPendingQrCodeUrl(),
+                        otpauthUrl = setup.otpauthUrl ?: twoFactorAuthManager.getPendingOtpAuthUrl(),
+                        backupCodes = if (setup.backupCodes.isNotEmpty()) {
+                            setup.backupCodes
+                        } else {
+                            twoFactorAuthManager.getPendingBackupCodes()
+                        }
+                    )
+                },
+                onFailure = { error ->
+                    TwoFactorSetupUiState(
+                        isLoading = false,
+                        message = error.message ?: "No se pudo preparar 2FA."
+                    )
+                }
+            )
+            refreshTwoFactorStatus()
+        }
+    }
+
+    fun confirmTwoFactorSetup(code: String) {
+        val secret = _twoFactorSetup.value.secret ?: twoFactorAuthManager.getPendingSecret()
+        if (secret.isNullOrBlank()) {
+            _twoFactorSetup.value = _twoFactorSetup.value.copy(
+                message = "Primero genera la configuración 2FA."
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _twoFactorSetup.value = _twoFactorSetup.value.copy(isLoading = true, message = null)
+            val verification = twoFactorAuthManager.verifyTOTPCode(code, secret)
+            if (!verification.success) {
+                _twoFactorSetup.value = _twoFactorSetup.value.copy(
+                    isLoading = false,
+                    message = verification.error ?: "El código 2FA no es válido."
+                )
+                refreshTwoFactorStatus()
+                return@launch
+            }
+
+            val enableResult = authRepository.enableTwoFactorAuth(secret)
+            _twoFactorSetup.value = enableResult.fold(
+                onSuccess = {
+                    TwoFactorSetupUiState(message = "Autenticación en dos pasos activada correctamente.")
+                },
+                onFailure = { error ->
+                    _twoFactorSetup.value.copy(
+                        isLoading = false,
+                        message = error.message ?: "No se pudo activar 2FA."
+                    )
+                }
+            )
+            refreshTwoFactorStatus()
+        }
+    }
+
+    fun disableTwoFactor() {
+        viewModelScope.launch {
+            _twoFactorSetup.value = _twoFactorSetup.value.copy(isLoading = true, message = null)
+            val result = authRepository.disableTwoFactorAuth()
+            _twoFactorSetup.value = result.fold(
+                onSuccess = {
+                    TwoFactorSetupUiState(message = "Autenticación en dos pasos desactivada.")
+                },
+                onFailure = { error ->
+                    _twoFactorSetup.value.copy(
+                        isLoading = false,
+                        message = error.message ?: "No se pudo desactivar 2FA."
+                    )
+                }
+            )
+            refreshTwoFactorStatus()
+        }
+    }
+
+    fun clearTwoFactorMessage() {
+        _twoFactorSetup.value = _twoFactorSetup.value.copy(message = null, isLoading = false)
     }
 
     val isAdmin: Boolean

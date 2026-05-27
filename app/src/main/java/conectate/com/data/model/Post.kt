@@ -19,6 +19,8 @@ data class Post(
     @SerialName("share_count") val shareCount: Int = 0,
     @SerialName("liked_by_me") val likedByMe: Boolean = false,
     @SerialName("shared_by_me") val sharedByMe: Boolean = false,
+    @SerialName("my_reaction") val myReaction: String? = null,
+    @SerialName("reaction_counts") val reactionCounts: Map<String, Int> = emptyMap(),
     @SerialName("is_verified") val isVerified: Boolean = false,
     @SerialName("visibility") val visibility: String = "public"
 )

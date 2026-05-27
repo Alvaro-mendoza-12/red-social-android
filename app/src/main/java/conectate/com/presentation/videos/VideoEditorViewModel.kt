@@ -80,14 +80,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private var exoPlayer: ExoPlayer? = null
 
     fun getPlayer(context: Context): ExoPlayer {
-        if (exoPlayer == null) {
+        val existing = exoPlayer
+        if (existing != null) return existing
+
+        return ExoPlayer.Builder(context).build().apply {
             getOrInitProfile(context)
-            exoPlayer = ExoPlayer.Builder(context).build().apply {
-                playWhenReady = false
-                repeatMode = Player.REPEAT_MODE_OFF
-            }
+            playWhenReady = false
+            repeatMode = Player.REPEAT_MODE_OFF
+            exoPlayer = this
         }
-        return exoPlayer!!
     }
 
     override fun onCleared() {
@@ -157,8 +158,9 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val wasPlaying = player.isPlaying
 
         player.setMediaItems(
-            videoClips.map { clip ->
-                MediaItem.fromUri(clip.uri!!).buildUpon()
+            videoClips.mapNotNull { clip ->
+                val uri = clip.uri ?: return@mapNotNull null
+                MediaItem.fromUri(uri).buildUpon()
                     .setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder()
                             .setStartPositionMs(clip.startOffsetMs)
@@ -202,8 +204,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 trackType = track.type
             }
         }
-        if (clipToDuplicate != null && trackType != null) {
-            val original = clipToDuplicate!!
+        val original = clipToDuplicate
+        if (original != null && trackType != null) {
             val newClip = original.copy(
                 id = System.currentTimeMillis() + (0..1000).random(),
                 startMs = original.endMs
@@ -363,16 +365,17 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 try {
                     if (index > 0) _editorHint.value = "Reintentando con perfil compatible."
                     successUri = runExportAttempt(context, timeline, profile, config)
-                    if (successUri != null) break
+                    break
                 } catch (e: Throwable) {
                     lastError = e
                 }
             }
 
             _isExporting.value = false
-            if (successUri != null) {
+            val exportedUri = successUri
+            if (exportedUri != null) {
                 _exportProgress.value = 1f
-                onSuccess(successUri!!)
+                onSuccess(exportedUri)
             } else {
                 _exportProgress.value = 0f
                 onError(lastError?.message ?: "No se pudo exportar el video")
@@ -474,7 +477,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             }
             delay(220)
         }
-        if (failure != null) throw failure!!
+        failure?.let { throw it }
         if (!outputFile.exists() || outputFile.length() <= 0L) throw IllegalStateException("Archivo inválido")
         return Uri.fromFile(outputFile)
     }

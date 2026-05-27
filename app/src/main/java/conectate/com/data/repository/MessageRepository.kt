@@ -22,6 +22,8 @@ import conectate.com.data.repository.message.MessageReportStore
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.local.entity.ChatEntity
 import conectate.com.core.messaging.UnreadPolicy
 import conectate.com.core.moderation.ContentModerationService
@@ -70,6 +72,7 @@ class MessageRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val storageService: StorageService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val userRepository: UserRepository,
     private val chatDao: conectate.com.data.local.dao.ChatDao,
     private val userDao: conectate.com.data.local.dao.UserDao,
@@ -85,7 +88,8 @@ class MessageRepository @Inject constructor(
     private val messageRealtimeSync: MessageRealtimeSync,
     private val messagePolicyEngine: MessagePolicyEngine,
     private val messageNotificationService: MessageNotificationService,
-    private val messageUnreadCounter: MessageUnreadCounter
+    private val messageUnreadCounter: MessageUnreadCounter,
+    private val sessionStateStore: MessageSessionStateStore
 ) : ChatSyncDataSource {
     companion object {
         private const val MAX_FORWARD_TARGETS_PER_BATCH = 20
@@ -127,7 +131,6 @@ class MessageRepository @Inject constructor(
     // 6. Transient ID Mapper (FCM -> UUID) allows replies to work even during race conditions
     private val transientIdMap = ConcurrentHashMap<String, String>()
     private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
-    private var sessionStateStore = MessageSessionStateStore(context)
     private val mediaResolver = MessageMediaResolver(
         storageService = storageService,
         authService = authService,
@@ -583,19 +586,26 @@ class MessageRepository @Inject constructor(
     private data class ChatParticipantState(
         val clearedAt: String?,
         val isMuted: Boolean,
-        val isPinned: Boolean
+        val isPinned: Boolean,
+        val isArchived: Boolean,
+        val isFavorite: Boolean
     )
 
     private fun sortChatsByPriority(chats: List<ChatWithLastMessage>): List<ChatWithLastMessage> {
         return chats.sortedWith(
-            compareByDescending<ChatWithLastMessage> { it.chat.is_pinned }
+            compareBy<ChatWithLastMessage> { it.chat.is_archived }
+                .thenByDescending { it.chat.is_pinned }
+                .thenByDescending { it.chat.is_favorite }
                 .thenByDescending { normalizeDate(it.chat.last_message_at ?: it.chat.created_at) }
         )
     }
 
     private fun isMissingPreferenceColumnError(body: String): Boolean {
         var normalized = body.lowercase()
-        val referencesPreferenceColumns = normalized.contains("is_muted") || normalized.contains("is_pinned")
+        val referencesPreferenceColumns = normalized.contains("is_muted") ||
+            normalized.contains("is_pinned") ||
+            normalized.contains("is_archived") ||
+            normalized.contains("is_favorite")
         val looksLikeMissingColumn = normalized.contains("column") || normalized.contains("42703")
         return referencesPreferenceColumns && looksLikeMissingColumn
     }
@@ -672,12 +682,61 @@ class MessageRepository @Inject constructor(
             if (_userChats.value.isEmpty() && isSessionSnapshotValid(sessionSnapshot, "get-user-chats-preload")) {
                 val preLoad = visibleLocalEntities
                     .sortedWith(
-                        compareByDescending<ChatEntity> { it.is_pinned }
+                        compareBy<ChatEntity> { it.is_archived }
+                            .thenByDescending { it.is_pinned }
                             .thenByDescending { normalizeDate(it.last_message_at ?: "") }
                     )
                     .map { it.toDomainWithDetails() }
                 _userChats.value = preLoad
                 android.util.Log.d("MessageRepository", "📦 Pre-loaded ${preLoad.size} chats from Room")
+            }
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val localInbox = localFallbackApiClient.loadMessagesInbox(accessToken, "chats")
+                    .getOrElse { error ->
+                        android.util.Log.w("MessageRepository", "Local fallback inbox failed", error)
+                        if (allLocalChatsDomain.isEmpty()) {
+                            return Result.failure(error)
+                        }
+                        val localOnly = visibleLocalEntities.map { it.toDomainWithDetails() }
+                        if (isSessionSnapshotValid(sessionSnapshot, "local-fallback-inbox-local-only")) {
+                            _userChats.value = localOnly
+                        }
+                        return Result.success(localOnly)
+                    }
+
+                val mappedChats = localInbox.items
+                    .filter { it.kind == "chat" }
+                    .map { item -> mapLocalFallbackInboxItem(item, cleanUserId) }
+                    .let(::sortChatsByPriority)
+
+                if (isSessionSnapshotValid(sessionSnapshot, "local-fallback-inbox-result")) {
+                    _userChats.value = mappedChats
+                    scope.launch {
+                        runCatching {
+                            chatDao.insertChats(
+                                mappedChats.map { chat ->
+                                    ChatEntity.fromDomain(
+                                        chat = chat.chat,
+                                        displayName = chat.otherUserName,
+                                        displayImage = chat.otherUserImage,
+                                        unreadCount = chat.unreadCount,
+                                        lastMsg = chat.chat.last_message,
+                                        lastTime = chat.chat.last_message_at,
+                                        otherUserId = chat.otherUserId,
+                                        lastMsgId = chat.lastMessage?.id,
+                                        lastSenderId = chat.lastMessage?.sender_id,
+                                        nickname = chat.nickname,
+                                        clearedAt = chat.clearedAt
+                                    )
+                                }
+                            )
+                        }.onFailure {
+                            android.util.Log.w("MessageRepository", "Could not cache local fallback inbox", it)
+                        }
+                    }
+                }
+                return Result.success(mappedChats)
             }
 
             // 1. Fetch Remote Chats (Explicitly lowercased filter)
@@ -756,7 +815,7 @@ class MessageRepository @Inject constructor(
                 } else emptyMap()
             } else emptyMap()
 
-            // A3. Get per-user participant state (clear, mute, pin)
+            // A3. Get per-user participant state (clear, mute, pin, archive)
             val participantStateMap = mutableMapOf<String, ChatParticipantState>()
             if (activeChatIds.isNotEmpty()) {
                 activeChatIds.chunked(30).forEach { chunk ->
@@ -766,19 +825,24 @@ class MessageRepository @Inject constructor(
                             header("apikey", supabaseConfig.supabaseAnonKey)
                             parameter("chat_id", "in.(${chunk.joinToString(",")})")
                             parameter("user_id", "eq.$cleanUserId")
-                            parameter("select", "chat_id,cleared_at,is_muted,is_pinned")
+                            parameter("select", "chat_id,cleared_at,is_muted,is_pinned,is_archived,is_favorite")
                         }
                         val participantRows: List<JsonObject> = if (partRes.status.isSuccess()) {
                             partRes.body()
                         } else {
                             val partBody = runCatching { partRes.bodyAsText() }.getOrDefault("")
                             if (isMissingPreferenceColumnError(partBody)) {
+                                val fallbackSelect = if (partBody.contains("is_favorite", ignoreCase = true)) {
+                                    "chat_id,cleared_at,is_muted,is_pinned,is_archived"
+                                } else {
+                                    "chat_id,cleared_at"
+                                }
                                 val fallbackRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
                                     header("Authorization", "Bearer $accessToken")
                                     header("apikey", supabaseConfig.supabaseAnonKey)
                                     parameter("chat_id", "in.(${chunk.joinToString(",")})")
                                     parameter("user_id", "eq.$cleanUserId")
-                                    parameter("select", "chat_id,cleared_at")
+                                    parameter("select", fallbackSelect)
                                 }
                                 if (fallbackRes.status.isSuccess()) fallbackRes.body() else emptyList()
                             } else {
@@ -792,10 +856,14 @@ class MessageRepository @Inject constructor(
                             var clearedAt = participantJson["cleared_at"]?.jsonPrimitive?.contentOrNull
                             var isMuted = participantJson["is_muted"]?.jsonPrimitive?.booleanOrNull ?: false
                             var isPinned = participantJson["is_pinned"]?.jsonPrimitive?.booleanOrNull ?: false
+                            var isArchived = participantJson["is_archived"]?.jsonPrimitive?.booleanOrNull ?: false
+                            var isFavorite = participantJson["is_favorite"]?.jsonPrimitive?.booleanOrNull ?: false
                             participantStateMap[cid] = ChatParticipantState(
                                 clearedAt = clearedAt,
                                 isMuted = isMuted,
-                                isPinned = isPinned
+                                isPinned = isPinned,
+                                isArchived = isArchived,
+                                isFavorite = isFavorite
                             )
                         }
                     } catch(e: Exception) {}
@@ -875,6 +943,8 @@ class MessageRepository @Inject constructor(
                 var clearedAt = participantState?.clearedAt
                 var isMuted = participantState?.isMuted ?: chat.is_muted
                 var isPinned = participantState?.isPinned ?: chat.is_pinned
+                var isArchived = participantState?.isArchived ?: chat.is_archived
+                var isFavorite = participantState?.isFavorite ?: chat.is_favorite
                 
                 val realLastMsg = lastMessagesMap[cleanChatId]
                 val remoteUnread = unreadCountsMap[cleanChatId] ?: 0
@@ -935,6 +1005,8 @@ class MessageRepository @Inject constructor(
                         nickname = nickname,
                         is_muted = isMuted,
                         is_pinned = isPinned,
+                        is_archived = isArchived,
+                        is_favorite = isFavorite,
                         cleared_at = clearedAt ?: chat.cleared_at
                     ),
                     lastMessage = finalLastMsg,
@@ -1218,8 +1290,64 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+    private fun mapLocalFallbackInboxItem(
+        item: LocalFallbackInboxItem,
+        currentUserId: String
+    ): ChatWithLastMessage {
+        val chatId = item.id.trim().lowercase()
+        val otherId = item.profileId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val updatedAt = item.updatedAt.takeIf { it.isNotBlank() } ?: "1970-01-01T00:00:00Z"
+        val isGroupLike = item.kind != "chat"
+        val participants = if (isGroupLike) {
+            listOf(currentUserId).filter { it.isNotBlank() }
+        } else {
+            listOfNotNull(currentUserId.takeIf { it.isNotBlank() }, otherId).distinct()
+        }
+        val subtitle = item.subtitle.trim().ifBlank { "Sin mensajes" }
+        val summaryMessage = subtitle
+            .takeUnless { it.equals("Sin actividad reciente", ignoreCase = true) }
+            ?.let {
+                Message(
+                    id = "summary-$chatId",
+                    chat_id = chatId,
+                    sender_id = otherId ?: "",
+                    content = it,
+                    content_type = "text",
+                    status = "sent",
+                    created_at = updatedAt
+                )
+            }
+        val chat = Chat(
+            id = chatId,
+            participants = participants,
+            created_at = updatedAt,
+            updated_at = updatedAt,
+            last_message = subtitle,
+            last_message_at = updatedAt,
+            last_message_id = summaryMessage?.id,
+            last_message_sender_id = summaryMessage?.sender_id,
+            is_group = isGroupLike,
+            group_name = item.title.ifBlank { "Chat privado" },
+            group_image = item.avatarUrl.takeIf { it.isNotBlank() },
+            is_muted = item.isMuted,
+            is_pinned = item.isPinned,
+            is_archived = item.isArchived,
+            is_favorite = item.isFavorite
+        )
+        return ChatWithLastMessage(
+            chat = chat,
+            lastMessage = summaryMessage,
+            unreadCount = item.unreadCount,
+            otherUserName = item.title.ifBlank { "Chat privado" },
+            otherUserImage = item.avatarUrl.takeIf { it.isNotBlank() },
+            otherUserId = otherId,
+            clearedAt = null
+        )
+    }
+
+
+
     override suspend fun syncChats(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val chatsResult = getUserChats()
@@ -1242,8 +1370,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     override suspend fun retryPendingMessages(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -1275,8 +1403,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     override suspend fun retryPendingDeletes(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -1444,8 +1572,8 @@ class MessageRepository @Inject constructor(
         } catch (e: Exception) { 0 }
     }
 
-@Composable
-@Composable
+
+
     suspend fun setNickname(targetUserId: String, nickname: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1492,8 +1620,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
@@ -1546,8 +1674,8 @@ class MessageRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
 
-@Composable
-@Composable
+
+
     suspend fun getCachedMessages(chatId: String): List<Message> = withContext(Dispatchers.IO) {
         var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
@@ -1654,6 +1782,35 @@ class MessageRepository @Inject constructor(
             var sessionSnapshot = captureSessionSnapshot(sessionUserId)
             if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-start:$chatId")) return
             var accessToken = authService.ensureValidAccessToken().getOrElse { return }
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val localChat = localFallbackApiClient.loadChat(accessToken, chatId)
+                    .getOrElse { error ->
+                        android.util.Log.w("MessageRepository", "Local fallback chat history failed for $chatId", error)
+                        return
+                    }
+                val rawMsgs = localChat.messages
+                    .mapNotNull { messageJson ->
+                        runCatching { json.decodeFromJsonElement<Message>(messageJson) }.getOrNull()
+                    }
+                    .map { it.copy(chat_id = chatId).withNormalizedStatus() }
+
+                scope.launch {
+                    if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-cache:$chatId")) return@launch
+                    runCatching {
+                        messageDao.insertMessages(
+                            rawMsgs.map { conectate.com.data.local.entity.MessageEntity.fromDomain(it, isSynced = true) }
+                        )
+                    }.onFailure {
+                        android.util.Log.w("MessageRepository", "Could not cache local fallback messages", it)
+                    }
+                }
+
+                _activeChatMessages[chatId]?.let { flow ->
+                    if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-flow:$chatId")) return
+                    flow.update { current -> unifyMessageList(current + rawMsgs) }
+                }
+                return
+            }
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -1876,6 +2033,7 @@ class MessageRepository @Inject constructor(
             }
 
             var mediaUrl: String? = existingMediaUrl
+            var uploadedMediaSize = 0L
             if (mediaUri != null) {
                 var bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
                     ?: return Result.failure(Exception("No se pudo leer el archivo"))
@@ -1885,7 +2043,12 @@ class MessageRepository @Inject constructor(
                 var path = "chat-media/$filename"
                 var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
                 if (upload.isSuccess) {
-                    mediaUrl = path
+                    mediaUrl = if (authService.isLocalFallbackSession()) {
+                        storageService.getPublicUrl("chat-media", filename)
+                    } else {
+                        path
+                    }
+                    uploadedMediaSize = bytes.size.toLong()
                     android.util.Log.d("MessageRepository", "✅ Media uploaded ($mimeType): $mediaUrl")
                 } else {
                     var reason = upload.exceptionOrNull()?.message ?: "No se pudo subir multimedia"
@@ -1901,6 +2064,7 @@ class MessageRepository @Inject constructor(
                 content = sanitizedContent,
                 content_type = mediaType,
                 media_url = mediaUrl,
+                media_size = uploadedMediaSize,
                 status = "sending", // EXPLICIT STATUS FOR OPTIMISTIC VIEW
                 // SANITIZATION: If replying to a local FCM placeholder, try to resolve it to a Realtime UUID.
                 // If not found in map, strip it to prevent HTTP 400.
@@ -2089,7 +2253,13 @@ class MessageRepository @Inject constructor(
                 var filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
                 var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
                 if (upload.isSuccess) {
-                    Result.success("chat-media/$filename")
+                    Result.success(
+                        if (authService.isLocalFallbackSession()) {
+                            storageService.getPublicUrl("chat-media", filename)
+                        } else {
+                            "chat-media/$filename"
+                        }
+                    )
                 } else {
                     Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir multimedia"))
                 }
@@ -2110,6 +2280,33 @@ class MessageRepository @Inject constructor(
         token: String,
         msg: Message
     ): BackendSendResult {
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            return localFallbackApiClient.sendChatMessage(
+                accessToken = token,
+                chatId = msg.chat_id,
+                content = msg.content,
+                contentType = msg.content_type,
+                mediaUrl = msg.media_url,
+                mediaSize = msg.media_size,
+                replyToId = msg.reply_to_id
+            ).fold(
+                onSuccess = { sent ->
+                    BackendSendResult(
+                        isSuccess = true,
+                        statusCode = 201,
+                        message = sent.copy(status = "sent")
+                    )
+                },
+                onFailure = { error ->
+                    BackendSendResult(
+                        isSuccess = false,
+                        statusCode = 500,
+                        errorBody = error.message ?: "No se pudo enviar al servidor Ubuntu."
+                    )
+                }
+            )
+        }
+
         var rpcPayload = buildJsonObject {
             put("p_chat_id", msg.chat_id)
             put("p_message_id", msg.id)
@@ -2331,8 +2528,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2415,8 +2612,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessagesAsDelivered(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2442,8 +2639,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessagesAsRead(chatId: String, messageIds: Collection<String>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -2576,8 +2773,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun markMessagesAsRead(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -3125,8 +3322,8 @@ class MessageRepository @Inject constructor(
         return chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() }
     }
     
-@Composable
-@Composable
+
+
     suspend fun deleteMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()
@@ -3177,8 +3374,8 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun editMessage(msg: Message, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No hay sesión"))
@@ -3257,8 +3454,8 @@ class MessageRepository @Inject constructor(
         val reactions: Map<String, List<String>>
     )
 
-@Composable
-@Composable
+
+
     suspend fun toggleMessageReaction(messageId: String, emoji: String): Result<MessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -3472,12 +3669,16 @@ class MessageRepository @Inject constructor(
         token: String,
         userId: String,
         isMuted: Boolean?,
-        isPinned: Boolean?
+        isPinned: Boolean?,
+        isArchived: Boolean?,
+        isFavorite: Boolean?
     ) {
         var rpcPayload = buildJsonObject {
             put("p_chat_id", chatId)
             if (isMuted != null) put("p_is_muted", isMuted)
             if (isPinned != null) put("p_is_pinned", isPinned)
+            if (isArchived != null) put("p_is_archived", isArchived)
+            if (isFavorite != null) put("p_is_favorite", isFavorite)
         }
 
         var rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_preferences") {
@@ -3495,12 +3696,14 @@ class MessageRepository @Inject constructor(
             "secure_set_chat_preferences failed (${rpcResponse.status.value}). Trying REST fallback. Body=$rpcFailedBody"
         )
         if (isMissingPreferenceColumnError(rpcFailedBody)) {
-            throw Exception("Supabase chat_participants no tiene is_muted/is_pinned. Ejecuta el hotfix de chat preferences.")
+            throw Exception("Supabase chat_participants no tiene columnas de preferencias de chat. Ejecuta el SQL final.")
         }
 
         var patchPayload = buildJsonObject {
             if (isMuted != null) put("is_muted", isMuted)
             if (isPinned != null) put("is_pinned", isPinned)
+            if (isArchived != null) put("is_archived", isArchived)
+            if (isFavorite != null) put("is_favorite", isFavorite)
         }
 
         var patchResponse = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
@@ -3517,7 +3720,7 @@ class MessageRepository @Inject constructor(
 
         val patchBody = runCatching { patchResponse.bodyAsText() }.getOrDefault("")
         if (isMissingPreferenceColumnError(patchBody)) {
-            throw Exception("Supabase chat_participants no tiene is_muted/is_pinned. Ejecuta el hotfix de chat preferences.")
+            throw Exception("Supabase chat_participants no tiene columnas de preferencias de chat. Ejecuta el SQL final.")
         }
         android.util.Log.w(
             "MessageRepository",
@@ -3529,6 +3732,8 @@ class MessageRepository @Inject constructor(
             put("user_id", userId)
             if (isMuted != null) put("is_muted", isMuted)
             if (isPinned != null) put("is_pinned", isPinned)
+            if (isArchived != null) put("is_archived", isArchived)
+            if (isFavorite != null) put("is_favorite", isFavorite)
         }
 
         val upsertResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
@@ -3543,7 +3748,7 @@ class MessageRepository @Inject constructor(
         if (!upsertResponse.status.isSuccess()) {
             val upsertBody = runCatching { upsertResponse.bodyAsText() }.getOrDefault("")
             if (isMissingPreferenceColumnError(upsertBody)) {
-                throw Exception("Supabase chat_participants no tiene is_muted/is_pinned. Ejecuta el hotfix de chat preferences.")
+                throw Exception("Supabase chat_participants no tiene columnas de preferencias de chat. Ejecuta el SQL final.")
             }
             if (rpcFailedBody.isNotBlank()) {
                 throw Exception("Error setting chat preferences: ${rpcResponse.status.value}")
@@ -3552,9 +3757,17 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    private suspend fun applyLocalChatPreferences(chatId: String, isMuted: Boolean?, isPinned: Boolean?) {
+    private suspend fun applyLocalChatPreferences(
+        chatId: String,
+        isMuted: Boolean?,
+        isPinned: Boolean?,
+        isArchived: Boolean?,
+        isFavorite: Boolean?
+    ) {
         isMuted?.let { chatDao.updateMuteState(chatId, it) }
         isPinned?.let { chatDao.updatePinState(chatId, it) }
+        isArchived?.let { chatDao.updateArchiveState(chatId, it) }
+        isFavorite?.let { chatDao.updateFavoriteState(chatId, it) }
 
         _userChats.value = sortChatsByPriority(
             _userChats.value.map { conversation ->
@@ -3564,7 +3777,9 @@ class MessageRepository @Inject constructor(
                     conversation.copy(
                         chat = conversation.chat.copy(
                             is_muted = isMuted ?: conversation.chat.is_muted,
-                            is_pinned = isPinned ?: conversation.chat.is_pinned
+                            is_pinned = isPinned ?: conversation.chat.is_pinned,
+                            is_archived = isArchived ?: conversation.chat.is_archived,
+                            is_favorite = isFavorite ?: conversation.chat.is_favorite
                         )
                     )
                 }
@@ -3575,7 +3790,9 @@ class MessageRepository @Inject constructor(
     private suspend fun updateChatPreferences(
         chatId: String,
         isMuted: Boolean?,
-        isPinned: Boolean?
+        isPinned: Boolean?,
+        isArchived: Boolean?,
+        isFavorite: Boolean?
     ): Result<Unit> {
         return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
@@ -3588,9 +3805,17 @@ class MessageRepository @Inject constructor(
                 token = token,
                 userId = cleanUserId,
                 isMuted = isMuted,
-                isPinned = isPinned
+                isPinned = isPinned,
+                isArchived = isArchived,
+                isFavorite = isFavorite
             )
-            applyLocalChatPreferences(chatId = cleanId, isMuted = isMuted, isPinned = isPinned)
+            applyLocalChatPreferences(
+                chatId = cleanId,
+                isMuted = isMuted,
+                isPinned = isPinned,
+                isArchived = isArchived,
+                isFavorite = isFavorite
+            )
             Result.success(Unit)
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "updateChatPreferences failed", e)
@@ -3598,16 +3823,24 @@ class MessageRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun muteChat(chatId: String, isMuted: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
-        updateChatPreferences(chatId = chatId, isMuted = isMuted, isPinned = null)
+        updateChatPreferences(chatId = chatId, isMuted = isMuted, isPinned = null, isArchived = null, isFavorite = null)
     }
 
-@Composable
-@Composable
+
+
     suspend fun pinChat(chatId: String, isPinned: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
-        updateChatPreferences(chatId = chatId, isMuted = null, isPinned = isPinned)
+        updateChatPreferences(chatId = chatId, isMuted = null, isPinned = isPinned, isArchived = null, isFavorite = null)
+    }
+
+    suspend fun archiveChat(chatId: String, isArchived: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        updateChatPreferences(chatId = chatId, isMuted = null, isPinned = null, isArchived = isArchived, isFavorite = null)
+    }
+
+    suspend fun favoriteChat(chatId: String, isFavorite: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        updateChatPreferences(chatId = chatId, isMuted = null, isPinned = null, isArchived = null, isFavorite = isFavorite)
     }
 
     fun isChatMutedLocally(chatId: String): Boolean {
@@ -3752,8 +3985,8 @@ class MessageRepository @Inject constructor(
         return userFromCachedChat(cached)
     }
 
-@Composable
-@Composable
+
+
     suspend fun refreshDirectChatIdentity(chatId: String, otherUserId: String): conectate.com.data.model.User? = withContext(Dispatchers.IO) {
         var cleanChatId = chatId.trim().lowercase()
         var cleanUserId = otherUserId.trim().lowercase()

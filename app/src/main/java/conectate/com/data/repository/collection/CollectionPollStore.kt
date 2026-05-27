@@ -29,8 +29,6 @@ internal class CollectionPollStore(
     private val authService: AuthService,
     private val json: Json
 ) {
-@Composable
-@Composable
     suspend fun getPollState(pollId: String): Result<List<MessagePollOptionState>> = withContext(Dispatchers.IO) {
         try {
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))

@@ -54,7 +54,6 @@ fun VideosScreen(
     
     var videoToShare by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
     var videoToReport by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
-    val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(reportActionMessage) {
@@ -105,8 +104,7 @@ fun VideosScreen(
     var videoForOptions by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
     
     // Show Share Options Sheet
-    if (videoForOptions != null) {
-        val video = videoForOptions!!
+    videoForOptions?.let { video ->
         conectate.com.presentation.components.ShareOptionsSheet(
             onDismiss = { videoForOptions = null },
             onSendToFriend = {
@@ -136,8 +134,7 @@ fun VideosScreen(
         )
     }
 
-    if (videoToReport != null) {
-        val video = videoToReport!!
+    videoToReport?.let { video ->
         VideoReportDialog(
             alreadyReported = reportedVideoIds.contains(video.id),
             onDismiss = { videoToReport = null },
@@ -153,14 +150,17 @@ fun VideosScreen(
             userRepository = viewModel.userRepository,
             onDismiss = { videoToShare = null },
             onShareWithUser = { user ->
-                val video = videoToShare!!
-                videoToShare = null
-                val videoLink = "https://conectate.com/video/${video.id}"
-                val route = conectate.com.presentation.navigation.Screen.Chat.createRoute(
-                    user.id, 
-                    initialMessage = "Compartió un video:\n$videoLink\n\n${video.title}"
-                )
-                navController.navigate(route)
+                videoToShare?.let { video ->
+                    videoToShare = null
+                    val videoLink = "https://conectate.com/video/${video.id}"
+                    val route = conectate.com.presentation.navigation.Screen.Chat.createRoute(
+                        user.id,
+                        initialMessage = "Compartió un video:\n$videoLink\n\n${video.title}"
+                    )
+                    navController.navigate(route)
+                } ?: run {
+                    videoToShare = null
+                }
             }
         )
     }
@@ -502,7 +502,7 @@ fun VideoCard(
                     // Share
                     IconButton(onClick = onShareClick, modifier = Modifier.size(24.dp)) {
                         Icon(
-                            imageVector = if (video.sharedByMe) Icons.Default.RepeatOn else Icons.Default.Share,
+                            imageVector = if (video.sharedByMe) Icons.Default.Refresh else Icons.Default.Share,
                             contentDescription = "Compartir",
                             tint = if (video.sharedByMe) Color(0xFF00bcd4) else Color.White,
                             modifier = Modifier.size(16.dp)

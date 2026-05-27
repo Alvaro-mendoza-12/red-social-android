@@ -1,0 +1,27 @@
+{
+  "name": "conectate-local-fallback-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local fallback API for Conectate when Supabase is restricted or unavailable.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "import:csv": "node src/import-csv.js",
+    "import:all-csv": "node src/import-all-csv.js",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.6.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
+  }
+}

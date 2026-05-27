@@ -17,9 +17,11 @@ CREATE TABLE IF NOT EXISTS wallets (
 ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
 
 -- Políticas: solo el usuario puede ver/editar su wallet
+DROP POLICY IF EXISTS "wallet_select_own" ON wallets;
 CREATE POLICY "wallet_select_own" ON wallets
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "wallet_update_own" ON wallets;
 CREATE POLICY "wallet_update_own" ON wallets
     FOR UPDATE USING (auth.uid() = user_id);
 
@@ -143,12 +145,19 @@ CREATE INDEX IF NOT EXISTS idx_ad_impressions_campaign ON ad_impressions(campaig
 
 -- Insertar regalos virtuales básicos
 INSERT INTO virtual_gifts (name, description, image_url, price_diamonds, price_credits, animation_url, sort_order) VALUES
-('Corazón', 'Un corazón para expresar tu cariño', 'https://example.com/gifts/heart.png', 10, 1.99, 'https://example.com/animations/heart.json', 1),
-('Rosa', 'Una hermosa rosa virtual', 'https://example.com/gifts/rose.png', 25, 4.99, 'https://example.com/animations/rose.json', 2),
-('Trofeo', '¡Felicitaciones por tu victoria!', 'https://example.com/gifts/trophy.png', 50, 9.99, 'https://example.com/animations/trophy.json', 3),
-('Fuegos Artificiales', '¡Celebración épica!', 'https://example.com/gifts/fireworks.png', 100, 19.99, 'https://example.com/animations/fireworks.json', 4),
-('Superestrella', 'Eres una estrella', 'https://example.com/gifts/star.png', 200, 39.99, 'https://example.com/animations/star.json', 5)
-ON CONFLICT (name) DO NOTHING;
+('Corazón', 'Un corazón para expresar tu cariño', 'conectate://gift-assets/heart', 10, 1.99, NULL, 1),
+('Rosa', 'Una hermosa rosa virtual', 'conectate://gift-assets/rose', 25, 4.99, NULL, 2),
+('Trofeo', '¡Felicitaciones por tu victoria!', 'conectate://gift-assets/trophy', 50, 9.99, NULL, 3),
+('Fuegos Artificiales', '¡Celebración épica!', 'conectate://gift-assets/fireworks', 100, 19.99, NULL, 4),
+('Superestrella', 'Eres una estrella', 'conectate://gift-assets/star', 200, 39.99, NULL, 5)
+ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description,
+    image_url = EXCLUDED.image_url,
+    price_diamonds = EXCLUDED.price_diamonds,
+    price_credits = EXCLUDED.price_credits,
+    animation_url = EXCLUDED.animation_url,
+    is_active = true,
+    sort_order = EXCLUDED.sort_order;
 
 -- Insertar planes de suscripción
 INSERT INTO subscription_plans (name, description, price_monthly, price_yearly, features, sort_order) VALUES

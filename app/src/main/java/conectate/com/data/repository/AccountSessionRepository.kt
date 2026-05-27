@@ -411,28 +411,27 @@ class AccountSessionRepository @Inject constructor(
         }.getOrNull()
     }
 
-    private fun createSecurePrefsState(): SecurePrefsState = runCatching {
+    private fun createSecurePrefsState(): SecurePrefsState = try {
         val key = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        val prefs = EncryptedSharedPreferences.create(
             context,
             PREFS,
             key,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-    }.fold(
-        onSuccess = { SecurePrefsState(prefs = it, initializationError = null) },
-        onFailure = { error ->
-            android.util.Log.e(
-                "AccountSessionRepository",
-                "Secure quick-switch storage unavailable. Stored accounts will be disabled.",
-                error
-            )
-            SecurePrefsState(prefs = null, initializationError = error)
+        SecurePrefsState(prefs = prefs, initializationError = null)
+    } catch (error: Throwable) {
+        android.util.Log.e("AccountSessionRepository", "Secure storage failed, falling back to insecure storage", error)
+        try {
+            val fallbackPrefs = context.getSharedPreferences("account_switch_fallback", Context.MODE_PRIVATE)
+            SecurePrefsState(prefs = fallbackPrefs, initializationError = error)
+        } catch (e: Throwable) {
+            SecurePrefsState(prefs = null, initializationError = e)
         }
-    )
+    }
 }
 
 

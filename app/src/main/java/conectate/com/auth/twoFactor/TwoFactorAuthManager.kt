@@ -1,542 +1,549 @@
 package conectate.com.auth.twoFactor
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Color
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.WriterException
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.QRCodeWriter
+import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
-import com.warrenstrange.googleauth.GoogleAuthenticator
-import com.warrenstrange.googleauth.GoogleAuthenticatorKey
-import com.warrenstrange.googleauth.GoogleAuthenticatorKey.Builder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 import java.nio.ByteBuffer
+import java.util.Locale
 import java.security.SecureRandom
-import java.time.Instant
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
+import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.experimental.and
-import kotlin.experimental.or
 
 @Singleton
-class TwoFactorAuthManager @Inject constructor(
-    @ApplicationContext private val context: Context
+class TwoFactorAuthManager private constructor(
+    private val context: Context,
+    private val sessionEvents: StateFlow<*>?,
+    private val currentUserIdProvider: () -> String?,
+    private val currentUserEmailProvider: () -> String?
 ) {
-    
-    companion object {
-        private const val SHARED_PREFS_NAME = "two_factor_auth_prefs"
-        private const val SECRET_KEY_ALIAS = "two_factor_secret_key"
-        private const val BACKUP_CODES_KEY = "backup_codes"
-        private const val IS_2FA_ENABLED_KEY = "is_2fa_enabled"
-        private const val FAILED_ATTEMPTS_KEY = "failed_attempts"
-        private const val LAST_ATTEMPT_TIME_KEY = "last_attempt_time"
-        private const val MAX_FAILED_ATTEMPTS = 5
-        private const val LOCKOUT_DURATION_MS = 15 * 60 * 1000L // 15 minutes
-        private const val TOTP_PERIOD_SECONDS = 30
-        private const val TOTP_DIGITS = 6
-        private const val BACKUP_CODES_COUNT = 10
-    }
-    
-    private val securePrefs: EncryptedSharedPreferences by lazy {
-        var masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .setEncryptionScheme(MasterKey.EncryptionScheme.AES256_GCM_HKDF_SHA256)
-            .build()
-        
-        EncryptedSharedPreferences.create(
-            context,
-            SHARED_PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
-    
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
-    
-    private val _is2FAEnabled = MutableStateFlow(is2FAEnabled())
-    val is2FAEnabled: StateFlow<Boolean> = _is2FAEnabled.asStateFlow()
-    
-    private val _failedAttempts = MutableStateFlow(getFailedAttempts())
-    val failedAttempts: StateFlow<Int> = _failedAttempts.asStateFlow()
-    
-    private val _isLockedOut = MutableStateFlow(isLockedOut())
-    val isLockedOut: StateFlow<Boolean> = _isLockedOut.asStateFlow()
-    
-    data class TOTPSecret(
-        val secret: String,
-        val issuer: String = "CONÉCTATE",
-        val accountName: String,
-        val algorithm: String = "SHA1",
-        val digits: Int = TOTP_DIGITS,
-        val period: Int = TOTP_PERIOD_SECONDS
-    ) {
-        fun toTOTPUri(): String {
-            val encodedSecret = secret.replace('+', '-').replace('/', '_').replace('=', '')
-            return "otpauth://totp/$issuer:$accountName?secret=$encodedSecret&issuer=$issuer&algorithm=$algorithm&digits=$digits&period=$period"
-        }
-    }
-    
-    data class BackupCode(
-        val code: String,
-        val isUsed: Boolean = false,
-        val usedAt: Long? = null
+    @Inject
+    constructor(
+        @ApplicationContext context: Context,
+        authService: AuthService
+    ) : this(
+        context = context,
+        sessionEvents = authService.currentSession,
+        currentUserIdProvider = { authService.getCurrentUserId() },
+        currentUserEmailProvider = { authService.getCurrentUserEmail() }
     )
-    
+
+    internal constructor(
+        context: Context,
+        currentUserId: String? = "test-user",
+        currentUserEmail: String? = "test@example.com"
+    ) : this(
+        context = context,
+        sessionEvents = null,
+        currentUserIdProvider = { currentUserId },
+        currentUserEmailProvider = { currentUserEmail }
+    )
+
     data class TwoFactorAuthResult(
-        val success: Boolean,
+        val success: Boolean = false,
         val error: String? = null,
-        val requires2FA: Boolean = false,
-        val totpSecret: TOTPSecret? = null,
-        val qrCodeBitmap: Bitmap? = null,
-        val backupCodes: List<String>? = null
+        val secret: String? = null,
+        val qrCodeUrl: String? = null,
+        val otpauthUrl: String? = null,
+        val backupCodes: List<String> = emptyList()
     )
-    
-    /**
-     * Generate a new TOTP secret for 2FA setup
-     */
-    suspend fun generateTOTPSecret(email: String): TwoFactorAuthResult {
-        return try {
-            var secret = generateSecureSecret()
-            var totpSecret = TOTPSecret(
-                secret = secret,
-                accountName = email
-            )
-            
-            var qrCodeBitmap = generateQRCode(totpSecret.toTOTPUri())
-            var backupCodes = generateBackupCodes()
-            
-            // Store backup codes securely
-            storeBackupCodes(backupCodes)
-            
-            TwoFactorAuthResult(
-                success = true,
-                requires2FA = true,
-                totpSecret = totpSecret,
-                qrCodeBitmap = qrCodeBitmap,
-                backupCodes = backupCodes
-            )
-        } catch (e: Exception) {
-            TwoFactorAuthResult(
-                success = false,
-                error = "Failed to generate TOTP secret: ${e.message}"
-            )
-        }
+
+    private data class SecurePrefsState(
+        val prefs: SharedPreferences?,
+        val initializationError: Throwable?
+    )
+
+    companion object {
+        private const val PREFS_NAME = "two_factor_secure_prefs"
+        private const val MAX_FAILED_ATTEMPTS = 5
+        private const val LOCKOUT_DURATION_MS = 5 * 60 * 1000L
+        private const val ISSUER = "Conectate"
+        private const val TOTP_DIGITS = 6
+        private const val TOTP_PERIOD_SECONDS = 30L
+        private const val TOTP_SECRET_BYTES = 20
+        private const val TOTP_WINDOW_SIZE = 3
+        private const val BACKUP_CODE_COUNT = 8
+        private const val BACKUP_CODE_BOUND = 100_000_000
+        private const val HMAC_ALGORITHM = "HmacSHA1"
+        private const val BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     }
-    
-    /**
-     * Verify TOTP code
-     */
-    suspend fun verifyTOTPCode(code: String, secret: String): TwoFactorAuthResult {
-        if (isLockedOut()) {
-            return TwoFactorAuthResult(
-                success = false,
-                error = "Account locked due to too many failed attempts. Try again later."
-            )
-        }
-        
-        return try {
-            var googleAuthenticator = GoogleAuthenticator()
-            var isValid = googleAuthenticator.authorize(secret, code.toInt())
-            
-            if (isValid) {
-                resetFailedAttempts()
-                TwoFactorAuthResult(success = true)
-            } else {
-                incrementFailedAttempts()
-                TwoFactorAuthResult(
-                    success = false,
-                    error = "Invalid TOTP code"
-                )
-            }
-        } catch (e: Exception) {
-            TwoFactorAuthResult(
-                success = false,
-                error = "Failed to verify TOTP code: ${e.message}"
-            )
-        }
-    }
-    
-    /**
-     * Verify backup code
-     */
-    suspend fun verifyBackupCode(code: String): TwoFactorAuthResult {
-        if (isLockedOut()) {
-            return TwoFactorAuthResult(
-                success = false,
-                error = "Account locked due to too many failed attempts. Try again later."
-            )
-        }
-        
-        return try {
-            var backupCodes = getBackupCodes()
-            val codeIndex = backupCodes.indexOfFirst { it.code == code && !it.isUsed }
-            
-            if (codeIndex != -1) {
-                // Mark backup code as used
-                val updatedCodes = backupCodes.toMutableList()
-                updatedCodes[codeIndex] = updatedCodes[codeIndex].copy(
-                    isUsed = true,
-                    usedAt = System.currentTimeMillis()
-                )
-                storeBackupCodes(updatedCodes)
-                
-                resetFailedAttempts()
-                TwoFactorAuthResult(success = true)
-            } else {
-                incrementFailedAttempts()
-                TwoFactorAuthResult(
-                    success = false,
-                    error = "Invalid or already used backup code"
-                )
-            }
-        } catch (e: Exception) {
-            TwoFactorAuthResult(
-                success = false,
-                error = "Failed to verify backup code: ${e.message}"
-            )
-        }
-    }
-    
-    /**
-     * Enable 2FA for the user
-     */
-    suspend fun enable2FA(secret: String): TwoFactorAuthResult {
-        return try {
-            // Verify the provided TOTP code before enabling 2FA
-            var googleAuthenticator = GoogleAuthenticator()
-            val currentCode = googleAuthenticator.getTotpPassword(secret)
-            var isValid = googleAuthenticator.authorize(secret, currentCode.toInt())
-            
-            if (!isValid) {
-                return TwoFactorAuthResult(
-                    success = false,
-                    error = "Invalid TOTP secret"
-                )
-            }
-            
-            // Store the secret securely
-            storeTOTPSecret(secret)
-            
-            // Enable 2FA
-            securePrefs.edit()
-                .putBoolean(IS_2FA_ENABLED_KEY, true)
-                .apply()
-            
-            _is2FAEnabled.value = true
-            
-            TwoFactorAuthResult(success = true)
-        } catch (e: Exception) {
-            TwoFactorAuthResult(
-                success = false,
-                error = "Failed to enable 2FA: ${e.message}"
-            )
-        }
-    }
-    
-    /**
-     * Disable 2FA for the user
-     */
-    suspend fun disable2FA(): TwoFactorAuthResult {
-        return try {
-            // Remove the secret
-            removeTOTPSecret()
-            
-            // Remove backup codes
-            removeBackupCodes()
-            
-            // Disable 2FA
-            securePrefs.edit()
-                .putBoolean(IS_2FA_ENABLED_KEY, false)
-                .apply()
-            
-            _is2FAEnabled.value = false
-            
-            TwoFactorAuthResult(success = true)
-        } catch (e: Exception) {
-            TwoFactorAuthResult(
-                success = false,
-                error = "Failed to disable 2FA: ${e.message}"
-            )
-        }
-    }
-    
-    /**
-     * Check if 2FA is required for login
-     */
-    fun is2FARequired(): Boolean {
-        return is2FAEnabled.value
-    }
-    
-    /**
-     * Get current TOTP code for testing purposes
-     */
-    suspend fun getCurrentTOTPCode(secret: String): String? {
-        return try {
-            var googleAuthenticator = GoogleAuthenticator()
-            googleAuthenticator.getTotpPassword(secret)
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    /**
-     * Generate secure random secret
-     */
-    private fun generateSecureSecret(): String {
-        var googleAuthenticator = GoogleAuthenticator()
-        var key = googleAuthenticator.createCredentials()
-        return key.key
-    }
-    
-    /**
-     * Generate QR code bitmap
-     */
-    private fun generateQRCode(text: String): Bitmap {
-        val writer = QRCodeWriter()
-        return try {
-            val bitMatrix: BitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, 512, 512)
-            val width = bitMatrix.width
-            val height = bitMatrix.height
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-            
-            for (x in 0 until width) {
-                for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
+
+    private val secureRandom = SecureRandom()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val securePrefsState by lazy { createSecurePrefsState() }
+    private val prefsOrNull: SharedPreferences?
+        get() = securePrefsState.prefs
+
+    private val _failedAttempts = MutableStateFlow(0)
+    val failedAttempts: StateFlow<Int> = _failedAttempts
+
+    private val _isLockedOut = MutableStateFlow(false)
+    val isLockedOut: StateFlow<Boolean> = _isLockedOut
+
+    init {
+        refreshState()
+        sessionEvents?.let { events ->
+            scope.launch {
+                events.collect {
+                    refreshState()
                 }
             }
-            
-            bitmap
-        } catch (e: WriterException) {
-            throw RuntimeException("Failed to generate QR code", e)
         }
     }
-    
-    /**
-     * Generate backup codes
-     */
-    private fun generateBackupCodes(): List<String> {
-        val codes = mutableListOf<String>()
-        val random = SecureRandom()
-        
-        for (i in 0 until BACKUP_CODES_COUNT) {
-            val code = StringBuilder()
-            for (j in 0 until 8) {
-                code.append(random.nextInt(10))
+
+    fun is2FAEnabled(): Boolean = readCurrentBoolean("enabled", false)
+
+    fun is2FARequired(): Boolean = is2FAEnabled()
+
+    fun setup2FA() {
+        refreshState()
+    }
+
+    fun verify2FA(code: String): Boolean {
+        val secret = getStoredSecret() ?: return false
+        return verifyTOTPCode(code, secret).success
+    }
+
+    fun getUnusedBackupCodesCount(): Int = getStoredBackupCodes().size
+
+    fun getRemainingLockoutTime(): Long {
+        val lockedUntil = readCurrentLong("locked_until", 0L)
+        return (lockedUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+    }
+
+    fun generateTOTPSecret(email: String): TwoFactorAuthResult {
+        val accountLabel = email.trim().lowercase(Locale.US)
+        if (accountLabel.isBlank()) {
+            return TwoFactorAuthResult(error = "No se pudo generar 2FA sin un correo valido.")
+        }
+
+        return runCatching {
+            val secret = generateBase32Secret()
+            val backupCodes = generateBackupCodes()
+            val otpAuthUrl = buildOtpAuthUrl(ISSUER, accountLabel, secret)
+            val qrCodeUrl = buildQrCodeUrl(otpAuthUrl)
+
+            persistPendingSetup(
+                accountHint = accountLabel,
+                secret = secret,
+                backupCodes = backupCodes,
+                qrCodeUrl = qrCodeUrl,
+                otpAuthUrl = otpAuthUrl
+            )
+
+            refreshState()
+            TwoFactorAuthResult(
+                success = true,
+                secret = secret,
+                qrCodeUrl = qrCodeUrl,
+                otpauthUrl = otpAuthUrl,
+                backupCodes = backupCodes
+            )
+        }.getOrElse { error ->
+            android.util.Log.e("TwoFactorAuthManager", "No se pudo generar la configuracion 2FA", error)
+            TwoFactorAuthResult(error = error.message ?: "No se pudo generar el codigo 2FA.")
+        }
+    }
+
+    fun enable2FA(secret: String): TwoFactorAuthResult {
+        val identity = currentUserStorageKey() ?: return TwoFactorAuthResult(
+            error = "No hay una cuenta activa para habilitar 2FA."
+        )
+        val cleanSecret = secret.trim()
+        if (cleanSecret.isBlank()) {
+            return TwoFactorAuthResult(error = "La clave secreta de 2FA no es valida.")
+        }
+
+        return runCatching {
+            val pendingSecret = readForIdentity(identity, "pending_secret")
+            val backupCodes = when {
+                pendingSecret == cleanSecret -> getPendingBackupCodes(identity)
+                else -> getStoredBackupCodes(identity)
             }
-            codes.add(code.toString())
+
+            prefsOrNull?.edit()
+                ?.putBoolean(prefixed(identity, "enabled"), true)
+                ?.putString(prefixed(identity, "secret"), cleanSecret)
+                ?.putStringSet(prefixed(identity, "backup_codes"), backupCodes.toSet())
+                ?.remove(prefixed(identity, "pending_secret"))
+                ?.remove(prefixed(identity, "pending_backup_codes"))
+                ?.remove(prefixed(identity, "pending_qr_url"))
+                ?.remove(prefixed(identity, "pending_otpauth_url"))
+                ?.apply()
+
+            resetFailedAttempts(identity)
+            refreshState()
+
+            TwoFactorAuthResult(
+                success = true,
+                secret = cleanSecret,
+                qrCodeUrl = readForIdentity(identity, "pending_qr_url"),
+                otpauthUrl = readForIdentity(identity, "pending_otpauth_url"),
+                backupCodes = backupCodes
+            )
+        }.getOrElse { error ->
+            android.util.Log.e("TwoFactorAuthManager", "No se pudo habilitar 2FA", error)
+            TwoFactorAuthResult(error = error.message ?: "No se pudo habilitar 2FA.")
         }
-        
-        return codes
     }
-    
-    /**
-     * Store TOTP secret securely
-     */
-    private fun storeTOTPSecret(secret: String) {
-        var masterKey = MasterKey.Builder(context)
+
+    fun disable2FA(): TwoFactorAuthResult {
+        val identity = currentUserStorageKey() ?: return TwoFactorAuthResult(
+            error = "No hay una cuenta activa para deshabilitar 2FA."
+        )
+
+        return runCatching {
+            prefsOrNull?.edit()
+                ?.remove(prefixed(identity, "enabled"))
+                ?.remove(prefixed(identity, "secret"))
+                ?.remove(prefixed(identity, "backup_codes"))
+                ?.remove(prefixed(identity, "pending_secret"))
+                ?.remove(prefixed(identity, "pending_backup_codes"))
+                ?.remove(prefixed(identity, "pending_qr_url"))
+                ?.remove(prefixed(identity, "pending_otpauth_url"))
+                ?.remove(prefixed(identity, "failed_attempts"))
+                ?.remove(prefixed(identity, "locked_until"))
+                ?.apply()
+            refreshState()
+            TwoFactorAuthResult(success = true)
+        }.getOrElse { error ->
+            android.util.Log.e("TwoFactorAuthManager", "No se pudo deshabilitar 2FA", error)
+            TwoFactorAuthResult(error = error.message ?: "No se pudo deshabilitar 2FA.")
+        }
+    }
+
+    fun verifyTOTPCode(code: String, secret: String): TwoFactorAuthResult {
+        val identity = currentUserStorageKey()
+        val remaining = getRemainingLockoutTime()
+        if (remaining > 0L) {
+            refreshState()
+            return TwoFactorAuthResult(
+                error = "2FA bloqueado temporalmente. Intenta de nuevo en ${remaining / 1000}s."
+            )
+        }
+
+        val cleanCode = code.filter(Char::isDigit)
+        if (cleanCode.length != 6) {
+            return TwoFactorAuthResult(error = "Ingresa un codigo 2FA de 6 digitos.")
+        }
+
+        val authorized = verifyTotpWindow(secret.trim(), cleanCode)
+
+        return if (authorized) {
+            identity?.let(::resetFailedAttempts)
+            refreshState()
+            TwoFactorAuthResult(success = true, secret = secret.trim())
+        } else {
+            identity?.let(::registerFailedAttempt)
+            refreshState()
+            TwoFactorAuthResult(error = "El codigo 2FA no coincide.")
+        }
+    }
+
+    fun verifyBackupCode(code: String): TwoFactorAuthResult {
+        val identity = currentUserStorageKey()
+        val remaining = getRemainingLockoutTime()
+        if (remaining > 0L) {
+            refreshState()
+            return TwoFactorAuthResult(
+                error = "2FA bloqueado temporalmente. Intenta de nuevo en ${remaining / 1000}s."
+            )
+        }
+
+        val cleanCode = code.trim().uppercase(Locale.US)
+        if (cleanCode.isBlank()) {
+            return TwoFactorAuthResult(error = "Ingresa un codigo de respaldo valido.")
+        }
+
+        val storedCodes = getStoredBackupCodes()
+        return if (storedCodes.any { it.equals(cleanCode, ignoreCase = true) }) {
+            val updatedCodes = storedCodes.filterNot { it.equals(cleanCode, ignoreCase = true) }
+            identity?.let { owner ->
+                prefsOrNull?.edit()
+                    ?.putStringSet(prefixed(owner, "backup_codes"), updatedCodes.toSet())
+                    ?.apply()
+                resetFailedAttempts(owner)
+            }
+            refreshState()
+            TwoFactorAuthResult(success = true, backupCodes = updatedCodes)
+        } else {
+            identity?.let(::registerFailedAttempt)
+            refreshState()
+            TwoFactorAuthResult(error = "El codigo de respaldo no es valido.")
+        }
+    }
+
+    fun getStoredSecret(): String? = readCurrentString("secret")
+
+    fun getPendingSecret(): String? = readCurrentString("pending_secret")
+
+    fun getPendingQrCodeUrl(): String? = readCurrentString("pending_qr_url")
+
+    fun getPendingOtpAuthUrl(): String? = readCurrentString("pending_otpauth_url")
+
+    fun getPendingBackupCodes(): List<String> {
+        val identity = currentUserStorageKey() ?: return emptyList()
+        return getPendingBackupCodes(identity)
+    }
+
+    private fun createSecurePrefsState(): SecurePrefsState = try {
+        val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .setEncryptionScheme(MasterKey.EncryptionScheme.AES256_GCM_HKDF_SHA256)
             .build()
-        
-        var encryptedPrefs = EncryptedSharedPreferences.create(
+        val prefs = EncryptedSharedPreferences.create(
             context,
-            "totp_secret_prefs",
+            PREFS_NAME,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-        
-        encryptedPrefs.edit()
-            .putString("totp_secret", secret)
-            .apply()
-    }
-    
-    /**
-     * Get stored TOTP secret
-     */
-    private fun getTOTPSecret(): String? {
-        return try {
-            var masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .setEncryptionScheme(MasterKey.EncryptionScheme.AES256_GCM_HKDF_SHA256)
-                .build()
-            
-            var encryptedPrefs = EncryptedSharedPreferences.create(
-                context,
-                "totp_secret_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            
-            encryptedPrefs.getString("totp_secret", null)
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    /**
-     * Remove TOTP secret
-     */
-    private fun removeTOTPSecret() {
+        SecurePrefsState(prefs = prefs, initializationError = null)
+    } catch (error: Throwable) {
+        android.util.Log.e("TwoFactorAuthManager", "Fallo inicializando prefs cifradas de 2FA", error)
         try {
-            var masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .setEncryptionScheme(MasterKey.EncryptionScheme.AES256_GCM_HKDF_SHA256)
-                .build()
-            
-            var encryptedPrefs = EncryptedSharedPreferences.create(
-                context,
-                "totp_secret_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            
-            encryptedPrefs.edit()
-                .remove("totp_secret")
-                .apply()
-        } catch (e: Exception) {
-            // Log error but don't throw
+            val fallback = context.getSharedPreferences("${PREFS_NAME}_fallback", Context.MODE_PRIVATE)
+            SecurePrefsState(fallback, error)
+        } catch (fallbackError: Throwable) {
+            SecurePrefsState(null, fallbackError)
         }
     }
-    
-    /**
-     * Store backup codes
-     */
-    private fun storeBackupCodes(codes: List<String>) {
-        val backupCodeData = codes.map { BackupCode(it) }
-        var jsonString = json.encodeToString(backupCodeData)
-        securePrefs.edit()
-            .putString(BACKUP_CODES_KEY, jsonString)
-            .apply()
+
+    private fun persistPendingSetup(
+        accountHint: String,
+        secret: String,
+        backupCodes: List<String>,
+        qrCodeUrl: String,
+        otpAuthUrl: String
+    ) {
+        val identity = currentUserStorageKey() ?: normalizeIdentity(accountHint)
+        prefsOrNull?.edit()
+            ?.putString(prefixed(identity, "pending_secret"), secret)
+            ?.putStringSet(prefixed(identity, "pending_backup_codes"), backupCodes.toSet())
+            ?.putString(prefixed(identity, "pending_qr_url"), qrCodeUrl)
+            ?.putString(prefixed(identity, "pending_otpauth_url"), otpAuthUrl)
+            ?.apply()
     }
-    
-    /**
-     * Get backup codes
-     */
-    private fun getBackupCodes(): List<BackupCode> {
-        return try {
-            var jsonString = securePrefs.getString(BACKUP_CODES_KEY, null)
-            if (jsonString != null) {
-                json.decodeFromString<List<BackupCode>>(jsonString)
-            } else {
-                emptyList()
+
+    private fun registerFailedAttempt(identity: String) {
+        val attempts = readIntForIdentity(identity, "failed_attempts", 0) + 1
+        val shouldLock = attempts >= MAX_FAILED_ATTEMPTS
+        prefsOrNull?.edit()
+            ?.putInt(prefixed(identity, "failed_attempts"), attempts)
+            ?.apply()
+        if (shouldLock) {
+            prefsOrNull?.edit()
+                ?.putLong(prefixed(identity, "locked_until"), System.currentTimeMillis() + LOCKOUT_DURATION_MS)
+                ?.apply()
+        }
+    }
+
+    private fun resetFailedAttempts(identity: String) {
+        prefsOrNull?.edit()
+            ?.putInt(prefixed(identity, "failed_attempts"), 0)
+            ?.putLong(prefixed(identity, "locked_until"), 0L)
+            ?.apply()
+    }
+
+    private fun getStoredBackupCodes(identity: String = currentUserStorageKey().orEmpty()): List<String> {
+        if (identity.isBlank()) return emptyList()
+        return prefsOrNull
+            ?.getStringSet(prefixed(identity, "backup_codes"), emptySet())
+            ?.toList()
+            ?.sorted()
+            .orEmpty()
+    }
+
+    private fun getPendingBackupCodes(identity: String): List<String> {
+        if (identity.isBlank()) return emptyList()
+        return prefsOrNull
+            ?.getStringSet(prefixed(identity, "pending_backup_codes"), emptySet())
+            ?.toList()
+            ?.sorted()
+            .orEmpty()
+    }
+
+    private fun generateBase32Secret(): String {
+        val bytes = ByteArray(TOTP_SECRET_BYTES)
+        secureRandom.nextBytes(bytes)
+        return encodeBase32(bytes)
+    }
+
+    private fun generateBackupCodes(): List<String> {
+        return List(BACKUP_CODE_COUNT) {
+            String.format(Locale.US, "%08d", secureRandom.nextInt(BACKUP_CODE_BOUND))
+        }
+    }
+
+    private fun buildOtpAuthUrl(issuer: String, accountLabel: String, secret: String): String {
+        val label = "${urlEncode(issuer)}:${urlEncode(accountLabel)}"
+        return "otpauth://totp/$label" +
+            "?secret=$secret" +
+            "&issuer=${urlEncode(issuer)}" +
+            "&algorithm=SHA1" +
+            "&digits=$TOTP_DIGITS" +
+            "&period=$TOTP_PERIOD_SECONDS"
+    }
+
+    private fun buildQrCodeUrl(otpAuthUrl: String): String {
+        return "https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${urlEncode(otpAuthUrl)}"
+    }
+
+    private fun urlEncode(value: String): String {
+        return URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
+    }
+
+    private fun verifyTotpWindow(secret: String, cleanCode: String): Boolean {
+        return runCatching {
+            val currentCounter = currentTotpCounter()
+            (-TOTP_WINDOW_SIZE..TOTP_WINDOW_SIZE).any { offset ->
+                generateTotpCode(secret, currentCounter + offset) == cleanCode
             }
-        } catch (e: Exception) {
-            emptyList()
+        }.getOrElse {
+            android.util.Log.e("TwoFactorAuthManager", "Fallo verificando TOTP", it)
+            false
         }
     }
-    
-    /**
-     * Remove backup codes
-     */
-    private fun removeBackupCodes() {
-        securePrefs.edit()
-            .remove(BACKUP_CODES_KEY)
-            .apply()
+
+    private fun currentTotpCounter(): Long {
+        return (System.currentTimeMillis() / 1000L) / TOTP_PERIOD_SECONDS
     }
-    
-    /**
-     * Check if 2FA is enabled
-     */
-    private fun is2FAEnabled(): Boolean {
-        return securePrefs.getBoolean(IS_2FA_ENABLED_KEY, false)
+
+    private fun generateTotpCode(secret: String, counter: Long): String {
+        val key = decodeBase32(secret)
+        val counterBytes = ByteBuffer.allocate(Long.SIZE_BYTES).putLong(counter).array()
+        val mac = Mac.getInstance(HMAC_ALGORITHM)
+        mac.init(SecretKeySpec(key, HMAC_ALGORITHM))
+        val hash = mac.doFinal(counterBytes)
+        val offset = hash.last().toInt() and 0x0f
+        val binary = ((hash[offset].toInt() and 0x7f) shl 24) or
+            ((hash[offset + 1].toInt() and 0xff) shl 16) or
+            ((hash[offset + 2].toInt() and 0xff) shl 8) or
+            (hash[offset + 3].toInt() and 0xff)
+        val otp = binary % 1_000_000
+        return String.format(Locale.US, "%0${TOTP_DIGITS}d", otp)
     }
-    
-    /**
-     * Get failed attempts count
-     */
-    private fun getFailedAttempts(): Int {
-        return securePrefs.getInt(FAILED_ATTEMPTS_KEY, 0)
-    }
-    
-    /**
-     * Increment failed attempts
-     */
-    private fun incrementFailedAttempts() {
-        val currentAttempts = getFailedAttempts()
-        val newAttempts = currentAttempts + 1
-        var currentTime = System.currentTimeMillis()
-        
-        securePrefs.edit()
-            .putInt(FAILED_ATTEMPTS_KEY, newAttempts)
-            .putLong(LAST_ATTEMPT_TIME_KEY, currentTime)
-            .apply()
-        
-        _failedAttempts.value = newAttempts
-        
-        if (newAttempts >= MAX_FAILED_ATTEMPTS) {
-            _isLockedOut.value = true
+
+    private fun encodeBase32(bytes: ByteArray): String {
+        val encoded = StringBuilder()
+        var buffer = 0
+        var bitsLeft = 0
+
+        bytes.forEach { byte ->
+            buffer = (buffer shl 8) or (byte.toInt() and 0xff)
+            bitsLeft += 8
+            while (bitsLeft >= 5) {
+                encoded.append(BASE32_ALPHABET[(buffer shr (bitsLeft - 5)) and 0x1f])
+                bitsLeft -= 5
+            }
         }
-    }
-    
-    /**
-     * Reset failed attempts
-     */
-    private fun resetFailedAttempts() {
-        securePrefs.edit()
-            .putInt(FAILED_ATTEMPTS_KEY, 0)
-            .putLong(LAST_ATTEMPT_TIME_KEY, 0)
-            .apply()
-        
-        _failedAttempts.value = 0
-        _isLockedOut.value = false
-    }
-    
-    /**
-     * Check if account is locked out
-     */
-    private fun isLockedOut(): Boolean {
-        var lastAttemptTime = securePrefs.getLong(LAST_ATTEMPT_TIME_KEY, 0)
-        var failedAttempts = getFailedAttempts()
-        
-        if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-            var currentTime = System.currentTimeMillis()
-            return currentTime - lastAttemptTime < LOCKOUT_DURATION_MS
+
+        if (bitsLeft > 0) {
+            encoded.append(BASE32_ALPHABET[(buffer shl (5 - bitsLeft)) and 0x1f])
         }
-        
-        return false
+
+        return encoded.toString()
     }
-    
-    /**
-     * Get remaining lockout time in milliseconds
-     */
-    fun getRemainingLockoutTime(): Long {
-        var lastAttemptTime = securePrefs.getLong(LAST_ATTEMPT_TIME_KEY, 0)
-        var failedAttempts = getFailedAttempts()
-        
-        if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-            var currentTime = System.currentTimeMillis()
-            val elapsed = currentTime - lastAttemptTime
-            return (LOCKOUT_DURATION_MS - elapsed).coerceAtLeast(0)
+
+    private fun decodeBase32(secret: String): ByteArray {
+        val normalized = secret
+            .uppercase(Locale.US)
+            .filter { it != '=' && !it.isWhitespace() }
+        val output = ByteArrayOutputStream()
+        var buffer = 0
+        var bitsLeft = 0
+
+        normalized.forEach { char ->
+            val value = BASE32_ALPHABET.indexOf(char)
+            require(value >= 0) { "Caracter Base32 invalido en secreto TOTP." }
+            buffer = (buffer shl 5) or value
+            bitsLeft += 5
+            if (bitsLeft >= 8) {
+                output.write((buffer shr (bitsLeft - 8)) and 0xff)
+                bitsLeft -= 8
+            }
         }
-        
-        return 0
+
+        return output.toByteArray()
     }
-    
-    /**
-     * Get unused backup codes count
-     */
-    fun getUnusedBackupCodesCount(): Int {
-        return getBackupCodes().count { !it.isUsed }
+
+    private fun refreshState() {
+        val identity = currentUserStorageKey()
+        if (identity.isNullOrBlank()) {
+            _failedAttempts.value = 0
+            _isLockedOut.value = false
+            return
+        }
+
+        val remaining = (readLongForIdentity(identity, "locked_until", 0L) - System.currentTimeMillis())
+            .coerceAtLeast(0L)
+        if (remaining == 0L && readLongForIdentity(identity, "locked_until", 0L) > 0L) {
+            resetFailedAttempts(identity)
+        }
+
+        _failedAttempts.value = readIntForIdentity(identity, "failed_attempts", 0)
+        _isLockedOut.value = remaining > 0L
+    }
+
+    private fun currentUserStorageKey(): String? {
+        val userId = currentUserIdProvider()
+            ?.trim()
+            ?.lowercase(Locale.US)
+            ?.takeIf { it.isNotBlank() }
+        if (!userId.isNullOrBlank()) return "uid_$userId"
+
+        val email = currentUserEmailProvider()
+            ?.trim()
+            ?.lowercase(Locale.US)
+            ?.takeIf { it.isNotBlank() }
+        if (!email.isNullOrBlank()) return normalizeIdentity(email)
+
+        return null
+    }
+
+    private fun normalizeIdentity(raw: String): String {
+        return raw.trim().lowercase(Locale.US).replace(":", "_")
+    }
+
+    private fun prefixed(identity: String, key: String): String = "2fa_${identity}_$key"
+
+    private fun readCurrentString(key: String): String? {
+        val identity = currentUserStorageKey() ?: return null
+        return readForIdentity(identity, key)
+    }
+
+    private fun readCurrentBoolean(key: String, defaultValue: Boolean): Boolean {
+        val identity = currentUserStorageKey() ?: return defaultValue
+        return prefsOrNull?.getBoolean(prefixed(identity, key), defaultValue) ?: defaultValue
+    }
+
+    private fun readCurrentLong(key: String, defaultValue: Long): Long {
+        val identity = currentUserStorageKey() ?: return defaultValue
+        return readLongForIdentity(identity, key, defaultValue)
+    }
+
+    private fun readForIdentity(identity: String, key: String): String? {
+        return prefsOrNull?.getString(prefixed(identity, key), null)
+    }
+
+    private fun readLongForIdentity(identity: String, key: String, defaultValue: Long): Long {
+        return prefsOrNull?.getLong(prefixed(identity, key), defaultValue) ?: defaultValue
+    }
+
+    private fun readIntForIdentity(identity: String, key: String, defaultValue: Int): Int {
+        return prefsOrNull?.getInt(prefixed(identity, key), defaultValue) ?: defaultValue
     }
 }
-
-
-

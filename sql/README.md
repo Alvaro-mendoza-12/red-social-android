@@ -57,6 +57,10 @@ Sexta ola ya movida:
 - scripts correctivos restantes de la raíz (`fix_*`, `repair_*`, `restore_*`, `force_*`, `*_final*`, `sync_*` y similares) a `sql/hotfixes/`
 - scripts manuales/mixtos de operación puntual como `DIAGNOSTICO_Y_GENERAR_RETO.sql`, `borrar_sala_prueba_y_activar_admin.sql` y `HABILITAR_VOTOS_MULTIPLES.sql` a `sql/archive/`
 
+Septima ola ya movida:
+
+- módulos SQL sueltos de la raíz (`sql_modulo_*.sql`) a `sql/archive/root-modules/`
+
 ## Manifiesto de despliegue
 
 El único camino permitido para despliegue automatizado es `sql/release-manifest.txt`.
@@ -64,6 +68,12 @@ El único camino permitido para despliegue automatizado es `sql/release-manifest
 - Todo archivo listado ahí se considera deployable y debe pasar la auditoría de seguridad.
 - Todo archivo fuera del manifiesto se trata como histórico, manual, diagnóstico o referencia.
 - Si un script contiene políticas permisivas, `DISABLE ROW LEVEL SECURITY`, `GRANT ALL` amplio o funciones sin hardening suficiente, debe quedar fuera del manifiesto hasta ser corregido.
+- `sql/deploy_complete_unified.sql` se conserva como referencia legacy; no debe competir con el release manifest como fuente principal.
+- `sql/migrations/add_audio_to_post_comments.sql` forma parte del manifest activo: agrega audio en comentarios de posts y limita escritura/borrado de `post-comments-media` a la carpeta del usuario autenticado.
+- La pasada del `2026-05-06` añadió `sql/migrations/20260506_wallet_gifts_rpc_security_hardening.sql` al manifest para que wallet/gifts usen RPCs con `auth.uid()`, saldo real y operación atómica.
+- La misma pasada añadió `sql/migrations/20260506_monetization_premium_ads_security_hardening.sql` para RLS de planes/suscripciones/anuncios, registro seguro de impresiones y `subscribe_to_plan` restringido a la cuenta autenticada.
+- La pasada de cierre añadió `sql/migrations/20260506_chat_archive_preferences_2026.sql` para persistir `is_archived` por usuario en `chat_participants` y extender `secure_set_chat_preferences` sin perder validación de pertenencia al chat.
+- La siguiente pasada añadió `sql/migrations/20260506_chat_favorites_preferences_2026.sql` para persistir `is_favorite` por usuario y volver a publicar `secure_set_chat_preferences` con mute/pin/archive/favorite en una sola RPC segura.
 
 ## Convención sugerida
 

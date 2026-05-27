@@ -27,7 +27,8 @@ sealed class AuthState {
 }
 
 
-class AuthViewModel  constructor(
+@HiltViewModel
+class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
@@ -74,7 +75,7 @@ class AuthViewModel  constructor(
 
     private fun validateSessionHealth() {
         viewModelScope.launch {
-            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) return
+            if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) return@launch
             authRepository.enforceCurrentSessionIsActive()
                 .onFailure { throwable ->
                     _authState.value = when (throwable) {
@@ -119,11 +120,25 @@ class AuthViewModel  constructor(
     }
 
 
-    fun signInWithEmail(email: String, password: String) {
+    fun signInWithEmail(
+        email: String,
+        password: String,
+        twoFactorCode: String? = null,
+        backupCode: String? = null
+    ) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             
-            var result = authRepository.signInWithEmail(email, password)
+            val result = if (!twoFactorCode.isNullOrBlank() || !backupCode.isNullOrBlank()) {
+                authRepository.signInWithEmail2FA(
+                    email = email,
+                    password = password,
+                    totpCode = twoFactorCode,
+                    backupCode = backupCode
+                )
+            } else {
+                authRepository.signInWithEmail(email, password)
+            }
             _authState.value = result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true

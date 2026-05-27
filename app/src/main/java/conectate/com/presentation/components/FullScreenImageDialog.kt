@@ -131,9 +131,10 @@ fun FullScreenImageDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Download Button
-                if (onDownload != null && currentMediaItem.value != null) {
+                val downloadableItem = currentMediaItem.value
+                if (onDownload != null && downloadableItem != null) {
                     IconButton(
-                        onClick = { onDownload(currentMediaItem.value!!) },
+                        onClick = { onDownload(downloadableItem) },
                          modifier = Modifier
                             .background(Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
                     ) {

@@ -22,6 +22,9 @@ sealed class ConversationsUiState {
     data class Error(val message: String) : ConversationsUiState()
 }
 
+const val ARCHIVED_CHAT_FILTER_ID = "__archived_chats__"
+const val FAVORITE_CHAT_FILTER_ID = "__favorite_chats__"
+
 @HiltViewModel
 class MessagingViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
@@ -64,6 +67,8 @@ class MessagingViewModel @Inject constructor(
             // but since Room emits [] immediately if empty, this is correct for "Empty".
             ConversationsUiState.Success(emptyList())
         } else {
+            val showingArchived = selectedFolderId == ARCHIVED_CHAT_FILTER_ID
+            val showingFavorites = selectedFolderId == FAVORITE_CHAT_FILTER_ID
             // 2. LOGICAL DEDUPLICATION & GHOST CHAT FILTERING
             val validChats = list.filter {
                 val hasContent = !it.chat.last_message.isNullOrBlank() || !it.lastMessage?.content.isNullOrBlank()
@@ -75,34 +80,44 @@ class MessagingViewModel @Inject constructor(
             
             // DMs: Deduplicate by otherUserId (Collapses multiple chats with same person)
             val uniqueDms = dms.groupBy { it.otherUserId ?: it.chat.id }
-                .map { (_, duplicates) -> 
+                .mapNotNull { (_, duplicates) ->
                     duplicates.maxWithOrNull(
                         compareBy<ChatWithLastMessage> { it.chat.is_pinned }
+                            .thenBy { it.chat.is_favorite }
                             .thenBy { it.chat.safeLastMessageAt }
-                    )!!
+                    )
                 }
 
             // Groups: Deduplicate by ID
             val uniqueGroups = groups.groupBy { it.chat.id }
-                .map { (_, duplicates) -> 
+                .mapNotNull { (_, duplicates) ->
                     duplicates.maxWithOrNull(
                         compareBy<ChatWithLastMessage> { it.chat.is_pinned }
+                            .thenBy { it.chat.is_favorite }
                             .thenBy { it.chat.safeLastMessageAt }
-                    )!!
+                    )
                 }
 
             // Combine and Final Sort
             val distinctList = (uniqueDms + uniqueGroups)
                 .sortedWith(
-                    compareByDescending<ChatWithLastMessage> { it.chat.is_pinned }
+                    compareBy<ChatWithLastMessage> { it.chat.is_archived }
+                        .thenByDescending { it.chat.is_pinned }
+                        .thenByDescending { it.chat.is_favorite }
                         .thenByDescending { it.chat.safeLastMessageAt }
                 )
 
+            val byArchive = when {
+                showingArchived -> distinctList.filter { it.chat.is_archived }
+                showingFavorites -> distinctList.filter { !it.chat.is_archived && it.chat.is_favorite }
+                else -> distinctList.filter { !it.chat.is_archived }
+            }
             val folderChatIds = folders.firstOrNull { it.id == selectedFolderId }?.chat_ids?.toSet().orEmpty()
-            val byFolder = if (selectedFolderId.isNullOrBlank()) {
-                distinctList
-            } else {
-                distinctList.filter { folderChatIds.contains(it.chat.id.trim().lowercase()) }
+            val byFolder = when {
+                showingArchived -> byArchive
+                showingFavorites -> byArchive
+                selectedFolderId.isNullOrBlank() -> byArchive
+                else -> byArchive.filter { folderChatIds.contains(it.chat.id.trim().lowercase()) }
             }
 
             // 3. SEARCH FILTER
@@ -126,7 +141,7 @@ class MessagingViewModel @Inject constructor(
     // --- UNREAD COUNTS (FOR BADGES) ---
     
     val unreadDmsCount: StateFlow<Int> = messageRepository.getUserChatsFlow()
-        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group } }
+        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val unreadGroupsCount: StateFlow<Int> = groupRepository.getGroupsFlow()
@@ -184,6 +199,34 @@ class MessagingViewModel @Inject constructor(
                 if (isPinned) "Chat fijado arriba." else "Chat desfijado."
             } else {
                 result.exceptionOrNull()?.message ?: "No se pudo actualizar fijado."
+            }
+        }
+    }
+
+    fun archiveChat(chatId: String, isArchived: Boolean) {
+        viewModelScope.launch {
+            val result = messageRepository.archiveChat(chatId, isArchived)
+            _uiMessage.value = if (result.isSuccess) {
+                if (isArchived) "Chat archivado." else "Chat restaurado."
+            } else {
+                result.exceptionOrNull()?.message ?: "No se pudo actualizar archivo."
+            }
+            if (!isArchived && _selectedFolderId.value == ARCHIVED_CHAT_FILTER_ID) {
+                _selectedFolderId.value = null
+            }
+        }
+    }
+
+    fun favoriteChat(chatId: String, isFavorite: Boolean) {
+        viewModelScope.launch {
+            val result = messageRepository.favoriteChat(chatId, isFavorite)
+            _uiMessage.value = if (result.isSuccess) {
+                if (isFavorite) "Chat agregado a favoritos." else "Chat quitado de favoritos."
+            } else {
+                result.exceptionOrNull()?.message ?: "No se pudo actualizar favorito."
+            }
+            if (!isFavorite && _selectedFolderId.value == FAVORITE_CHAT_FILTER_ID) {
+                _selectedFolderId.value = null
             }
         }
     }
@@ -252,8 +295,17 @@ class MessagingViewModel @Inject constructor(
     }
 
     fun submitReport(uid: String, name: String?, reason: String, desc: String?, uri: android.net.Uri?) {
-        viewModelScope.launch { 
-            messageRepository.submitReport(uid, name ?: "", reason, desc ?: "", uri)
+        viewModelScope.launch {
+            if (uid.isBlank()) {
+                _uiMessage.value = "No se pudo identificar el usuario a reportar."
+                return@launch
+            }
+            val result = messageRepository.submitReport(uid, name ?: "", reason, desc ?: "", uri)
+            _uiMessage.value = if (result.isSuccess) {
+                "Reporte enviado."
+            } else {
+                result.exceptionOrNull()?.message ?: "No se pudo enviar reporte."
+            }
         }
     }
 

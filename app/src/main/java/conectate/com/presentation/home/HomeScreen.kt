@@ -83,7 +83,7 @@ fun HomeScreen(
                                 badge = {
                                     if (item is BottomNavItem.Messages && unreadBadge > 0) {
                                         Badge(
-                                            containerColor = Color(0xFF2196F3), // Blue circle as requested
+                                            containerColor = MaterialTheme.colorScheme.primary,
                                             contentColor = Color.White
                                         ) {
                                             Text(if (unreadBadge > 9) "9+" else unreadBadge.toString())
@@ -144,6 +144,15 @@ fun HomeScreen(
                     },
                     onNavigateToSearch = {
                         mainNavController.navigate(Screen.SearchUsers.route)
+                    },
+                    onNavigateToChatSettings = {
+                        mainNavController.navigate(Screen.ChatSettings.route)
+                    },
+                    onNavigateToCallHistory = {
+                        mainNavController.navigate(Screen.CallHistory.route)
+                    },
+                    onNavigateToAccountSettings = {
+                        mainNavController.navigate(Screen.AccountSettings.route)
                     },
                     onNavigateToCreateGroup = {
                         mainNavController.navigate(Screen.CreateGroup.route)

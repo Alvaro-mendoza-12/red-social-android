@@ -213,9 +213,10 @@ fun CreateMomentScreen(
                     }
                 }
                 "EDITOR" -> {
-                    if (finalUri != null) {
+                    val selectedUri = finalUri
+                    if (selectedUri != null) {
                         MomentEditorView(
-                            uri = finalUri!!,
+                            uri = selectedUri,
                             isVideo = finalMediaType == "video",
                             caption = caption,
                             onCaptionChange = { caption = it },
@@ -227,7 +228,7 @@ fun CreateMomentScreen(
                             onBack = { currentStep = "GALLERY" },
                             onPost = {
                                 viewModel.uploadMoment(
-                                    uri = finalUri!!,
+                                    uri = selectedUri,
                                     mediaType = finalMediaType,
                                     durationHours = durationHours.toInt(),
                                     durationType = "${durationHours.toInt()}h",

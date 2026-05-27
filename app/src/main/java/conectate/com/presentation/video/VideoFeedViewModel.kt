@@ -18,6 +18,8 @@ import android.net.Uri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.exp
+import kotlin.math.ln
 import javax.inject.Inject
 
 @HiltViewModel
@@ -63,6 +65,12 @@ class VideoFeedViewModel @Inject constructor(
     private var isLastPage = false
     private val likedDebounceJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private val shareRequestsInFlight = mutableSetOf<String>()
+    private val viewedVideoIds = LinkedHashSet<String>()
+    private val authorAffinity = mutableMapOf<String, Double>()
+    private val tagAffinity = mutableMapOf<String, Double>()
+    private val watchSecondsByVideo = mutableMapOf<String, Double>()
+    private var activeViewingVideoId: String? = null
+    private var activeViewingStartedAtMs: Long = 0L
 
     // Comments State
     private val _commentsSheetOpen = MutableStateFlow(false)
@@ -189,7 +197,7 @@ class VideoFeedViewModel @Inject constructor(
                 currentPage = 0
                 isLastPage = false
                 videoRepository.getVideos(offset = 0, limit = pageSize, random = true).collect { newVideos ->
-                    _forYouVideos.value = newVideos
+                    _forYouVideos.value = rankForYouVideos(newVideos)
                     isLastPage = newVideos.size < pageSize
                     _isLoading.value = false
                 }
@@ -211,7 +219,8 @@ class VideoFeedViewModel @Inject constructor(
                     if (newVideos.isEmpty()) {
                         isLastPage = true
                     } else {
-                        _forYouVideos.value += newVideos
+                        val mergedVideos = (_forYouVideos.value + newVideos).distinctBy { it.id }
+                        _forYouVideos.value = rankForYouVideos(mergedVideos)
                         if (newVideos.size < pageSize) isLastPage = true
                     }
                 }
@@ -242,6 +251,137 @@ class VideoFeedViewModel @Inject constructor(
         }
     }
 
+    fun onVideoFocused(video: Video) {
+        val now = System.currentTimeMillis()
+        if (activeViewingVideoId == video.id) return
+
+        finishActiveWatchSession(now)
+        activeViewingVideoId = video.id
+        activeViewingStartedAtMs = now
+        val shouldIncrementView = !viewedVideoIds.contains(video.id)
+        rememberViewedVideo(video.id)
+        recordVideoSignal(video, VIDEO_IMPRESSION_WEIGHT)
+
+        if (shouldIncrementView) {
+            incrementVideoViews(video.id)
+        }
+    }
+
+    private fun finishActiveWatchSession(nowMs: Long = System.currentTimeMillis()) {
+        val videoId = activeViewingVideoId ?: return
+        val startedAt = activeViewingStartedAtMs.takeIf { it > 0L } ?: return
+        val watchedSeconds = ((nowMs - startedAt).coerceAtLeast(0L) / 1000.0).coerceAtMost(90.0)
+        if (watchedSeconds <= 0.25) {
+            activeViewingVideoId = null
+            activeViewingStartedAtMs = 0L
+            return
+        }
+
+        val watchedVideo = findVideoById(videoId)
+        if (watchedVideo != null) {
+            val duration = watchedVideo.duration.takeIf { it > 0L }?.toDouble() ?: 30.0
+            val completionRatio = (watchedSeconds / duration).coerceIn(0.0, 1.35)
+            val watchWeight = when {
+                watchedSeconds >= 8.0 || completionRatio >= 0.65 -> 1.30 + completionRatio
+                watchedSeconds >= 3.0 -> 0.55 + completionRatio
+                else -> 0.12
+            }
+            watchSecondsByVideo[videoId] = ((watchSecondsByVideo[videoId] ?: 0.0) + watchedSeconds)
+                .coerceAtMost(duration * 3.0)
+            recordVideoSignal(watchedVideo, watchWeight)
+        }
+
+        activeViewingVideoId = null
+        activeViewingStartedAtMs = 0L
+    }
+
+    private fun recordVideoSignal(video: Video, weight: Double) {
+        if (weight == 0.0) return
+        applySignal(authorAffinity, video.userId, weight)
+        video.tags.take(8).forEach { rawTag ->
+            val tag = rawTag.trim().lowercase().removePrefix("#")
+            if (tag.isNotBlank()) {
+                applySignal(tagAffinity, tag, weight * 0.55)
+            }
+        }
+    }
+
+    private fun applySignal(target: MutableMap<String, Double>, key: String, delta: Double) {
+        if (key.isBlank()) return
+        val updated = ((target[key] ?: 0.0) * SIGNAL_DECAY + delta).coerceIn(-4.0, 10.0)
+        if (kotlin.math.abs(updated) < 0.02) {
+            target.remove(key)
+        } else {
+            target[key] = updated
+        }
+    }
+
+    private fun rememberViewedVideo(videoId: String) {
+        if (videoId.isBlank()) return
+        viewedVideoIds.remove(videoId)
+        viewedVideoIds.add(videoId)
+        while (viewedVideoIds.size > MAX_VIEWED_VIDEO_MEMORY) {
+            viewedVideoIds.remove(viewedVideoIds.first())
+        }
+    }
+
+    private fun rankForYouVideos(videos: List<Video>): List<Video> {
+        if (videos.size <= 2) return videos
+        val nowMs = System.currentTimeMillis()
+        val ranked = videos
+            .distinctBy { it.id }
+            .sortedByDescending { video -> scoreVideo(video, nowMs) }
+        return diversifyVideosByAuthor(ranked)
+    }
+
+    private fun scoreVideo(video: Video, nowMs: Long): Double {
+        val engagement = video.likeCount + (video.commentCount * 2.0) + (video.shareCount * 3.0) + (video.views * 0.04)
+        val engagementScore = ln(1.0 + engagement.coerceAtLeast(0.0))
+        val freshnessScore = exp(-ageHours(video.created_at, nowMs) / 42.0)
+        val authorBoost = authorAffinity[video.userId] ?: 0.0
+        val tagBoost = video.tags
+            .take(8)
+            .sumOf { tagAffinity[it.trim().lowercase().removePrefix("#")] ?: 0.0 }
+            .coerceAtMost(6.0)
+        val watchDuration = (video.duration.takeIf { it > 0L } ?: 30L).toDouble()
+        val watchBoost = ((watchSecondsByVideo[video.id] ?: 0.0) / watchDuration)
+            .coerceIn(0.0, 2.5)
+        val seenPenalty = if (viewedVideoIds.contains(video.id)) 0.35 else 0.0
+        val verifiedBoost = if (video.isVerified) 0.20 else 0.0
+        val tieBreaker = ((video.id.hashCode() and 0xFFFF).toDouble() / 65_535.0) * 0.01
+
+        return (engagementScore * 0.45) +
+            (freshnessScore * 1.85) +
+            (authorBoost * 0.55) +
+            (tagBoost * 0.35) +
+            (watchBoost * 0.65) +
+            verifiedBoost -
+            seenPenalty +
+            tieBreaker
+    }
+
+    private fun diversifyVideosByAuthor(ranked: List<Video>): List<Video> {
+        val remaining = ranked.toMutableList()
+        val result = mutableListOf<Video>()
+        while (remaining.isNotEmpty()) {
+            val next = remaining.firstOrNull { candidate ->
+                result.takeLast(2).none { it.userId == candidate.userId }
+            } ?: remaining.first()
+            result.add(next)
+            remaining.remove(next)
+        }
+        return result
+    }
+
+    private fun ageHours(createdAt: String, nowMs: Long): Double {
+        if (createdAt.isBlank()) return 72.0
+        val createdMs = runCatching { java.time.Instant.parse(createdAt).toEpochMilli() }.getOrNull()
+            ?: runCatching { java.time.OffsetDateTime.parse(createdAt).toInstant().toEpochMilli() }.getOrNull()
+            ?: runCatching { createdAt.toLong() }.getOrNull()
+            ?: return 72.0
+        return ((nowMs - createdMs).coerceAtLeast(0L) / 3_600_000.0)
+    }
+
     fun toggleLike(video: Video) {
         val videoId = video.id
         val snapshotForYou = _forYouVideos.value
@@ -250,6 +390,7 @@ class VideoFeedViewModel @Inject constructor(
 
         val current = findVideoById(videoId) ?: video
         val newLikedState = !current.likedByMe
+        recordVideoSignal(current, if (newLikedState) VIDEO_LIKE_WEIGHT else -VIDEO_LIKE_WEIGHT)
 
         _forYouVideos.value = applyLikeState(_forYouVideos.value, videoId, newLikedState)
         _followingVideos.value = applyLikeState(_followingVideos.value, videoId, newLikedState)
@@ -294,6 +435,7 @@ class VideoFeedViewModel @Inject constructor(
         val current = findVideoById(videoId) ?: video
         val newSharedState = !current.sharedByMe
         val delta = if (newSharedState) 1 else -1
+        recordVideoSignal(current, if (newSharedState) VIDEO_SHARE_WEIGHT else -VIDEO_SHARE_WEIGHT)
 
         _forYouVideos.value = applyShareState(_forYouVideos.value, videoId, newSharedState)
         _followingVideos.value = applyShareState(_followingVideos.value, videoId, newSharedState)
@@ -364,6 +506,7 @@ class VideoFeedViewModel @Inject constructor(
     fun openComments(video: Video) {
         _selectedVideoForComments.value = video
         _commentsSheetOpen.value = true
+        recordVideoSignal(video, VIDEO_COMMENT_OPEN_WEIGHT)
         fetchComments(video.id)
     }
     
@@ -412,6 +555,7 @@ class VideoFeedViewModel @Inject constructor(
     fun addComment(videoId: String, content: String) {
          if (content.isBlank()) return
          val parentId = _replyingTo.value?.id
+         findVideoById(videoId)?.let { recordVideoSignal(it, VIDEO_COMMENT_WEIGHT) }
          
          viewModelScope.launch {
              android.util.Log.d("VideoFeedVM", "addComment called for videoId: $videoId, parentId: $parentId")
@@ -678,8 +822,19 @@ class VideoFeedViewModel @Inject constructor(
         }
     }
 
+    private companion object {
+        private const val SIGNAL_DECAY = 0.992
+        private const val MAX_VIEWED_VIDEO_MEMORY = 900
+        private const val VIDEO_IMPRESSION_WEIGHT = 0.08
+        private const val VIDEO_LIKE_WEIGHT = 1.35
+        private const val VIDEO_SHARE_WEIGHT = 1.80
+        private const val VIDEO_COMMENT_OPEN_WEIGHT = 0.50
+        private const val VIDEO_COMMENT_WEIGHT = 1.55
+    }
+
     override fun onCleared() {
         super.onCleared()
+        finishActiveWatchSession()
         stopAudio()
         voiceMessageManager.reset() // Clean up
     }

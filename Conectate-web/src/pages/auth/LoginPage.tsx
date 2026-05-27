@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import {
+  completeMigratedPasswordReset,
+  isMigratedPasswordResetRequired,
+} from '../../core/auth/fallbackAuth'
 import { parseRecoverySessionPayload } from '../../core/auth/recoverySession'
 import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
 import {
@@ -18,16 +22,16 @@ type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
 
 const loginHighlights = [
   {
-    title: 'Mensajes y multi-cuenta',
-    description: 'La web ya comparte bandeja, favoritos, archivados y cambio rápido alineado con móvil.',
+    title: 'Mensajes y cuentas',
+    description: 'Retoma chats, favoritos, archivados y cambios rápidos desde el dispositivo que tengas a mano.',
   },
   {
-    title: 'Videos y social',
-    description: 'Feed, reels, perfil estilo Discord y monetización viven sobre el mismo backend.',
+    title: 'Videos y comunidad',
+    description: 'Feed, reels, perfil, salas y monetización se sienten como partes de una misma red.',
   },
   {
-    title: 'Acceso flexible',
-    description: 'Puedes entrar por contraseña, correo, QR o una sesión de recuperación compatible.',
+    title: 'Entrada flexible',
+    description: 'Usa contraseña, código al correo, QR aprobado desde tu teléfono o una sesión recuperada.',
   },
 ]
 
@@ -42,11 +46,18 @@ function normalizeMode(value: string | null): LoginMode {
   return 'password'
 }
 
+function normalizeNextPath(value: string | null): string {
+  const clean = value?.trim()
+  if (!clean || !clean.startsWith('/') || clean.startsWith('//')) return '/app/messages'
+  return clean
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const client = supabase
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = useMemo<LoginMode>(() => normalizeMode(searchParams.get('mode')), [searchParams])
+  const nextPath = useMemo(() => normalizeNextPath(searchParams.get('next')), [searchParams])
   const initialEmail = useMemo(() => searchParams.get('email')?.trim() ?? '', [searchParams])
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
@@ -55,6 +66,14 @@ export function LoginPage() {
   const [recoveryPayload, setRecoveryPayload] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
+    email: string
+    migrationToken: string
+    displayName: string
+  } | null>(null)
+  const [migratedNewPassword, setMigratedNewPassword] = useState('')
+  const [migratedConfirmPassword, setMigratedConfirmPassword] = useState('')
+  const [activatingMigratedPassword, setActivatingMigratedPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [sendingCode, setSendingCode] = useState(false)
   const [verifyingCode, setVerifyingCode] = useState(false)
@@ -76,6 +95,7 @@ export function LoginPage() {
     setSearchParams(nextParams, { replace: true })
     setError(null)
     setInfo(null)
+    setMigratedPasswordReset(null)
   }
 
   useEffect(() => {
@@ -127,7 +147,10 @@ export function LoginPage() {
             activePairing.nonce ?? '',
           )
           if (cancelled) return
-          setQrPairing(next)
+          setQrPairing((current) => ({
+            ...next,
+            nonce: next.nonce ?? current?.nonce ?? activePairing.nonce,
+          }))
           if (next.status === 'rejected') {
             setInfo('La aprobación fue rechazada desde el móvil.')
           }
@@ -179,7 +202,7 @@ export function LoginPage() {
         })
         if (sessionError) throw sessionError
         if (!cancelled) {
-          navigate('/app/messages', { replace: true })
+          navigate(nextPath, { replace: true })
         }
       } catch (caught) {
         if (!cancelled) {
@@ -196,7 +219,7 @@ export function LoginPage() {
     return () => {
       cancelled = true
     }
-  }, [client, consumingQr, mode, navigate, qrPairing])
+  }, [client, consumingQr, mode, navigate, nextPath, qrPairing])
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -206,11 +229,54 @@ export function LoginPage() {
     setInfo(null)
     try {
       await signInWithResolvedEmail(client, email, password)
-      navigate('/app/messages', { replace: true })
+      setMigratedPasswordReset(null)
+      navigate(nextPath, { replace: true })
     } catch (caught) {
+      if (isMigratedPasswordResetRequired(caught)) {
+        setMigratedPasswordReset({
+          email: caught.email,
+          migrationToken: caught.migrationToken,
+          displayName: caught.displayName,
+        })
+        setMigratedNewPassword('')
+        setMigratedConfirmPassword('')
+        setError(null)
+        setInfo('Cuenta migrada desde Supabase. Crea tu contraseña local para continuar en el servidor Ubuntu.')
+        return
+      }
       setError(friendlyError(caught, 'No se pudo iniciar sesión'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleMigratedPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!migratedPasswordReset || activatingMigratedPassword) return
+
+    const nextPassword = migratedNewPassword.trim()
+    if (nextPassword.length < 8) {
+      setError('La nueva contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+    if (nextPassword !== migratedConfirmPassword.trim()) {
+      setError('La confirmación no coincide con la contraseña nueva.')
+      return
+    }
+
+    setActivatingMigratedPassword(true)
+    setError(null)
+    setInfo(null)
+    try {
+      await completeMigratedPasswordReset(migratedPasswordReset.migrationToken, nextPassword)
+      setMigratedPasswordReset(null)
+      setMigratedNewPassword('')
+      setMigratedConfirmPassword('')
+      navigate(nextPath, { replace: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo activar la contraseña local'))
+    } finally {
+      setActivatingMigratedPassword(false)
     }
   }
 
@@ -230,7 +296,7 @@ export function LoginPage() {
         email: normalizedEmail,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`,
         },
       })
       if (otpError) throw otpError
@@ -262,7 +328,7 @@ export function LoginPage() {
         type: 'email',
       })
       if (verifyError) throw verifyError
-      navigate('/app/messages', { replace: true })
+      navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo validar el código'))
     } finally {
@@ -288,7 +354,7 @@ export function LoginPage() {
         refresh_token: payload.refreshToken,
       })
       if (sessionError) throw sessionError
-      navigate('/app/messages', { replace: true })
+      navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo importar la sesión'))
     } finally {
@@ -308,14 +374,13 @@ export function LoginPage() {
   return (
     <section className="auth-shell auth-shell-rich">
       <div className="auth-layout-grid">
-        <aside className="auth-spotlight">
+        <aside className="auth-spotlight" aria-hidden="true">
           <div className="section-stack auth-spotlight-copy">
-            <p className="brand-tag">Conectate-web</p>
+            <p className="brand-tag">Conectate</p>
             <div>
-              <h1>La versión web ya no puede verse como maqueta</h1>
+              <h1>Tu red social, lista para entrar</h1>
               <p>
-                Entrar tiene que sentirse claro, sólido y social desde el primer segundo. Este
-                acceso ya acompaña mensajes, videos, perfil y sincronización con la APK.
+                Continúa tus chats, videos, salas y perfil con una entrada clara, segura y rápida.
               </p>
             </div>
           </div>
@@ -330,10 +395,10 @@ export function LoginPage() {
           </div>
 
           <article className="surface-subcard auth-spotlight-note">
-            <strong>Paridad útil con Android</strong>
+            <strong>Continúa desde tu teléfono</strong>
             <p>
-              Si ya aprobaste una sesión desde el móvil o recibiste una recuperación, no tienes que
-              repetir todo el flujo: también puedes entrar por QR o importando sesión.
+              Si ya aprobaste una sesión o recibiste una recuperación, puedes entrar por QR o
+              vincular la sesión sin repetir pasos.
             </p>
           </article>
         </aside>
@@ -344,14 +409,14 @@ export function LoginPage() {
               <p className="brand-tag auth-panel-tag">Acceso</p>
               <h1>Entrar a tu red social</h1>
               <p>
-                Elige el método que te sirva hoy: contraseña, código al correo, QR aprobado desde
-                la app o una sesión de recuperación.
+                Elige cómo quieres entrar hoy: contraseña, código al correo, QR o sesión recuperada.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid">
               <button
                 type="button"
                 className={mode === 'password' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'password'}
                 onClick={() => changeMode('password')}
               >
                 Contraseña
@@ -359,6 +424,7 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'code' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'code'}
                 onClick={() => changeMode('code')}
               >
                 Código
@@ -366,6 +432,7 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'recovery' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'recovery'}
                 onClick={() => changeMode('recovery')}
               >
                 Vincular sesión
@@ -373,9 +440,10 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'qr' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'qr'}
                 onClick={() => changeMode('qr')}
               >
-                QR
+                Iniciar sesión con QR
               </button>
             </div>
           </div>
@@ -410,7 +478,10 @@ export function LoginPage() {
                   required
                   value={email}
                   autoComplete="email"
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value)
+                    setMigratedPasswordReset(null)
+                  }}
                 />
               </label>
               <label>
@@ -425,6 +496,42 @@ export function LoginPage() {
               </label>
               <button className="primary-btn" disabled={loading} type="submit">
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
+              </button>
+            </form>
+          ) : null}
+
+          {mode === 'password' && migratedPasswordReset ? (
+            <form className="surface-subcard section-stack migrated-password-card" onSubmit={handleMigratedPasswordSubmit}>
+              <div>
+                <strong>Actualización por migración</strong>
+                <p>
+                  Verificamos tu contraseña anterior de Supabase. Ahora crea la contraseña que usará
+                  tu cuenta en el servidor Ubuntu.
+                </p>
+                <small>{migratedPasswordReset.email}</small>
+              </div>
+              <label>
+                Nueva contraseña local
+                <input
+                  type="password"
+                  required
+                  value={migratedNewPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setMigratedNewPassword(event.target.value)}
+                />
+              </label>
+              <label>
+                Confirmar contraseña local
+                <input
+                  type="password"
+                  required
+                  value={migratedConfirmPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setMigratedConfirmPassword(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={activatingMigratedPassword} type="submit">
+                {activatingMigratedPassword ? 'Activando...' : 'Crear contraseña y entrar'}
               </button>
             </form>
           ) : null}

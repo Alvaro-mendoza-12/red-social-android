@@ -30,6 +30,7 @@ import conectate.com.data.model.ChatWithLastMessage
 fun PrivateChatsTab(
     onNavigateToSearch: () -> Unit,
     viewModel: MessagingViewModel = hiltViewModel(),
+    topBarFilter: ChatFilter = ChatFilter.ALL,
     onNavigateToChat: (String) -> Unit
 ) {
     val conversationsState by viewModel.conversationsState.collectAsState()
@@ -48,6 +49,15 @@ fun PrivateChatsTab(
         val message = uiMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         viewModel.consumeUiMessage()
+    }
+
+    LaunchedEffect(topBarFilter) {
+        when (topBarFilter) {
+            ChatFilter.ALL -> viewModel.selectFolder(null)
+            ChatFilter.FAVORITES -> viewModel.selectFolder(FAVORITE_CHAT_FILTER_ID)
+            ChatFilter.ARCHIVED -> viewModel.selectFolder(ARCHIVED_CHAT_FILTER_ID)
+            ChatFilter.UNREAD, ChatFilter.GROUPS -> viewModel.selectFolder(null)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -81,6 +91,26 @@ fun PrivateChatsTab(
                 selected = selectedFolderId == null,
                 onClick = { viewModel.selectFolder(null) },
                 label = { Text("Todas") }
+            )
+            FilterChip(
+                selected = selectedFolderId == FAVORITE_CHAT_FILTER_ID,
+                onClick = {
+                    viewModel.selectFolder(
+                        if (selectedFolderId == FAVORITE_CHAT_FILTER_ID) null else FAVORITE_CHAT_FILTER_ID
+                    )
+                },
+                label = { Text("Favoritos") },
+                leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) }
+            )
+            FilterChip(
+                selected = selectedFolderId == ARCHIVED_CHAT_FILTER_ID,
+                onClick = {
+                    viewModel.selectFolder(
+                        if (selectedFolderId == ARCHIVED_CHAT_FILTER_ID) null else ARCHIVED_CHAT_FILTER_ID
+                    )
+                },
+                label = { Text("Archivados") },
+                leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) }
             )
             folders.forEach { folder ->
                 FilterChip(
@@ -119,7 +149,11 @@ fun PrivateChatsTab(
             }
             is ConversationsUiState.Success -> {
                 // Filtrar SOLO chats privados (no grupos)
-                val privateChats = state.conversations.filter { !it.chat.is_group }
+                val privateChats = state.conversations
+                    .filter { !it.chat.is_group }
+                    .let { chats ->
+                        if (topBarFilter == ChatFilter.UNREAD) chats.filter { it.unreadCount > 0 } else chats
+                    }
                 
                 if (privateChats.isEmpty()) {
                     Box(
@@ -134,7 +168,13 @@ fun PrivateChatsTab(
                             Text(
                                 text = when {
                                     selectedFolderId != null && searchQuery.isEmpty() ->
-                                        "Esta carpeta está vacía. Agrega chats desde \"Todas\"."
+                                        when (selectedFolderId) {
+                                            ARCHIVED_CHAT_FILTER_ID -> "No tienes chats archivados."
+                                            FAVORITE_CHAT_FILTER_ID -> "No tienes chats favoritos."
+                                            else -> "Esta carpeta está vacía. Agrega chats desde \"Todas\"."
+                                        }
+                                    topBarFilter == ChatFilter.UNREAD && searchQuery.isEmpty() ->
+                                        "No tienes chats privados sin leer."
                                     searchQuery.isEmpty() ->
                                         "No tienes conversaciones"
                                     else ->
@@ -175,6 +215,8 @@ fun PrivateChatsTab(
                                 },
                                 onMute = { viewModel.muteChat(conversation.chat.id, !conversation.chat.is_muted) },
                                 onPin = { viewModel.pinChat(conversation.chat.id, !conversation.chat.is_pinned) },
+                                onFavorite = { viewModel.favoriteChat(conversation.chat.id, !conversation.chat.is_favorite) },
+                                onArchive = { viewModel.archiveChat(conversation.chat.id, !conversation.chat.is_archived) },
                                 onBlock = { viewModel.blockUser(otherUserId) },
                                 onManageFolders = { folderTargetConversation = conversation },
                                 onDelete = { viewModel.deleteChat(conversation.chat.id) },
@@ -187,8 +229,8 @@ fun PrivateChatsTab(
                         }
                     }
 
-                    if (showReportDialog && selectedConversation != null) {
-                        val conv = selectedConversation!!
+                    selectedConversation?.let { conv ->
+                    if (showReportDialog) {
                         val reportedUserId = conv.chat.participants.firstOrNull { it != viewModel.currentUserId } ?: ""
                         val reportedUserName = conv.otherUserName ?: "Usuario"
                         conectate.com.presentation.components.ReportDialog(
@@ -199,6 +241,7 @@ fun PrivateChatsTab(
                                 // Dialog handles confirmation within itself
                             }
                         )
+                    }
                     }
                 }
             }
@@ -289,8 +332,7 @@ fun PrivateChatsTab(
             )
         }
 
-        if (folderPendingDeletion != null) {
-            val folder = folderPendingDeletion!!
+        folderPendingDeletion?.let { folder ->
             AlertDialog(
                 onDismissRequest = { folderPendingDeletion = null },
                 title = { Text("Eliminar carpeta") },
@@ -313,8 +355,7 @@ fun PrivateChatsTab(
             )
         }
 
-        if (folderTargetConversation != null) {
-            val targetConversation = folderTargetConversation!!
+        folderTargetConversation?.let { targetConversation ->
             val normalizedChatId = targetConversation.chat.id.trim().lowercase()
             AlertDialog(
                 onDismissRequest = { folderTargetConversation = null },

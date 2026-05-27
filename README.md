@@ -6,9 +6,9 @@ Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose
 
 - ✅ **Autenticación** con email y número de teléfono
 - 💬 **Mensajería en tiempo real** (texto, imágenes, videos, audio)
-- 🎥 **Feed de videos** con likes y comentarios
-- 👤 **Perfiles de usuario** personalizables
-- 🎤 **Salas de voz** de alto rendimiento (WebRTC + Socket.io)
+- 🎥 **Feed de videos/lives** con likes, comentarios, gifts y reportes
+- 👤 **Perfiles de usuario** personalizables estilo Discord
+- 🎤 **Llamadas y salas de voz** de alto rendimiento (WebRTC + Socket.io)
 - 🔔 **Notificaciones push** en tiempo real
 
 ## 🏗️ Arquitectura
@@ -19,6 +19,21 @@ Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose
 - **Inyección de Dependencias**: Hilt
 - **Backend**: Supabase (Auth, PostgREST, Storage, Realtime)
 - **Comunicación de Voz**: WebRTC Native SDK + Custom Node.js Signaling
+
+## Mapa operativo del repo
+
+- `app/`: app Android activa.
+- `Conectate-web/`: cliente web Vite/React.
+- `signaling-server/`: backend Node para señalización WebRTC.
+- `sql/`: scripts clasificados; despliegues automatizados solo desde `sql/release-manifest.txt`.
+- `tools/`: quality gates, auditorías y utilidades.
+- `docs/`: documentación viva; historial y snapshots versionados viven en `docs/archive/`.
+
+Chequeo rápido de higiene:
+
+```powershell
+npm run repo:hygiene
+```
 
 ## 🚀 Configuración Inicial
 
@@ -44,9 +59,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 ```
 
-3. Crea las tablas necesarias: `profiles`, `videos`, `video_comments`, `video_likes`, `messages`, `chats`, `voice_rooms`, etc. Algunas funciones RPC esperadas por la app son `get_or_create_chat`, `get_user_chats_with_last_message`, `get_unread_messages_count`, etc.
+3. Ejecuta la ruta activa de despliegue desde `sql/release-manifest.txt`. La migración final de Sprint 1-5 es `sql/migrations/supabase_sprint_1_to_5_final_contract_2026.sql`; el hardening operativo queda en `sql/migrations/20260506_wallet_gifts_rpc_security_hardening.sql`, `sql/migrations/20260506_monetization_premium_ads_security_hardening.sql`, `sql/migrations/20260506_chat_archive_preferences_2026.sql`, `sql/migrations/20260506_chat_favorites_preferences_2026.sql` y `sql/migrations/add_audio_to_post_comments.sql`.
 
-4. Configura reglas de RLS (Row Level Security) y políticas para `profiles`, `messages` y `videos` según la lógica de la aplicación.
+4. Mantén RLS habilitado y usa el release manifest como lista de scripts permitidos para staging/producción. `sql/deploy_complete_unified.sql` queda como referencia histórica/legacy, no como fuente principal de deploy automatizado.
 
 ### Paso 3: Configurar Servidor de Señalización de Voz
 
@@ -110,12 +125,15 @@ python tools/security_sql_audit.py --root . --report build/reports/security/sql_
 
 ```bash
 ./gradlew :app:assembleRelease
-python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+python tools/performance_budget_check.py --apk app/build/outputs/apk/release --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
 ```
 
 Documentación adicional:
 - `docs/SECURITY_AUDIT_CHECKLIST_2026.md`
 - `docs/PERFORMANCE_BUDGETS_2026.md`
+- `docs/PROJECT_HEALTH_2026-05-14.md`
+- `docs/SPRINT_1_TO_5_IMPLEMENTATION_STATUS_2026.md`
+- `docs/BACKUP_AND_ARCHIVE_STATUS_2026.md`
 
 Para que funcione en tu repositorio remoto, configura estos secretos en GitHub:
 
@@ -187,7 +205,7 @@ Ejemplo: permitir lectura pública en un bucket `avatars` y control de escritura
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Kotlin** 1.9.20
+- **Kotlin** 1.9.22
 - **Jetpack Compose** BOM 2023.10.01
 - **Supabase** (gotrue, postgrest, realtime, storage)
 - **Hilt** 2.51
@@ -203,31 +221,37 @@ El proyecto ya no está en estado inicial. Hoy cuenta con:
 
 - autenticación y perfil sobre Supabase;
 - mensajería, grupos, comunidades y salas de voz con Android nativo;
-- feed de video, perfil y social en producción de desarrollo;
+- feed de video, lives, gifts, premium/ads, perfil, social y comentarios con audio en producción de desarrollo;
 - Hilt, Compose, navegación y repositorios ya integrados;
-- validación local con `compileDebugKotlin`, `testDebugUnitTest` y `lintDebug`.
+- release/R8 configurado con `org.gradle.jvmargs=-Xmx4096m` para evitar caídas del daemon al minificar APKs por ABI;
+- validación local con `compileDebugKotlin`, `testDebugUnitTest`, `assembleRelease`, auditoría SQL y performance budgets.
 
 Puntos importantes sobre el estado real:
 
 - La app usa **Supabase como backend principal**, pero todavía existen piezas Android ligadas a **Firebase Cloud Messaging** para push/notificaciones.
 - El contrato activo de push quedó centralizado en `conectate.com.data.service.MyFirebaseMessagingService`; la implementación legacy ya no forma parte de la superficie principal.
-- `wallet` y el descubrimiento público por hashtags quedaron **feature-gateados** para evitar rutas rotas mientras se terminan sus contratos reales.
-- La base ya es funcional, pero todavía sigue en fase de **saneamiento estructural**: repositorios grandes, tests insuficientes y deuda SQL/RLS todavía abierta.
+- Las notificaciones directas respetan el chat visible con `MessageSessionStateStore` compartido, evitando notificar mientras el usuario ya está dentro de esa conversación.
+- Silenciar, fijar, archivar y marcar chats como favoritos queda persistido como preferencia por usuario; archivar/favoritos ya no son solo UI local y se sincronizan con `chat_participants`.
+- La pantalla de personalizar app guarda el orden de navegación inferior y `HomeScreen` lo aplica al volver al shell principal.
+- `wallet`, gifts, premium, ads y programa de creadores ya tienen ruta activa de app: `WalletRepository`, `GiftSelectionDialog`, `LiveViewerScreen`, `MonetizationRepository`, `MonetizationCenterScreen` y `CreatorProgramScreen` consumen Supabase/RPCs con RLS y hardening en el release manifest.
+- La base ya es funcional, pero todavía sigue en fase de **saneamiento estructural**: repositorios grandes, cobertura de tests mejorable y deuda SQL histórica fuera del release manifest.
 - A nivel Android, la base ya quedó bastante más consistente para seguir con nuevas funcionalidades sin cargar otra vez tanta duplicación entre `mensajes`, `grupos` y `comunidades`.
 - La referencia técnica viva para esa base está en `docs/ANDROID_CODEBASE_BASELINE_2026.md`.
 - La guía de orden del repositorio y clasificación de carpetas está en `docs/REPO_STRUCTURE_GUIDE_2026.md`.
-- El chequeo local más completo ahora se puede correr con `./gradlew qualityGateFull`.
+- El chequeo local recomendado combina `compileDebugKotlin`, `testDebugUnitTest`, `assembleRelease`, auditoría SQL y performance budgets.
 
-Validación local cerrada el `2026-04-26`:
+Validación local cerrada el `2026-05-06`:
 
 - `:app:compileDebugKotlin`
-- `:app:assembleDebug`
-- `:app:testDebugUnitTest`
-- `:app:lintDebug`
-- `:app:qualityGateDebug`
-- `:app:assembleRelease`
-- `:app:bundleRelease`
-- `python tools/performance_budget_check.py --artifacts app/build/outputs/apk/release app/build/outputs/bundle/release/app-release.aab`
+- `:app:compileDebugKotlin` despues de favoritos de chat persistentes
+- `:app:testDebugUnitTest` con 66 tests en verde
+- `:app:assembleRelease`, generando los cuatro APKs release unsigned por ABI en `app/build/outputs/apk/release/`
+- `:app:assembleRelease --max-workers=1` despues de favoritos de chat persistentes, regenerando los cuatro APKs el `2026-05-07` local
+- `:app:qualityGateDebug :app:assembleDebug :app:assembleRelease --max-workers=1` antes de abrir en Android Studio, en verde
+- `python tools/security_sql_audit.py --root . --manifest sql/release-manifest.txt --baseline tools/security_audit_baseline.json --report build/reports/security/sql_security_audit.md --json build/reports/security/sql_security_audit.json --fail-threshold HIGH`, sin HIGH/CRITICAL ni violaciones nuevas
+- `python tools/performance_budget_check.py --apk app/build/outputs/apk/release --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json`, con los cuatro APKs dentro de budget
+
+Nota runtime: `adb` existe en el SDK local, pero no habia dispositivo/emulador conectado durante la ultima verificacion. La apertura real de la APK en telefono/emulador y revision de `logcat` queda como comprobacion pendiente fuera de los gates locales ya ejecutados.
 
 ### Base técnica ya consolidada
 
@@ -243,7 +267,7 @@ Validación local cerrada el `2026-04-26`:
 
 - aumentar cobertura de tests unitarios e instrumentados;
 - limpiar documentación para que refleje exactamente el código actual;
-- endurecer seguridad SQL/RLS.
+- mantener el release manifest limpio y reducir deuda SQL/RLS histórica fuera de la ruta deployable.
 
 La limpieza estructural principal del Android ya está bastante avanzada; lo que más condiciona la siguiente etapa ya no es tanto duplicación visual/repositorios de `grupo` y `comunidad`, sino pruebas de regresión y seguridad backend.
 

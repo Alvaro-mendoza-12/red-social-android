@@ -53,21 +53,29 @@ object VideoWatermarkDetector {
         return try {
             val frames = extractCandidateFrames(context, videoUri)
             for (frame in frames) {
-                for (crop in buildInspectionCrops(frame)) {
-                    val recognizedText = runCatching {
-                        recognizer.processAwait(InputImage.fromBitmap(crop, 0)).text
-                    }.getOrElse { error ->
-                        Log.w("VideoWatermarkDetector", "OCR failed for one crop", error)
-                        ""
-                    }
+                try {
+                    for (crop in buildInspectionCrops(frame)) {
+                        try {
+                            val recognizedText = runCatching {
+                                recognizer.processAwait(InputImage.fromBitmap(crop, 0)).text
+                            }.getOrElse { error ->
+                                Log.w("VideoWatermarkDetector", "OCR failed for one crop", error)
+                                ""
+                            }
 
-                    val brand = findBrand(normalize(recognizedText))
-                    if (brand != null) {
-                        return VideoWatermarkDetection(
-                            brand = brand,
-                            evidence = recognizedText.take(120).ifBlank { "OCR" }
-                        )
+                            val brand = findBrand(normalize(recognizedText))
+                            if (brand != null) {
+                                return VideoWatermarkDetection(
+                                    brand = brand,
+                                    evidence = recognizedText.take(120).ifBlank { "OCR" }
+                                )
+                            }
+                        } finally {
+                            crop.recycleSafely()
+                        }
                     }
+                } finally {
+                    frame.recycleSafely()
                 }
             }
             null
@@ -166,6 +174,12 @@ object VideoWatermarkDetector {
             .replace(Regex("[^a-z0-9@ ]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+    }
+}
+
+private fun Bitmap.recycleSafely() {
+    if (!isRecycled) {
+        recycle()
     }
 }
 

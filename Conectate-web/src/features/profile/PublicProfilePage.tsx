@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { QrCodeTile } from '../../components/QrCodeTile'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 import { getOrCreateDirectChat } from '../messages/directChat'
 
@@ -49,9 +51,14 @@ export function PublicProfilePage() {
   const [reportReason, setReportReason] = useState('spam')
   const [reportDetails, setReportDetails] = useState('')
   const [reporting, setReporting] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
 
   const isSelf = Boolean(user && cleanProfileId && user.id === cleanProfileId)
   const canSeePosts = Boolean(profile && (!profile.isPrivate || isSelf || isFollowing))
+  const profileShareUrl = useMemo(() => (cleanProfileId ? buildProfileShareUrl(cleanProfileId) : ''), [cleanProfileId])
+  const profileChatUrl = useMemo(() => (cleanProfileId ? buildProfileChatUrl(cleanProfileId) : ''), [cleanProfileId])
+  const profileQrValue = useMemo(() => (cleanProfileId ? buildProfileQrPayload(cleanProfileId) : ''), [cleanProfileId])
+  const chatQrValue = useMemo(() => (cleanProfileId ? buildProfileChatQrPayload(cleanProfileId) : ''), [cleanProfileId])
 
   const loadProfile = useCallback(async () => {
     if (!supabase || !cleanProfileId) {
@@ -166,6 +173,31 @@ export function PublicProfilePage() {
     }
   }
 
+  async function copyLink(url: string, label: string) {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareStatus(`${label} copiado.`)
+    } catch {
+      setShareStatus('No se pudo copiar el enlace.')
+    }
+  }
+
+  async function shareLink(url: string) {
+    if (!url) return
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: profile?.name ?? 'Perfil Conectate', url })
+        setShareStatus('Enlace compartido.')
+        return
+      }
+      await copyLink(url, 'Enlace')
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      setShareStatus('No se pudo compartir el enlace.')
+    }
+  }
+
   async function submitUserReport() {
     if (!supabase || !user || !profile || isSelf || reporting) return
     const reason = reportReason.trim()
@@ -257,8 +289,33 @@ export function PublicProfilePage() {
             <button className="ghost-btn" type="button" disabled={openingChat} onClick={() => void openDirectChat()}>
               {openingChat ? 'Abriendo...' : 'Enviar mensaje'}
             </button>
+            <button className="ghost-btn" type="button" onClick={() => void shareLink(profileShareUrl)}>
+              Compartir perfil
+            </button>
           </div>
         ) : null}
+        {shareStatus ? <small className="muted-line">{shareStatus}</small> : null}
+      </article>
+
+      <article className="surface-card profile-public-qr-card">
+        <div className="row-between">
+          <div>
+            <h3>QR social</h3>
+            <p>Escanéalo desde la APK para abrir este perfil o iniciar chat.</p>
+          </div>
+          <div className="row-actions wrap">
+            <button className="mini-action-btn" type="button" onClick={() => void copyLink(profileShareUrl, 'Perfil')}>
+              Copiar perfil
+            </button>
+            <button className="mini-action-btn" type="button" onClick={() => void copyLink(profileChatUrl, 'Chat')}>
+              Copiar chat
+            </button>
+          </div>
+        </div>
+        <div className="profile-qr-grid">
+          <QrCodeTile value={profileQrValue} title="Perfil" description={profile.username ? `@${profile.username}` : profile.name} compact />
+          <QrCodeTile value={chatQrValue} title="Chat" description="Conversación directa" compact />
+        </div>
       </article>
 
       {!isSelf ? (

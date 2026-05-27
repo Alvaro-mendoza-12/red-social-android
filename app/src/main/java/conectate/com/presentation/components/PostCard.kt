@@ -7,29 +7,26 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import conectate.com.data.model.Post
 import conectate.com.util.DateUtils
-import conectate.com.presentation.navigation.Screen
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -46,9 +43,40 @@ fun PostCard(
     onEditClick: () -> Unit = {},
     onUrlClick: (String) -> Unit = {},
     onPostClick: () -> Unit = {},
+    onReactionSelected: (ReactionType) -> Unit = { onLikeClick() },
+    onReactionRemoved: () -> Unit = onLikeClick,
+    onSaveClick: () -> Unit = {},
     onSendToFriend: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showFullScreenImage by remember { mutableStateOf<String?>(null) }
+    var showReactionBreakdown by remember { mutableStateOf(false) }
+
+    // Performance: Pre-calculate relative date to avoid overhead during recomposition
+    val relativeDate = remember(post.createdAt) {
+        DateUtils.formatRelativeDate(post.createdAt)
+    }
+    val currentReaction = remember(post.myReaction, post.likedByMe) {
+        reactionTypeFromWire(post.myReaction) ?: if (post.likedByMe) ReactionType.LIKE else null
+    }
+    val reactionCounts = remember(post.reactionCounts, post.likeCount) {
+        val parsedCounts = post.reactionCounts
+            .mapNotNull { (reaction, count) ->
+                reactionTypeFromWire(reaction)
+                    ?.takeIf { count > 0 }
+                    ?.let { it to count }
+            }
+            .toMap()
+
+        parsedCounts.takeIf { it.isNotEmpty() }
+            ?: if (post.likeCount > 0) mapOf(ReactionType.LIKE to post.likeCount) else emptyMap()
+    }
+    val totalReactions = remember(reactionCounts) { reactionCounts.values.sum() }
+    val topReactions = remember(reactionCounts) {
+        reactionCounts.entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+    }
 
     if (showFullScreenImage != null) {
         FullScreenImageDialog(
@@ -56,294 +84,276 @@ fun PostCard(
             onDismiss = { showFullScreenImage = null }
         )
     }
+    if (showReactionBreakdown) {
+        ReactionBreakdownDialog(
+            reactionCounts = reactionCounts,
+            onDismiss = { showReactionBreakdown = false }
+        )
+    }
 
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(0.dp) // Facebook style cards are usually flat at sides when in list
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(bottom = 16.dp)
     ) {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProfileImage(
-                    imageUrl = post.userProfileImage ?: "",
-                    size = 40.dp,
-                    isVerified = post.isVerified,
-                    modifier = Modifier.clickable { onUserClick(post.userId) }
-                )
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = post.userName,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { onUserClick(post.userId) }
-                        )
-                        if (post.isVerified) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Verificado",
-                                tint = Color(0xFF1DA1F2),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProfileImage(
+                imageUrl = post.userProfileImage ?: "",
+                size = 36.dp,
+                isVerified = post.isVerified,
+                modifier = Modifier.clickable { onUserClick(post.userId) }
+            )
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = DateUtils.formatRelativeDate(post.createdAt),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = post.userName,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.sp
+                        ),
+                        modifier = Modifier.clickable { onUserClick(post.userId) }
                     )
-                }
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                if (isOwner) {
-                    var showMenu by remember { mutableStateOf(false) }
-                    
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            val visibilityText = if (post.visibility == "private") "Hacer público" else "Hacer privado"
-                            val newVisibility = if (post.visibility == "private") "public" else "private"
-                            
-                            DropdownMenuItem(
-                                text = { Text(visibilityText) },
-                                onClick = { 
-                                    onVisibilityClick(newVisibility) 
-                                    showMenu = false
-                                },
-                                 leadingIcon = { Icon(Icons.Default.Lock, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Editar") },
-                                onClick = { 
-                                    onEditClick() 
-                                    showMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Edit, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Eliminar") },
-                                onClick = { 
-                                    onDeleteClick() 
-                                    showMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
-                                colors = MenuDefaults.itemColors(textColor = Color.Red)
-                            )
-                        }
+                    if (post.isVerified) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Verificado",
+                            tint = Color(0xFF0095F6),
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
-            }
-
-            // Content Text
-            if (post.content.isNotBlank()) {
-                LinkText(
-                    text = post.content,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clickable { onPostClick() },
-                    onUrlClick = onUrlClick
+                Text(
+                    text = relativeDate,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
 
-            // Content Image(s)
-            val images = if (post.mediaUrls.isNotEmpty()) post.mediaUrls else listOfNotNull(post.mediaUrlLegacy)
-            
-            if (images.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                if (images.size == 1) {
-                    AsyncImage(
-                        model = images.first(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .clickable { showFullScreenImage = images.first() },
-                        contentScale = ContentScale.FillWidth
-                    )
-                } else {
-                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { images.size })
-                    Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                        androidx.compose.foundation.pager.HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxSize()
-                        ) { page ->
-                            AsyncImage(
-                                model = images[page],
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize().clickable { showFullScreenImage = images[page] },
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                        
-                        // Page Indicator
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            repeat(images.size) { iteration ->
-                                val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f)
-                                Box(
-                                    modifier = Modifier
-                                        .padding(2.dp)
-                                        .clip(CircleShape)
-                                        .background(color)
-                                        .size(6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.weight(1f))
 
-            // Stats row (Likes, Comments, and Shares)
-            if (post.likeCount > 0 || post.commentCount > 0 || post.shareCount > 0) {
-                Row(
+            IconButton(onClick = { /* More actions */ }) {
+                Icon(
+                    imageVector = Icons.Default.MoreHoriz,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Content Text
+        if (post.content.isNotBlank()) {
+            LinkText(
+                text = post.content,
+                modifier = Modifier
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clickable { onPostClick() },
+                onUrlClick = onUrlClick
+            )
+        }
+
+        // Content Media
+        val images = remember(post.mediaUrls, post.mediaUrlLegacy) {
+            if (post.mediaUrls.isNotEmpty()) post.mediaUrls else listOfNotNull(post.mediaUrlLegacy)
+        }
+
+        if (images.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            if (images.size == 1) {
+                val imageRequest = remember(images[0]) {
+                    ImageRequest.Builder(context)
+                        .data(images[0])
+                        .crossfade(true)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build()
+                }
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (post.likeCount > 0) {
-                        Icon(
-                            imageVector = Icons.Default.ThumbUp,
+                        .wrapContentHeight()
+                        .clickable { showFullScreenImage = images.first() },
+                    contentScale = ContentScale.FillWidth
+                )
+            } else {
+                val pagerState = rememberPagerState(pageCount = { images.size })
+                Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        val pagerImageRequest = remember(images[page]) {
+                            ImageRequest.Builder(context)
+                                .data(images[page])
+                                .crossfade(true)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = pagerImageRequest,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = post.likeCount.toString(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.fillMaxSize().clickable { showFullScreenImage = images[page] },
+                            contentScale = ContentScale.Crop
                         )
                     }
-                    
-                    Spacer(modifier = Modifier.weight(1f))
-                    
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (post.commentCount > 0) {
+
+                    if (images.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
                             Text(
-                                text = "${post.commentCount} comentarios",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.clickable { onCommentClick() }
+                                text = "${pagerState.currentPage + 1}/${images.size}",
+                                color = Color.White,
+                                fontSize = 12.sp
                             )
                         }
-                        
-                        if (post.shareCount > 0) {
-                            Text(
-                                text = "${post.shareCount} veces compartido",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            Divider(modifier = Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp)
-
-            // Interaction Buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TextButton(
-                    onClick = onLikeClick,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (post.likedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (post.likedByMe) Icons.Default.ThumbUp else Icons.Outlined.FavoriteBorder, // FavoriteBorder because ThumbUp looks heavy if not filled
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Me gusta", fontSize = 13.sp, maxLines = 1)
-                }
-
-                TextButton(
-                    onClick = onCommentClick,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ChatBubbleOutline,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Comentar", fontSize = 13.sp, maxLines = 1)
-                }
-
-                var showShareSheet by remember { mutableStateOf(false) }
-                val context = androidx.compose.ui.platform.LocalContext.current
-
-                Box(modifier = Modifier.weight(1f)) {
-                    TextButton(
-                        onClick = { showShareSheet = true },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = if (post.sharedByMe) Color(0xFF00bcd4) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (post.sharedByMe) Icons.Default.RepeatOn else Icons.Outlined.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (post.sharedByMe) "Compartido" else "Compartir", fontSize = 13.sp, maxLines = 1)
-                    }
-
-                    if (showShareSheet) {
-                        ShareOptionsSheet(
-                            onDismiss = { showShareSheet = false },
-                            onSendToFriend = {
-                                onSendToFriend()
-                            },
-                            onExternalShare = {
-                                val sendIntent = android.content.Intent().apply {
-                                    action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira esta publicación en Conéctate!\nhttps://conectate.com/post/${post.id}\n\nO abre directamente en la app:\nconectate://post/${post.id}\n\n${post.content.take(100)}...")
-                                    type = "text/plain"
-                                }
-                                val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir publicación")
-                                context.startActivity(shareIntent)
-                            },
-                            onToggleProfileShare = {
-                                onShareClick() // Existing toggle logic
-                            },
-                            isSharedToProfile = post.sharedByMe
-                        )
                     }
                 }
             }
         }
+
+        if (totalReactions > 0 || post.commentCount > 0 || post.shareCount > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ReactionSummaryBar(
+                    reactionCounts = reactionCounts,
+                    totalCount = totalReactions,
+                    topReactions = topReactions,
+                    onClick = { showReactionBreakdown = true }
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                val activitySummary = buildList {
+                    if (post.commentCount > 0) add("${post.commentCount} comentarios")
+                    if (post.shareCount > 0) add("${post.shareCount} compartidos")
+                }.joinToString(" · ")
+                if (activitySummary.isNotBlank()) {
+                    Text(
+                        text = activitySummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // Interaction Buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ReactionCarouselButton(
+                currentReaction = currentReaction,
+                onReactionSelected = onReactionSelected,
+                onReactionRemoved = onReactionRemoved,
+                modifier = Modifier.padding(start = 8.dp, end = 4.dp)
+            )
+
+            IconButton(onClick = onCommentClick) {
+                Icon(
+                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = "Comentar",
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            IconButton(onClick = onSendToFriend) {
+                Icon(
+                    imageVector = Icons.Outlined.Send,
+                    contentDescription = "Enviar por mensaje",
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            IconButton(onClick = onShareClick) {
+                Icon(
+                    imageVector = Icons.Default.Repeat,
+                    contentDescription = if (post.sharedByMe) "Quitar de mi perfil" else "Compartir en mi perfil",
+                    tint = if (post.sharedByMe) Color(0xFF00B894) else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            IconButton(onClick = onSaveClick) {
+                Icon(
+                    imageVector = Icons.Outlined.BookmarkBorder,
+                    contentDescription = "Guardar",
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        // Stats & Caption
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            if (totalReactions > 0) {
+                Text(
+                    text = "$totalReactions reacciones",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+
+            if (post.content.isNotBlank()) {
+                Row(modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        text = post.userName,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = post.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (post.commentCount > 0) {
+                Text(
+                    text = "Ver los ${post.commentCount} comentarios",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable { onCommentClick() }
+                )
+            }
+        }
     }
+}
+
+private fun reactionTypeFromWire(value: String?): ReactionType? {
+    val normalized = value
+        ?.trim()
+        ?.uppercase()
+        ?.takeIf { it.isNotBlank() }
+        ?: return null
+    return ReactionType.entries.firstOrNull { it.name == normalized }
 }

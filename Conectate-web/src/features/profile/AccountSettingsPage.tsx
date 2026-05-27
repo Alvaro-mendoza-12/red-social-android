@@ -7,6 +7,7 @@ import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
 
 type SettingsModel = {
   displayName: string
@@ -76,7 +77,7 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
-  const { user, session } = useAuth()
+  const { user, session, isFallbackSession } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
   const [model, setModel] = useState<SettingsModel>({
     displayName: '',
@@ -108,6 +109,7 @@ export function AccountSettingsPage() {
   const [savingPrivacy, setSavingPrivacy] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [sendingAccessLink, setSendingAccessLink] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
@@ -118,8 +120,9 @@ export function AccountSettingsPage() {
   )
   const sessionFingerprint = useMemo(() => {
     const token = session?.access_token?.trim() ?? ''
+    if (isFallbackSession) return 'Servidor local'
     return token ? maskSensitiveToken(token) : 'Sin token activo'
-  }, [session?.access_token])
+  }, [isFallbackSession, session?.access_token])
   const profileCompletion = useMemo(() => {
     const checks = [
       model.displayName,
@@ -195,6 +198,21 @@ export function AccountSettingsPage() {
   )
 
   const loadSettings = useCallback(async () => {
+    if (isFallbackSession) {
+      const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
+      const fallbackName = textOf(metadata, ['display_name', 'full_name'], user?.email ?? '')
+      setModel((current) => ({
+        ...current,
+        displayName: fallbackName,
+        avatarUrl: textOf(metadata, ['avatar_url'], ''),
+      }))
+      setHasIsPrivate(false)
+      setHasProfileVisibility(false)
+      setHasPrivacyAcceptance(false)
+      setError(null)
+      setLoading(false)
+      return
+    }
     if (!supabase || !user) {
       setLoading(false)
       return
@@ -238,13 +256,17 @@ export function AccountSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [isFallbackSession, user])
 
   useEffect(() => {
     void loadSettings()
   }, [loadSettings])
 
   async function saveProfileBasics() {
+    if (isFallbackSession) {
+      setInfo('Durante la migración local, el perfil se edita desde los datos restaurados. La subida de avatar/fotos queda pendiente hasta activar storage local.')
+      return
+    }
     if (!supabase || !user || savingProfile) return
     setSavingProfile(true)
     setError(null)
@@ -291,6 +313,10 @@ export function AccountSettingsPage() {
   }
 
   async function savePrivacySettings() {
+    if (isFallbackSession) {
+      setInfo('La privacidad fina se reactivará cuando conectemos las rutas locales completas de perfil.')
+      return
+    }
     if (!supabase || !user || savingPrivacy) return
     setSavingPrivacy(true)
     setError(null)
@@ -329,7 +355,7 @@ export function AccountSettingsPage() {
   }
 
   async function updatePassword() {
-    if (!supabase || savingPassword) return
+    if (savingPassword) return
     const password = newPassword.trim()
     if (password.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
@@ -339,13 +365,23 @@ export function AccountSettingsPage() {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
+    if (isFallbackSession && !currentPassword.trim()) {
+      setError('Escribe tu contraseña actual para confirmar el cambio.')
+      return
+    }
 
     setSavingPassword(true)
     setError(null)
     setInfo(null)
     try {
-      const { error: passwordError } = await supabase.auth.updateUser({ password })
-      if (passwordError) throw passwordError
+      if (isFallbackSession) {
+        await changeFallbackPassword(currentPassword.trim(), password)
+      } else {
+        if (!supabase) return
+        const { error: passwordError } = await supabase.auth.updateUser({ password })
+        if (passwordError) throw passwordError
+      }
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
       setInfo('Contraseña actualizada.')
@@ -378,7 +414,7 @@ export function AccountSettingsPage() {
     }
   }
 
-  if (!supabase) {
+  if (!supabase && !isFallbackSession) {
     return <StatusView title="Supabase no configurado" description="Configura .env para usar ajustes." />
   }
 
@@ -607,9 +643,23 @@ export function AccountSettingsPage() {
         <article id="seguridad-ajustes" className="surface-card section-stack">
           <div>
             <h3>Seguridad</h3>
-            <p>Cambia tu contraseña y protege el acceso a la cuenta.</p>
+            <p>
+              {isFallbackSession
+                ? 'Actualiza la contraseña que usarás en el servidor local.'
+                : 'Cambia tu contraseña y protege el acceso a la cuenta.'}
+            </p>
           </div>
           <div className="composer settings-stack">
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Contraseña actual"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            ) : null}
             <input
               className="text-input"
               type="password"
@@ -654,7 +704,7 @@ export function AccountSettingsPage() {
               <p>Genera un código temporal y apruébalo desde tu móvil como en WhatsApp Web.</p>
             </div>
             <div className="row-actions wrap">
-              <button className="ghost-btn" type="button" disabled={sendingAccessLink || !currentEmail} onClick={() => void sendAccessLinkToEmail()}>
+              <button className="ghost-btn" type="button" disabled={isFallbackSession || sendingAccessLink || !currentEmail} onClick={() => void sendAccessLinkToEmail()}>
                 {sendingAccessLink ? 'Enviando...' : 'Enviar acceso al correo'}
               </button>
               <Link className="ghost-btn" to={`/login?mode=code${currentEmail ? `&email=${encodeURIComponent(currentEmail)}` : ''}`}>

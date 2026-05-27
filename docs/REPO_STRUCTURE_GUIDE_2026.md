@@ -25,9 +25,11 @@ Dejar claro qué vive en cada zona del repositorio para que nuevas mejoras y fut
 
 - `docs/`
   Documentación viva: arquitectura, runbooks, baseline técnica y guías operativas.
+  `docs/archive/` conserva material histórico versionado que no participa en build/deploy.
 
 - `tools/`
   Scripts de soporte, auditoría y utilidades del proyecto.
+  `tools/legacy/` conserva scripts de reparación antiguos que no son parte del flujo normal.
 
 ## Regla para la raíz
 
@@ -45,6 +47,7 @@ No debería recibir de forma permanente:
 - scripts SQL nuevos sin clasificar;
 - pruebas manuales sueltas;
 - reportes generados por herramientas locales.
+- snapshots o cuarentenas (`backup/`, `tmp/`, `app_backup_before_restore/`, `scratch/`).
 
 ## Estructura esperada para Android
 
@@ -93,6 +96,19 @@ Carpetas objetivo:
 - `sql/diagnostics/`
 - `sql/security/`
 - `sql/archive/`
+
+## Archivo versionado
+
+El material que se conserva solo por historia, auditoría o recuperación manual debe ir bajo:
+
+- `docs/archive/root-legacy/`
+- `docs/archive/build-logs/`
+- `docs/archive/experimental-concepts/`
+- `docs/archive/backup-snapshots/`
+- `docs/archive/app-backup-before-restore/`
+- `docs/archive/recovery-quarantine/`
+
+Nada bajo `docs/archive/` debe tratarse como fuente activa. Si se recupera una pieza, debe copiarse al árbol activo, revisarse y verificarse.
 
 ## Regla operativa
 

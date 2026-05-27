@@ -16,7 +16,6 @@ export default defineConfig([
     'src/core/hooks/useWebRTC.ts',
     'src/core/pwa/ServiceWorker.ts',
     'src/features/realtime',
-    'src/features/voice/VoiceRoomPage.tsx',
     'src/features/voice/WebRTCManager.ts',
     'src/ml',
     'src/pages/enterprise',

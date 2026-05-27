@@ -2,6 +2,13 @@ package conectate.com.data.model
 
 import kotlinx.serialization.Serializable
 
+const val TYPE_WEBSITE = "website"
+const val TYPE_VIDEO = "video"
+const val TYPE_MUSIC = "music"
+const val TYPE_ARTICLE = "article"
+const val TYPE_SOCIAL = "social"
+const val TYPE_CODE = "code"
+
 @Serializable
 data class LinkPreview(
     val url: String,
@@ -9,17 +16,8 @@ data class LinkPreview(
     val description: String = "",
     val imageUrl: String? = null,
     val siteName: String = "",
-    val type: String = "website" // website, video, music, article, social, code
-) {
-    companion object {
-        const val TYPE_WEBSITE = "website"
-        const val TYPE_VIDEO = "video"
-        const val TYPE_MUSIC = "music"
-        const val TYPE_ARTICLE = "article"
-        const val TYPE_SOCIAL = "social"
-        const val TYPE_CODE = "code"
-    }
-}
+    val type: String = TYPE_WEBSITE
+)
 
 // Extension functions for Link Preview
 fun LinkPreview.getTypeIcon(): Int {

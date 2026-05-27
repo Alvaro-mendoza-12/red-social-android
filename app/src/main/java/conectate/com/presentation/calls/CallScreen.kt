@@ -34,6 +34,9 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
@@ -70,6 +73,7 @@ import conectate.com.data.model.CallConnectionState
 import conectate.com.data.model.CallEndedSummary
 import conectate.com.data.model.CallReactionEvent
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.WebRtcVideoView
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.delay
 
@@ -84,10 +88,20 @@ fun CallScreen(
     val participants by viewModel.participants.collectAsStateWithLifecycle()
     val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
     val isSpeaker by viewModel.isSpeaker.collectAsStateWithLifecycle()
+    val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
+    val remoteVideoTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val activeReactions by viewModel.activeReactions.collectAsStateWithLifecycle()
     var currentUserId = viewModel.getCurrentUserId()
     val context = LocalContext.current
     var hasMicPermission by remember { mutableStateOf(viewModel.hasMicrophonePermission()) }
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -96,9 +110,19 @@ fun CallScreen(
             viewModel.refreshAudioSession()
         }
     }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        if (granted && call?.takeIf { it.callId == callId }?.isVideo == true) {
+            viewModel.toggleVideo(true)
+        }
+    }
 
     var active = call?.takeIf { it.callId == callId }
     var endedSummary = endedCallSummaryState?.takeIf { it.callId == callId }
+    val remoteVideoTrack = remoteVideoTracks.values.firstOrNull()
+    val isVideoSurfaceActive = active?.isVideo == true || localVideoTrack != null || remoteVideoTrack != null
 
     var hasSeenActive by remember(callId) { mutableStateOf(false) }
     LaunchedEffect(active, endedSummary) {
@@ -120,8 +144,24 @@ fun CallScreen(
             microphonePermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
         }
     }
+    LaunchedEffect(active?.callId, active?.isVideo, hasCameraPermission) {
+        if (active?.isVideo != true) return@LaunchedEffect
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        hasCameraPermission = granted
+        if (granted) {
+            viewModel.toggleVideo(true)
+        } else {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
     LaunchedEffect(active?.callId, hasMicPermission) {
-        if (active?.callId.isNullOrBlank() || !hasMicPermission) return viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
+        if (active?.callId.isNullOrBlank() || !hasMicPermission) {
+            viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
+            return@LaunchedEffect
+        }
     }
 
     BackHandler(enabled = true) {
@@ -135,7 +175,7 @@ fun CallScreen(
             EndedCallSummaryScreen(
                 summary = endedSummary,
                 onSendMessage = {
-                    val targetId = endedSummary.messageTargetId ?: return
+                    val targetId = endedSummary.messageTargetId ?: return@EndedCallSummaryScreen
                     viewModel.clearEndedCallSummary(callId)
                     navController.popBackStack()
                     navController.navigate(Screen.Chat.createRoute(targetId))
@@ -173,9 +213,10 @@ fun CallScreen(
 
     var durationText by remember(active.startedAtEpochMs, active.connectionState) { mutableStateOf("00:00") }
     LaunchedEffect(active.startedAtEpochMs, active.connectionState) {
-        if (active.connectionState != CallConnectionState.CONNECTED || active.startedAtEpochMs == null) return
+        val startedAt = active.startedAtEpochMs
+        if (active.connectionState != CallConnectionState.CONNECTED || startedAt == null) return@LaunchedEffect
         while (true) {
-            val elapsedMs = System.currentTimeMillis() - active.startedAtEpochMs
+            val elapsedMs = System.currentTimeMillis() - startedAt
             val totalSeconds = (elapsedMs / 1000).toInt().coerceAtLeast(0)
             val minutes = totalSeconds / 60
             val seconds = totalSeconds % 60
@@ -201,6 +242,32 @@ fun CallScreen(
                 .padding(padding)
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
+            if (remoteVideoTrack != null) {
+                WebRtcVideoView(
+                    videoTrack = remoteVideoTrack,
+                    sharedEglContext = viewModel.eglContext,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            if (localVideoTrack != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp)
+                        .size(width = 108.dp, height = 156.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(Color.DarkGray)
+                ) {
+                    WebRtcVideoView(
+                        videoTrack = localVideoTrack,
+                        sharedEglContext = viewModel.eglContext,
+                        mirror = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
             IconButton(
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.align(Alignment.TopStart)
@@ -265,7 +332,7 @@ fun CallScreen(
                     }
 
                     Spacer(modifier = Modifier.height(22.dp))
-                    if (remoteParticipants.size <= 1) {
+                    if (remoteVideoTrack == null && remoteParticipants.size <= 1) {
                         Box(contentAlignment = Alignment.Center) {
                             if (shouldPulse) {
                                 Box(
@@ -298,7 +365,7 @@ fun CallScreen(
                                 showBorder = false
                             )
                         }
-                    } else {
+                    } else if (remoteParticipants.size > 1) {
                         Text(
                             text = "${remoteParticipants.size} personas conectadas",
                             style = MaterialTheme.typography.bodyMedium,
@@ -369,6 +436,32 @@ fun CallScreen(
                                 contentDescription = "Altavoz",
                                 tint = Color.White
                             )
+                        }
+                        if (isVideoSurfaceActive) {
+                            IconButton(
+                                onClick = {
+                                    if (!hasCameraPermission) {
+                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                    } else {
+                                        viewModel.toggleVideo(localVideoTrack == null)
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (localVideoTrack != null) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                    contentDescription = "Camara",
+                                    tint = Color.White
+                                )
+                            }
+                            if (localVideoTrack != null) {
+                                IconButton(onClick = { viewModel.switchCamera() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Cameraswitch,
+                                        contentDescription = "Cambiar camara",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                         }
                         IconButton(onClick = { showReactions = !showReactions }) {
                             Icon(

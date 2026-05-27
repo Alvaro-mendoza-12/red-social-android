@@ -73,7 +73,6 @@ fun FriendRequestsScreen(
                             SwipeToDismiss(
                                 state = dismissState,
                                 background = {
-                                    val color = Color.Red
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -96,7 +95,9 @@ fun FriendRequestsScreen(
                                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                                 )
                                                 // Format timestamp simply for now
-                                                val date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(acceptedTimestamp!!))
+                                                val date = acceptedTimestamp?.let { timestamp ->
+                                                    java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+                                                }.orEmpty()
                                                 Text(
                                                     text = date,
                                                     color = Color.Gray,

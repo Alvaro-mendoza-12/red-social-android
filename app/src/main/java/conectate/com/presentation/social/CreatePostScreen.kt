@@ -84,9 +84,9 @@ fun CreatePostScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            if (error != null) {
+            error?.let { message ->
                 Text(
-                    text = error!!,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )

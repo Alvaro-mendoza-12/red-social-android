@@ -61,7 +61,7 @@ fun ShareOptionsSheet(
             )
             
             ShareOptionItem(
-                icon = if (isSharedToProfile) Icons.Default.RepeatOn else Icons.Default.Repeat,
+                icon = if (isSharedToProfile) Icons.Default.Refresh else Icons.Default.Repeat,
                 label = if (isSharedToProfile) "Quitar de mi perfil" else "Añadir a mi perfil",
                 color = if (isSharedToProfile) Color(0xFF00bcd4) else Color.Unspecified,
                 onClick = {

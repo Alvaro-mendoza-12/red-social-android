@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallMissedOutgoing
 import androidx.compose.material.icons.filled.PhoneDisabled
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AssistChip
 
 import androidx.compose.material3.FilterChip
@@ -93,6 +94,7 @@ class CallHistoryViewModel @Inject constructor(
 }
 
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CallHistoryScreen(
     navController: NavController,
@@ -239,10 +241,10 @@ private fun CallHistoryRow(
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
-                    imageVector = if (entry.direction == CallHistoryDirection.OUTGOING) {
-                        Icons.Default.CallMade
-                    } else {
-                        Icons.Default.Call
+                    imageVector = when {
+                        entry.isVideo -> Icons.Default.Videocam
+                        entry.direction == CallHistoryDirection.OUTGOING -> Icons.Default.CallMade
+                        else -> Icons.Default.Call
                     },
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,

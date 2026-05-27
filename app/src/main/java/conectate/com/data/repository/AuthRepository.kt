@@ -108,7 +108,7 @@ class AuthRepository @Inject constructor(
         )
 
         if (signUpResult.isFailure) {
-            return Result.failure(signUpResult.exceptionOrNull() ?: Exception("Unknown signup error"))  // ✅ FIXED: No more !!
+            return Result.failure(signUpResult.exceptionOrNull() ?: Exception("Unknown signup error"))
         }
 
         val authResponse = signUpResult.getOrNull()
@@ -126,6 +126,35 @@ class AuthRepository @Inject constructor(
                 .getOrNull()
         }
 
+        if (authService.isLocalFallbackSession()) {
+            runCatching {
+                authService.updateUserMetadata(
+                    fullName = name,
+                    avatarUrl = uploadedAvatarUrl,
+                    displayName = name,
+                    country = country,
+                    privacyPolicyAccepted = acceptedPrivacyPolicy,
+                    privacyPolicyAcceptedAt = acceptedAt
+                )
+            }.onFailure {
+                android.util.Log.w("AuthRepository", "Failed to update local fallback signup metadata", it)
+            }
+
+            val localUser = resolveLocalFallbackSessionUser(
+                fallbackEmail = email,
+                fallbackDisplayName = name,
+                fallbackAvatarUrl = uploadedAvatarUrl,
+                fallbackCountry = country
+            )
+            accountSessionRepository.captureCurrentAccount(
+                displayName = localUser.displayName,
+                avatarUrl = localUser.avatar_url
+            ).onFailure {
+                android.util.Log.w("AuthRepository", "Failed to save local fallback quick-switch session", it)
+            }
+            return Result.success(localUser)
+        }
+
         // 3️⃣ CREAR PERFIL YA CON AVATAR SI EXISTE
         var user = User(
             id = userId,
@@ -141,7 +170,7 @@ class AuthRepository @Inject constructor(
             privacyPolicyAccepted = acceptedPrivacyPolicy
         )
         if (profileResult.isFailure) {
-            return Result.failure(profileResult.exceptionOrNull() ?: Exception("Unknown profile creation error"))  // ✅ FIXED: No more !!
+            return Result.failure(profileResult.exceptionOrNull() ?: Exception("Unknown profile creation error"))
         }
 
         runCatching {
@@ -242,7 +271,25 @@ class AuthRepository @Inject constructor(
         }
 
         if (login.isFailure) {
-            return Result.failure(login.exceptionOrNull() ?: Exception("Unknown login error"))  // ✅ FIXED: No more !!
+            return Result.failure(login.exceptionOrNull() ?: Exception("Unknown login error"))
+        }
+
+        if (authService.isLocalFallbackSession()) {
+            val user = resolveLocalFallbackSessionUser(
+                fallbackEmail = resolvedPrimaryEmail
+            )
+            accountSessionRepository.captureCurrentAccount(
+                displayName = user.displayName,
+                avatarUrl = user.avatar_url
+            ).onFailure {
+                android.util.Log.w("AuthRepository", "Failed to save local fallback account after sign in", it)
+            }
+            return Result.success(user)
+        }
+
+        if (twoFactorAuthManager.is2FARequired()) {
+            authService.signOut()
+            return Result.failure(Exception("2FA code required"))
         }
 
         var tokenGate = authService.ensureValidAccessToken()
@@ -305,27 +352,41 @@ class AuthRepository @Inject constructor(
             return Result.failure(login.exceptionOrNull() ?: Exception("Authentication failed"))
         }
 
+        if (authService.isLocalFallbackSession()) {
+            val user = resolveLocalFallbackSessionUser(fallbackEmail = normalizedEmail)
+            accountSessionRepository.captureCurrentAccount(
+                displayName = user.displayName,
+                avatarUrl = user.avatar_url
+            ).onFailure {
+                android.util.Log.w("AuthRepository", "Failed to save local fallback 2FA account after sign in", it)
+            }
+            return Result.success(user)
+        }
+
         // Check if 2FA is enabled for this user
         if (twoFactorAuthManager.is2FARequired()) {
             // Verify 2FA code
             val twoFaResult = when {
-                totpCode != null -> {
+                !totpCode.isNullOrBlank() -> {
                     // Get stored TOTP secret for this user
                     var secret = getStoredTOTPSecret()
                     if (secret == null) {
+                        authService.signOut()
                         return Result.failure(Exception("2FA is enabled but no secret found"))
                     }
                     twoFactorAuthManager.verifyTOTPCode(totpCode, secret)
                 }
-                backupCode != null -> {
+                !backupCode.isNullOrBlank() -> {
                     twoFactorAuthManager.verifyBackupCode(backupCode)
                 }
                 else -> {
+                    authService.signOut()
                     return Result.failure(Exception("2FA code required"))
                 }
             }
             
             if (!twoFaResult.success) {
+                authService.signOut()
                 return Result.failure(Exception(twoFaResult.error ?: "2FA verification failed"))
             }
         }
@@ -433,12 +494,8 @@ class AuthRepository @Inject constructor(
      * This is a simplified implementation - in production, this should be stored per user
      */
     private suspend fun getStoredTOTPSecret(): String? {
-        // In a real implementation, this would retrieve the secret from the database
-        // For now, we'll use a simplified approach with the TwoFactorAuthManager
         return try {
-            // This would typically come from the user's profile in the database
-            // For demo purposes, we'll assume the secret is stored in the encrypted prefs
-            null // Placeholder - would be implemented with proper user-specific storage
+            twoFactorAuthManager.getStoredSecret()
         } catch (e: Exception) {
             android.util.Log.e("AuthRepository", "Error getting TOTP secret", e)
             null
@@ -451,6 +508,17 @@ class AuthRepository @Inject constructor(
         fallbackAvatarUrl: String? = null,
         fallbackCountry: String? = null
     ): Result<User> {
+        if (authService.isLocalFallbackSession()) {
+            return Result.success(
+                resolveLocalFallbackSessionUser(
+                    fallbackEmail = fallbackEmail,
+                    fallbackDisplayName = fallbackDisplayName,
+                    fallbackAvatarUrl = fallbackAvatarUrl,
+                    fallbackCountry = fallbackCountry
+                )
+            )
+        }
+
         authService.ensureValidAccessToken()
             .getOrElse { return Result.failure(it) }
 
@@ -787,6 +855,14 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun enforceCurrentSessionIsActive(): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            return if (authService.getCurrentUserId().isNullOrBlank()) {
+                Result.failure(Exception("No hay una sesión activa"))
+            } else {
+                Result.success(Unit)
+            }
+        }
+
         var tokenGate = authService.ensureValidAccessToken()
         if (tokenGate.isFailure) {
             return Result.failure(
@@ -820,6 +896,38 @@ class AuthRepository @Inject constructor(
         if (suspensionCheck.isSuccess) return Result.success(Unit)
         forceSuspendedSignOut()
         return Result.failure(suspensionCheck.exceptionOrNull() ?: Exception("Cuenta suspendida"))
+    }
+
+    private suspend fun resolveLocalFallbackSessionUser(
+        fallbackEmail: String? = null,
+        fallbackDisplayName: String? = null,
+        fallbackAvatarUrl: String? = null,
+        fallbackCountry: String? = null
+    ): User {
+        val seed = authService.getCurrentUserProfileSeed()
+        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: seed?.id?.trim()?.lowercase()
+            ?: ""
+        val email = seed?.email?.trim()?.lowercase()
+            ?: fallbackEmail?.trim()?.lowercase()
+            ?: authService.getCurrentUserEmail()?.trim()?.lowercase()
+            ?: ""
+        val displayName = seed?.displayName
+            ?: seed?.fullName
+            ?: fallbackDisplayName
+            ?: email.substringBefore("@").takeIf { it.isNotBlank() }
+            ?: "Usuario"
+        return User(
+            id = userId,
+            email = email,
+            display_name = displayName,
+            full_name = seed?.fullName ?: displayName,
+            avatar_url = seed?.avatarUrl ?: fallbackAvatarUrl,
+            country = seed?.country ?: fallbackCountry,
+            privacy_policy_accepted = true,
+            privacy_policy_accepted_at = seed?.privacyPolicyAcceptedAt,
+            created_at = seed?.privacyPolicyAcceptedAt ?: ""
+        )
     }
 
     fun removeStoredAccount(accountId: String) {

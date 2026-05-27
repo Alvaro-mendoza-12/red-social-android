@@ -46,8 +46,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 
+
+@Composable
 fun MainActivityContent(
-    currentIntent: Intent,
+    currentIntent: Intent?,
     onIntentConsumed: () -> Unit,
     authRepository: AuthRepository,
     notificationRepository: NotificationRepository,
@@ -63,19 +65,14 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         var navController = rememberNavController()
-
         LaunchedEffect(currentIntent) {
-            currentIntent.let { incomingIntent ->
-                IntentRouter.handleIntentNavigation(
-                    context = appContext,
-                    incomingIntent = incomingIntent,
-                    navController = navController,
-                    authRepository = authRepository,
-                    activityScope = activityScope,
-                    onPresentCallInvite = { invite -> callRepository.presentIncomingInvite(invite) },
-                    clearIntent = onIntentConsumed
-                )
-            }
+            IntentRouter.handleIntentNavigation(
+                incomingIntent = currentIntent,
+                navController = navController,
+                authRepository = authRepository,
+                activityScope = activityScope,
+                clearIntent = onIntentConsumed
+            )
         }
 
         val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
@@ -140,43 +137,46 @@ fun MainActivityContent(
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
-                if (showCallSessionBar) {
-                    var call = currentCall ?: return
-                    ActiveCallSessionBar(
-                        call = call,
-                        onReturnToCall = { callId ->
-                            navController.navigate(Screen.Call.createRoute(callId)) {
-                                launchSingleTop = true
-                            }
-                        },
-                        onHangup = {
-                            activityScope.launch {
-                                callRepository.hangup()
-                            }
-                        }
-                    )
-                } else if (showVoiceSessionBar) {
-                    var room = currentRoom ?: return
-                    ActiveVoiceSessionBar(
-                        room = room,
-                        isMuted = voiceSession.isMuted,
-                        connectionLabel = voiceSession.connectionState.label,
-                        onReturnToRoom = { roomId ->
-                            navController.navigate(Screen.RoomDetail.createRoute(roomId)) {
-                                launchSingleTop = true
-                            }
-                        },
-                        onToggleMute = {
-                            voiceRoomRepository.toggleMute(!voiceSession.isMuted)
-                        },
-                        onHangup = {
-                            activityScope.launch {
-                                runCatching {
-                                    VoiceForegroundService.requestHangup(voiceRoomRepository.context)
+                currentCall?.let { call ->
+                    if (showCallSessionBar) {
+                        ActiveCallSessionBar(
+                            call = call,
+                            onReturnToCall = { callId ->
+                                navController.navigate(Screen.Call.createRoute(callId)) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onHangup = {
+                                activityScope.launch {
+                                    callRepository.hangup()
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
+                }
+                currentRoom?.let { room ->
+                    if (showVoiceSessionBar) {
+                        ActiveVoiceSessionBar(
+                            room = room,
+                            isMuted = voiceSession.isMuted,
+                            connectionLabel = voiceSession.connectionState.label,
+                            onReturnToRoom = { roomId ->
+                                navController.navigate(Screen.RoomDetail.createRoute(roomId)) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onToggleMute = {
+                                voiceRoomRepository.toggleMute(!voiceSession.isMuted)
+                            },
+                            onHangup = {
+                                activityScope.launch {
+                                    runCatching {
+                                        voiceRoomRepository.leaveRoom()
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -185,7 +185,7 @@ fun MainActivityContent(
                     navController = navController,
                     isInitializing = isInitializing,
                     isLoggedIn = isLoggedIn,
-                    hasPendingIntent = IntentRouter.hasPendingNavigationIntent(appContext, currentIntent)
+                    hasPendingIntent = IntentRouter.hasPendingNavigationIntent(currentIntent)
                 )
 
                 if (shouldBlockOfflineRoute) {
@@ -234,7 +234,7 @@ fun MainActivityContent(
                             session = liveSession,
                             onReturnToLive = {
                                 val route = when (liveSession.role) {
-                                    conectate.com.data.model.LiveRole.HOST -> Screen.LiveHost.route
+                                    conectate.com.data.model.LiveRole.HOST -> Screen.LiveHost.createRoute(liveSession.stream.id)
                                     else -> Screen.LiveViewer.createRoute(liveSession.stream.id)
                                 }
                                 navController.navigate(route) { launchSingleTop = true }

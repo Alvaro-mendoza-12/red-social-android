@@ -12,9 +12,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -133,21 +136,21 @@ fun ReactionCarouselButton(
                     )
                 }
                 .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            when {
-                                event.changes.any { it.pressed } -> {
-                                    isPressed = true
-                                    // Long press detection
-                                    val job = kotlinx.coroutines.launch {
-                                        kotlinx.coroutines.delay(300)
-                                        showCarousel = true
+                    coroutineScope {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                when {
+                                    event.changes.any { it.pressed } -> {
+                                        isPressed = true
+                                        val job = launch {
+                                            kotlinx.coroutines.delay(300)
+                                            showCarousel = true
+                                        }
+                                        awaitPointerEvent()
+                                        job.cancel()
+                                        isPressed = false
                                     }
-                                    // Wait for release
-                                    awaitPointerEvent()
-                                    job.cancel()
-                                    isPressed = false
                                 }
                             }
                         }
@@ -173,7 +176,7 @@ private fun ReactionCarouselPopup(
     onReactionSelected: (ReactionType) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val reactions = ReactionType.values()
+    val reactions = ReactionType.entries.toTypedArray()
     var selectedIndex by remember { mutableStateOf(-1) }
     
     Popup(

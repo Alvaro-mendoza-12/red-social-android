@@ -1,5 +1,6 @@
 package conectate.com.presentation.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

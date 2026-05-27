@@ -2,10 +2,13 @@ package conectate.com.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import conectate.com.data.model.User
 
-@Entity(tableName = "users")
+@Entity(tableName = "users", indices = [
+    Index(value = ["username"])
+])
 data class UserEntity(
     @PrimaryKey val id: String,
     val username: String,

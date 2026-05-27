@@ -48,23 +48,41 @@ android {
             val supabaseAnon = props.getProperty("SUPABASE_ANON_KEY") ?: ""
             val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
             val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
-            buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
-            buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnon\"")
-            buildConfigField("String", "UPSTASH_REST_URL", "\"$upstashRestUrl\"")
-            buildConfigField("String", "UPSTASH_TOKEN", "\"$upstashToken\"")
-            buildConfigField("String", "TMDB_API_KEY", "\"\"")
+            val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
+            val realDebridToken = props.getProperty("REAL_DEBRID_TOKEN") ?: ""
+            val fallbackApiUrl = props.getProperty("FALLBACK_API_URL")
+                ?: props.getProperty("LOCAL_FALLBACK_API_URL")
+                ?: "https://celtic-poise-omission.ngrok-free.dev"
+            buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
+            buildConfigField("String", "SUPABASE_ANON_KEY", supabaseAnon.asBuildConfigString())
+            buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
+            buildConfigField("String", "UPSTASH_REST_URL", upstashRestUrl.asBuildConfigString())
+            buildConfigField("String", "UPSTASH_TOKEN", upstashToken.asBuildConfigString())
+            buildConfigField("String", "TMDB_API_KEY", tmdbApiKey.asBuildConfigString())
+            buildConfigField("String", "REAL_DEBRID_TOKEN", realDebridToken.asBuildConfigString())
         } else {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
+            buildConfigField("String", "FALLBACK_API_URL", "\"https://celtic-poise-omission.ngrok-free.dev\"")
             buildConfigField("String", "UPSTASH_REST_URL", "\"\"")
             buildConfigField("String", "UPSTASH_TOKEN", "\"\"")
             buildConfigField("String", "TMDB_API_KEY", "\"\"")
+            buildConfigField("String", "REAL_DEBRID_TOKEN", "\"\"")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
         }
     }
 
@@ -243,10 +261,14 @@ dependencies {
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
-    implementation(libs.googleauth)
+    implementation(libs.jsoup)
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import conectate.com.data.model.HashtagTrending
-
+import androidx.compose.ui.layout.Layout
 @Composable
 fun TrendingHashtagsRow(
     hashtags: List<HashtagTrending>,
@@ -129,6 +129,7 @@ private fun TrendingHashtagChip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HashtagSelectorDialog(
     suggestedHashtags: List<String>,

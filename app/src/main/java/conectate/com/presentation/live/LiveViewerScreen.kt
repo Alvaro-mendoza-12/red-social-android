@@ -18,6 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.wallet.GiftSelectionDialog
 import org.webrtc.RendererCommon
 
 @Composable
@@ -43,6 +44,8 @@ fun LiveViewerScreen(
     val stream = session?.stream
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
+    var showGiftSheet by remember(liveId) { mutableStateOf(false) }
+    val currentUserId = viewModel.getCurrentUserId()?.trim().orEmpty()
 
     LaunchedEffect(liveId) {
         viewModel.joinAsViewer(liveId)
@@ -126,6 +129,14 @@ fun LiveViewerScreen(
                     onClick = { viewModel.toggleFollow(hostUserId) }
                 )
             }
+            if (hostUserId.isNotBlank() && hostUserId != currentUserId) {
+                LiveActionChip(
+                    text = "Regalar",
+                    onClick = { showGiftSheet = true },
+                    containerColor = Color(0xFFFFD166),
+                    contentColor = Color.Black
+                )
+            }
             LiveActionChip(
                 text = "Compartir",
                 onClick = {
@@ -151,4 +162,14 @@ fun LiveViewerScreen(
             )
         }
     )
+
+    if (showGiftSheet && !stream?.hostUserId.isNullOrBlank()) {
+        GiftSelectionDialog(
+            receiverId = stream?.hostUserId.orEmpty(),
+            receiverName = stream?.hostName?.takeIf { it.isNotBlank() } ?: "creador",
+            onDismiss = { showGiftSheet = false },
+            onGiftSent = { viewModel.sendReaction("🎁") },
+            liveStreamId = stream?.id
+        )
+    }
 }

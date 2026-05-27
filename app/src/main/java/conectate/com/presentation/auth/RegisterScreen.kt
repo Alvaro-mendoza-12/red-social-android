@@ -36,6 +36,8 @@ import conectate.com.presentation.navigation.Screen
 
 
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun RegisterScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()

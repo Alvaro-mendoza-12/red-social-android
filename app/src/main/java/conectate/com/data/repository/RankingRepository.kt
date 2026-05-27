@@ -21,8 +21,8 @@ class RankingRepository @Inject constructor(
     private val authService: AuthService
 ) {
 
-@Composable
-@Composable
+
+
     suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
             var orderColumn = when (filter) {
@@ -51,8 +51,8 @@ class RankingRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getTopVideos(filter: String = "views"): Result<List<Video>> = withContext(Dispatchers.IO) {
          try {
             var orderColumn = when (filter) {
@@ -90,8 +90,8 @@ class RankingRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getTopPosts(filter: String = "likes"): Result<List<Post>> = withContext(Dispatchers.IO) {
         try {
              var orderColumn = when (filter) {

@@ -52,7 +52,8 @@ fun CreateVoiceRoomScreen(
             )
         }
     ) { padding ->
-        if (createdRoomId != null) {
+        val roomId = createdRoomId
+        if (roomId != null) {
             // Success Screen
             Column(
                 modifier = Modifier
@@ -86,7 +87,7 @@ fun CreateVoiceRoomScreen(
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     onClick = {
-                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(createdRoomId!!))
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(roomId))
                     }
                 ) {
                     Row(
@@ -94,7 +95,7 @@ fun CreateVoiceRoomScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = createdRoomId!!,
+                            text = roomId,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             letterSpacing = 4.sp
@@ -111,7 +112,7 @@ fun CreateVoiceRoomScreen(
                         // Navigate to the room directly
                         // We pop back to clear creation screen from backstack then navigate
                          navController.popBackStack() 
-                         navController.navigate(conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(createdRoomId!!))
+                         navController.navigate(conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(roomId))
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp)
                 ) {
@@ -178,9 +179,9 @@ fun CreateVoiceRoomScreen(
                     )
                 }
 
-                if (error != null) {
+                error?.let { message ->
                     Text(
-                        text = error!!,
+                        text = message,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )

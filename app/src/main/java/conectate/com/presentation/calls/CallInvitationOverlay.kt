@@ -38,6 +38,7 @@ import conectate.com.data.model.CallInvite
 import conectate.com.presentation.components.CircularProfileImage
 
 
+@Composable
 fun CallInvitationOverlay(
     invite: CallInvite?,
     onAccept: (CallInvite) -> Unit,

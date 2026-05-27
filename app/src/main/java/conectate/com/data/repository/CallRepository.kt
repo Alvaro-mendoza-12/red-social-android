@@ -7,6 +7,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.observability.AppMetrics
@@ -78,7 +79,8 @@ class CallRepository @Inject constructor(
         val callerName: String,
         val callerAvatarUrl: String = "",
         val contextType: String,
-        val contextId: String = ""
+        val contextId: String = "",
+        val isVideo: Boolean = false
     )
 
     @Serializable
@@ -89,6 +91,7 @@ class CallRepository @Inject constructor(
     )
 
     companion object {
+        private const val TAG = "CallRepository"
         private const val OUTGOING_RING_TIMEOUT_MS = 45_000L
         private const val CONNECTING_TIMEOUT_MS = 30_000L
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
@@ -124,6 +127,11 @@ class CallRepository @Inject constructor(
     private val _incomingReactions = MutableSharedFlow<CallReactionEvent>()
     val incomingReactions: SharedFlow<CallReactionEvent> = _incomingReactions.asSharedFlow()
 
+    // WebRTC Media Exposure for UI
+    val localVideoTrack: StateFlow<org.webrtc.VideoTrack?> = webRTCManager?.localVideoTrack ?: MutableStateFlow(null).asStateFlow()
+    val remoteVideoTracks: StateFlow<Map<String, org.webrtc.VideoTrack>> = webRTCManager?.remoteVideoTracks ?: MutableStateFlow(emptyMap<String, org.webrtc.VideoTrack>()).asStateFlow()
+    val eglContext: org.webrtc.EglBase.Context? get() = webRTCManager?.eglContext
+
     private var callUserChannel: RealtimeChannel? = null
     private var callUserChannelJob: Job? = null
     private var callResponseChannelJob: Job? = null
@@ -148,6 +156,11 @@ class CallRepository @Inject constructor(
         }
     }
 
+    private fun logBestEffortFailure(operation: String, throwable: Throwable, callId: String? = null) {
+        val callSuffix = callId?.takeIf { it.isNotBlank() }?.let { " (callId=$it)" }.orEmpty()
+        Log.w(TAG, "$operation failed$callSuffix", throwable)
+    }
+
     suspend fun ensureSubscribedToCallUserChannel(userId: String) = withContext(Dispatchers.IO) {
         if (callUserChannel != null) return@withContext
 
@@ -164,6 +177,7 @@ class CallRepository @Inject constructor(
                 var callerAvatarUrl = payload.callerAvatarUrl.trim().ifBlank { null }
                 var contextType = payload.contextType.trim()
                 var contextId = payload.contextId.trim().ifBlank { null }
+                val isVideo = payload.isVideo
 
                 if (callId.isBlank() || callerUserId.isBlank()) return@collect
                 if (_activeCall.value != null) {
@@ -178,7 +192,8 @@ class CallRepository @Inject constructor(
                     callerName = callerName.ifBlank { "Usuario" },
                     callerAvatarUrl = callerAvatarUrl,
                     contextType = contextType.ifBlank { "dm" },
-                    contextId = contextId
+                    contextId = contextId,
+                    isVideo = isVideo
                 )
             }
         }
@@ -195,7 +210,13 @@ class CallRepository @Inject constructor(
                 if (incoming != null && incoming.callId == callId && action == "cancel") {
                     try {
                         recordIncomingInviteOutcome(incoming, "Llamada cancelada")
-                    } catch (_: Exception) { }
+                    } catch (error: Exception) {
+                        logBestEffortFailure(
+                            operation = "recordIncomingInviteOutcome(cancel)",
+                            throwable = error,
+                            callId = incoming.callId
+                        )
+                    }
                     _incomingInvite.value = null
                 }
 
@@ -240,7 +261,8 @@ class CallRepository @Inject constructor(
         title: String,
         invitedUserIds: List<String>,
         contextType: String,
-        contextId: String? = null
+        contextId: String? = null,
+        isVideo: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
@@ -278,7 +300,8 @@ class CallRepository @Inject constructor(
             contextId = normalizedContextId,
             peerUserId = peerUserId,
             peerName = peerName ?: title,
-            peerAvatarUrl = peerAvatar
+            peerAvatarUrl = peerAvatar,
+            isVideo = isVideo
         )
         _participants.value = listOf(
             CallParticipant(
@@ -321,6 +344,12 @@ class CallRepository @Inject constructor(
                         }
                     }
                 }
+            }.onFailure { error ->
+                logBestEffortFailure(
+                    operation = "publishCallStartMessage",
+                    throwable = error,
+                    callId = callId
+                )
             }
 
             val invite = CallInvite(
@@ -330,10 +359,18 @@ class CallRepository @Inject constructor(
                 callerName = callerName,
                 callerAvatarUrl = callerAvatar,
                 contextType = contextType,
-                contextId = contextId
+                contextId = contextId,
+                isVideo = isVideo
             )
             pendingInvitees.forEach { target ->
                 runCatching { sendCallInvite(target, invite) }
+                    .onFailure { error ->
+                        logBestEffortFailure(
+                            operation = "sendCallInvite(targetUserId=$target)",
+                            throwable = error,
+                            callId = invite.callId
+                        )
+                    }
             }
         }
 
@@ -375,7 +412,8 @@ class CallRepository @Inject constructor(
             contextId = contextId?.trim()?.ifBlank { null },
             peerUserId = if (normalizedContextType == "dm") initiatorUserId.trim().ifBlank { null } else null,
             peerName = null,
-            peerAvatarUrl = null
+            peerAvatarUrl = null,
+            isVideo = false
         )
         _participants.value = listOf(
             CallParticipant(
@@ -429,7 +467,8 @@ class CallRepository @Inject constructor(
             contextId = invite.contextId?.trim()?.ifBlank { null },
             peerUserId = invite.callerUserId,
             peerName = invite.callerName,
-            peerAvatarUrl = invite.callerAvatarUrl
+            peerAvatarUrl = invite.callerAvatarUrl,
+            isVideo = invite.isVideo
         )
         _participants.value = listOf(
             CallParticipant(
@@ -447,6 +486,12 @@ class CallRepository @Inject constructor(
                     callId = invite.callId,
                     action = "accept",
                     fromUserId = currentUserId
+                )
+            }.onFailure { error ->
+                logBestEffortFailure(
+                    operation = "sendCallResponse(accept)",
+                    throwable = error,
+                    callId = invite.callId
                 )
             }
         }
@@ -466,7 +511,13 @@ class CallRepository @Inject constructor(
         callTonePlayer.stopRingback()
         try {
             recordIncomingInviteOutcome(invite, "Llamada rechazada")
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            logBestEffortFailure(
+                operation = "recordIncomingInviteOutcome(decline)",
+                throwable = error,
+                callId = invite.callId
+            )
+        }
         scope.launch {
             runCatching {
                 sendCallResponse(
@@ -474,6 +525,12 @@ class CallRepository @Inject constructor(
                     callId = invite.callId,
                     action = "decline",
                     fromUserId = currentUserId
+                )
+            }.onFailure { error ->
+                logBestEffortFailure(
+                    operation = "sendCallResponse(decline)",
+                    throwable = error,
+                    callId = invite.callId
                 )
             }
         }
@@ -497,6 +554,12 @@ class CallRepository @Inject constructor(
                             action = "cancel",
                             fromUserId = currentUserId
                         )
+                    }.onFailure { error ->
+                        logBestEffortFailure(
+                            operation = "sendCallResponse(cancel)",
+                            throwable = error,
+                            callId = call.callId
+                        )
                     }
                 }
             }
@@ -513,6 +576,12 @@ class CallRepository @Inject constructor(
                         callId = call.callId,
                         action = "end",
                         fromUserId = currentUserId
+                    )
+                }.onFailure { error ->
+                    logBestEffortFailure(
+                        operation = "sendCallResponse(end)",
+                        throwable = error,
+                        callId = call.callId
                     )
                 }
             }
@@ -555,6 +624,14 @@ class CallRepository @Inject constructor(
         _isSpeaker.value = on
         prepareCallAudioSession()
         webRTCManager?.setSpeakerphoneOn(on)
+    }
+
+    fun toggleVideo(enabled: Boolean) {
+        webRTCManager?.setVideoEnabled(enabled)
+    }
+
+    fun switchCamera() {
+        webRTCManager?.switchCamera()
     }
 
     fun sendReaction(emoji: String) {
@@ -615,13 +692,14 @@ class CallRepository @Inject constructor(
             recipientId = targetUserId.trim(),
             type = "call_invite",
             targetId = invite.callId,
-            content = "Llamada entrante",
+            content = if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
             extraData = buildJsonObject {
                 put("call_id", invite.callId)
                 put("call_context_type", invite.contextType)
                 put("call_context_id", invite.contextId ?: "")
                 put("call_title", invite.title)
                 put("call_created_at", callCreatedAt)
+                put("call_is_video", invite.isVideo)
             }
         ).onFailure { error ->
             android.util.Log.e(
@@ -649,7 +727,8 @@ class CallRepository @Inject constructor(
                     callerName = invite.callerName,
                     callerAvatarUrl = invite.callerAvatarUrl ?: "",
                     contextType = invite.contextType,
-                    contextId = invite.contextId ?: ""
+                    contextId = invite.contextId ?: "",
+                    isVideo = invite.isVideo
                 )
             )
             delay(200)
@@ -681,6 +760,12 @@ class CallRepository @Inject constructor(
                         put("call_id", callId)
                         put("call_action", notificationAction)
                     }
+                )
+            }.onFailure { error ->
+                logBestEffortFailure(
+                    operation = "sendCallCancellationNotification(action=$notificationAction)",
+                    throwable = error,
+                    callId = callId
                 )
             }
         }
@@ -725,6 +810,7 @@ class CallRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10_000
+                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
             socket = IO.socket(signalingUrl, options)
@@ -1080,7 +1166,13 @@ class CallRepository @Inject constructor(
                         currentUserId = currentUserId,
                         reason = reason
                     )
-                } catch (_: Exception) { }
+                } catch (error: Exception) {
+                    logBestEffortFailure(
+                        operation = "persistCallOutcome(reason=$reason)",
+                        throwable = error,
+                        callId = callSnapshot.callId
+                    )
+                }
             }
         }
 
@@ -1095,12 +1187,24 @@ class CallRepository @Inject constructor(
         try {
             socket?.off()
             socket?.disconnect()
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            logBestEffortFailure(
+                operation = "disconnectCallSocket",
+                throwable = error,
+                callId = callSnapshot?.callId
+            )
+        }
         socket = null
 
         try {
             webRTCManager?.hardReset()
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            logBestEffortFailure(
+                operation = "hardResetWebRtcManager",
+                throwable = error,
+                callId = callSnapshot?.callId
+            )
+        }
         releaseCallAudioSession()
 
         _endedCallSummary.value = callSnapshot?.toEndedSummary(reason)
@@ -1135,6 +1239,12 @@ class CallRepository @Inject constructor(
                         action = "cancel",
                         fromUserId = currentUserId,
                         notificationAction = "missed"
+                    )
+                }.onFailure { error ->
+                    logBestEffortFailure(
+                        operation = "sendCallResponse(missed-timeout)",
+                        throwable = error,
+                        callId = active.callId
                     )
                 }
             }
@@ -1202,7 +1312,13 @@ class CallRepository @Inject constructor(
                 putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
             }
             context.startService(intent)
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            logBestEffortFailure(
+                operation = "updateCallForegroundService",
+                throwable = error,
+                callId = _activeCall.value?.callId
+            )
+        }
     }
 
     private fun stopService() {
@@ -1211,7 +1327,13 @@ class CallRepository @Inject constructor(
                 action = CallForegroundService.ACTION_STOP
             }
             context.stopService(intent)
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            logBestEffortFailure(
+                operation = "stopCallForegroundService",
+                throwable = error,
+                callId = _activeCall.value?.callId
+            )
+        }
     }
 
     private fun prepareCallAudioSession() {
@@ -1326,7 +1448,7 @@ class CallRepository @Inject constructor(
                 } else {
                     reason.ifBlank { "Llamada finalizada" }
                 },
-                isVideo = false
+                isVideo = callSnapshot.isVideo
             )
         )
 
@@ -1334,8 +1456,9 @@ class CallRepository @Inject constructor(
             return
         }
 
+        val callKindLabel = if (callSnapshot.isVideo) "Videollamada" else "Llamada de voz"
         var content = if (durationLabel != null) {
-            "Llamada de voz • duración $durationLabel"
+            "$callKindLabel • duración $durationLabel"
         } else {
             reason.ifBlank { "Llamada finalizada" }
         }
@@ -1394,7 +1517,7 @@ class CallRepository @Inject constructor(
                 direction = CallHistoryDirection.INCOMING,
                 status = mapCallHistoryStatus(reason, wasConnected = false),
                 statusLabel = reason.ifBlank { "Llamada finalizada" },
-                isVideo = false
+                isVideo = invite.isVideo
             )
         )
     }

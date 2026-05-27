@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package conectate.com.presentation.admin
 
 import androidx.compose.foundation.background
@@ -31,6 +33,7 @@ import conectate.com.presentation.components.isUserAdmin
 
 
 
+@Composable
 fun BadgesTabContent(
     navController: NavController,
     viewModel: AdminViewModel = hiltViewModel()
@@ -494,6 +497,7 @@ fun BadgesTabContent(
 }
 
 
+@Composable
 fun BadgeChip(
     badge: Badge,
     onClick: () -> Unit = {}

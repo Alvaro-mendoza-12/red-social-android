@@ -30,8 +30,8 @@ class ShareRepository @Inject constructor(
     private val supabase: SupabaseConfig,
     private val authService: AuthService
 ) {
-@Composable
-@Composable
+
+
     suspend fun shareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
@@ -69,8 +69,8 @@ class ShareRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun unshareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
@@ -97,8 +97,8 @@ class ShareRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun isShared(userId: String, contentType: String, targetId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             var response = supabase.client.from("shares").select {

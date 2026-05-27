@@ -29,6 +29,11 @@ class CallViewModel @Inject constructor(
     val isSpeaker = callRepository.isSpeaker
     private val _activeReactions = MutableStateFlow<List<CallReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<CallReactionEvent>> = _activeReactions.asStateFlow()
+
+    // Video State
+    val localVideoTrack = callRepository.localVideoTrack
+    val remoteVideoTracks = callRepository.remoteVideoTracks
+    val eglContext = callRepository.eglContext
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
 
     init {
@@ -48,6 +53,14 @@ class CallViewModel @Inject constructor(
 
     fun toggleSpeaker(on: Boolean) {
         callRepository.toggleSpeaker(on)
+    }
+
+    fun toggleVideo(enabled: Boolean) {
+        callRepository.toggleVideo(enabled)
+    }
+
+    fun switchCamera() {
+        callRepository.switchCamera()
     }
 
     fun sendReaction(emoji: String) {

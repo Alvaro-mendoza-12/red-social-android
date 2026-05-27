@@ -147,9 +147,9 @@ fun CreateCommunityScreen(
                 Switch(checked = isPublic, onCheckedChange = { isPublic = it })
             }
 
-            if (error != null) {
+            error?.let { message ->
                 Text(
-                    text = error!!,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )

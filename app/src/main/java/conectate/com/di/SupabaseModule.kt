@@ -11,5 +11,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object SupabaseModule {
     
-    // provideSupabaseConfig removed to avoid duplicate binding with @Inject constructor
+    @Provides
+    @Singleton
+    fun provideSupabaseClient(config: SupabaseConfig): io.github.jan.supabase.SupabaseClient {
+        return config.client
+    }
 }

@@ -20,6 +20,9 @@ class MessagesViewModel @Inject constructor(
     private val _archivedChats = MutableStateFlow<List<Conversation>>(emptyList())
     val archivedChats: StateFlow<List<Conversation>> = _archivedChats.asStateFlow()
 
+    private val _favoriteChats = MutableStateFlow<List<Conversation>>(emptyList())
+    val favoriteChats: StateFlow<List<Conversation>> = _favoriteChats.asStateFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -38,9 +41,11 @@ class MessagesViewModel @Inject constructor(
                     .collect { conversations ->
                         val filtered = conversations.filter { !it.isArchived }
                         val archived = conversations.filter { it.isArchived }
+                        val favorites = conversations.filter { !it.isArchived && it.isFavorite }
                         
                         _conversations.value = filtered
                         _archivedChats.value = archived
+                        _favoriteChats.value = favorites
                     }
             } catch (e: Exception) {
                 // Handle error
@@ -75,6 +80,18 @@ class MessagesViewModel @Inject constructor(
     fun unarchiveConversation(conversationId: String) {
         viewModelScope.launch {
             conversationRepository.unarchiveConversation(conversationId)
+        }
+    }
+
+    fun favoriteConversation(conversationId: String) {
+        viewModelScope.launch {
+            conversationRepository.favoriteConversation(conversationId)
+        }
+    }
+
+    fun unfavoriteConversation(conversationId: String) {
+        viewModelScope.launch {
+            conversationRepository.unfavoriteConversation(conversationId)
         }
     }
 

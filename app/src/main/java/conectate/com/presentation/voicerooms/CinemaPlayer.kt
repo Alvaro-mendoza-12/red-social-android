@@ -282,6 +282,8 @@ fun CinemaPlayer(
         }
     ) {
         if (shouldUseWebView) {
+            var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+            
             AndroidView(
                 factory = {
                     WebView(it).apply {
@@ -289,7 +291,6 @@ fun CinemaPlayer(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                        // v15.7: Brave Shields Implementation
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                 val url = request?.url?.toString() ?: return false
@@ -308,7 +309,6 @@ fun CinemaPlayer(
                                 return false 
                             }
 
-                            // v15.7: Block Ad Requests at Network Level (Brave style)
                             override fun shouldInterceptRequest(
                                 view: WebView?,
                                 request: android.webkit.WebResourceRequest?
@@ -330,13 +330,11 @@ fun CinemaPlayer(
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
-                                // v15.7: Nuclear JS Ad-Killer
                                 view?.evaluateJavascript("""
                                     (function() {
                                         const killAds = () => {
                                             const video = document.querySelector('video');
                                             
-                                            // 1. Hide Ad Elements & Fake UI
                                             const badSelectors = [
                                                 '.ad', '.ads', '.popup', '#pop', '.banner', 
                                                 'iframe[src*="ad"]', 'div[id^="div-gpt-ad"]',
@@ -359,7 +357,6 @@ fun CinemaPlayer(
                                                 });
                                             });
 
-                                            // 2. Shield the video - Force full visibility
                                             if (video) {
                                                 video.style.setProperty('display', 'block', 'important');
                                                 video.style.setProperty('visibility', 'visible', 'important');
@@ -369,7 +366,6 @@ fun CinemaPlayer(
                                             }
                                         };
 
-                                        // 3. Prevent any dynamic window creation via JS
                                         window.open = function() { return null; };
 
                                         killAds();
@@ -379,7 +375,6 @@ fun CinemaPlayer(
                             }
                         }
                         webChromeClient = WebChromeClient()
-                        // v15.8: Professional Browser Identity (Mimic Brave/Chrome)
                         settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
@@ -390,11 +385,19 @@ fun CinemaPlayer(
                         settings.javaScriptCanOpenWindowsAutomatically = false 
                         
                         loadUrl(videoUrl)
+                        webViewInstance = this
                     }
                 },
                 update = { it.loadUrl(videoUrl) },
                 modifier = Modifier.fillMaxSize()
             )
+            
+            DisposableEffect(Unit) {
+                onDispose {
+                    webViewInstance?.destroy()
+                    webViewInstance = null
+                }
+            }
             
             // v15.8: Invisible Overlay - ONLY active when controls are shown to prevent background clicks
             if (showControls) {

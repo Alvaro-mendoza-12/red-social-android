@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 
 
-class ConnectivityViewModel  constructor(
+@HiltViewModel
+class ConnectivityViewModel @Inject constructor(
     networkObserver: NetworkConnectivityObserver,
     private val syncManager: SyncManager
 ) : ViewModel() {

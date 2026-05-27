@@ -1,6 +1,16 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { loadFallbackChat, sendFallbackChatMessage, uploadFallbackFile } from '../../core/fallbackData'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
@@ -22,6 +32,7 @@ type ChatMessage = {
   content: string
   contentType: string
   mediaUrl: string
+  mediaSize: number
   createdAt: string
   updatedAt: string
   status: string
@@ -105,6 +116,72 @@ function inferContentType(file: File): 'image' | 'video' | 'audio' | 'file' {
   return 'file'
 }
 
+type MessageMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'file'
+
+function extensionFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    const cleanPath = parsed.pathname.toLowerCase()
+    const dotIndex = cleanPath.lastIndexOf('.')
+    return dotIndex >= 0 ? cleanPath.slice(dotIndex + 1) : ''
+  } catch {
+    const cleanPath = url.split('?')[0]?.toLowerCase() ?? ''
+    const dotIndex = cleanPath.lastIndexOf('.')
+    return dotIndex >= 0 ? cleanPath.slice(dotIndex + 1) : ''
+  }
+}
+
+function fileNameFromUrl(url: string, fallback = 'Archivo'): string {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    const rawName = parsed.pathname.split('/').filter(Boolean).pop() ?? fallback
+    return decodeURIComponent(rawName).replace(/^\d+_\d+_/, '').replace(/_/g, ' ')
+  } catch {
+    const rawName = url.split('?')[0]?.split('/').filter(Boolean).pop() ?? fallback
+    return decodeURIComponent(rawName).replace(/^\d+_\d+_/, '').replace(/_/g, ' ')
+  }
+}
+
+function mediaKindFor(contentType: string, url: string): MessageMediaKind {
+  const type = contentType.toLowerCase()
+  const extension = extensionFromUrl(url)
+  if (type === 'image' || type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(extension)) {
+    return 'image'
+  }
+  if (type === 'video' || type.startsWith('video/') || ['mp4', 'webm', 'mov', 'm4v'].includes(extension)) {
+    return 'video'
+  }
+  if (type === 'audio' || type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'webm'].includes(extension)) {
+    return 'audio'
+  }
+  if (type === 'application/pdf' || extension === 'pdf') return 'pdf'
+  return 'file'
+}
+
+function contentLooksLikeAttachmentName(content: string): boolean {
+  return /\.(avif|gif|jpe?g|m4a|m4v|mov|mp3|mp4|oga|ogg|pdf|png|webm|webp|wav|docx?|xlsx?|pptx?|zip)$/i.test(
+    content.trim(),
+  )
+}
+
+function shouldRenderMessageText(message: ChatMessage): boolean {
+  const content = message.content.trim()
+  if (!content) return false
+  if (!message.mediaUrl) return true
+  if (message.contentType === 'location' || message.contentType === 'contact') return true
+  return !contentLooksLikeAttachmentName(content)
+}
+
+function clipboardFilesFrom(dataTransfer: DataTransfer | null): File[] {
+  if (!dataTransfer) return []
+  const files = Array.from(dataTransfer.files ?? []).filter((file) => file.size > 0)
+  if (files.length > 0) return files
+  return Array.from(dataTransfer.items ?? [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file && file.size > 0))
+}
+
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'string') return value.toLowerCase() === 'true'
@@ -185,9 +262,251 @@ function previewUrlForFile(file: File): string {
 }
 
 function formatFileSize(sizeInBytes: number): string {
+  if (!Number.isFinite(sizeInBytes) || sizeInBytes <= 0) return ''
   if (sizeInBytes < 1024) return `${sizeInBytes} B`
   if (sizeInBytes < 1024 * 1024) return `${Math.round(sizeInBytes / 1024)} KB`
   return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function mediaEntryUrl(entry: unknown): string {
+  if (typeof entry === 'string') return entry.trim()
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return ''
+  const row = entry as GenericRow
+  return textOf(row, ['url', 'publicUrl', 'public_url', 'media_url', 'path'], '')
+}
+
+function firstMediaEntry(row: GenericRow): GenericRow | string | null {
+  const raw = row.media_urls ?? row.mediaUrls
+  if (!raw) return null
+  if (Array.isArray(raw)) return (raw.find((entry) => mediaEntryUrl(entry)) as GenericRow | string | undefined) ?? null
+  if (typeof raw !== 'string') return null
+
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (Array.isArray(parsed)) {
+      return (parsed.find((entry) => mediaEntryUrl(entry)) as GenericRow | string | undefined) ?? null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function mediaUrlOf(row: GenericRow): string {
+  const direct = textOf(row, ['media_url', 'mediaUrl'], '')
+  if (direct) return direct
+  const entry = firstMediaEntry(row)
+  return mediaEntryUrl(entry)
+}
+
+function mediaSizeOf(row: GenericRow): number {
+  const direct = Number(row.media_size ?? row.mediaSize ?? 0)
+  if (Number.isFinite(direct) && direct > 0) return direct
+  const entry = firstMediaEntry(row)
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return 0
+  const candidate = Number((entry as GenericRow).size ?? (entry as GenericRow).bytes ?? 0)
+  return Number.isFinite(candidate) && candidate > 0 ? candidate : 0
+}
+
+function needsNgrokWarningBypass(url: string): boolean {
+  try {
+    const host = new URL(url, window.location.origin).hostname.toLowerCase()
+    return host.endsWith('.ngrok-free.dev') || host.endsWith('.ngrok-free.app') || host.endsWith('.ngrok.io')
+  } catch {
+    return url.toLowerCase().includes('ngrok')
+  }
+}
+
+async function fetchMediaPreviewUrl(
+  url: string,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<{ objectUrl: string; contentType: string; size: number }> {
+  const headers = new Headers()
+  if (needsNgrokWarningBypass(url)) {
+    headers.set('ngrok-skip-browser-warning', 'true')
+  }
+  const response = await fetch(url, { headers, signal })
+  if (!response.ok) throw new Error(`MEDIA_PREVIEW_${response.status}`)
+  const blob = await response.blob()
+  return {
+    objectUrl: URL.createObjectURL(blob),
+    contentType: blob.type || response.headers.get('Content-Type') || contentType,
+    size: blob.size,
+  }
+}
+
+type MediaPreviewState = {
+  sourceUrl: string
+  status: 'ready' | 'failed'
+  url?: string
+  contentType?: string
+  size?: number
+}
+
+function ChatMessageMedia({ message }: { message: ChatMessage }) {
+  const [previewState, setPreviewState] = useState<MediaPreviewState | null>(null)
+  const shouldBypassNgrok = needsNgrokWarningBypass(message.mediaUrl)
+  const currentPreview = previewState?.sourceUrl === message.mediaUrl ? previewState : null
+  const failed = currentPreview?.status === 'failed'
+  const preview =
+    currentPreview?.status === 'ready' && currentPreview.url
+      ? {
+          url: currentPreview.url,
+          contentType: currentPreview.contentType || message.contentType,
+          size: currentPreview.size || message.mediaSize,
+        }
+      : null
+  const loadingPreview = shouldBypassNgrok && Boolean(message.mediaUrl) && !preview && !failed
+  const markPreviewFailed = () => {
+    setPreviewState({ sourceUrl: message.mediaUrl, status: 'failed' })
+  }
+
+  useEffect(() => {
+    let active = true
+    let objectUrlToRevoke = ''
+    const controller = new AbortController()
+
+    if (!message.mediaUrl || !shouldBypassNgrok) {
+      return () => controller.abort()
+    }
+
+    void fetchMediaPreviewUrl(message.mediaUrl, message.contentType, controller.signal)
+      .then((result) => {
+        if (!active) {
+          URL.revokeObjectURL(result.objectUrl)
+          return
+        }
+        objectUrlToRevoke = result.objectUrl
+        setPreviewState({
+          sourceUrl: message.mediaUrl,
+          status: 'ready',
+          url: result.objectUrl,
+          contentType: result.contentType,
+          size: result.size,
+        })
+      })
+      .catch((error: unknown) => {
+        if (!active || controller.signal.aborted) return
+        console.warn('No se pudo preparar la vista previa del archivo.', error)
+        setPreviewState({ sourceUrl: message.mediaUrl, status: 'failed' })
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+      if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke)
+    }
+  }, [message.contentType, message.mediaUrl, shouldBypassNgrok])
+
+  if (!message.mediaUrl) return null
+
+  const previewUrl = preview?.url || (shouldBypassNgrok ? '' : message.mediaUrl)
+  const openUrl = preview?.url || message.mediaUrl
+  const effectiveContentType = preview?.contentType || message.contentType
+  const effectiveSize = preview?.size || message.mediaSize
+  const kind = mediaKindFor(effectiveContentType, message.mediaUrl)
+  const title = message.content.trim() || fileNameFromUrl(message.mediaUrl)
+  const sizeLabel = formatFileSize(effectiveSize)
+
+  if (loadingPreview && !previewUrl) {
+    return (
+      <div className="chat-file-card chat-file-card-loading">
+        <span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : '...'}</span>
+        <span>
+          <strong>Preparando vista previa</strong>
+          <small>{title}</small>
+        </span>
+      </div>
+    )
+  }
+
+  if (failed) {
+    return (
+      <a className="chat-file-card media-load-error" href={openUrl} target="_blank" rel="noreferrer">
+        <span className="chat-file-icon">!</span>
+        <span>
+          <strong>No se pudo cargar la vista previa</strong>
+          <small>{title}</small>
+        </span>
+      </a>
+    )
+  }
+
+  if (kind === 'image') {
+    if (!previewUrl) return null
+    return (
+      <a className="chat-media-card" href={openUrl} target="_blank" rel="noreferrer">
+        <img
+          className="chat-media-image"
+          src={previewUrl}
+          alt={title}
+          loading="lazy"
+          onError={markPreviewFailed}
+        />
+      </a>
+    )
+  }
+
+  if (kind === 'video') {
+    if (!previewUrl) return null
+    return (
+      <video
+        className="chat-media-video"
+        src={previewUrl}
+        controls
+        preload="metadata"
+        onError={markPreviewFailed}
+      />
+    )
+  }
+
+  if (kind === 'audio') {
+    if (!previewUrl) return null
+    return (
+      <audio
+        className="chat-audio-player"
+        controls
+        preload="metadata"
+        src={previewUrl}
+        onError={markPreviewFailed}
+      >
+        Tu navegador no soporta audio embebido.
+      </audio>
+    )
+  }
+
+  if (kind === 'pdf') {
+    return (
+      <div className="chat-pdf-card">
+        <div className="chat-file-card">
+          <span className="chat-file-icon">PDF</span>
+          <span>
+            <strong>{title}</strong>
+            {sizeLabel ? <small>{sizeLabel}</small> : null}
+          </span>
+          <a className="mini-action-btn" href={openUrl} target="_blank" rel="noreferrer">
+            Abrir
+          </a>
+        </div>
+        {previewUrl ? (
+          <iframe className="chat-pdf-preview" src={previewUrl} title={title} loading="lazy" />
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <a className="chat-file-card" href={openUrl} target="_blank" rel="noreferrer">
+      <span className="chat-file-icon">DOC</span>
+      <span>
+        <strong>{title}</strong>
+        {sizeLabel ? <small>{sizeLabel}</small> : null}
+      </span>
+    </a>
+  )
 }
 
 function dayKeyOf(value: string): string {
@@ -225,7 +544,8 @@ function mapMessage(row: GenericRow): ChatMessage {
     senderId: textOf(row, ['sender_id'], ''),
     content: textOf(row, ['content'], ''),
     contentType: textOf(row, ['content_type'], 'text'),
-    mediaUrl: textOf(row, ['media_url'], ''),
+    mediaUrl: mediaUrlOf(row),
+    mediaSize: mediaSizeOf(row),
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     status: textOf(row, ['status'], 'sent'),
@@ -279,13 +599,32 @@ function initialsOf(name: string): string {
   return clean[0]?.toUpperCase() ?? 'U'
 }
 
+function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  if (url && failedUrl !== url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className={className}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailedUrl(url)}
+      />
+    )
+  }
+
+  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
+}
+
 type ChatDetailPageProps = {
   chatIdOverride?: string
   embedded?: boolean
 }
 
 export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailPageProps = {}) {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const { chatId: routeChatId = '' } = useParams()
   const chatId = chatIdOverride ?? routeChatId
   const [loading, setLoading] = useState(true)
@@ -544,6 +883,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   )
 
   useEffect(() => {
+    if (editingMessageId) return undefined
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = clipboardFilesFrom(event.clipboardData)
+      if (files.length === 0) return
+      event.preventDefault()
+      queueAttachmentFiles(files)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [editingMessageId, queueAttachmentFiles])
+
+  useEffect(() => {
     pendingAttachmentsRef.current = pendingAttachments
   }, [pendingAttachments])
 
@@ -776,7 +1127,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const loadChat = useCallback(async () => {
     const loadSequence = ++loadSequenceRef.current
     const isStaleLoad = () => loadSequenceRef.current !== loadSequence
-    if (!supabase || !user || !cleanChatId) {
+    if (!user || !cleanChatId) {
       if (!isStaleLoad()) {
         setLoading(false)
       }
@@ -786,6 +1137,27 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     setLoading(true)
     setError(null)
     try {
+      if (isFallbackSession) {
+        const response = await loadFallbackChat(cleanChatId)
+        if (isStaleLoad()) return
+        setTitle(response.title || 'Chat privado')
+        setOtherParticipant(response.otherParticipant)
+        setMessages(response.messages.map(mapMessage))
+        setSettings(response.settings)
+        setScheduledJobs([])
+        setPollStatesById({})
+        setConsumedViewOnce({})
+        return
+      }
+
+      if (!supabase) {
+        if (!isStaleLoad()) {
+          setError('Supabase no está configurado.')
+          setMessages([])
+        }
+        return
+      }
+
       const { data: chats, error: chatError } = await supabase
         .from('chats')
         .select('*')
@@ -867,7 +1239,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         setLoading(false)
       }
     }
-  }, [cleanChatId, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, user])
+  }, [cleanChatId, isFallbackSession, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, user])
 
   useEffect(() => {
     void loadChat()
@@ -914,7 +1286,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [showMessageSearch])
 
   useEffect(() => {
-    if (!cleanChatId || !user) return
+    if (!cleanChatId || !user || isFallbackSession) return
     const syncReadState = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       void markAsDeliveredAndRead()
@@ -928,16 +1300,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       window.removeEventListener('focus', syncReadState)
       document.removeEventListener('visibilitychange', syncReadState)
     }
-  }, [cleanChatId, markAsDeliveredAndRead, user])
+  }, [cleanChatId, isFallbackSession, markAsDeliveredAndRead, user])
 
   useEffect(() => {
+    if (isFallbackSession) return
     void loadChatSettings()
     void refreshScheduledJobs()
-  }, [loadChatSettings, refreshScheduledJobs])
+  }, [isFallbackSession, loadChatSettings, refreshScheduledJobs])
 
   useEffect(() => {
     const client = supabase
-    if (!client || !user || !cleanChatId) return
+    if (!client || !user || !cleanChatId || isFallbackSession) return
     const channel = client
       .channel(`chat-live-${cleanChatId}`)
       .on(
@@ -988,10 +1361,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState, user])
+  }, [cleanChatId, isFallbackSession, refreshPollState, removeMessageFromState, upsertMessageInState, user])
 
   async function sendMessage(input: SendMessageInput) {
-    if (!supabase || !user || !cleanChatId) return
+    if (!user || !cleanChatId) return
+    if (isFallbackSession) {
+      const response = await sendFallbackChatMessage(cleanChatId, {
+        content: input.content,
+        contentType: input.contentType ?? 'text',
+        mediaUrl: input.mediaUrl ?? null,
+        mediaSize: input.mediaSize ?? 0,
+        replyToId: input.replyToId ?? null,
+      })
+      upsertMessageInState(mapMessage(response.message))
+      return
+    }
+    if (!supabase) return
     const payload = {
       p_chat_id: cleanChatId,
       p_content: input.content,
@@ -1029,6 +1414,34 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function sendPendingAttachments(textFallback: string) {
+    if (isFallbackSession) {
+      if (!user || !cleanChatId || pendingAttachments.length === 0) return
+      const queued = [...pendingAttachments]
+      setUploading(true)
+      try {
+        for (let index = 0; index < queued.length; index += 1) {
+          const attachment = queued[index]
+          const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const filePath = `dm/${user.id}/${Date.now()}_${index}_${safeName}`
+          const uploaded = await uploadFallbackFile('chat-media', attachment.file, filePath)
+          const caption =
+            attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+          await sendMessage({
+            content: caption,
+            mediaUrl: uploaded.publicUrl,
+            contentType: attachment.contentType,
+            mediaSize: attachment.file.size,
+            replyToId: index === 0 ? replyToId : null,
+          })
+          setPendingAttachments((current) => current.filter((entry) => entry.id !== attachment.id))
+          if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+        }
+        setReplyToId(null)
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
     if (!supabase || !user || !cleanChatId || pendingAttachments.length === 0) return
     const queued = [...pendingAttachments]
     setUploading(true)
@@ -1062,12 +1475,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase) return
+    if (!supabase && !isFallbackSession) return
     const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading) return
     setSending(true)
     try {
       if (editingMessageId) {
+        if (isFallbackSession) {
+          setError('La edicion de mensajes en modo respaldo queda para la siguiente etapa.')
+          return
+        }
+        if (!supabase) return
         if (!text) return
         const nowIso = new Date().toISOString()
         const { error: editError } = await supabase
@@ -1107,6 +1525,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
+    if (isFallbackSession) return
     if (!supabase) return
     const { error: reactionError } = await supabase.rpc('secure_toggle_message_reaction', {
       p_message_id: messageId,
@@ -1135,6 +1554,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForAll(message: ChatMessage) {
+    if (isFallbackSession) return
     if (!supabase || !user || message.senderId !== user.id) return
     try {
       const nowIso = new Date().toISOString()
@@ -1157,6 +1577,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
+    if (isFallbackSession) return
     if (!supabase || !user) return
     try {
       const nextDeletedBy = Array.from(new Set([...message.deletedBy, user.id]))
@@ -1317,6 +1738,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
 
   async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
+    if (isFallbackSession) {
+      setSettings((current) => ({ ...current, ...patch }))
+      return
+    }
     if (!supabase || !user || !cleanChatId || savingSettings) return
     const nextMuted = patch.isMuted ?? settings.isMuted
     const nextPinned = patch.isPinned ?? settings.isPinned
@@ -1405,6 +1830,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function saveTranslationSettings() {
+    if (isFallbackSession) return
     if (!supabase || !user || !cleanChatId || savingSettings) return
     const targetLang = settings.targetLang.trim().toLowerCase() || 'es'
     setSavingSettings(true)
@@ -1437,7 +1863,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
   }
 
-  if (!supabase) {
+  if (!supabase && !isFallbackSession) {
     return <StatusView title="Supabase no configurado" description="Configura .env para usar mensajes." />
   }
 
@@ -1459,7 +1885,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   const rootClassName = [
-    embedded ? 'section-stack chat-detail-embedded' : 'section-stack',
+    embedded ? 'section-stack chat-detail-embedded' : 'section-stack chat-detail-page',
     dragActive ? 'chat-drop-active' : '',
   ]
     .filter(Boolean)
@@ -1487,11 +1913,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           ) : null}
           {otherParticipant ? (
             <Link className="identity-link compact" to={profilePathFor(otherParticipant.id, user?.id)}>
-              {otherParticipant.avatarUrl ? (
-                <img src={otherParticipant.avatarUrl} alt={otherParticipant.name} className="avatar-sm" />
-              ) : (
-                <span className="avatar-sm avatar-fallback">{initialsOf(otherParticipant.name)}</span>
-              )}
+              <FallbackAvatar url={otherParticipant.avatarUrl} name={otherParticipant.name} className="avatar-sm" />
               <div className="col-stack-tight">
                 <strong>{otherParticipant.name}</strong>
                 <small className="online-status">En línea</small>
@@ -1502,6 +1924,28 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           )}
         </div>
         <div className="row-actions chat-head-actions">
+          {otherParticipant ? (
+            <>
+              <Link
+                className="icon-btn header-icon-btn"
+                to={`/app/calls?target=${encodeURIComponent(otherParticipant.id)}&kind=audio&name=${encodeURIComponent(otherParticipant.name)}`}
+                title="Llamada de voz"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path d="M6.62 10.79c1.44 2.82 3.77 5.15 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z" fill="currentColor" />
+                </svg>
+              </Link>
+              <Link
+                className="icon-btn header-icon-btn"
+                to={`/app/calls?target=${encodeURIComponent(otherParticipant.id)}&kind=video&name=${encodeURIComponent(otherParticipant.name)}`}
+                title="Videollamada"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v1.9l3.55-2.13A1 1 0 0 1 21 7.13v9.74a1 1 0 0 1-1.45.9L16 15.6v1.9a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 17.5v-11z" fill="currentColor" />
+                </svg>
+              </Link>
+            </>
+          ) : null}
           <button
             className={showMessageSearch ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
@@ -1691,6 +2135,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             toMillis(message.createdAt) > 0 &&
             toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(message.createdAt)
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
+          const showMessageText = shouldRenderMessageText(message)
 
           return (
             <Fragment key={message.id}>
@@ -1740,15 +2185,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                     ) : message.contentType === 'contact' ? (
                       <p>Contacto: {message.content}</p>
                     ) : (
-                      <>{message.content ? <p>{message.content}</p> : null}</>
+                      <>
+                        {message.mediaUrl && message.contentType !== 'sticker' && !isViewOnceType(message.contentType) ? (
+                          <ChatMessageMedia message={message} />
+                        ) : null}
+                        {showMessageText ? (
+                          <p className={message.mediaUrl ? 'message-caption' : undefined}>{message.content}</p>
+                        ) : null}
+                      </>
                     )}
                     {message.mediaUrl && message.contentType === 'sticker' ? (
                       <img src={message.mediaUrl} alt={message.content || 'Sticker'} className="sticker-preview" />
-                    ) : null}
-                    {message.mediaUrl && message.contentType === 'audio' ? (
-                      <audio className="chat-audio-player" controls preload="metadata" src={message.mediaUrl}>
-                        Tu navegador no soporta audio embebido.
-                      </audio>
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -1758,15 +2205,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                           Ver una vez
                         </button>
                       )
-                    ) : null}
-                    {message.mediaUrl &&
-                      message.contentType !== 'sticker' &&
-                      message.contentType !== 'location' &&
-                      message.contentType !== 'audio' &&
-                      !isViewOnceType(message.contentType) ? (
-                      <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
-                        Abrir archivo
-                      </a>
                     ) : null}
                   </>
                 )}

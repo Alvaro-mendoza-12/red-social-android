@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.foundation.text.KeyboardActions
+import conectate.com.BuildConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -40,8 +41,12 @@ fun ContentBrowser(
     onResolveUrl: suspend (String) -> conectate.com.data.repository.VoiceRoomRepository.CinemaResolvedItem? = { null }
 ) {
     val context = LocalContext.current
-    val tmdbApiKey = "cafce0be2d371c964acd937d58621e6a"
-    val catalog = remember { CinemaCatalog(tmdbApiKey) }
+    val catalog = remember {
+        CinemaCatalog(
+            tmdbApiKey = BuildConfig.TMDB_API_KEY,
+            realDebridToken = BuildConfig.REAL_DEBRID_TOKEN
+        )
+    }
     
     val scope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
@@ -96,7 +101,7 @@ fun ContentBrowser(
             OutlinedTextField(
                 value = manualUrl,
                 onValueChange = { manualUrl = it },
-                placeholder = { Text("Paste Video Link (YouTube, Drive, RD, IPTV, MP4...)", color = Color.Gray, fontSize = 14.sp) },
+                placeholder = { Text("Pega un enlace reproducible (MP4, HLS o storage propio)", color = Color.Gray, fontSize = 14.sp) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(12.dp),
                 trailingIcon = {
@@ -126,7 +131,7 @@ fun ContentBrowser(
             )
             
             Text(
-                text = "💡 Tip: Copia el 'Link del Video' directamente (que termine en .mp4 o .m3u8). Los links de páginas web no funcionan.",
+                text = "Usa enlaces directos de contenido propio o autorizado. Los enlaces a páginas web no siempre incluyen un video reproducible.",
                 color = MaterialTheme.colorScheme.secondary,
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
@@ -199,7 +204,7 @@ fun ContentBrowser(
                         ContentCard(item) {
                             scope.launch {
                                 isSearching = true
-                                if (item.provider == "consumet" || item.provider == "anilist") {
+                                if (item.provider == "consumet") {
                                     val eps = catalog.getAnimeEpisodes(item.providerId)
                                     isSearching = false
                                     selectedSeries = item.copy(seasons = listOf(Season("Episodios", eps)))
@@ -226,7 +231,7 @@ fun ContentBrowser(
                         
                         // Header text mejorado
                         Text(
-                            text = if (searchQuery.isEmpty()) "🎭 Explora el Catálogo" else "Resultados de Búsqueda",
+                            text = if (searchQuery.isEmpty()) "Explora contenido para compartir" else "Resultados de búsqueda",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -241,6 +246,17 @@ fun ContentBrowser(
                         "tv" -> trendingContent.filter { it.key.contains("Series", ignoreCase = true) }
                         "drama" -> trendingContent.filter { it.key.contains("Dramas", ignoreCase = true) || it.key.contains("K-Dramas", ignoreCase = true) }
                         else -> trendingContent // "all" muestra todo
+                    }
+
+                    if (filteredContent.isEmpty()) {
+                        item {
+                            Text(
+                                text = "El catálogo no está disponible ahora. Puedes compartir un enlace directo autorizado.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                        }
                     }
 
                     filteredContent.forEach { (category, items) ->
@@ -398,18 +414,17 @@ fun ContentCard(item: ContentItem, onClick: () -> Unit) {
                     )
                 }
             } else if (item.provider == "tmdb" || item.provider == "tmdb_tv" || item.provider == "drama") {
-                // v9.5: Real-Debrid Premium Badge (GOLD)
                 Surface(
                     modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                    color = Color(0xFFFFD700).copy(alpha = 0.9f), 
+                    color = Color(0xFF2F80ED).copy(alpha = 0.9f),
                     shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
-                        "PREMIUM 4K", 
+                        "CATÁLOGO",
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.Black
+                        color = Color.White
                     )
                 }
             } else if (item.provider == "consumet") {
@@ -475,87 +490,3 @@ data class Episode(
     val title: String,
     val videoUrl: String
 )
-
-private fun getContentCatalog(): Map<String, List<ContentItem>> {
-    return mapOf(
-        "Anime Real ⚡" to listOf(
-            ContentItem(
-                "Shingeki no Kyojin", 
-                "https://images.alphacoders.com/279/279148.jpg",
-                seasons = listOf(
-                    Season("Temporada 1", listOf(
-                        Episode(1, "A ti, dentro de 2000 años", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"),
-                        Episode(2, "Ese día", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"),
-                        Episode(3, "Una luz tenue", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4")
-                    )),
-                    Season("Temporada 2", listOf(
-                         Episode(1, "Titán Bestia", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4")
-                    ))
-                )
-            ),
-            ContentItem(
-                "Naruto Shippuden", 
-                "https://images2.alphacoders.com/264/264177.jpg",
-                seasons = listOf(
-                    Season("Temporada 1", listOf(
-                        Episode(1, "Regreso a Casa", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-                        Episode(2, "Los Akatsuki entran en acción", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
-                    ))
-                )
-            ),
-            ContentItem(
-                "One Piece", 
-                "https://wallpaperaccess.com/full/17350.jpg",
-                seasons = listOf(
-                    Season("East Blue", listOf(
-                        Episode(1, "¡Soy Luffy!", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4")
-                    ))
-                )
-            )
-        ),
-        "Películas de Estreno 🎬" to listOf(
-             ContentItem("Big Buck Bunny", "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-             ContentItem("Elephant Dream", "https://upload.wikimedia.org/wikipedia/commons/e/e8/Elephants_Dream_s7_vignette.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"),
-             ContentItem("Tears of Steel", "https://mango.blender.org/wp-content/uploads/2012/05/p49_tos_vignette.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"),
-             ContentItem("For Bigger Blazes", "https://storage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"),
-             ContentItem("For Bigger Joyrides", "https://storage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerJoyrides.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4")
-        ),
-        "Series Mundiales 📺" to listOf(
-             ContentItem(
-                 "The Steel Chronicles", 
-                 "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
-                 seasons = listOf(
-                     Season("Temporada 1", listOf(
-                         Episode(1, "Acero y Lágrimas", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"),
-                         Episode(2, "Renacimiento", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4")
-                     ))
-                 )
-             )
-        ),
-        "Novelas Clásicas 🌹" to listOf(
-             ContentItem(
-                 "Pasión de Gavilanes", 
-                 "https://m.media-amazon.com/images/I/71YV1jXWqPL._AC_UF894,1000_QL80_.jpg",
-                 seasons = listOf(
-                     Season("Temporada 1", listOf(
-                         Episode(1, "El Reencuentro", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-                         Episode(2, "Secretos de Familia", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
-                     ))
-                 )
-             ),
-             ContentItem(
-                 "Betty la Fea", 
-                 "https://m.media-amazon.com/images/I/51-mYj6KCRL._AC_UF1000,1000_QL80_.jpg",
-                 seasons = listOf(
-                     Season("Temporada 1", listOf(
-                         Episode(1, "Un día en Ecomoda", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"),
-                         Episode(2, "La propuesta", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4")
-                     ))
-                 )
-             )
-        ),
-        "Documentales 🌍" to listOf(
-             ContentItem("Planeta Blender", "https://upload.wikimedia.org/wikipedia/commons/0/08/Sintel_Poster.jpg", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4")
-        )
-    )
-}

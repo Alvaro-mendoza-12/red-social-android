@@ -20,6 +20,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.SocialQrScanner.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.SocialQrScannerScreen(navController = navController)
+        }
+    }
+
     composable(
         route = Screen.Chat.route,
         arguments = listOf(
@@ -192,6 +198,84 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.AccountSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.AccountSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.SecuritySettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.SecuritySettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.PrivacySettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.PrivacySettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.NotificationSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.NotificationSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.ChatSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.StorageSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.StorageSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.LanguageSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.LanguageSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.ThemeSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.ThemeSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.HelpSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.HelpSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.AboutSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.AboutSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.CustomizeApp.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.CustomizeAppScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.CallHistory.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.calls.CallHistoryScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.VoiceRoomSearch.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.voicerooms.VoiceRoomSearchScreen(navController = navController)
+        }
+    }
+
     composable(Screen.MyReports.route) {
         android.util.Log.d("MainActivity", "ENTERING MyReports Route")
         conectate.com.presentation.profile.MyReportsScreen(navController = navController)
@@ -259,6 +343,18 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.MonetizationCenter.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.MonetizationCenterScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.CreatorProgram.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.CreatorProgramScreen(navController = navController)
+        }
+    }
+
     composable(
         route = Screen.PostDetail.route,
         arguments = listOf(
@@ -294,6 +390,66 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             navController = navController,
             momentId = momentId
         )
+    }
+
+    composable(
+        route = Screen.MomentHighlights.route,
+        arguments = listOf(
+            navArgument("userId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val userId = backStackEntry.arguments?.getString("userId") ?: ""
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.MomentHighlightsScreen(
+                navController = navController,
+                userId = userId
+            )
+        }
+    }
+
+    composable(
+        route = Screen.LiveViewer.route,
+        arguments = listOf(
+            navArgument("streamId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val streamId = backStackEntry.arguments?.getString("streamId") ?: ""
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.live.LiveViewerScreen(
+                navController = navController,
+                liveId = streamId
+            )
+        }
+    }
+
+    composable(
+        route = Screen.LiveHost.route,
+        arguments = listOf(
+            navArgument("liveId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val liveId = backStackEntry.arguments?.getString("liveId") ?: ""
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.live.LiveHostScreen(
+                navController = navController,
+                liveId = liveId
+            )
+        }
+    }
+
+    composable(
+        route = Screen.Call.route,
+        arguments = listOf(
+            navArgument("callId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val callId = backStackEntry.arguments?.getString("callId") ?: ""
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.calls.CallScreen(
+                navController = navController,
+                callId = callId
+            )
+        }
     }
 
     composable(

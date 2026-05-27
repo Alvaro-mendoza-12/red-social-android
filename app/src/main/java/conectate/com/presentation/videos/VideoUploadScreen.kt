@@ -27,6 +27,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import conectate.com.data.repository.VideoRepository
+import conectate.com.presentation.video.VideoValidationResult
+import conectate.com.presentation.video.VideoValidator
+import conectate.com.util.VideoWatermarkDetector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,37 +69,45 @@ class VideoUploadViewModel @Inject constructor(
     private val _uploadError = MutableStateFlow<String?>(null)
     val uploadError: StateFlow<String?> = _uploadError.asStateFlow()
 
+    private val _isValidatingVideo = MutableStateFlow(false)
+    val isValidatingVideo: StateFlow<Boolean> = _isValidatingVideo.asStateFlow()
+
+    private val _videoValidation = MutableStateFlow<VideoValidationResult?>(null)
+    val videoValidation: StateFlow<VideoValidationResult?> = _videoValidation.asStateFlow()
+
     fun updateTitle(value: String) { _title.value = value }
     fun updateDescription(value: String) { _description.value = value }
     fun updateIsPublic(value: Boolean) { _isPublic.value = value }
     fun updateTags(value: String) { _tags.value = value }
 
     fun setVideoUri(uri: Uri, context: android.content.Context) {
-        if (checkVideoDuration(uri, context)) {
-            _videoUri.value = uri
+        viewModelScope.launch {
+            _isValidatingVideo.value = true
             _uploadError.value = null
-        } else {
-            _videoUri.value = null
-            _uploadError.value = "El video no puede durar más de 30 segundos."
+            var result = VideoValidator.validateVideo(context.applicationContext, uri)
+            if (result.isValid) {
+                val watermarkDetection = VideoWatermarkDetector.detect(context.applicationContext, uri)
+                if (watermarkDetection != null) {
+                    result = result.copy(
+                        isValid = false,
+                        errors = result.errors + "Marca de agua detectada: ${watermarkDetection.brand}. Sube el video original sin marcas de otras plataformas."
+                    )
+                }
+            }
+            _videoValidation.value = result
+            _isValidatingVideo.value = false
+
+            if (result.isValid) {
+                _videoUri.value = uri
+                _uploadError.value = null
+            } else {
+                _videoUri.value = null
+                _uploadError.value = result.errors.joinToString("\n")
+            }
         }
     }
     
     fun setThumbnailUri(uri: Uri?) { _thumbnailUri.value = uri } // Allow nullable
-
-    private fun checkVideoDuration(uri: Uri, context: android.content.Context): Boolean {
-        return try {
-            val retriever = android.media.MediaMetadataRetriever()
-            retriever.setDataSource(context, uri)
-            val time = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
-            val timeInMillisec = time?.toLong() ?: 0L
-            // limit to 30 seconds (30000 ms) + small buffer (e.g. 1s)
-            timeInMillisec <= 31000 
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
 
     fun uploadVideo(onComplete: (Boolean) -> Unit) {
         val video = _videoUri.value
@@ -165,6 +176,59 @@ class VideoUploadViewModel @Inject constructor(
         _thumbnailUri.value = null
         _uploadError.value = null
         _uploadProgress.value = 0f
+        _videoValidation.value = null
+    }
+}
+
+@Composable
+private fun VideoValidationSummary(result: VideoValidationResult) {
+    val container = if (result.isValid) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
+    val content = if (result.isValid) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = container),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (result.isValid) Icons.Default.CheckCircle else Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = content
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (result.isValid) "Video listo para publicar, sin marcas detectadas" else "Ajusta el video antes de publicar",
+                    color = content,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = "${result.durationSeconds}s · ${result.width}x${result.height} · ${VideoValidator.formatFileSize(result.fileSizeBytes)}",
+                color = content,
+                style = MaterialTheme.typography.bodySmall
+            )
+            result.errors.takeIf { it.isNotEmpty() }?.forEach { error ->
+                Text(
+                    text = "• $error",
+                    color = content,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
 }
 
@@ -181,6 +245,8 @@ fun VideoUploadScreen(
     val videoUri by viewModel.videoUri.collectAsState()
     val thumbnailUri by viewModel.thumbnailUri.collectAsState()
     val isUploading by viewModel.isUploading.collectAsState()
+    val isValidatingVideo by viewModel.isValidatingVideo.collectAsState()
+    val videoValidation by viewModel.videoValidation.collectAsState()
     val uploadProgress by viewModel.uploadProgress.collectAsState()
     val uploadError by viewModel.uploadError.collectAsState()
 
@@ -194,7 +260,6 @@ fun VideoUploadScreen(
     ) { uri: Uri? -> uri?.let { viewModel.setThumbnailUri(it) } }
 
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
 
     // Handle result from Editor
     val editedVideoUri = navController.currentBackStackEntry
@@ -279,7 +344,13 @@ fun VideoUploadScreen(
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(48.dp)
-                            )
+                             )
+                        }
+                    } else if (isValidatingVideo) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(modifier = Modifier.size(34.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text("Validando video...")
                         }
                     } else {
                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -289,10 +360,14 @@ fun VideoUploadScreen(
                     }
                 }
 
-                if (videoUri != null) {
+                videoValidation?.let { result ->
+                    VideoValidationSummary(result = result)
+                }
+
+                videoUri?.let { selectedVideoUri ->
                     OutlinedButton(
                         onClick = {
-                            navController.navigate(conectate.com.presentation.navigation.Screen.VideoEditor.createRoute(videoUri!!))
+                            navController.navigate(conectate.com.presentation.navigation.Screen.VideoEditor.createRoute(selectedVideoUri))
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
@@ -323,7 +398,7 @@ fun VideoUploadScreen(
                         )
                         // Remove button
                         IconButton(
-                            onClick = { viewModel.setThumbnailUri(Uri.EMPTY) }, // Logic to clear? Or just let them replace
+                            onClick = { viewModel.setThumbnailUri(null) },
                             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
                         ) {
                              Icon(Icons.Default.Close, contentDescription = "Quitar", tint = Color.White)
@@ -372,8 +447,8 @@ fun VideoUploadScreen(
                     )
                 }
 
-                if (uploadError != null) {
-                    Text(uploadError!!, color = MaterialTheme.colorScheme.error)
+                uploadError?.let { errorMessage ->
+                    Text(errorMessage, color = MaterialTheme.colorScheme.error)
                 }
 
                 Button(
@@ -407,7 +482,7 @@ fun VideoUploadScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     // Validation: Only Video and Title required now
-                    enabled = videoUri != null && title.isNotBlank()
+                    enabled = videoUri != null && title.isNotBlank() && !isValidatingVideo
                 ) {
                     Text("Publicar Video")
                 }

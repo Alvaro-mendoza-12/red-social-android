@@ -16,6 +16,7 @@ import {
 } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
+import { changeFallbackPassword } from '../core/auth/fallbackAuth'
 import { useWebPreferences } from '../core/webPreferences'
 import { sendCallResponse, type CallInvitePayload } from '../features/calls/callRealtime'
 import '../features/calls/incomingCallOverlay.css'
@@ -50,7 +51,13 @@ const secondaryNavItems = [
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
 const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
-const mobileNavItems = primaryNavItems
+const mobileNavItems = [
+  primaryNavItems[0],
+  primaryNavItems[1],
+  primaryNavItems[2],
+  secondaryNavItems[0],
+  primaryNavItems[4],
+]
 
 type IncomingCallInvite = CallInvitePayload & {
   receivedAt: number
@@ -68,8 +75,8 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     match: (pathname) => pathname.startsWith('/app/messages'),
     meta: {
       kicker: 'Mensajería',
-      title: 'Bandeja conectada',
-      subtitle: 'Chats, grupos, comunidades y accesos rápidos alineados con la experiencia Android.',
+      title: 'Bandeja social',
+      subtitle: 'Chats, grupos y comunidades con acceso rápido a llamadas, voz y perfiles.',
       layout: 'full',
     },
   },
@@ -78,7 +85,7 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     meta: {
       kicker: 'Social',
       title: 'Feed y comunidad',
-      subtitle: 'Publicaciones, momentos y retos con una jerarquía más clara para web.',
+      subtitle: 'Publicaciones, momentos y retos pensados para leer, responder y descubrir sin ruido.',
       layout: 'wide',
     },
   },
@@ -86,8 +93,8 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     match: (pathname) => pathname.startsWith('/app/videos') || pathname.startsWith('/app/reels'),
     meta: {
       kicker: 'Videos',
-      title: 'Reels y subida controlada',
-      subtitle: 'Feed corto, trim, portada y reglas visibles antes de publicar.',
+      title: 'Videos cortos',
+      subtitle: 'Explora reels, prepara publicaciones y revisa el contenido antes de compartir.',
       layout: 'wide',
     },
   },
@@ -95,8 +102,8 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     match: (pathname) => pathname.startsWith('/app/calls'),
     meta: {
       kicker: 'Llamadas',
-      title: 'Audio y video desde la web',
-      subtitle: 'Acceso directo a llamadas 1:1 y preparación de sesiones en tiempo real.',
+      title: 'Audio y video',
+      subtitle: 'Inicia conversaciones 1:1 y vuelve a tus chats cuando necesites contexto.',
       layout: 'wide',
     },
   },
@@ -104,8 +111,8 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     match: (pathname) => pathname.startsWith('/app/voice'),
     meta: {
       kicker: 'Voz',
-      title: 'Salas persistentes',
-      subtitle: 'Explora y retoma salas tipo comunidad sin perder contexto.',
+      title: 'Salas de voz',
+      subtitle: 'Entra a canales activos, escucha a la comunidad y retoma salas recientes.',
       layout: 'wide',
     },
   },
@@ -114,7 +121,7 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     meta: {
       kicker: 'Actividad',
       title: 'Alertas accionables',
-      subtitle: 'Mensajes, social y moderación agrupados con rutas claras.',
+      subtitle: 'Mensajes, social y avisos importantes agrupados para responder rápido.',
       layout: 'wide',
     },
   },
@@ -123,7 +130,7 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     meta: {
       kicker: 'Perfil',
       title: 'Identidad compartida',
-      subtitle: 'Banner, bio, intereses y módulos de creador visibles también en escritorio.',
+      subtitle: 'Tu presencia pública, enlaces, momentos y opciones de creador en un solo lugar.',
       layout: 'wide',
     },
   },
@@ -132,7 +139,7 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     meta: {
       kicker: 'Control',
       title: 'Cuenta, wallet y ajustes',
-      subtitle: 'Preferencias, seguridad y monetización más ordenadas y menos saturadas.',
+      subtitle: 'Administra seguridad, preferencias, monetización y experiencia de lectura.',
       layout: 'wide',
     },
   },
@@ -186,7 +193,7 @@ function resolveShellRouteMeta(pathname: string): ShellRouteMeta {
     shellRouteMetaCatalog.find((entry) => entry.match(pathname))?.meta ?? {
       kicker: 'Conectate Web',
       title: 'Experiencia conectada',
-      subtitle: 'La web comparte backend, sesiones y módulos clave con la app móvil.',
+      subtitle: 'Mensajes, social, videos y voz listos para trabajar como una app diaria.',
       layout: 'wide',
     }
   )
@@ -198,6 +205,19 @@ function displayNameOf(userEmail: string | undefined, metadataDisplayName: unkno
   const email = String(userEmail ?? '').trim()
   if (!email) return 'Tu cuenta'
   return email.split('@')[0] || email
+}
+
+function metadataBoolean(value: unknown): boolean {
+  return value === true || String(value ?? '').toLowerCase() === 'true'
+}
+
+function passwordChangeErrorMessage(error: unknown): string {
+  const code = error instanceof Error ? error.message : String(error ?? '')
+  if (code === 'INVALID_CREDENTIALS') return 'La contraseña actual no coincide.'
+  if (code === 'CURRENT_AND_NEW_PASSWORD_REQUIRED') return 'Escribe tu contraseña actual y una nueva contraseña.'
+  if (code === 'NEW_PASSWORD_MUST_BE_DIFFERENT') return 'La contraseña nueva debe ser diferente a la actual.'
+  if (code === 'AUTH_REQUIRED' || code === 'INVALID_TOKEN') return 'Tu sesión expiró. Vuelve a iniciar sesión.'
+  return code || 'No se pudo actualizar la contraseña.'
 }
 
 function ChevronIcon({ collapsed }: { collapsed: boolean }) {
@@ -287,7 +307,7 @@ function ShellIcon({ name }: { name: NavIconName }) {
 }
 
 export function AppLayout() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, isFallbackSession } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [webPreferences] = useWebPreferences()
@@ -299,6 +319,13 @@ export function AppLayout() {
   const [sidebarAvatarUrl, setSidebarAvatarUrl] = useState('')
   const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
+  const [migrationPasswordOpen, setMigrationPasswordOpen] = useState(false)
+  const [migrationCurrentPassword, setMigrationCurrentPassword] = useState('')
+  const [migrationNewPassword, setMigrationNewPassword] = useState('')
+  const [migrationConfirmPassword, setMigrationConfirmPassword] = useState('')
+  const [migrationPasswordError, setMigrationPasswordError] = useState<string | null>(null)
+  const [migrationPasswordInfo, setMigrationPasswordInfo] = useState<string | null>(null)
+  const [savingMigrationPassword, setSavingMigrationPassword] = useState(false)
 
   const loadShellCounters = useCallback(async () => {
     const client = supabase
@@ -644,12 +671,53 @@ export function AppLayout() {
     }
   }, [isNavCollapsed])
 
+  const isMessagesRoute = location.pathname.startsWith('/app/messages')
   const shellMeta = useMemo(() => resolveShellRouteMeta(location.pathname), [location.pathname])
   const displayName = useMemo(
     () => displayNameOf(user?.email, user?.user_metadata?.display_name ?? user?.user_metadata?.full_name),
     [user?.email, user?.user_metadata?.display_name, user?.user_metadata?.full_name],
   )
   const contentShellClassName = shellMeta.layout === 'full' ? 'content-shell full' : 'content-shell wide'
+  const requiresMigrationPasswordChange = Boolean(
+    isFallbackSession && metadataBoolean(user?.user_metadata?.password_change_required),
+  )
+
+  const submitMigrationPasswordChange = useCallback(async () => {
+    if (savingMigrationPassword) return
+    const currentPassword = migrationCurrentPassword.trim()
+    const nextPassword = migrationNewPassword.trim()
+    const confirmation = migrationConfirmPassword.trim()
+
+    if (!currentPassword || nextPassword.length < 8) {
+      setMigrationPasswordError('Escribe tu contraseña actual y una nueva de al menos 8 caracteres.')
+      return
+    }
+    if (nextPassword !== confirmation) {
+      setMigrationPasswordError('La confirmación no coincide con la contraseña nueva.')
+      return
+    }
+
+    setSavingMigrationPassword(true)
+    setMigrationPasswordError(null)
+    setMigrationPasswordInfo(null)
+    try {
+      await changeFallbackPassword(currentPassword, nextPassword)
+      setMigrationCurrentPassword('')
+      setMigrationNewPassword('')
+      setMigrationConfirmPassword('')
+      setMigrationPasswordOpen(false)
+      setMigrationPasswordInfo('Contraseña actualizada. Este cambio queda guardado para el servidor local.')
+    } catch (caught) {
+      setMigrationPasswordError(passwordChangeErrorMessage(caught))
+    } finally {
+      setSavingMigrationPassword(false)
+    }
+  }, [
+    migrationConfirmPassword,
+    migrationCurrentPassword,
+    migrationNewPassword,
+    savingMigrationPassword,
+  ])
 
   useEffect(() => {
     const client = supabase
@@ -704,6 +772,7 @@ export function AppLayout() {
       className={[
         'app-shell',
         isNavCollapsed ? 'nav-collapsed' : '',
+        isMessagesRoute ? 'route-messages' : '',
         `theme-${webPreferences.themeMode}`,
         `text-scale-${webPreferences.textScale}`,
       ].filter(Boolean).join(' ')}
@@ -858,46 +927,116 @@ export function AppLayout() {
           </div>
         ) : null}
 
-        <header className="shell-topbar">
-          <div className="shell-topbar-copy">
-            <span className="shell-kicker">{shellMeta.kicker}</span>
-            <div className="shell-heading-row">
-              <div>
-                <h1>{shellMeta.title}</h1>
-                <p>{shellMeta.subtitle}</p>
-              </div>
-              <div className="shell-toolbar">
-                <Link className="shell-search-link" to="/app/search">
-                  Buscar usuarios, chats o contenido
-                </Link>
-                <Link className="shell-quick-link" to="/app/calls">
-                  Llamadas
-                </Link>
-                <Link className="shell-quick-link" to="/app/voice">
-                  Salas
-                </Link>
-                <Link className="shell-quick-link" to="/app/notifications">
-                  Alertas
-                  {notificationUnreadCount > 0 ? (
-                    <span className="shell-inline-counter">
-                      {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
-                    </span>
-                  ) : null}
-                </Link>
+        {requiresMigrationPasswordChange ? (
+          <section className="migration-password-notice" aria-label="Actualización de contraseña requerida">
+            <div className="migration-password-copy">
+              <strong>Actualiza tu contraseña por migración</strong>
+              <p>
+                Las cuentas creadas antes del 25/05/2026 deben cambiar su contraseña una sola vez para
+                usar el servidor local de forma segura.
+              </p>
+              {migrationPasswordError ? <span className="form-error">{migrationPasswordError}</span> : null}
+            </div>
+            {migrationPasswordOpen ? (
+              <form
+                className="migration-password-form"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void submitMigrationPasswordChange()
+                }}
+              >
+                <input
+                  className="text-input"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Contraseña actual"
+                  value={migrationCurrentPassword}
+                  onChange={(event) => setMigrationCurrentPassword(event.target.value)}
+                />
+                <input
+                  className="text-input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Nueva contraseña"
+                  value={migrationNewPassword}
+                  onChange={(event) => setMigrationNewPassword(event.target.value)}
+                />
+                <input
+                  className="text-input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Confirmar contraseña"
+                  value={migrationConfirmPassword}
+                  onChange={(event) => setMigrationConfirmPassword(event.target.value)}
+                />
+                <div className="migration-password-actions">
+                  <button className="primary-btn" type="submit" disabled={savingMigrationPassword}>
+                    {savingMigrationPassword ? 'Actualizando...' : 'Guardar'}
+                  </button>
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => {
+                      setMigrationPasswordOpen(false)
+                      setMigrationPasswordError(null)
+                    }}
+                  >
+                    Luego
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button className="primary-btn" type="button" onClick={() => setMigrationPasswordOpen(true)}>
+                Cambiar ahora
+              </button>
+            )}
+          </section>
+        ) : migrationPasswordInfo ? (
+          <div className="offline-banner syncing">{migrationPasswordInfo}</div>
+        ) : null}
+
+        {!isMessagesRoute ? (
+          <header className="shell-topbar">
+            <div className="shell-topbar-copy">
+              <span className="shell-kicker">{shellMeta.kicker}</span>
+              <div className="shell-heading-row">
+                <div>
+                  <h1>{shellMeta.title}</h1>
+                  <p>{shellMeta.subtitle}</p>
+                </div>
+                <div className="shell-toolbar">
+                  <Link className="shell-search-link" to="/app/search">
+                    Buscar usuarios, chats o contenido
+                  </Link>
+                  <Link className="shell-quick-link" to="/app/calls">
+                    Llamadas
+                  </Link>
+                  <Link className="shell-quick-link" to="/app/voice">
+                    Salas
+                  </Link>
+                  <Link className="shell-quick-link" to="/app/notifications">
+                    Alertas
+                    {notificationUnreadCount > 0 ? (
+                      <span className="shell-inline-counter">
+                        {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="shell-status-strip">
-            <span className="shell-status-pill accent">Cuenta: {displayName}</span>
-            <span className="shell-status-pill">
-              {webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Modo web completo'}
-            </span>
-            <span className="shell-status-pill">
-              Tema {webPreferences.themeMode === 'system' ? 'automático' : webPreferences.themeMode}
-            </span>
-            <span className="shell-status-pill">Idioma {webPreferences.language.toUpperCase()}</span>
-          </div>
-        </header>
+            <div className="shell-status-strip">
+              <span className="shell-status-pill accent">Cuenta: {displayName}</span>
+              <span className="shell-status-pill">
+                {webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Modo web completo'}
+              </span>
+              <span className="shell-status-pill">
+                Tema {webPreferences.themeMode === 'system' ? 'automático' : webPreferences.themeMode}
+              </span>
+              <span className="shell-status-pill">Idioma {webPreferences.language.toUpperCase()}</span>
+            </div>
+          </header>
+        ) : null}
 
         <main className="content-pane">
           <div className={contentShellClassName}>

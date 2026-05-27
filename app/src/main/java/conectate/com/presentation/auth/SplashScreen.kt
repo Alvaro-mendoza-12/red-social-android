@@ -20,8 +20,6 @@ import conectate.com.R
 
 
 @Composable
-@Composable
-@Composable
 fun SplashScreen() {
     val infiniteTransition = rememberInfiniteTransition(label = "splash")
     val scale by infiniteTransition.animateFloat(

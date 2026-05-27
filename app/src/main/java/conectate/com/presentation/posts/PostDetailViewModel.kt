@@ -104,16 +104,41 @@ class PostDetailViewModel @Inject constructor(
     fun toggleLike(postId: String) {
         val state = _uiState.value
         val post = state.post ?: return
+        val currentReaction = post.myReaction?.uppercase()?.ifBlank { null }
+            ?: if (post.likedByMe) "LIKE" else null
+        if (currentReaction != null) {
+            clearReaction(postId)
+        } else {
+            selectReaction(postId, "LIKE")
+        }
+    }
+
+    fun selectReaction(postId: String, reactionType: String) {
+        updatePostReaction(postId, reactionType.uppercase().ifBlank { "LIKE" })
+    }
+
+    fun clearReaction(postId: String) {
+        updatePostReaction(postId, null)
+    }
+
+    private fun updatePostReaction(postId: String, nextReaction: String?) {
+        val state = _uiState.value
+        val post = state.post ?: return
         if (!likeRequestsInFlight.add(postId)) return
-        
+        val previousReaction = post.myReaction?.uppercase()?.ifBlank { null }
+            ?: if (post.likedByMe) "LIKE" else null
+
         viewModelScope.launch {
             try {
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
+                _uiState.value = state.copy(
+                    post = applyReactionState(post, previousReaction, nextReaction)
+                )
 
-                _uiState.value = state.copy(post = post.copy(likedByMe = !wasLiked, likeCount = newLikeCount))
-
-                val result = postRepository.toggleLike(postId, wasLiked)
+                val result = postRepository.setPostReaction(
+                    postId = postId,
+                    reactionType = nextReaction,
+                    wasReacted = previousReaction != null
+                )
                 if (result.isFailure) {
                     _uiState.value = state.copy(post = post)
                 }
@@ -121,6 +146,41 @@ class PostDetailViewModel @Inject constructor(
                 likeRequestsInFlight.remove(postId)
             }
         }
+    }
+
+    private fun applyReactionState(
+        post: Post,
+        previousReaction: String?,
+        nextReaction: String?
+    ): Post {
+        if (previousReaction == nextReaction) return post
+
+        val counts = post.reactionCounts.toMutableMap()
+        if (counts.isEmpty() && post.likeCount > 0) {
+            counts["LIKE"] = post.likeCount
+        }
+
+        if (previousReaction != null) {
+            val previousCount = maxOf(0, (counts[previousReaction] ?: 1) - 1)
+            if (previousCount == 0) counts.remove(previousReaction) else counts[previousReaction] = previousCount
+        }
+
+        if (nextReaction != null) {
+            counts[nextReaction] = (counts[nextReaction] ?: 0) + 1
+        }
+
+        val countDelta = when {
+            previousReaction == null && nextReaction != null -> 1
+            previousReaction != null && nextReaction == null -> -1
+            else -> 0
+        }
+
+        return post.copy(
+            likedByMe = nextReaction != null,
+            myReaction = nextReaction,
+            reactionCounts = counts.toMap(),
+            likeCount = maxOf(0, post.likeCount + countDelta)
+        )
     }
 
     fun toggleShare(postId: String) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
+import { createFallbackPost, loadFallbackFeed, uploadFallbackFile } from '../../core/fallbackData'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   removeRealtimeChannel,
@@ -44,6 +45,12 @@ function initialsOf(name: string): string {
   return clean[0]?.toUpperCase() ?? 'U'
 }
 
+function inferPostMediaType(file: File): 'image' | 'video' | 'file' {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'file'
+}
+
 function mapPost(row: GenericRow): FeedItem {
   const media = extractMediaEntries(row)
   return {
@@ -61,7 +68,7 @@ function mapPost(row: GenericRow): FeedItem {
 }
 
 export function FeedPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [webPreferences] = useWebPreferences()
   const feedCacheKey = `feed:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<FeedItem[]>([])
@@ -74,6 +81,29 @@ export function FeedPage() {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadFeed = useCallback(async (options?: LoadFeedOptions) => {
+    if (isFallbackSession) {
+      if (!options?.silent) {
+        setLoading(true)
+        setError(null)
+      } else {
+        setRealtimeRefreshing(true)
+      }
+      try {
+        const feed = await loadFallbackFeed(60)
+        const mapped = feed.items.map(mapPost)
+        setItems(mapped)
+        writeCachedValue(feedCacheKey, mapped)
+      } catch (caught) {
+        if (!options?.silent) {
+          setError(friendlyError(caught, 'No se pudo cargar el feed del servidor local'))
+        }
+      } finally {
+        setLoading(false)
+        setRealtimeRefreshing(false)
+      }
+      return
+    }
+
     if (!supabase) {
       setError('Supabase no está configurado.')
       setLoading(false)
@@ -149,7 +179,7 @@ export function FeedPage() {
       setLoading(false)
       setRealtimeRefreshing(false)
     }
-  }, [feedCacheKey, user])
+  }, [feedCacheKey, isFallbackSession, user])
 
   useEffect(() => {
     const cached = readCachedValue<FeedItem[]>(feedCacheKey, 1000 * 60 * 60 * 8)
@@ -164,7 +194,7 @@ export function FeedPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client) return
+    if (!client || isFallbackSession) return
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current)
@@ -187,10 +217,10 @@ export function FeedPage() {
       }
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadFeed])
+  }, [isFallbackSession, loadFeed])
 
   async function createPost(file: File | null) {
-    if (!supabase || !user || posting || uploading) return
+    if (!user || posting || uploading) return
     const text = newPostText.trim()
     if (!text && !file) return
 
@@ -198,18 +228,39 @@ export function FeedPage() {
     setError(null)
     try {
       let mediaUrl = ''
+      let mediaType: 'image' | 'video' | 'file' | null = null
       if (file) {
         setUploading(true)
+        mediaType = inferPostMediaType(file)
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `${user.id}/${Date.now()}_${safeName}`
-        const { error: uploadError } = await supabase.storage
-          .from('post-media')
-          .upload(filePath, file, { contentType: file.type || undefined })
-        if (uploadError) throw uploadError
-        const { data } = supabase.storage.from('post-media').getPublicUrl(filePath)
-        mediaUrl = data.publicUrl
+        if (isFallbackSession) {
+          const uploaded = await uploadFallbackFile('post-media', file, filePath)
+          mediaUrl = uploaded.publicUrl
+        } else if (supabase) {
+          const { error: uploadError } = await supabase.storage
+            .from('post-media')
+            .upload(filePath, file, { contentType: file.type || undefined })
+          if (uploadError) throw uploadError
+          const { data } = supabase.storage.from('post-media').getPublicUrl(filePath)
+          mediaUrl = data.publicUrl
+        } else {
+          return
+        }
       }
 
+      if (isFallbackSession) {
+        await createFallbackPost({
+          content: text,
+          mediaUrl: mediaUrl || null,
+          mediaType,
+        })
+        setNewPostText('')
+        await loadFeed({ silent: true })
+        return
+      }
+
+      if (!supabase) return
       const profileNameGuess = user.user_metadata?.display_name ?? user.email?.split('@')[0] ?? 'Usuario'
       const { error: insertError } = await supabase.from('posts').insert({
         user_id: user.id,
@@ -230,6 +281,10 @@ export function FeedPage() {
   }
 
   async function toggleLike(item: FeedItem) {
+    if (isFallbackSession) {
+      setError('Los likes en modo servidor local quedan para la siguiente etapa.')
+      return
+    }
     if (!supabase || !user) return
     try {
       if (item.likedByMe) {
@@ -261,15 +316,14 @@ export function FeedPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack feed-page">
       <article className="surface-card feed-hero-card">
         <div className="feed-hero-copy">
           <div>
             <span className="brand-tag">Comunidad</span>
-            <h3>Publicaciones más limpias, compactas y fáciles de leer</h3>
+            <h3>Comparte algo con tu comunidad</h3>
             <p>
-              El modo web ahora resume textos largos, prioriza el contenido reciente y mantiene la
-              misma línea visual del móvil.
+              Un feed ligero para leer, reaccionar y abrir conversaciones alrededor de cada historia.
             </p>
           </div>
           <div className="feed-hero-stats">
@@ -283,7 +337,7 @@ export function FeedPage() {
             </div>
             <div className="feed-hero-stat">
               <strong>{webPreferences.lowDataMode ? 'ON' : 'OFF'}</strong>
-              <span>ahorro de datos</span>
+              <span>datos</span>
             </div>
           </div>
         </div>
@@ -295,7 +349,7 @@ export function FeedPage() {
         <div className="row-between feed-composer-head">
           <div>
             <h3>Crear publicación</h3>
-            <p>Texto corto, media opcional y ritmo visual más social.</p>
+            <p>Texto, imagen o video para iniciar una conversación.</p>
           </div>
           {webPreferences.lowDataMode ? <span className="folder-tag">Ahorro de datos</span> : null}
         </div>
@@ -306,6 +360,7 @@ export function FeedPage() {
             rows={3}
             maxLength={2200}
             placeholder="¿Qué está pasando en tu comunidad?"
+            aria-label="Texto de la publicación"
             value={newPostText}
             onChange={(event) => setNewPostText(event.target.value)}
           />

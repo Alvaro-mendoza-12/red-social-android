@@ -19,7 +19,8 @@ sealed class AdminUserUiState {
 }
 
 
-class AdminUserPanelViewModel  constructor(
+@HiltViewModel
+class AdminUserPanelViewModel @Inject constructor(
     private val userRepository: UserRepository
 ) : ViewModel() {
 

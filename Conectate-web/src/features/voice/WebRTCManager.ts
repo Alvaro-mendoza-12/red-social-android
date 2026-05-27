@@ -2,11 +2,19 @@ export class WebRTCManager {
   private localStream: MediaStream | null = null;
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private dataChannels: Map<string, RTCDataChannel> = new Map();
-  private onTrackCallbacks: ((track: MediaStreamTrack, stream: MediaStream) => void)[] = [];
+  private onTrackCallbacks: ((track: MediaStreamTrack, stream: MediaStream, peerId: string) => void)[] = [];
   private onDataChannelCallbacks: ((data: any, from: string) => void)[] = [];
   private onConnectionStateCallbacks: ((state: RTCPeerConnectionState, peerId: string) => void)[] = [];
+  private onIceCandidateCallback: ((peerId: string, candidate: RTCIceCandidateInit) => void) | null = null;
+  private iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+  private readonly userId: string;
 
-  constructor(private userId: string) {}
+  constructor(userId: string) {
+    this.userId = userId;
+  }
 
   async initializeLocalMedia(audio: boolean = true, video: boolean = true): Promise<MediaStream> {
     try {
@@ -28,24 +36,21 @@ export class WebRTCManager {
 
   createPeerConnection(peerId: string, isInitiator: boolean): RTCPeerConnection {
     const configuration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+      iceServers: this.iceServers
     };
 
     const peerConnection = new RTCPeerConnection(configuration);
     
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        this.sendIceCandidate(peerId, event.candidate);
+        this.sendIceCandidate(peerId, event.candidate.toJSON());
       }
     };
 
     peerConnection.ontrack = (event) => {
       if (event.streams && event.streams[0]) {
         this.onTrackCallbacks.forEach(callback => {
-          callback(event.track, event.streams[0]);
+          callback(event.track, event.streams[0], peerId);
         });
       }
     };
@@ -156,7 +161,7 @@ export class WebRTCManager {
     });
   }
 
-  onTrack(callback: (track: MediaStreamTrack, stream: MediaStream) => void): void {
+  onTrack(callback: (track: MediaStreamTrack, stream: MediaStream, peerId: string) => void): void {
     this.onTrackCallbacks.push(callback);
   }
 
@@ -166,6 +171,20 @@ export class WebRTCManager {
 
   onConnectionState(callback: (state: RTCPeerConnectionState, peerId: string) => void): void {
     this.onConnectionStateCallbacks.push(callback);
+  }
+
+  onIceCandidate(callback: (peerId: string, candidate: RTCIceCandidateInit) => void): void {
+    this.onIceCandidateCallback = callback;
+  }
+
+  setIceServers(iceServers: RTCIceServer[]): void {
+    if (iceServers.length > 0) {
+      this.iceServers = iceServers;
+    }
+  }
+
+  hasPeerConnection(peerId: string): boolean {
+    return this.peerConnections.has(peerId);
   }
 
   disconnectPeer(peerId: string): void {
@@ -203,8 +222,7 @@ export class WebRTCManager {
   }
 
   private async sendIceCandidate(peerId: string, candidate: RTCIceCandidateInit): Promise<void> {
-    // This would be implemented with your signaling server
-    console.log('Sending ICE candidate to', peerId, candidate);
+    this.onIceCandidateCallback?.(peerId, candidate);
   }
 
   getConnectionStats(): Map<string, RTCPeerConnectionState> {

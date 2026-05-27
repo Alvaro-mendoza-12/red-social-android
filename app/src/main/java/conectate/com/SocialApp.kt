@@ -19,7 +19,6 @@ import conectate.com.core.logging.AppLogger
 import conectate.com.core.observability.AppMetrics
 import conectate.com.core.observability.MetricAlertSeverity
 import conectate.com.core.stability.RuntimeStabilityMonitor
-import conectate.com.core.production.ProductionReadyOptimizer
 import conectate.com.data.observability.SupabaseTelemetryExporter
 import conectate.com.data.sync.SyncManager
 import dagger.hilt.android.HiltAndroidApp
@@ -42,9 +41,6 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     @Inject lateinit var telemetryExporter: SupabaseTelemetryExporter
     @Inject lateinit var syncManager: SyncManager
     @Inject lateinit var runtimeStabilityMonitor: RuntimeStabilityMonitor
-    
-    // 🔥 PRODUCTION OPTIMIZER
-    private lateinit var productionOptimizer: ProductionReadyOptimizer
 
     override val workManagerConfiguration: Configuration
         get() = try {
@@ -60,13 +56,9 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        
-        // 🔥 INICIALIZAR OPTIMIZADOR DE PRODUCCIÓN
-        productionOptimizer = ProductionReadyOptimizer(this)
-        productionOptimizer.initializeForProduction()
-        
+
         // Initialize Coil with optimized settings
-        Coil.setImageLoader(newImageLoader(this))
+        Coil.setImageLoader(newImageLoader())
         
         // Initialize crash reporting
         Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
@@ -77,11 +69,11 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             android.util.Log.d("SocialApp", "APP_START: Conectate Social App initializing...")
         }
         
-        // Setup unhandled exception handler
+        // Setup unhandled exception handler (Simplificado para debug)
+        /*
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                // Not using logger here to avoid potential DI dependencies crashing if they are corrupted
                 android.util.Log.e("SocialApp", "FATAL CRASH in thread ${thread.name}: ${throwable.message}", throwable)
                 crashReporter.recordFatalException(threadName = thread.name, throwable = throwable)
             } catch (e: Exception) {
@@ -89,13 +81,14 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             }
             defaultHandler?.uncaughtException(thread, throwable)
         }
+        */
 
-        // Runtime watchdogs for ANR-like stalls and memory pressure.
-        try {
-            runtimeStabilityMonitor.start(this)
-        } catch (e: Exception) {
-            android.util.Log.e("SocialApp", "RuntimeStabilityMonitor start failed", e)
-        }
+        // Runtime watchdogs (Desactivado temporalmente para debug)
+        // try {
+        //    runtimeStabilityMonitor.start(this)
+        // } catch (e: Exception) {
+        //    android.util.Log.e("SocialApp", "RuntimeStabilityMonitor start failed", e)
+        // }
 
         // Initialize background tasks safely - NO BLOQUEAR MAIN THREAD
         appScope.launch {

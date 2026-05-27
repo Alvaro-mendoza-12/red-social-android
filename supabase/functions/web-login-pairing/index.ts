@@ -121,6 +121,7 @@ async function expirePairingIfNeeded(
 function serializePairing(row: PairingRow) {
   return {
     pairId: row.id,
+    nonce: row.nonce,
     status: row.status,
     deviceLabel: row.device_label,
     approvedByUserId: row.approved_by_user_id,
@@ -278,6 +279,15 @@ serve(async (req) => {
         })
       }
 
+      const accessToken = cleanText(normalizedRow.session_payload?.access_token, 4096)
+      const refreshToken = cleanText(normalizedRow.session_payload?.refresh_token, 4096)
+      if (!accessToken || !refreshToken) {
+        return json(409, {
+          error: 'PAIRING_SESSION_MISSING',
+          pairing: serializePairing(normalizedRow),
+        })
+      }
+
       const { data, error } = await serviceClient
         .from('web_login_pairings')
         .update({
@@ -294,15 +304,6 @@ serve(async (req) => {
         .single<PairingRow>()
 
       if (error) throw error
-
-      const accessToken = cleanText(data.session_payload?.access_token, 4096)
-      const refreshToken = cleanText(data.session_payload?.refresh_token, 4096)
-      if (!accessToken || !refreshToken) {
-        return json(409, {
-          error: 'PAIRING_SESSION_MISSING',
-          pairing: serializePairing(data),
-        })
-      }
 
       return json(200, {
         ...serializePairing(data),

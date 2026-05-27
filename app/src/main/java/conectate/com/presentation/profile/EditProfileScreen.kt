@@ -41,6 +41,14 @@ fun EditProfileScreen(
     var bio by remember { mutableStateOf("") }
     var country by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+    var interestsText by remember { mutableStateOf("") }
+    var gamesText by remember { mutableStateOf("") }
+    var favoriteMusicUrl by remember { mutableStateOf("") }
+    var favoriteBook by remember { mutableStateOf("") }
+    var favoriteSport by remember { mutableStateOf("") }
+    var career by remember { mutableStateOf("") }
+    var availabilitySchedule by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var coverImageUri by remember { mutableStateOf<Uri?>(null) }
     var initialized by remember { mutableStateOf(false) }
@@ -52,6 +60,14 @@ fun EditProfileScreen(
             bio = user.bio ?: ""
             country = user.country ?: ""
             city = user.city ?: ""
+            status = user.status ?: ""
+            interestsText = user.interests.joinToString(", ")
+            gamesText = formatGamesWithLogos(user.linked_games, user.game_logo_urls)
+            favoriteMusicUrl = user.favorite_music_url ?: ""
+            favoriteBook = user.favorite_book ?: ""
+            favoriteSport = user.favorite_sport ?: ""
+            career = user.career ?: ""
+            availabilitySchedule = user.availability_schedule ?: ""
             initialized = true
         }
     }
@@ -239,6 +255,77 @@ fun EditProfileScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Divider()
+
+                        Text(
+                            "Perfil estilo Discord",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+
+                        OutlinedTextField(
+                            value = status,
+                            onValueChange = { if (it.length <= 80) status = it },
+                            label = { Text("Estado o frase personal") },
+                            modifier = Modifier.fillMaxWidth(),
+                            supportingText = { Text("${status.length}/80 caracteres") }
+                        )
+
+                        OutlinedTextField(
+                            value = interestsText,
+                            onValueChange = { interestsText = it },
+                            label = { Text("Intereses") },
+                            placeholder = { Text("anime, juegos, música, libros, deportes") },
+                            modifier = Modifier.fillMaxWidth(),
+                            supportingText = { Text("Separa cada interés con coma.") }
+                        )
+
+                        OutlinedTextField(
+                            value = gamesText,
+                            onValueChange = { gamesText = it },
+                            label = { Text("Juegos vinculados") },
+                            placeholder = { Text("Minecraft|https://logo.png, Valorant") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            supportingText = { Text("Usa Nombre|URL para guardar logo opcional.") }
+                        )
+
+                        OutlinedTextField(
+                            value = favoriteMusicUrl,
+                            onValueChange = { favoriteMusicUrl = it.trim().take(300) },
+                            label = { Text("Música favorita (Spotify/Apple Music)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = favoriteBook,
+                            onValueChange = { if (it.length <= 120) favoriteBook = it },
+                            label = { Text("Libro favorito") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = favoriteSport,
+                            onValueChange = { if (it.length <= 80) favoriteSport = it },
+                            label = { Text("Deporte favorito") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = career,
+                            onValueChange = { if (it.length <= 120) career = it },
+                            label = { Text("Carrera / ocupación") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = availabilitySchedule,
+                            onValueChange = { if (it.length <= 160) availabilitySchedule = it },
+                            label = { Text("Horario") },
+                            placeholder = { Text("Lun-Vie 18:00-22:00") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         if (errorMessage != null) {
                             Text(errorMessage ?: "", color = MaterialTheme.colorScheme.error)
                         }
@@ -255,6 +342,7 @@ fun EditProfileScreen(
                                     else -> {
                                         isLoading = true
                                         errorMessage = null
+                                        val parsedGames = parseGamesWithLogos(gamesText)
                                         viewModel.updateProfile(
                                             name = trimmedName,
                                             bio = trimmedBio,
@@ -262,6 +350,15 @@ fun EditProfileScreen(
                                             city = city.trim(),
                                             imageUri = imageUri,
                                             coverImageUri = coverImageUri,
+                                            status = status,
+                                            interests = parseCommaList(interestsText),
+                                            linkedGames = parsedGames.first,
+                                            gameLogoUrls = parsedGames.second,
+                                            favoriteMusicUrl = favoriteMusicUrl,
+                                            favoriteBook = favoriteBook,
+                                            favoriteSport = favoriteSport,
+                                            career = career,
+                                            availabilitySchedule = availabilitySchedule,
                                             onSuccess = {
                                                 isLoading = false
                                                 // Force reload to show changes immediately
@@ -312,5 +409,41 @@ fun EditProfileScreen(
                 }
             }
         }
+    }
+}
+
+private fun parseCommaList(value: String): List<String> {
+    return value
+        .split(',', '\n')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
+private fun parseGamesWithLogos(value: String): Pair<List<String>, Map<String, String>> {
+    val games = mutableListOf<String>()
+    val logos = linkedMapOf<String, String>()
+
+    value.split(',', '\n')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .forEach { raw ->
+            val parts = raw.split('|', limit = 2).map { it.trim() }
+            val name = parts.firstOrNull().orEmpty()
+            if (name.isNotBlank()) {
+                games += name
+                parts.getOrNull(1)
+                    ?.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
+                    ?.let { logos[name] = it }
+            }
+        }
+
+    return games.distinct() to logos
+}
+
+private fun formatGamesWithLogos(games: List<String>, logos: Map<String, String>): String {
+    return games.joinToString(", ") { game ->
+        val logo = logos[game]
+        if (logo.isNullOrBlank()) game else "$game|$logo"
     }
 }

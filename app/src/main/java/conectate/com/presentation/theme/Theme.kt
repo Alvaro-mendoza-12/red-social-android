@@ -7,13 +7,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-
-internal val AppTypography = Typography
+import conectate.com.data.local.prefs.AppFontOption
+import conectate.com.design.system.ConectateAppearanceTokens
+import conectate.com.design.system.ConectateDesignSystem
+import conectate.com.design.system.ConectateMotionTokens
+import conectate.com.design.system.LocalConectateDesignSystem
 
 private val DarkColorScheme = darkColorScheme(
     primary = RedPrimary,
@@ -54,9 +59,32 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun RedSocialTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    fontOption: AppFontOption = AppFontOption.DEFAULT,
+    textScale: Float = 1f,
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val resolvedTextScale = textScale.coerceIn(0.9f, 1.25f)
+    val fontFamily = remember(fontOption) { appFontFamilyFor(fontOption) }
+    val typography = remember(fontFamily, resolvedTextScale) {
+        buildAppTypography(
+            fontFamily = fontFamily,
+            textScale = resolvedTextScale
+        )
+    }
+    val designSystem = remember(darkTheme, fontOption, fontFamily, resolvedTextScale, reduceMotion) {
+        ConectateDesignSystem(
+            appearance = ConectateAppearanceTokens(
+                darkTheme = darkTheme,
+                fontOption = fontOption,
+                fontFamily = fontFamily,
+                textScale = resolvedTextScale,
+                reduceMotion = reduceMotion
+            ),
+            motion = ConectateMotionTokens(reduceMotion = reduceMotion)
+        )
+    }
     
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -79,9 +107,11 @@ fun RedSocialTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AppTypography,
-        content = content
-    )
+    CompositionLocalProvider(LocalConectateDesignSystem provides designSystem) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            content = content
+        )
+    }
 }

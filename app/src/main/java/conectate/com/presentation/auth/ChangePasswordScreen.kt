@@ -22,6 +22,7 @@ import conectate.com.presentation.navigation.Screen
 
 
 
+@Composable
 fun ChangePasswordScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()

@@ -9,7 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,16 +19,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import conectate.com.data.local.prefs.AppSettingsPreferences
+import conectate.com.presentation.profile.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomizeAppScreen(navController: NavController) {
-    var selectedLayout by remember { mutableStateOf(0) }
-    
-    // Default list of tabs representing bottom navigation
-    var customTabs by remember { 
-        mutableStateOf(listOf("Mensajes", "Videos", "Social", "Perfil")) 
+fun CustomizeAppScreen(
+    navController: NavController,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
+    val savedLayout by viewModel.bottomNavigationLayout.collectAsState()
+    val savedTabs by viewModel.bottomNavigationOrder.collectAsState()
+    var selectedLayout by remember(savedLayout) { mutableStateOf(savedLayout) }
+    var customTabs by remember(savedTabs) {
+        mutableStateOf(savedTabs.ifEmpty { AppSettingsPreferences.DEFAULT_BOTTOM_NAV_ORDER })
     }
 
     Scaffold(
@@ -106,14 +113,13 @@ fun CustomizeAppScreen(navController: NavController) {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
-                    text = "Mantén presionado y arrastra para cambiar el orden de la barra de navegación como tú quieras.",
+                    text = "Reordena la barra inferior. El cambio se guarda y se aplica al volver a Inicio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
             }
 
-            // Simple Drag and drop mockup UI
             items(customTabs.size) { index ->
                 val tabName = customTabs[index]
                 Card(
@@ -134,10 +140,32 @@ fun CustomizeAppScreen(navController: NavController) {
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
-                        Icon(
-                            imageVector = Icons.Default.DragHandle,
-                            contentDescription = "Arrastrar"
-                        )
+                        Row {
+                            IconButton(
+                                onClick = {
+                                    customTabs = customTabs.moveItem(index, index - 1)
+                                    selectedLayout = 3
+                                },
+                                enabled = index > 0
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Subir $tabName"
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    customTabs = customTabs.moveItem(index, index + 1)
+                                    selectedLayout = 3
+                                },
+                                enabled = index < customTabs.lastIndex
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Bajar $tabName"
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -145,9 +173,9 @@ fun CustomizeAppScreen(navController: NavController) {
             item {
                 Spacer(modifier = Modifier.height(32.dp))
                 Button(
-                    onClick = { 
-                        // Guardar configuración en DataStore o SharedPreferences
-                        navController.popBackStack() 
+                    onClick = {
+                        viewModel.setBottomNavigation(selectedLayout, customTabs)
+                        navController.popBackStack()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)
@@ -156,6 +184,14 @@ fun CustomizeAppScreen(navController: NavController) {
                 }
             }
         }
+    }
+}
+
+private fun List<String>.moveItem(fromIndex: Int, toIndex: Int): List<String> {
+    if (fromIndex !in indices || toIndex !in indices || fromIndex == toIndex) return this
+    return toMutableList().apply {
+        val item = removeAt(fromIndex)
+        add(toIndex, item)
     }
 }
 

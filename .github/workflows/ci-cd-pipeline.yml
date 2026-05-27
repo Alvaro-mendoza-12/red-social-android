@@ -14,18 +14,13 @@
 # 9. Rollback capabilities
 # 10. Monitoring y alerting
 
-name: 🚀 Conectate CI/CD Pipeline
+name: 🚀 Conectate CI/CD Pipeline (LEGACY)
 
-# 🔥 TRIGGERS - Eventos que disparan el pipeline
+# ⚠️ LEGACY:
+# Este pipeline fue un experimento "enterprise" y puede referenciar tasks/infra
+# que no existen en este repo (integrationTest, performanceTest, k8s/helm, etc.).
+# Para evitar ejecuciones accidentales en cada push/PR, queda SOLO manual.
 on:
-  push:
-    branches: [ main, develop, release/* ]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-  pull_request:
-    branches: [ main, develop ]
-    types: [ opened, synchronize, reopened ]
   workflow_dispatch:
     inputs:
       environment:
@@ -34,8 +29,8 @@ on:
         default: 'staging'
         type: choice
         options:
-        - staging
-        - production
+          - staging
+          - production
       force_deploy:
         description: 'Force deployment (bypass checks)'
         required: false

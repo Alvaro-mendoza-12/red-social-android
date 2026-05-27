@@ -19,6 +19,7 @@ import conectate.com.data.model.Badge
 import conectate.com.data.model.User
 
 
+@Composable
 fun CreateBadgeDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, description: String, icon: String, color: String) -> Unit
@@ -215,6 +216,7 @@ fun CreateBadgeDialog(
 }
 
 
+@Composable
 fun AssignBadgeDialog(
     user: User,
     availableBadges: List<Badge>,
@@ -279,6 +281,7 @@ fun AssignBadgeDialog(
 }
 
 
+@Composable
 fun BadgeListItem(
     badge: Badge,
     onClick: () -> Unit

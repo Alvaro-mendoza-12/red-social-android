@@ -124,7 +124,7 @@ class MediaUploadGuard @Inject constructor() {
             allowedExtensions = setOf("m4a", "mp3", "wav")
         ),
         "videos" to BucketPolicy(
-            maxBytes = 120L * 1024 * 1024,
+            maxBytes = 100L * 1024 * 1024,
             allowedContentTypes = setOf("video/mp4"),
             allowedExtensions = setOf("mp4", "mov")
         ),
@@ -168,7 +168,7 @@ class MediaUploadGuard @Inject constructor() {
         if (cleanContentType.isBlank()) {
             return MediaValidationResult(false, "Missing content type")
         }
-        val canonicalType = cleanContentType.substringBefore("")
+        val canonicalType = cleanContentType.substringBefore(";").trim()
         val fileExtension = fileName.substringAfterLast('.', "").lowercase()
 
         val policy = policies[bucketName]

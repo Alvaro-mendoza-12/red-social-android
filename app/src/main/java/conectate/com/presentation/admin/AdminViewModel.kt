@@ -41,7 +41,8 @@ data class SuspensionRequestConfig(
 )
 
 
-class AdminViewModel  constructor(
+@HiltViewModel
+class AdminViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val authService: AuthService,
     private val badgeRepository: BadgeRepository,
@@ -89,7 +90,7 @@ class AdminViewModel  constructor(
         viewModelScope.launch {
             if (!_isAdmin.value) {
                 _adminState.value = AdminUiState.Unauthorized
-                return
+                return@launch
             }
             _adminState.value = AdminUiState.Loading
             android.util.Log.d("AdminViewModel", "Loading all reports...")
@@ -104,7 +105,7 @@ class AdminViewModel  constructor(
                     ?: videoReportsResult.exceptionOrNull()?.message
                     ?: "Error al cargar reportes"
                 _adminState.value = AdminUiState.Error(message)
-                return
+                return@launch
             }
 
             android.util.Log.d(
@@ -316,7 +317,7 @@ class AdminViewModel  constructor(
     fun revokeBadge(userId: String, badgeId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
-            var currentUserId = authService.getCurrentUserId() ?: return
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
             badgeRepository.revokeBadge(userId, badgeId, currentUserId).onSuccess {
                 loadUserBadges(userId) // Refresh user's badges
                 loadGrantedAssignments() // Refresh tracking list
@@ -331,8 +332,8 @@ class AdminViewModel  constructor(
     fun revokeAllBadges(userId: String, badges: List<Badge>) {
         viewModelScope.launch {
             _isProcessing.value = true
-            var currentUserId = authService.getCurrentUserId() ?: return
-            val successCount = 0
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
+            var successCount = 0
             badges.forEach { badge ->
                 badgeRepository.revokeBadge(userId, badge.id, currentUserId).onSuccess {
                     successCount++
@@ -393,7 +394,7 @@ class AdminViewModel  constructor(
 
     fun createCustomBadge(name: String, description: String, icon: String, color: String) {
         viewModelScope.launch {
-            var currentUserId = authService.getCurrentUserId() ?: return
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
             badgeRepository.createCustomBadge(name, description, icon, color, currentUserId)
                 .onSuccess {
                     loadAllBadges() // Refresh badge list
@@ -403,7 +404,7 @@ class AdminViewModel  constructor(
 
     fun seedSystemBadges() {
         viewModelScope.launch {
-            var currentUserId = authService.getCurrentUserId() ?: return
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
             
             val systemBadges = listOf(
                 Triple("Influencer 10M", "10 Millones de seguidores", "💎"),
@@ -422,7 +423,7 @@ class AdminViewModel  constructor(
     fun grantBadge(userId: String, badgeId: String) {
         viewModelScope.launch {
             _isProcessing.value = true
-            var currentUserId = authService.getCurrentUserId() ?: return
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
             badgeRepository.grantBadge(userId, badgeId, currentUserId).onSuccess {
                 loadUserBadges(userId) // Refresh user's badges
                 loadGrantedAssignments() // Refresh tracking list
@@ -437,7 +438,7 @@ class AdminViewModel  constructor(
     fun setVerified(userId: String, verified: Boolean) {
         viewModelScope.launch {
             _isProcessing.value = true
-            var currentUserId = authService.getCurrentUserId() ?: return
+            var currentUserId = authService.getCurrentUserId() ?: return@launch
             badgeRepository.setVerified(userId, verified, currentUserId).onSuccess {
                 loadGrantedAssignments()
                 // Refresh searched user

@@ -36,8 +36,7 @@ object InputSecurityPolicy {
     const val MAX_REPORT_REASON_LENGTH = 120
     const val MAX_REPORT_DESCRIPTION_LENGTH = 2000
 
-@Composable
-@Composable
+
     fun sanitizeMessageText(value: String): String {
         return value.trim().take(MAX_TEXT_MESSAGE_LENGTH)
     }

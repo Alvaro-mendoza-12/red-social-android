@@ -1,6 +1,5 @@
 package conectate.com.di
 
-import android.util.Log
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import conectate.com.BuildConfig
 import conectate.com.data.cache.UpstashCacheService
@@ -9,7 +8,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import io.ktor.client.*
-import io.ktor.client.engine.android.*
+import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
 import io.ktor.serialization.kotlinx.json.*
@@ -27,7 +26,7 @@ object CacheModule {
     @Provides
     @Singleton
     fun provideKtorHttpClient(): HttpClient {
-        return HttpClient(Android) {
+        return HttpClient(CIO) {
             install(ContentNegotiation) {
                 json(Json {
                     ignoreUnknownKeys = true
@@ -43,15 +42,8 @@ object CacheModule {
     @Provides
     @Singleton
     fun provideUpstashCacheService(
-        httpClient: HttpClient,
-        crashlytics: FirebaseCrashlytics
+        httpClient: HttpClient
     ): UpstashCacheService {
-        // Validar configuración
-        if (BuildConfig.UPSTASH_REST_URL.isBlank() || BuildConfig.UPSTASH_TOKEN.isBlank()) {
-            Log.w("CacheModule", "Upstash no configurado. Cache deshabilitado.")
-            // Retornar dummy service? Por ahora lanzamos excepción clara
-            // En producción, se puede usar NoOpCacheService
-        }
         return UpstashCacheService(httpClient)
     }
 }

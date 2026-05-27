@@ -7,6 +7,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import conectate.com.core.testing.RuntimeSessionOverride
 import conectate.com.core.testing.TestRuntimeOverrides
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.LocalFallbackAuthResponse
+import conectate.com.data.localfallback.LocalFallbackUser
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -89,6 +92,7 @@ data class CurrentUserProfileSeed(
 @Singleton
 class AuthService @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val database: AppDatabase,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) {
@@ -102,6 +106,15 @@ class AuthService @Inject constructor(
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_FORCED_LOGOUT = "forced_logout"
+        private const val KEY_LOCAL_FALLBACK_SESSION = "local_fallback_session"
+        private const val KEY_LOCAL_FALLBACK_LOCAL_USER_ID = "local_fallback_local_user_id"
+        private const val KEY_LOCAL_FALLBACK_DISPLAY_USER_ID = "local_fallback_display_user_id"
+        private const val KEY_LOCAL_FALLBACK_SUPABASE_USER_ID = "local_fallback_supabase_user_id"
+        private const val KEY_LOCAL_FALLBACK_EMAIL = "local_fallback_email"
+        private const val KEY_LOCAL_FALLBACK_DISPLAY_NAME = "local_fallback_display_name"
+        private const val KEY_LOCAL_FALLBACK_AVATAR_URL = "local_fallback_avatar_url"
+        private const val KEY_LOCAL_FALLBACK_COUNTRY = "local_fallback_country"
+        private const val KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT = "local_fallback_account_created_at"
     }
 
     // Using SharedPreferences just to track "if logged in" for simple checks if needed,
@@ -137,24 +150,28 @@ class AuthService @Inject constructor(
 
     private fun isForcedLogout(): Boolean = authPrefsOrNull?.getBoolean(KEY_FORCED_LOGOUT, false) == true
 
-    private fun createSecureAuthPrefsState(): SecurePrefsState = runCatching {
+    private fun createSecureAuthPrefsState(): SecurePrefsState = try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        val prefs = EncryptedSharedPreferences.create(
             context,
             AUTH_CACHE_PREFS,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-    }.fold(
-        onSuccess = { SecurePrefsState(prefs = it, initializationError = null) },
-        onFailure = { error ->
-            Log.e("AuthService", "Secure auth storage unavailable. Session persistence will be blocked.", error)
-            SecurePrefsState(prefs = null, initializationError = error)
+        SecurePrefsState(prefs = prefs, initializationError = null)
+    } catch (error: Throwable) {
+        Log.e("AuthService", "CRITICAL: Secure storage failed, falling back to insecure storage", error)
+        try {
+            // Fallback to normal shared prefs so the app at least opens
+            val fallbackPrefs = context.getSharedPreferences("auth_cache_fallback", Context.MODE_PRIVATE)
+            SecurePrefsState(prefs = fallbackPrefs, initializationError = error)
+        } catch (e: Throwable) {
+            SecurePrefsState(prefs = null, initializationError = e)
         }
-    )
+    }
 
     private fun setForcedLogout(enabled: Boolean) {
         authPrefsOrNull?.edit()?.putBoolean(KEY_FORCED_LOGOUT, enabled)?.apply()
@@ -172,6 +189,15 @@ class AuthService @Inject constructor(
             ?.putBoolean(KEY_FORCED_LOGOUT, true)
             ?.remove(KEY_ACCESS_TOKEN)
             ?.remove(KEY_REFRESH_TOKEN)
+            ?.remove(KEY_LOCAL_FALLBACK_SESSION)
+            ?.remove(KEY_LOCAL_FALLBACK_LOCAL_USER_ID)
+            ?.remove(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID)
+            ?.remove(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID)
+            ?.remove(KEY_LOCAL_FALLBACK_EMAIL)
+            ?.remove(KEY_LOCAL_FALLBACK_DISPLAY_NAME)
+            ?.remove(KEY_LOCAL_FALLBACK_AVATAR_URL)
+            ?.remove(KEY_LOCAL_FALLBACK_COUNTRY)
+            ?.remove(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT)
             ?.apply()
         _currentSession.value = null
     }
@@ -260,42 +286,49 @@ class AuthService @Inject constructor(
             _isInitializing.value = false
             Log.w("AuthService", "Forced logout flag set: skipping session recovery")
         } else {
-            // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
-            authScope.launch {
-                try {
-                    // Fast-path recovery from SDK cache first.
-                    var bootSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
-                    if (!isUsableSession(bootSession)) {
-                        bootSession = null
-                    }
+            val localSession = recoverPersistedLocalFallbackSession()
+            if (localSession != null) {
+                _currentSession.value = localSession
+                _isInitializing.value = false
+                Log.d("AuthService", "Local fallback session recovered at startup")
+            } else {
+                // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
+                authScope.launch {
+                    try {
+                        // Fast-path recovery from SDK cache first.
+                        var bootSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
+                        if (!isUsableSession(bootSession)) {
+                            bootSession = null
+                        }
 
-                    // Fallback recovery from lightweight local cache (covers slow/offline edge cases).
-                    if (bootSession == null) {
-                        bootSession = recoverPersistedSessionFromSnapshot()
-                    }
+                        // Fallback recovery from lightweight local cache (covers slow/offline edge cases).
+                        if (bootSession == null) {
+                            bootSession = recoverPersistedSessionFromSnapshot()
+                        }
 
-                    bootSession?.let { cachedSession ->
-                        _currentSession.value = mapSession(cachedSession)
-                        persistSessionSnapshot(cachedSession)
-                        _isInitializing.value = false
-                        Log.d("AuthService", "Cached session recovered at startup")
+                        bootSession?.let { cachedSession ->
+                            _currentSession.value = mapSession(cachedSession)
+                            persistSessionSnapshot(cachedSession)
+                            _isInitializing.value = false
+                            Log.d("AuthService", "Cached session recovered at startup")
 
-                        // PROACTIVE REFRESH: If session is old, trigger background refresh immediately
-                        launch {
-                            try {
-                                var token = cachedSession.accessToken
-                                val exp = extractJwtClaim(token, "exp")?.toLongOrNull() ?: 0L
-                                if (exp < (System.currentTimeMillis() / 1000) + 600) { // If less than 10 mins left
-                                    Log.i("AuthService", "Proactive background refresh triggered for recovered session")
-                                    supabaseConfig.client.auth.refreshCurrentSession()
+                            // PROACTIVE REFRESH: If session is old, trigger background refresh immediately
+                            launch {
+                                try {
+                                    var token = cachedSession.accessToken
+                                    val exp = extractJwtClaim(token, "exp")?.toLongOrNull() ?: 0L
+                                    if (exp < (System.currentTimeMillis() / 1000) + 600) { // If less than 10 mins left
+                                        Log.i("AuthService", "Proactive background refresh triggered for recovered session")
+                                        supabaseConfig.client.auth.refreshCurrentSession()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("AuthService", "Proactive refresh failed", e)
                                 }
-                            } catch (e: Exception) {
-                                Log.e("AuthService", "Proactive refresh failed", e)
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.e("AuthService", "Startup session recovery failed", e)
                     }
-                } catch (e: Exception) {
-                    Log.e("AuthService", "Startup session recovery failed", e)
                 }
             }
         }
@@ -312,6 +345,11 @@ class AuthService @Inject constructor(
                     if (isForcedLogout()) {
                         _currentSession.value = null
                         clearPersistedSessionSnapshot()
+                        _isInitializing.value = false
+                        return@collect
+                    }
+                    recoverPersistedLocalFallbackSession()?.let { localSession ->
+                        _currentSession.value = localSession
                         _isInitializing.value = false
                         return@collect
                     }
@@ -379,6 +417,17 @@ class AuthService @Inject constructor(
     ): Result<AuthResponse> {
         return try {
             ensureSecureStorageAvailable().getOrThrow()
+            if (localFallbackApiClient.isConfigured) {
+                val localResult = localFallbackApiClient.register(
+                    email = email,
+                    password = password,
+                    displayName = metadata.display_name ?: metadata.full_name
+                )
+                val localSession = localResult.getOrElse { return Result.failure(it) }
+                persistLocalFallbackSession(localSession)
+                return Result.success(mapLocalFallbackSession(localSession))
+            }
+
             supabaseConfig.client.auth.signUpWith(Email) {
                 this.email = email
                 this.password = password
@@ -443,11 +492,16 @@ class AuthService @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun signIn(email: String, password: String): Result<Unit> {
         return try {
             ensureSecureStorageAvailable().getOrThrow()
+            if (localFallbackApiClient.isConfigured) {
+                val localResult = localFallbackApiClient.login(email, password)
+                val localSession = localResult.getOrElse { return Result.failure(it) }
+                persistLocalFallbackSession(localSession)
+                return Result.success(Unit)
+            }
+
             supabaseConfig.client.auth.signInWith(Email) {
                 this.email = email
                 this.password = password
@@ -483,8 +537,6 @@ class AuthService @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun signOut() {
         // Gate logout immediately so navigation/login flow doesn't bounce back due to stale SDK session.
         forceLocalLogout()
@@ -541,6 +593,19 @@ class AuthService @Inject constructor(
         privacyPolicyAcceptedAt: String? = null
     ): Result<Unit> {
         return try {
+            if (isLocalFallbackSession()) {
+                authPrefsOrNull?.edit()
+                    ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, displayName ?: fullName)
+                    ?.putString(KEY_LOCAL_FALLBACK_AVATAR_URL, avatarUrl)
+                    ?.putString(KEY_LOCAL_FALLBACK_COUNTRY, country)
+                    ?.apply()
+                val recovered = recoverPersistedLocalFallbackSession()
+                if (recovered != null) {
+                    _currentSession.value = recovered
+                }
+                return Result.success(Unit)
+            }
+
             Log.d(
                 "AuthService",
                 "Updating user metadata: fullName=$fullName, displayName=$displayName, country=$country, avatar=$avatarUrl, privacyAccepted=$privacyPolicyAccepted"
@@ -579,6 +644,7 @@ class AuthService @Inject constructor(
             )
         }
         if (isForcedLogout()) return null
+        getLocalFallbackProfileSeed()?.let { return it }
 
         val userInfo = runCatching {
             supabaseConfig.client.auth.currentUserOrNull()
@@ -702,6 +768,7 @@ class AuthService @Inject constructor(
     fun getCurrentUserId(): String? {
         TestRuntimeOverrides.currentSession(context)?.let { return it.userId.trim().lowercase() }
         if (isForcedLogout()) return null
+        localFallbackDisplayUserIdFromPrefs()?.let { return it }
         val sdkUserId = supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
         if (!sdkUserId.isNullOrBlank()) return sdkUserId
         val cachedUserId = _currentSession.value?.user?.id?.trim()?.lowercase()
@@ -714,6 +781,7 @@ class AuthService @Inject constructor(
     fun getCurrentUserEmail(): String? {
         TestRuntimeOverrides.currentSession(context)?.let { return it.email.trim().lowercase() }
         if (isForcedLogout()) return null
+        localFallbackEmailFromPrefs()?.let { return it }
         val sdkEmail = supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase()
         if (!sdkEmail.isNullOrBlank()) return sdkEmail
         val cachedEmail = _currentSession.value?.user?.email?.trim()?.lowercase()
@@ -725,11 +793,13 @@ class AuthService @Inject constructor(
 
     fun getAccessToken(): String? =
         TestRuntimeOverrides.currentSession(context)?.accessToken
-            ?: if (isForcedLogout()) null else supabaseConfig.client.auth.currentAccessTokenOrNull()
+            ?: if (isForcedLogout()) null else readLocalFallbackAccessToken()
+                ?: supabaseConfig.client.auth.currentAccessTokenOrNull()
 
     fun getRefreshToken(): String? {
         TestRuntimeOverrides.currentSession(context)?.refreshToken?.let { return it }
         if (isForcedLogout()) return null
+        readLocalFallbackAccessToken()?.let { return it }
         return supabaseConfig.client.auth.currentSessionOrNull()?.refreshToken
             ?: authPrefsOrNull?.getString(KEY_REFRESH_TOKEN, null)
     }
@@ -744,6 +814,7 @@ class AuthService @Inject constructor(
         TestRuntimeOverrides.currentSession(context)?.accessToken?.trim()?.takeIf { it.isNotBlank() }?.let {
             return it
         }
+        readLocalFallbackAccessToken()?.let { return it }
         var currentToken = getAccessToken()
         if (currentToken.isNullOrBlank() && !isForcedLogout()) {
             repeat(12) {
@@ -797,6 +868,10 @@ class AuthService @Inject constructor(
         if (isForcedLogout()) {
             return Result.failure(Exception("No hay una sesión activa"))
         }
+        readLocalFallbackAccessToken()?.let { token ->
+            recoverPersistedLocalFallbackSession()?.let { _currentSession.value = it }
+            return Result.success(token)
+        }
 
         return try {
             var session = awaitUsableSession(maxAttempts = 4, intervalMs = 80)
@@ -838,8 +913,6 @@ class AuthService @Inject constructor(
 
     fun observeSession(): StateFlow<AuthResponse?> = currentSession
 
-@Composable
-@Composable
     suspend fun clearLocalDataForAccountSwitch() {
         withContext(Dispatchers.IO) {
             runCatching { database.clearAllTables() }
@@ -898,6 +971,15 @@ class AuthService @Inject constructor(
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .putString(KEY_REFRESH_TOKEN, refreshToken)
+            .remove(KEY_LOCAL_FALLBACK_SESSION)
+            .remove(KEY_LOCAL_FALLBACK_LOCAL_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_EMAIL)
+            .remove(KEY_LOCAL_FALLBACK_DISPLAY_NAME)
+            .remove(KEY_LOCAL_FALLBACK_AVATAR_URL)
+            .remove(KEY_LOCAL_FALLBACK_COUNTRY)
+            .remove(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT)
             .apply()
     }
 
@@ -906,7 +988,159 @@ class AuthService @Inject constructor(
         prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_LOCAL_FALLBACK_SESSION)
+            .remove(KEY_LOCAL_FALLBACK_LOCAL_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID)
+            .remove(KEY_LOCAL_FALLBACK_EMAIL)
+            .remove(KEY_LOCAL_FALLBACK_DISPLAY_NAME)
+            .remove(KEY_LOCAL_FALLBACK_AVATAR_URL)
+            .remove(KEY_LOCAL_FALLBACK_COUNTRY)
+            .remove(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT)
             .apply()
+    }
+
+    fun isLocalFallbackSession(): Boolean {
+        val prefs = authPrefsOrNull ?: return false
+        if (isForcedLogout()) return false
+        return prefs.getBoolean(KEY_LOCAL_FALLBACK_SESSION, false) &&
+            !prefs.getString(KEY_ACCESS_TOKEN, null).isNullOrBlank() &&
+            !prefs.getString(KEY_LOCAL_FALLBACK_EMAIL, null).isNullOrBlank()
+    }
+
+    private fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
+        val user = response.user
+        val accessToken = response.accessToken.trim()
+        val localUserId = user.id.trim().lowercase()
+        val displayUserId = localFallbackDisplayUserId(user)
+        val email = user.email.trim().lowercase()
+        if (accessToken.isBlank() || localUserId.isBlank() || displayUserId.isBlank() || email.isBlank()) return
+
+        authPrefsOrNull?.edit()
+            ?.putBoolean(KEY_FORCED_LOGOUT, false)
+            ?.putBoolean(KEY_LOCAL_FALLBACK_SESSION, true)
+            ?.putString(KEY_ACCESS_TOKEN, accessToken)
+            ?.putString(KEY_REFRESH_TOKEN, accessToken)
+            ?.putString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, localUserId)
+            ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, displayUserId)
+            ?.putString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, user.supabaseUserId?.trim()?.lowercase())
+            ?.putString(KEY_LOCAL_FALLBACK_EMAIL, email)
+            ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, user.displayName?.trim())
+            ?.putString(KEY_LOCAL_FALLBACK_AVATAR_URL, user.avatarUrl?.trim())
+            ?.putString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, user.accountCreatedAt ?: user.createdAt)
+            ?.apply()
+
+        _currentSession.value = mapLocalFallbackSession(response)
+    }
+
+    private fun mapLocalFallbackSession(response: LocalFallbackAuthResponse): AuthResponse {
+        val user = response.user
+        val displayUserId = localFallbackDisplayUserId(user)
+        val email = user.email.trim().lowercase()
+        return AuthResponse(
+            accessToken = response.accessToken,
+            refreshToken = response.accessToken,
+            tokenType = response.tokenType.ifBlank { "Bearer" },
+            expiresIn = 7 * 24 * 60 * 60,
+            user = UserData(
+                id = displayUserId,
+                email = email,
+                metadata = kotlinx.serialization.json.buildJsonObject {
+                    put("fallback_auth", kotlinx.serialization.json.JsonPrimitive(true))
+                    put("local_fallback_id", kotlinx.serialization.json.JsonPrimitive(user.id))
+                    user.supabaseUserId?.takeIf { it.isNotBlank() }?.let {
+                        put("supabase_user_id", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    user.displayName?.takeIf { it.isNotBlank() }?.let {
+                        put("display_name", kotlinx.serialization.json.JsonPrimitive(it))
+                        put("full_name", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    user.avatarUrl?.takeIf { it.isNotBlank() }?.let {
+                        put("avatar_url", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    user.accountCreatedAt?.takeIf { it.isNotBlank() }?.let {
+                        put("account_created_at", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                }
+            )
+        )
+    }
+
+    private fun recoverPersistedLocalFallbackSession(): AuthResponse? {
+        if (!isLocalFallbackSession()) return null
+        val prefs = authPrefsOrNull ?: return null
+        val accessToken = prefs.getString(KEY_ACCESS_TOKEN, null)?.trim().orEmpty()
+        val displayUserId = localFallbackDisplayUserIdFromPrefs() ?: return null
+        val email = localFallbackEmailFromPrefs() ?: return null
+        return AuthResponse(
+            accessToken = accessToken,
+            refreshToken = accessToken,
+            tokenType = "Bearer",
+            expiresIn = 7 * 24 * 60 * 60,
+            user = UserData(id = displayUserId, email = email)
+        )
+    }
+
+    private fun getLocalFallbackProfileSeed(): CurrentUserProfileSeed? {
+        if (!isLocalFallbackSession()) return null
+        val prefs = authPrefsOrNull ?: return null
+        val displayName = prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val email = localFallbackEmailFromPrefs() ?: return null
+        return CurrentUserProfileSeed(
+            id = localFallbackDisplayUserIdFromPrefs() ?: return null,
+            email = email,
+            fullName = displayName,
+            displayName = displayName ?: email.substringBefore("@"),
+            avatarUrl = prefs.getString(KEY_LOCAL_FALLBACK_AVATAR_URL, null)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() },
+            country = prefs.getString(KEY_LOCAL_FALLBACK_COUNTRY, null)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() },
+            privacyPolicyAccepted = true,
+            privacyPolicyAcceptedAt = prefs.getString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, null)
+        )
+    }
+
+    private fun localFallbackDisplayUserId(user: LocalFallbackUser): String {
+        return user.supabaseUserId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: user.id.trim().lowercase()
+    }
+
+    private fun localFallbackDisplayUserIdFromPrefs(): String? {
+        if (!isLocalFallbackSession()) return null
+        val prefs = authPrefsOrNull ?: return null
+        return prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, null)
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: prefs.getString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, null)
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+            ?: prefs.getString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, null)
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun localFallbackEmailFromPrefs(): String? {
+        if (!isLocalFallbackSession()) return null
+        return authPrefsOrNull
+            ?.getString(KEY_LOCAL_FALLBACK_EMAIL, null)
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun readLocalFallbackAccessToken(): String? {
+        if (!isLocalFallbackSession()) return null
+        return authPrefsOrNull
+            ?.getString(KEY_ACCESS_TOKEN, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 }
 

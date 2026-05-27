@@ -31,6 +31,7 @@ object DatabaseModule {
             "conectate_db"
         )
             .addMigrations(*DatabaseMigrations.ALL)
+            .fallbackToDestructiveMigration()
             .build()
     }
 

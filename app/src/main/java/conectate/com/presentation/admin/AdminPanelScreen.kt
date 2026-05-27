@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
 package conectate.com.presentation.admin
 
 import androidx.compose.foundation.background
@@ -29,6 +30,7 @@ import conectate.com.presentation.navigation.Screen
 
 
 
+@Composable
 fun AdminPanelScreen(
     navController: NavController,
     viewModel: AdminViewModel = hiltViewModel()
@@ -94,7 +96,7 @@ fun AdminPanelScreen(
                     }
                 }
             }
-            return
+            return@Scaffold
         }
 
         var selectedTab by remember { mutableStateOf(0) }
@@ -127,12 +129,13 @@ fun AdminPanelScreen(
 }
 
 
+@Composable
 fun ReportsTabContent(
     adminState: AdminUiState,
     navController: NavController,
     viewModel: AdminViewModel
 ) {
-    when (var state = adminState) {
+    when (val state = adminState) {
         is AdminUiState.Loading -> {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -204,12 +207,13 @@ fun ReportsTabContent(
 }
 
 
+@Composable
 fun VideoReportsTabContent(
     adminState: AdminUiState,
     navController: NavController,
     viewModel: AdminViewModel
 ) {
-    when (var state = adminState) {
+    when (val state = adminState) {
         is AdminUiState.Loading -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.error)

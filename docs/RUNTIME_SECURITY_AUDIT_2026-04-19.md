@@ -1,5 +1,7 @@
 # Runtime Security Audit - 2026-04-19
 
+Status update 2026-05-06: this document is historical. The active release security path is the SQL manifest audit plus `docs/SECURITY_AUDIT_CHECKLIST_2026.md`; wallet/gifts RPCs and premium/ads RLS/RPCs were hardened in the 2026-05-06 migrations listed by `sql/release-manifest.txt`.
+
 ## What Was Hardened
 
 ### Signaling Server

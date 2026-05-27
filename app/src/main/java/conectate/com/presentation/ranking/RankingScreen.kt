@@ -94,7 +94,7 @@ fun RankingScreen(
                                             .padding(16.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Simple placeholder for video item
+                                        // Compact ranking row for top videos.
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = video.title,

@@ -16,7 +16,10 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import conectate.com.data.webrtc.WebRTCManager
+import conectate.com.services.VoiceForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -203,6 +206,60 @@ class VoiceRoomRepository @Inject constructor(
         if (currentUserId.isBlank()) return false
         return participants.any { participant ->
             participant.id.trim().lowercase() == currentUserId && participant.isMuted
+        }
+    }
+
+    private fun startVoiceForegroundService(room: VoiceRoom?, fallbackRoomId: String) {
+        val session = sessionState.value
+        val roomId = room?.id?.takeIf { it.isNotBlank() }
+            ?: session.roomId
+            ?: fallbackRoomId
+        if (roomId.isBlank()) return
+
+        val intent = Intent(context, VoiceForegroundService::class.java).apply {
+            action = VoiceForegroundService.ACTION_START
+            putExtra(VoiceForegroundService.EXTRA_ROOM_ID, roomId)
+            putExtra(
+                VoiceForegroundService.EXTRA_ROOM_NAME,
+                room?.name?.takeIf { it.isNotBlank() } ?: session.roomName
+            )
+            putExtra(VoiceForegroundService.EXTRA_READABLE_ID, room?.readableId ?: session.readableId)
+            putExtra(
+                VoiceForegroundService.EXTRA_PARTICIPANT_COUNT,
+                maxOf(room?.participantCount ?: 0, session.participantCount, _currentParticipants.value.size)
+            )
+            putExtra(VoiceForegroundService.EXTRA_IS_MUTED, isSelfMuted())
+        }
+        runCatching {
+            ContextCompat.startForegroundService(context, intent)
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo iniciar VoiceForegroundService", error)
+        }
+    }
+
+    private fun updateVoiceForegroundService() {
+        val session = sessionState.value
+        val roomId = session.roomId ?: activeRoomId ?: return
+        val intent = Intent(context, VoiceForegroundService::class.java).apply {
+            action = VoiceForegroundService.ACTION_UPDATE
+            putExtra(VoiceForegroundService.EXTRA_ROOM_ID, roomId)
+            putExtra(VoiceForegroundService.EXTRA_ROOM_NAME, session.roomName)
+            putExtra(VoiceForegroundService.EXTRA_READABLE_ID, session.readableId)
+            putExtra(VoiceForegroundService.EXTRA_PARTICIPANT_COUNT, session.participantCount)
+            putExtra(VoiceForegroundService.EXTRA_IS_MUTED, session.isMuted)
+        }
+        runCatching {
+            ContextCompat.startForegroundService(context, intent)
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo actualizar VoiceForegroundService", error)
+        }
+    }
+
+    private fun stopVoiceForegroundService() {
+        runCatching {
+            context.stopService(Intent(context, VoiceForegroundService::class.java))
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo detener VoiceForegroundService", error)
         }
     }
 
@@ -754,7 +811,11 @@ class VoiceRoomRepository @Inject constructor(
             }
             return Result.success(visibleRooms)
         } catch (e: Exception) {
-            android.util.Log.e("VoiceRoomRepository", "Error refreshing rooms", e)
+            if (supabaseConfig.reportServiceRestrictionIfPresent("voice-rooms-refresh", e)) {
+                android.util.Log.w("VoiceRoomRepository", "Voice rooms unavailable because the Supabase project is restricted.")
+            } else {
+                android.util.Log.e("VoiceRoomRepository", "Error refreshing rooms", e)
+            }
             return Result.failure(e)
         }
     }
@@ -876,6 +937,7 @@ class VoiceRoomRepository @Inject constructor(
                 metric = "voice_room_rejoin_preserved",
                 attributes = currentMetricAttributes(roomId = roomId)
             )
+            startVoiceForegroundService(_currentRoom.value, signalRoom)
             android.util.Log.w("VoiceRoomRepository", "📍 RE-ENTRY completed: Session preserved")
             return@withContext
         } else if (socket?.connected() == true) {
@@ -983,6 +1045,7 @@ class VoiceRoomRepository @Inject constructor(
                     )
                 }
             }
+            startVoiceForegroundService(_currentRoom.value, signalRoom)
             android.util.Log.w("VoiceRoomRepository", "📍 joinRoom END: Setup complete")
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error joining room", e)
@@ -1019,6 +1082,7 @@ class VoiceRoomRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10000
+                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
             android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $SIGNALING_URL")
@@ -1283,9 +1347,11 @@ class VoiceRoomRepository @Inject constructor(
                  val textPayload = data.optString("text").trim()
                  if (userIdPayload.isBlank() || textPayload.isBlank()) return@on
                  val msg = conectate.com.presentation.voicerooms.ChatMessage(
+                    id = data.optString("id").ifBlank { System.currentTimeMillis().toString() },
                     userId = userIdPayload,
                     userName = userNamePayload.ifBlank { "Usuario" },
-                    text = textPayload
+                    text = textPayload,
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingMessages.emit(msg) }
             }
@@ -1296,9 +1362,9 @@ class VoiceRoomRepository @Inject constructor(
                 val emojiPayload = data.optString("emoji").trim()
                 if (userIdPayload.isBlank() || emojiPayload.isBlank()) return@on
                 val reaction = conectate.com.presentation.voicerooms.ReactionEvent(
-                    id = data.optString("reactionId").ifBlank { data.optString("id") },
                     userId = userIdPayload,
-                    emoji = emojiPayload
+                    emoji = emojiPayload,
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
             }
@@ -1612,6 +1678,7 @@ class VoiceRoomRepository @Inject constructor(
 
             activeRoomId = null
             updateConnectionState(VoiceConnectionState.IDLE)
+            stopVoiceForegroundService()
             
             // 4. Release Audio with Safety Delay
             releaseVoiceAudioSession()
@@ -1641,6 +1708,7 @@ class VoiceRoomRepository @Inject constructor(
 
         // 2. WebRTC Track Disable (without muting the whole device mic)
         webRTCManager?.setAudioEnabled(!isMuted)
+        updateVoiceForegroundService()
         
         // 3. Broadcast mute state
         scope.launch {
@@ -1851,23 +1919,27 @@ class VoiceRoomRepository @Inject constructor(
 
 
     suspend fun sendMessage(message: conectate.com.presentation.voicerooms.ChatMessage) = withContext(Dispatchers.IO) {
-        emitOrQueueRoomSocketEvent(activeRoomId, "chat-message") {
-            put("roomId", activeRoomId ?: "")
-            put("userId", message.userId)
-            put("userName", message.userName)
-            put("text", message.text)
+        val roomId = getCurrentRoomId()
+        emitOrQueueRoomSocketEvent(roomId, "chat-message") {
+            put("roomId", (roomId ?: "") as String)
+            put("userId", message.userId as String)
+            put("userName", message.userName as String)
+            put("text", message.text as String)
+            put("timestamp", message.timestamp)
         }
     }
 
 
 
     suspend fun sendReaction(reaction: conectate.com.presentation.voicerooms.ReactionEvent) = withContext(Dispatchers.IO) {
-        val reactionId = reaction.id.ifBlank { UUID.randomUUID().toString() }
-        emitOrQueueRoomSocketEvent(activeRoomId, "reaction") {
-            put("roomId", activeRoomId ?: "")
-            put("userId", reaction.userId)
-            put("emoji", reaction.emoji)
-            put("reactionId", reactionId)
+        val roomId = getCurrentRoomId()
+        val reactionId = java.util.UUID.randomUUID().toString()
+        emitOrQueueRoomSocketEvent(roomId, "reaction") {
+            put("roomId", (roomId ?: "") as String)
+            put("userId", reaction.userId as String)
+            put("emoji", reaction.emoji as String)
+            put("reactionId", reactionId as String)
+            put("timestamp", reaction.timestamp)
         }
     }
 
@@ -1899,7 +1971,7 @@ class VoiceRoomRepository @Inject constructor(
         scope.launch {
             // we trust the ViewModel to have checked hostId for the UI part, 
             // but we'll do a quick check here against current roomId if we have it
-            if (activeRoomId != roomId) return@launch
+            if (getCurrentRoomId() != roomId) return@launch
 
             // 1. Alert others via Socket (Instant)
             try {

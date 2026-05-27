@@ -3,6 +3,7 @@ package conectate.com.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
@@ -18,7 +19,8 @@ class HomeViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val messageRepository: MessageRepository,
     private val groupRepository: GroupRepository,
-    private val communityRepository: CommunityRepository
+    private val communityRepository: CommunityRepository,
+    appSettingsPreferences: AppSettingsPreferences
 ) : ViewModel() {
 
     private val _currentUserAvatarUrl = MutableStateFlow<String?>(null)
@@ -26,8 +28,10 @@ class HomeViewModel @Inject constructor(
 
     // 1. Unread DMs (Number of conversations with unread messages)
     val unreadDmsCount: StateFlow<Int> = messageRepository.getUserChatsFlow()
-        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group } }
+        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val bottomNavigationOrder: StateFlow<List<String>> = appSettingsPreferences.bottomNavigationOrder
 
     // 2. Unread Groups
     val unreadGroupsCount: StateFlow<Int> = groupRepository.getGroupsFlow()

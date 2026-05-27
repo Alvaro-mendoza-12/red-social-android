@@ -97,7 +97,7 @@ fun PostDetailScreen(
         },
         bottomBar = {
             Column(modifier = Modifier.navigationBarsPadding().imePadding()) {
-                if (replyingTo != null) {
+                replyingTo?.let { reply ->
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.fillMaxWidth()
@@ -107,7 +107,7 @@ fun PostDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "Respondiendo a ${replyingTo!!.userName}",
+                                "Respondiendo a ${reply.userName}",
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -353,6 +353,8 @@ fun PostDetailScreen(
                             onUserClick = { userId ->
                                 navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                             },
+                            onReactionSelected = { reaction -> viewModel.selectReaction(postId, reaction.name) },
+                            onReactionRemoved = { viewModel.clearReaction(postId) },
                             onPostClick = {}
                         )
                     }

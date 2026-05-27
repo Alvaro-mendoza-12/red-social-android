@@ -56,6 +56,7 @@ class ProfileViewModel @Inject constructor(
 
     private val _sharedVideos = MutableStateFlow<List<Video>>(emptyList())
     val sharedVideos: StateFlow<List<Video>> = _sharedVideos.asStateFlow()
+    private val postReactionRequestsInFlight = mutableSetOf<String>()
 
     private val _selectedTab = MutableStateFlow(0) // 0: Videos, 1: Posts, 2: Compartidos
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
@@ -170,7 +171,10 @@ class ProfileViewModel @Inject constructor(
                     filter = "id=eq.$userId"
                 }
 
-                channel.subscribe()
+                supabase.subscribeRealtimeChannel(
+                    channel = channel,
+                    reason = "profile_$userId"
+                )
 
                 changeset.collect {
                     android.util.Log.d("ProfileViewModel", "Realtime update received for user: $userId")
@@ -374,6 +378,15 @@ class ProfileViewModel @Inject constructor(
         city: String,
         imageUri: Uri?,
         coverImageUri: Uri?,
+        status: String? = null,
+        interests: List<String> = emptyList(),
+        linkedGames: List<String> = emptyList(),
+        gameLogoUrls: Map<String, String> = emptyMap(),
+        favoriteMusicUrl: String? = null,
+        favoriteBook: String? = null,
+        favoriteSport: String? = null,
+        career: String? = null,
+        availabilitySchedule: String? = null,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -431,6 +444,18 @@ class ProfileViewModel @Inject constructor(
                     bio = bio,
                     country = country,
                     city = city,
+                    status = status?.trim()?.ifBlank { null },
+                    interests = interests.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+                    linked_games = linkedGames.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+                    game_logo_urls = gameLogoUrls
+                        .mapKeys { it.key.trim() }
+                        .mapValues { it.value.trim() }
+                        .filter { it.key.isNotBlank() && it.value.isNotBlank() },
+                    favorite_music_url = favoriteMusicUrl?.trim()?.ifBlank { null },
+                    favorite_book = favoriteBook?.trim()?.ifBlank { null },
+                    favorite_sport = favoriteSport?.trim()?.ifBlank { null },
+                    career = career?.trim()?.ifBlank { null },
+                    availability_schedule = availabilitySchedule?.trim()?.ifBlank { null },
                     avatar_url = avatarUrl,
                     cover_url = coverUrl,
                     last_name_change = lastNameChange
@@ -445,6 +470,15 @@ class ProfileViewModel @Inject constructor(
                         bio = updateRequest.bio,
                         country = updateRequest.country,
                         city = updateRequest.city,
+                        status = updateRequest.status,
+                        interests = updateRequest.interests ?: currentUser.interests,
+                        linked_games = updateRequest.linked_games ?: currentUser.linked_games,
+                        game_logo_urls = updateRequest.game_logo_urls ?: currentUser.game_logo_urls,
+                        favorite_music_url = updateRequest.favorite_music_url,
+                        favorite_book = updateRequest.favorite_book,
+                        favorite_sport = updateRequest.favorite_sport,
+                        career = updateRequest.career,
+                        availability_schedule = updateRequest.availability_schedule,
                         avatar_url = updateRequest.avatar_url,
                         cover_url = updateRequest.cover_url,
                         last_name_change = updateRequest.last_name_change ?: currentUser.last_name_change
@@ -531,32 +565,92 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun togglePostLike(post: Post) {
+        val currentReaction = post.myReaction?.uppercase()?.ifBlank { null }
+            ?: if (post.likedByMe) "LIKE" else null
+        if (currentReaction != null) {
+            clearPostReaction(post)
+        } else {
+            selectPostReaction(post, "LIKE")
+        }
+    }
+
+    fun selectPostReaction(post: Post, reactionType: String) {
+        updatePostReaction(post, reactionType.uppercase().ifBlank { "LIKE" })
+    }
+
+    fun clearPostReaction(post: Post) {
+        updatePostReaction(post, null)
+    }
+
+    private fun updatePostReaction(post: Post, nextReaction: String?) {
+        if (!postReactionRequestsInFlight.add(post.id)) return
         viewModelScope.launch {
+            val previousReaction = post.myReaction?.uppercase()?.ifBlank { null }
+                ?: if (post.likedByMe) "LIKE" else null
             try {
-                // 1. Optimistic Update: Update local lists immediately without reloading
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
-                
                 fun updateList(list: List<Post>): List<Post> {
                     return list.map { 
-                        if (it.id == post.id) it.copy(likedByMe = !wasLiked, likeCount = newLikeCount) else it 
+                        if (it.id == post.id) applyReactionState(it, previousReaction, nextReaction) else it
                     }
                 }
 
                 _userPosts.value = updateList(_userPosts.value)
+                _sharedPosts.value = updateList(_sharedPosts.value)
 
-                // 2. API Call in background
-                val result = postRepository.toggleLike(post.id, wasLiked)
+                val result = postRepository.setPostReaction(
+                    postId = post.id,
+                    reactionType = nextReaction,
+                    wasReacted = previousReaction != null
+                )
                 
                 if (result.isFailure) {
                     android.util.Log.e("ProfileViewModel", "Like API failed: ${result.exceptionOrNull()?.message}")
-                    // Optionally revert here if stricter consistency is needed, 
-                    // but for likes, eventual consistency or user retry is usually acceptable.
+                    _userPosts.value = _userPosts.value.map { if (it.id == post.id) post else it }
+                    _sharedPosts.value = _sharedPosts.value.map { if (it.id == post.id) post else it }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ProfileViewModel", "Error toggling post like", e)
+                _userPosts.value = _userPosts.value.map { if (it.id == post.id) post else it }
+                _sharedPosts.value = _sharedPosts.value.map { if (it.id == post.id) post else it }
+            } finally {
+                postReactionRequestsInFlight.remove(post.id)
             }
         }
+    }
+
+    private fun applyReactionState(
+        post: Post,
+        previousReaction: String?,
+        nextReaction: String?
+    ): Post {
+        if (previousReaction == nextReaction) return post
+
+        val counts = post.reactionCounts.toMutableMap()
+        if (counts.isEmpty() && post.likeCount > 0) {
+            counts["LIKE"] = post.likeCount
+        }
+
+        if (previousReaction != null) {
+            val previousCount = maxOf(0, (counts[previousReaction] ?: 1) - 1)
+            if (previousCount == 0) counts.remove(previousReaction) else counts[previousReaction] = previousCount
+        }
+
+        if (nextReaction != null) {
+            counts[nextReaction] = (counts[nextReaction] ?: 0) + 1
+        }
+
+        val countDelta = when {
+            previousReaction == null && nextReaction != null -> 1
+            previousReaction != null && nextReaction == null -> -1
+            else -> 0
+        }
+
+        return post.copy(
+            likedByMe = nextReaction != null,
+            myReaction = nextReaction,
+            reactionCounts = counts.toMap(),
+            likeCount = maxOf(0, post.likeCount + countDelta)
+        )
     }
 
     fun signOut() {

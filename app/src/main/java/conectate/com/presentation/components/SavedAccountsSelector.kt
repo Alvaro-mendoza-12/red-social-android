@@ -356,7 +356,7 @@ fun QuickAccountSwitchFAB(
             otherAccounts.forEach { account ->
                 DropdownMenuItem(
                     text = { Text("Cambiar a ${account.displayName}") },
-                    leadingContent = {
+                    leadingIcon = {
                         AsyncImage(
                             model = account.avatarUrl,
                             contentDescription = null,

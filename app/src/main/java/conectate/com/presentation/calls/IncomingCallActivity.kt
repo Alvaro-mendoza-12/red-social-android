@@ -1,13 +1,18 @@
 package conectate.com.presentation.calls
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -26,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -43,10 +49,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import conectate.com.MainActivity
+import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
@@ -67,6 +75,27 @@ class IncomingCallActivity : ComponentActivity() {
 
     @Inject
     lateinit var themePreferences: ThemePreferences
+
+    @Inject
+    lateinit var appSettingsPreferences: AppSettingsPreferences
+
+    private var pendingAcceptInvite: CallInvite? = null
+    private var permissionStatusMessage by mutableStateOf<String?>(null)
+
+    private val microphonePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val invite = pendingAcceptInvite
+            pendingAcceptInvite = null
+            if (granted) {
+                permissionStatusMessage = null
+                if (invite != null) {
+                    acceptInviteAfterPermission(invite)
+                }
+            } else {
+                permissionStatusMessage = MICROPHONE_PERMISSION_DENIED_MESSAGE
+                Toast.makeText(this, MICROPHONE_PERMISSION_DENIED_MESSAGE, Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,14 +128,17 @@ class IncomingCallActivity : ComponentActivity() {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
             val fontOption by themePreferences.fontOption.collectAsStateWithLifecycle()
             val textScale by themePreferences.textScale.collectAsStateWithLifecycle()
+            val reduceMotionEnabled by appSettingsPreferences.reduceMotionEnabled.collectAsStateWithLifecycle()
             RedSocialTheme(
                 darkTheme = isDarkMode,
                 fontOption = fontOption,
-                textScale = textScale
+                textScale = textScale,
+                reduceMotion = reduceMotionEnabled
             ) {
                 IncomingCallScreen(
                     invite = invite,
                     callerAvatarBitmap = avatarBitmap,
+                    permissionStatusMessage = permissionStatusMessage,
                     onAccept = { acceptInvite(invite) },
                     onDecline = { declineInvite(invite) }
                 )
@@ -121,11 +153,33 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun acceptInvite(invite: CallInvite) {
-        var scope = lifecycleScope
-        scope.launch {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingAcceptInvite = invite
+            permissionStatusMessage = "Necesitamos permiso de microfono para responder la llamada."
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        permissionStatusMessage = null
+        acceptInviteAfterPermission(invite)
+    }
+
+    private fun acceptInviteAfterPermission(invite: CallInvite) {
+        lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this)
-            callRepository.acceptIncomingCall(invite)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            val acceptResult = callRepository.acceptIncomingCall(invite)
+            if (acceptResult.isFailure) {
+                val error = acceptResult.exceptionOrNull()
+                val failureMessage = error?.message ?: "No se pudo aceptar la llamada. Intenta de nuevo."
+                Log.e(TAG, "Failed to accept incoming call ${invite.callId}", error)
+                permissionStatusMessage = failureMessage
+                Toast.makeText(
+                    this@IncomingCallActivity,
+                    failureMessage,
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
             callRepository.refreshAudioSession()
             delay(300)
             callRepository.refreshAudioSessionRepeatedly(attempts = 2, delayMs = 500)
@@ -135,11 +189,18 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun declineInvite(invite: CallInvite) {
-        var scope = lifecycleScope
-        scope.launch {
+        lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this)
-            callRepository.declineIncomingCall(invite)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            val declineResult = callRepository.declineIncomingCall(invite)
+            declineResult.exceptionOrNull()?.let { error ->
+                Log.e(TAG, "Failed to decline incoming call ${invite.callId}", error)
+                Toast.makeText(
+                    this@IncomingCallActivity,
+                    error.message ?: "No se pudo rechazar la llamada correctamente.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
             finish()
         }
     }
@@ -149,7 +210,7 @@ class IncomingCallActivity : ComponentActivity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("type", "call_return")
             putExtra("call_id", callId)
-        }.also { markTrusted(this, it) }
+        }.also { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
         startActivity(intent)
     }
 
@@ -157,33 +218,61 @@ class IncomingCallActivity : ComponentActivity() {
         runCatching {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(callId.hashCode())
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to clear incoming call notification for $callId", error)
         }
     }
 
     companion object {
+        private const val TAG = "IncomingCallActivity"
         const val EXTRA_AUTO_ACCEPT = "extra_auto_accept"
         const val EXTRA_CALLER_AVATAR_BYTES = "extra_caller_avatar_bytes"
+        private const val MICROPHONE_PERMISSION_DENIED_MESSAGE =
+            "Debes permitir el microfono para responder la llamada."
     }
 }
 
 private fun Intent.toInviteOrNull(): CallInvite? {
-    var callId = getStringExtra("call_id")?.trim().orEmpty()
-    var callerUserId = getStringExtra("caller_user_id")?.trim().orEmpty()
-    var callerName = getStringExtra("caller_name")?.trim().orEmpty()
-    var callerAvatarUrl = getStringExtra("caller_avatar_url")?.trim().orEmpty().ifBlank { null }
-    var title = getStringExtra("call_title")?.trim().orEmpty().ifBlank { callerName }
-    var contextType = getStringExtra("call_context_type")?.trim().orEmpty().ifBlank { "dm" }
-    var contextId = getStringExtra("call_context_id")?.trim().orEmpty().ifBlank { null }
+    return buildIncomingCallInvite(
+        callId = getStringExtra("call_id"),
+        callerUserId = getStringExtra("caller_user_id"),
+        callerName = getStringExtra("caller_name"),
+        callerAvatarUrl = getStringExtra("caller_avatar_url"),
+        title = getStringExtra("call_title"),
+        contextType = getStringExtra("call_context_type"),
+        contextId = getStringExtra("call_context_id"),
+        isVideo = getBooleanExtra("call_is_video", false)
+    )
+}
 
-    if (callId.isBlank() || callerUserId.isBlank()) return null
+internal fun buildIncomingCallInvite(
+    callId: String?,
+    callerUserId: String?,
+    callerName: String?,
+    callerAvatarUrl: String?,
+    title: String?,
+    contextType: String?,
+    contextId: String?,
+    isVideo: Boolean = false
+): CallInvite? {
+    val normalizedCallId = callId?.trim().orEmpty()
+    val normalizedCallerUserId = callerUserId?.trim().orEmpty()
+    val normalizedCallerName = callerName?.trim().orEmpty().ifBlank { "Usuario" }
+    val normalizedCallerAvatarUrl = callerAvatarUrl?.trim().orEmpty().ifBlank { null }
+    val normalizedTitle = title?.trim().orEmpty().ifBlank { normalizedCallerName }
+    val normalizedContextType = contextType?.trim().orEmpty().ifBlank { "dm" }
+    val normalizedContextId = contextId?.trim().orEmpty().ifBlank { null }
+
+    if (normalizedCallId.isBlank() || normalizedCallerUserId.isBlank()) return null
     return CallInvite(
-        callId = callId,
-        title = title,
-        callerUserId = callerUserId,
-        callerName = callerName.ifBlank { "Usuario" },
-        callerAvatarUrl = callerAvatarUrl,
-        contextType = contextType,
-        contextId = contextId
+        callId = normalizedCallId,
+        title = normalizedTitle,
+        callerUserId = normalizedCallerUserId,
+        callerName = normalizedCallerName,
+        callerAvatarUrl = normalizedCallerAvatarUrl,
+        contextType = normalizedContextType,
+        contextId = normalizedContextId,
+        isVideo = isVideo
     )
 }
 
@@ -196,6 +285,7 @@ private fun Intent.toAvatarBitmapOrNull(): Bitmap? {
 private fun IncomingCallScreen(
     invite: CallInvite,
     callerAvatarBitmap: Bitmap?,
+    permissionStatusMessage: String?,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
@@ -229,7 +319,7 @@ private fun IncomingCallScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Llamada entrante",
+                    text = if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
@@ -239,6 +329,14 @@ private fun IncomingCallScreen(
                         text = invite.title,
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+                if (!permissionStatusMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = permissionStatusMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFFFB4AB)
                     )
                 }
             }
@@ -270,7 +368,7 @@ private fun IncomingCallScreen(
             ) {
                 Button(
                     onClick = {
-                        if (isHandling) return
+                        if (isHandling) return@Button
                         isHandling = true
                         scope.launch {
                             onDecline()
@@ -289,7 +387,7 @@ private fun IncomingCallScreen(
 
                 Button(
                     onClick = {
-                        if (isHandling) return
+                        if (isHandling) return@Button
                         isHandling = true
                         scope.launch {
                             onAccept()
@@ -299,7 +397,10 @@ private fun IncomingCallScreen(
                     enabled = !isHandling,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                 ) {
-                    androidx.compose.material3.Icon(Icons.Default.Call, contentDescription = null)
+                    androidx.compose.material3.Icon(
+                        imageVector = if (invite.isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                        contentDescription = null
+                    )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Aceptar")
                 }

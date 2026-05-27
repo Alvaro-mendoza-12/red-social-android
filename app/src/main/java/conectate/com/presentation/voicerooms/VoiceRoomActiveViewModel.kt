@@ -101,10 +101,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private var eglBase: EglBase? = null
 
     fun getEglBaseContext(): org.webrtc.EglBase.Context {
-        if (eglBase == null) {
-            eglBase = EglBase.create()
-        }
-        return eglBase!!.eglBaseContext
+        val activeEglBase = eglBase ?: EglBase.create().also { eglBase = it }
+        return activeEglBase.eglBaseContext
     }
 
     fun joinRoom(roomId: String) {

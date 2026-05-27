@@ -21,20 +21,20 @@ import kotlinx.coroutines.sync.withPermit
  */
 class CinemaCatalog(
     private val tmdbApiKey: String,
-    private val realDebridToken: String = "BJVCQF5D4RUZC74SYAISZOXDOM3JU5LITI5AYYZRWZWAGXSEWVLA" // Premium Token Integrated
+    private val realDebridToken: String = ""
 ) {
     private val client = OkHttpClient()
+    private val hasTmdbKey: Boolean
+        get() = tmdbApiKey.isNotBlank()
     
     init {
-        // v23.6: Validate RD Token at startup
         if (realDebridToken.isNotEmpty()) {
-            Log.i("CinemaCatalog", "💎 Real-Debrid Token configurado: ${realDebridToken.take(10)}...")
-        } else {
-            Log.w("CinemaCatalog", "⚠️ Real-Debrid Token NO configurado - solo VidSrc disponible (con anuncios)")
+            Log.i("CinemaCatalog", "Real-Debrid resolver configurado")
         }
     }
 
     suspend fun searchMovies(query: String, isTv: Boolean = false): List<ContentItem> = withContext(Dispatchers.IO) {
+        if (!hasTmdbKey) return@withContext emptyList()
         try {
             val type = if (isTv) "tv" else "movie"
             val url = "https://api.themoviedb.org/3/search/$type?api_key=$tmdbApiKey&query=$query&language=es-ES"
@@ -77,7 +77,8 @@ class CinemaCatalog(
             for (i in 0 until media.length()) {
                 val obj = media.getJSONObject(i)
                 val titles = obj.getJSONObject("title")
-                val title = titles.optString("english")?.takeIf { it != "null" && it.isNotEmpty() } ?: titles.getString("romaji")
+                val englishTitle = titles.optString("english")
+                val title = englishTitle.takeIf { it != "null" && it.isNotEmpty() } ?: titles.getString("romaji")
                 items.add(ContentItem(
                     title = title,
                     posterUrl = obj.getJSONObject("coverImage").getString("large"),
@@ -89,6 +90,54 @@ class CinemaCatalog(
         } catch (e: Exception) { emptyList() }
     }
 
+    private suspend fun getTrendingAnimeFromAnilist(): List<ContentItem> = withContext(Dispatchers.IO) {
+        try {
+            val queryStr = """
+                query {
+                  Page(perPage: 15) {
+                    media(type: ANIME, sort: TRENDING_DESC) {
+                      title { romaji english }
+                      coverImage { large }
+                    }
+                  }
+                }
+            """.trimIndent()
+            val jsonBody = JSONObject().apply { put("query", queryStr) }
+            val requestBody = jsonBody.toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+
+            val request = Request.Builder()
+                .url("https://graphql.anilist.co")
+                .addHeader("User-Agent", "Conectate Android")
+                .post(requestBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val json = JSONObject(response.body?.string() ?: "{}")
+            val media = json.getJSONObject("data").getJSONObject("Page").getJSONArray("media")
+            val items = mutableListOf<ContentItem>()
+            for (i in 0 until media.length()) {
+                val obj = media.getJSONObject(i)
+                val titles = obj.getJSONObject("title")
+                val title = titles.optString("english")
+                    .takeIf { it != "null" && it.isNotEmpty() }
+                    ?: titles.getString("romaji")
+                items.add(
+                    ContentItem(
+                        title = title,
+                        posterUrl = obj.getJSONObject("coverImage").getString("large"),
+                        provider = "anilist",
+                        providerId = title
+                    )
+                )
+            }
+            items
+        } catch (e: Exception) {
+            Log.e("CinemaCatalog", "AniList trending error: ${e.message}")
+            emptyList()
+        }
+    }
+
     /**
      * Consumet Anime Search - The "Secret Sauce" for Anime.
      */
@@ -97,31 +146,7 @@ class CinemaCatalog(
      * Uses GogoAnime directly for better source matching.
      */
     suspend fun searchAnimeConsumet(query: String): List<ContentItem> = withContext(Dispatchers.IO) {
-        try {
-            // v15.9: GogoAnime search is cleaner and provides direct IDs
-            val url = "https://api.consumet.org/anime/gogoanime/${query.replace(" ", "%20")}"
-            val request = Request.Builder().url(url).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: "{}"
-            val json = JSONObject(body)
-            val results = json.optJSONArray("results") ?: return@withContext emptyList()
-            
-            val items = mutableListOf<ContentItem>()
-            for (i in 0 until results.length()) {
-                val obj = results.getJSONObject(i)
-                items.add(ContentItem(
-                    title = obj.getString("title"),
-                    posterUrl = obj.getString("image"),
-                    videoUrl = null,
-                    provider = "consumet", // Marker for GogoAnime
-                    providerId = obj.getString("id")
-                ))
-            }
-            items
-        } catch (e: Exception) {
-            Log.e("CinemaCatalog", "Consumet search error: ${e.message}")
-            emptyList()
-        }
+        searchAnime(query)
     }
 
     /**
@@ -138,8 +163,8 @@ class CinemaCatalog(
                 "tv" -> return@withContext searchMovies(query, isTv = true)
                 "drama" -> return@withContext searchDramas(query)
                 else -> {
-                    allResults.addAll(searchAnimeConsumet(query))
-                    allResults.addAll(searchMovies(query))
+                    allResults.addAll(searchAnime(query))
+                    if (hasTmdbKey) allResults.addAll(searchMovies(query))
                     allResults.addAll(searchPublicDomain(query))
                 }
             }
@@ -150,6 +175,7 @@ class CinemaCatalog(
     }
 
     private suspend fun searchDramas(query: String): List<ContentItem> = withContext(Dispatchers.IO) {
+        if (!hasTmdbKey) return@withContext emptyList()
         // Using TMDB with filter for Korean content for K-Dramas
         val url = "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&query=$query&with_original_language=ko&language=es-ES"
         fetchFromTmdb(url, isTv = true, providerOverride = "drama")
@@ -267,31 +293,17 @@ class CinemaCatalog(
                     }
 
                     // v15.8 Strategy 2: Direct Anime Extractor (EXOPLAYER - AD FREE)
-                    if (item.provider == "consumet" || item.provider == "anilist" || item.title.lowercase().contains("anime") || item.title.lowercase().contains("frieren")) {
+                    if (item.provider == "consumet") {
                         Log.d("CinemaCatalog", "🎌 Probando Extractor Anime Directo...")
-                        val animeId = if (item.provider == "consumet") item.providerId else {
-                             searchAnimeConsumet(item.title).firstOrNull()?.providerId
-                        }
-                        if (animeId != null) {
-                            // v15.9: Unified resolver
-                            val directLink = resolveAnimeLink(animeId)
-                            if (directLink != null) {
-                                Log.d("CinemaCatalog", "✅ Anime Directo disponible: $directLink")
-                                return@withContext directLink
-                            }
+                        val directLink = resolveAnimeLink(item.providerId)
+                        if (directLink != null) {
+                            Log.d("CinemaCatalog", "✅ Anime Directo disponible")
+                            return@withContext directLink
                         }
                     }
 
-                    // v23.6: Strategy 3 ONLY if RD completely failed
-                    Log.e("CinemaCatalog", "⚠️ ADVERTENCIA: Real-Debrid falló. Usando VidSrc (CON ANUNCIOS) para: ${item.title}")
-                    Log.e("CinemaCatalog", "💡 Si ves anuncios, verifica: 1) Saldo RD, 2) Conexión, 3) Disponibilidad del torrent")
-                    val isTvShow = item.provider == "tmdb_tv" || item.provider == "drama"
-                    val vidsrcUrl = if (isTvShow) {
-                        "https://vidsrc.to/embed/tv/${item.providerId}"
-                    } else {
-                        "https://vidsrc.to/embed/movie/${item.providerId}"
-                    }
-                    return@withContext vidsrcUrl
+                    Log.w("CinemaCatalog", "No playable stream configured for metadata item: ${item.title}")
+                    return@withContext null
                 }
                 "consumet" -> {
                     // Handled via resolveAnimeLink during episode selection
@@ -354,50 +366,27 @@ class CinemaCatalog(
     suspend fun getTrending(): Map<String, List<ContentItem>> = withContext(Dispatchers.IO) {
         // Cache Check
         val currentTime = System.currentTimeMillis()
-        if (cachedTrending != null && (currentTime - lastCacheTime < CACHE_DURATION)) {
-            Log.d("CinemaCatalog", "⚡ Usando caché en memoria (${cachedTrending!!.size} categorías)")
-            return@withContext cachedTrending!!
+        val cached = cachedTrending
+        if (cached != null && (currentTime - lastCacheTime < CACHE_DURATION)) {
+            Log.d("CinemaCatalog", "Usando caché en memoria (${cached.size} categorías)")
+            return@withContext cached
         }
 
         val trendingMap = mutableMapOf<String, List<ContentItem>>()
         try {
-            // Películas Populares
-            val movieUrl = "https://api.themoviedb.org/3/trending/movie/week?api_key=$tmdbApiKey&language=es-ES"
-            trendingMap["Películas Populares 🎬"] = fetchFromTmdb(movieUrl, isTv = false)
-            
-            // Series Destacadas
-            val tvUrl = "https://api.themoviedb.org/3/trending/tv/week?api_key=$tmdbApiKey&language=es-ES"
-            trendingMap["Series Destacadas 📺"] = fetchFromTmdb(tvUrl, isTv = true)
-            
-            // Anime Popular
-            try {
-                val animeUrl = "https://api.consumet.org/anime/gogoanime/top-airing"
-                val request = Request.Builder().url(animeUrl).build()
-                val response = client.newCall(request).execute()
-                val json = JSONObject(response.body?.string() ?: "{}")
-                val results = json.optJSONArray("results")
+            if (hasTmdbKey) {
+                val movieUrl = "https://api.themoviedb.org/3/trending/movie/week?api_key=$tmdbApiKey&language=es-ES"
+                trendingMap["Películas Populares 🎬"] = fetchFromTmdb(movieUrl, isTv = false)
                 
-                val animeList = mutableListOf<ContentItem>()
-                if (results != null) {
-                    for (i in 0 until minOf(results.length(), 15)) {
-                        val obj = results.getJSONObject(i)
-                        animeList.add(ContentItem(
-                            title = obj.getString("title"),
-                            posterUrl = obj.getString("image"),
-                            videoUrl = null,
-                            provider = "consumet",
-                            providerId = obj.getString("id")
-                        ))
-                    }
-                }
-                trendingMap["Anime Popular 🔥"] = animeList
-            } catch (e: Exception) {
-                Log.e("CinemaCatalog", "Anime trending error: ${e.message}")
+                val tvUrl = "https://api.themoviedb.org/3/trending/tv/week?api_key=$tmdbApiKey&language=es-ES"
+                trendingMap["Series Destacadas 📺"] = fetchFromTmdb(tvUrl, isTv = true)
+
+                val dramaUrl = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&with_original_language=ko&sort_by=popularity.desc&language=es-ES"
+                trendingMap["K-Dramas 🌸"] = fetchFromTmdb(dramaUrl, isTv = true)
             }
             
-            // K-Dramas
-            val dramaUrl = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&with_original_language=ko&sort_by=popularity.desc&language=es-ES"
-            trendingMap["K-Dramas 🌸"] = fetchFromTmdb(dramaUrl, isTv = true)
+            val animeList = getTrendingAnimeFromAnilist()
+            if (animeList.isNotEmpty()) trendingMap["Anime Popular 🔥"] = animeList
             
             // v14.0: Cine Clásico (Archive.org)
             try {

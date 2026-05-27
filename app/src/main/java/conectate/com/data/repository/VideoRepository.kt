@@ -34,6 +34,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import kotlin.io.readBytes
 import javax.inject.Inject
@@ -41,6 +43,7 @@ import javax.inject.Singleton
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -112,6 +115,88 @@ class VideoRepository @Inject constructor(
     private val activeCommentCollectors = mutableMapOf<String, Int>()
     private val activeStatsSubscriptionJobs = mutableMapOf<String, Job>()
     private val activeStatsCollectors = mutableMapOf<String, Int>()
+    private val cacheJson = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        encodeDefaults = true
+    }
+
+    private companion object {
+        private const val MAX_UPLOAD_DURATION_SECONDS = 30L
+        private const val MIN_UPLOAD_DURATION_SECONDS = 3L
+        private const val MIN_UPLOAD_DIMENSION = 360
+        private const val MAX_UPLOAD_FILE_SIZE_BYTES = 100L * 1024L * 1024L
+    }
+
+    private data class UploadVideoMetadata(
+        val durationSeconds: Long,
+        val width: Int,
+        val height: Int,
+        val fileSizeBytes: Long
+    )
+
+    private suspend fun validateUploadVideo(videoUri: VideoUriType): Result<UploadVideoMetadata> = withContext(Dispatchers.IO) {
+        val fileSizeBytes = runCatching {
+            context.contentResolver.openFileDescriptor(videoUri, "r")?.use { it.statSize }
+        }.getOrNull() ?: -1L
+
+        if (fileSizeBytes > MAX_UPLOAD_FILE_SIZE_BYTES) {
+            return@withContext Result.failure(
+                Exception(
+                    "El video pesa ${formatUploadBytes(fileSizeBytes)}. Máximo permitido: ${formatUploadBytes(MAX_UPLOAD_FILE_SIZE_BYTES)}."
+                )
+            )
+        }
+
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, videoUri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?: 0L
+            val durationSeconds = kotlin.math.ceil(durationMs / 1000.0).toLong()
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull()
+                ?: 0
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull()
+                ?: 0
+
+            when {
+                durationSeconds <= 0L -> Result.failure(Exception("No se pudo validar la duración del video."))
+                durationSeconds > MAX_UPLOAD_DURATION_SECONDS -> Result.failure(
+                    Exception("El video dura ${durationSeconds}s. El límite obligatorio es ${MAX_UPLOAD_DURATION_SECONDS}s.")
+                )
+                durationSeconds < MIN_UPLOAD_DURATION_SECONDS -> Result.failure(
+                    Exception("El video es muy corto (${durationSeconds}s). Mínimo permitido: ${MIN_UPLOAD_DURATION_SECONDS}s.")
+                )
+                width < MIN_UPLOAD_DIMENSION || height < MIN_UPLOAD_DIMENSION -> Result.failure(
+                    Exception("Resolución muy baja (${width}x$height). Mínimo: ${MIN_UPLOAD_DIMENSION}x${MIN_UPLOAD_DIMENSION}.")
+                )
+                else -> Result.success(
+                    UploadVideoMetadata(
+                        durationSeconds = durationSeconds,
+                        width = width,
+                        height = height,
+                        fileSizeBytes = fileSizeBytes.coerceAtLeast(0L)
+                    )
+                )
+            }
+        } catch (error: Exception) {
+            Result.failure(Exception("No se pudo analizar el video antes de subirlo: ${error.message}", error))
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun formatUploadBytes(bytes: Long): String {
+        return when {
+            bytes >= 1024L * 1024L * 1024L -> String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+            bytes >= 1024L * 1024L -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes >= 1024L -> String.format("%.1f KB", bytes / 1024.0)
+            else -> "$bytes bytes"
+        }
+    }
 
     private fun getSafeString(key: String, base: JsonObject): String? {
         var element = base[key]
@@ -152,13 +237,14 @@ class VideoRepository @Inject constructor(
         val cacheKey = "videos:public:offset=$offset:limit=$limit:random=$random"
         
         try {
-            // Intentar cache primero
             if (offset == 0 && !random) {
                 val cached = upstashCache.get(cacheKey)
-                if (cached != null) {
-                    // TODO: deserializar JSON a List<Video>
-                    // Por ahora emitimos vacío y continuamos
-                    // emit(emptyList())
+                val cachedVideos = cached
+                    ?.let { runCatching { cacheJson.decodeFromString<List<Video>>(it) }.getOrNull() }
+                    ?.takeIf { it.isNotEmpty() }
+                if (cachedVideos != null) {
+                    appMetrics.incrementCounter("videos_cache_hit")
+                    emit(cachedVideos)
                 }
             }
 
@@ -169,36 +255,34 @@ class VideoRepository @Inject constructor(
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("limit", limit.toString())
                     parameter("offset", offset.toString())
-                    if (random) {
-                        // Para "random" o "for you", usar order random()
-                        parameter("order", "RANDOM()")
-                    } else {
-                        parameter("order", "created_at.desc")
-                    }
+                    parameter("order", "created_at.desc")
                     parameter("select", "*")
                     parameter("is_public", "eq.true")
                 }
 
                 if (response.status.isSuccess()) {
                     val videos: List<Video> = response.body()
+                    val deliveredVideos = if (random) videos.shuffled() else videos
                     
-                    // Cache primeras páginas
-                    if (offset == 0 && !random && videos.isNotEmpty()) {
-                        // val json = Json.encodeToString(videos)
-                        // upstashCache.set(cacheKey, json, 300) // 5 min
-                        appMetrics.incrementCounter("videos_cache_store")
+                    if (offset == 0 && !random && deliveredVideos.isNotEmpty()) {
+                        val stored = runCatching {
+                            upstashCache.set(cacheKey, cacheJson.encodeToString(deliveredVideos), 300)
+                        }.getOrDefault(false)
+                        if (stored) {
+                            appMetrics.incrementCounter("videos_cache_store")
+                        }
                     }
 
                     appMetrics.incrementCounter(
                         metric = "videos_fetch_success",
-                        attributes = mapOf("source" to "public", "count" to videos.size.toString())
+                        attributes = mapOf("source" to "public", "count" to deliveredVideos.size.toString())
                     )
                     appMetrics.recordLatency(
                         metric = "videos_fetch",
                         durationMs = System.currentTimeMillis() - startedAt,
                         attributes = mapOf("source" to "public")
                     )
-                    emit(videos)
+                    emit(deliveredVideos)
                 } else {
                     appMetrics.recordFailure(
                         metric = "videos_fetch",
@@ -220,8 +304,6 @@ class VideoRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-@Composable
-@Composable
     suspend fun getVideo(videoId: String): Result<Video> = withContext(Dispatchers.IO) {
         try {
             var video = supabaseConfig.client.from("videos").select {
@@ -310,6 +392,10 @@ class VideoRepository @Inject constructor(
                 )
             }
 
+            val uploadMetadata = validateUploadVideo(videoUri).getOrElse { error ->
+                return Result.failure(error)
+            }
+
             // Extraer hashtags de la descripción si no se proveyeron tags
             val finalTags = if (tags.isNotEmpty()) {
                 tags
@@ -327,8 +413,9 @@ class VideoRepository @Inject constructor(
             }
 
             // 1. Upload Video
-            val videoBytes = context.contentResolver.openInputStream(videoUri)?.use { it.readBytes() }
-                ?: return Result.failure(Exception("No se pudo leer el video"))
+            val videoBytes = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(videoUri)?.use { it.readBytes() }
+            } ?: return Result.failure(Exception("No se pudo leer el video"))
             
             val videoFileName = "${userId}/${UUID.randomUUID()}.mp4"
             val videoUploadResult = storageService.uploadFile("videos", videoFileName, videoBytes, "video/mp4")
@@ -346,7 +433,9 @@ class VideoRepository @Inject constructor(
             var thumbBytes: ByteArray? = null
             if (thumbnailUri != null && thumbnailUri != Uri.EMPTY) {
                 try {
-                    thumbBytes = context.contentResolver.openInputStream(thumbnailUri)?.use { it.readBytes() }
+                    thumbBytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(thumbnailUri)?.use { it.readBytes() }
+                    }
                 } catch (e: Exception) {
                     android.util.Log.e("VideoRepository", "Error reading manual thumbnail", e)
                 }
@@ -408,7 +497,8 @@ class VideoRepository @Inject constructor(
                 tags = finalTags,
                 username = userNameStr,
                 userProfileImage = userImageStr,
-                isVerified = isVerifiedVal
+                isVerified = isVerifiedVal,
+                duration = uploadMetadata.durationSeconds
             )
 
             // Insert into Supabase 'videos' table
@@ -421,8 +511,6 @@ class VideoRepository @Inject constructor(
              }
              
               if (response.status.isSuccess()) {
-                  var videoId = UUID.randomUUID().toString() // Ya generado arriba en videoRequest
-                  
                   // 4. Increment user's post_count
                   try {
                       supabaseConfig.httpClient.post(
@@ -458,8 +546,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun downloadVideoToGallery(video: Video): Result<String> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.httpClient.get(video.videoUrl)
@@ -553,7 +639,8 @@ class VideoRepository @Inject constructor(
         val tags: List<String>,
         @SerialName("user_name") val username: String,
         @SerialName("user_profile_image") val userProfileImage: String,
-        @SerialName("is_verified") val isVerified: Boolean
+        @SerialName("is_verified") val isVerified: Boolean,
+        val duration: Long
     )
 
 
@@ -568,8 +655,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
     suspend fun searchVideos(query: String): Result<List<Video>> = withContext(Dispatchers.IO) {
         try {
             // Using Postgrest 'or' for Title OR Description OR Tags
@@ -769,8 +854,8 @@ class VideoRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     private suspend fun subscribeToVideoComments(videoId: String) {
         android.util.Log.d("VideoRepository", "Starting Realtime subscription for video: $videoId")
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -896,8 +981,8 @@ class VideoRepository @Inject constructor(
         )
     }
 
-@Composable
-@Composable
+
+
     private suspend fun subscribeToVideoStats(videoId: String) {
         while (currentCoroutineContext().isActive) {
             var channel = supabaseConfig.client.realtime.channel("video_stats_$videoId")
@@ -1246,11 +1331,11 @@ class VideoRepository @Inject constructor(
             // Upload Audio
             val bytes = audioFile.readBytes()
             var filename = "comment_${UUID.randomUUID()}.m4a"
-            android.util.Log.d("VideoRepository", "Uploading audio file: $fileName, size=${bytes.size} bytes")
-            val uploadResult = storageService.uploadFile("video-comments-media", fileName, bytes, "audio/mp4")
+            android.util.Log.d("VideoRepository", "Uploading audio file: $filename, size=${bytes.size} bytes")
+            val uploadResult = storageService.uploadFile("video-comments-media", filename, bytes, "audio/mp4")
             
             if (uploadResult.isSuccess) {
-                 val publicUrl = storageService.getPublicUrl("video-comments-media", fileName)
+                 val publicUrl = storageService.getPublicUrl("video-comments-media", filename)
                  android.util.Log.d("VideoRepository", "Audio uploaded successfully: $publicUrl")
                  // Return the result of addComment directly
                  return addComment(
@@ -2341,8 +2426,6 @@ class VideoRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-@Composable
-@Composable
     suspend fun hasPublicVideos(): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {

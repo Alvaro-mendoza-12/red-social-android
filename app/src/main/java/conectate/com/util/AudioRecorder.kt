@@ -56,7 +56,8 @@ class AudioRecorder @Inject constructor(
         
         try {
             val outputDir = context.cacheDir
-            if (!append || pcmFile == null || !pcmFile!!.exists()) {
+            val existingPcmFile = pcmFile
+            if (!append || existingPcmFile == null || !existingPcmFile.exists()) {
                 pcmFile = File.createTempFile("raw_recording_", ".pcm", outputDir)
             }
             
@@ -84,14 +85,15 @@ class AudioRecorder @Inject constructor(
             }
 
             audioRecord = AudioRecord(audioSource, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, minBufferSize * 4)
+            val recorder = audioRecord ?: return null
             
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                android.util.Log.e("AudioRecorder", "AudioRecord initialization FAILED. State: ${audioRecord?.state}")
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                android.util.Log.e("AudioRecorder", "AudioRecord initialization FAILED. State: ${recorder.state}")
                 return null
             }
 
             // --- Apply Effects ---
-            val sessionId = audioRecord!!.audioSessionId
+            val sessionId = recorder.audioSessionId
             if (NoiseSuppressor.isAvailable()) {
                 noiseSuppressor = NoiseSuppressor.create(sessionId)
                 noiseSuppressor?.enabled = true
@@ -165,8 +167,9 @@ class AudioRecorder @Inject constructor(
         }
         
         // Return encoded file
-        return if (pcmFile != null && pcmFile!!.exists()) {
-             encodeToAac(pcmFile!!)
+        val recordedPcmFile = pcmFile
+        return if (recordedPcmFile != null && recordedPcmFile.exists()) {
+             encodeToAac(recordedPcmFile)
         } else {
              null
         }
@@ -222,8 +225,9 @@ class AudioRecorder @Inject constructor(
     // Safe-ish as long as we are paused.
     // If we want to preview, we usually PAUSE first.
     suspend fun getPreviewFile(): File? = withContext(Dispatchers.IO) {
-        if (pcmFile == null || !pcmFile!!.exists()) return@withContext null
-        encodeToAac(pcmFile!!)
+        val previewPcmFile = pcmFile ?: return@withContext null
+        if (!previewPcmFile.exists()) return@withContext null
+        encodeToAac(previewPcmFile)
     }
 
     // --- Encoding (PCM -> M4A) ---

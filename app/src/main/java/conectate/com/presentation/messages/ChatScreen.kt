@@ -41,11 +41,8 @@ import androidx.navigation.NavController
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
-import conectate.com.presentation.components.TypingIndicatorMinimal
 import conectate.com.presentation.components.isUserAdmin
 import conectate.com.presentation.components.MessageBubble
-import conectate.com.presentation.components.ImageMessageBubble
-import conectate.com.presentation.components.VideoMessageBubble
 import conectate.com.util.Constants
 import androidx.compose.material3.AlertDialog
 import java.util.Locale
@@ -116,16 +113,13 @@ fun ChatScreen(
     val forwardUserSearchQuery by viewModel.forwardUserSearchQuery.collectAsState()
     val forwardUserTargets by viewModel.forwardUserTargets.collectAsState()
     val isForwarding by viewModel.isForwarding.collectAsState()
-    val typingParticipants by viewModel.typingParticipants.collectAsState()
+    val linkPreviews by viewModel.linkPreviews.collectAsState()
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     val currentUserId = viewModel.getCurrentUserId() ?: ""
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    
-    var showStorageDisabledDialog by remember { mutableStateOf(false) }
-    var storageDisabledMessage by remember { mutableStateOf("") }
     
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
@@ -143,10 +137,8 @@ fun ChatScreen(
     val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsState()
     
     // Audio Playback State
-    // Audio Playback State
     val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
-    val audioDuration by viewModel.audioDuration.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
     
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -331,6 +323,37 @@ fun ChatScreen(
     
     // Message Actions State
     val messages = (chatState as? ChatUiState.Success)?.messages ?: emptyList()
+    var isChatSearchActive by remember { mutableStateOf(false) }
+    var chatSearchQuery by remember { mutableStateOf("") }
+    var activeSearchResult by remember { mutableStateOf(0) }
+    val searchMatchIndexes by remember(messages, chatSearchQuery) {
+        derivedStateOf {
+            val query = chatSearchQuery.trim()
+            if (query.isBlank()) {
+                emptyList()
+            } else {
+                messages.mapIndexedNotNull { index, message ->
+                    val haystack = buildString {
+                        append(message.content)
+                        append(' ')
+                        append(message.sender_name.orEmpty())
+                        append(' ')
+                        append(message.content_type)
+                    }
+                    if (haystack.contains(query, ignoreCase = true)) index else null
+                }
+            }
+        }
+    }
+    val activeSearchIndex = searchMatchIndexes.getOrNull(
+        activeSearchResult.coerceIn(0, (searchMatchIndexes.size - 1).coerceAtLeast(0))
+    )
+    val activeSearchOrdinal = if (searchMatchIndexes.isEmpty()) {
+        0
+    } else {
+        activeSearchResult.coerceIn(0, searchMatchIndexes.size - 1) + 1
+    }
+    val activeSearchMessageId = activeSearchIndex?.let { messages.getOrNull(it)?.id }
     val visibleMessageIds by remember(messages, listState) {
         derivedStateOf {
             listState.layoutInfo.visibleItemsInfo
@@ -344,10 +367,21 @@ fun ChatScreen(
     LaunchedEffect(visibleMessageIds, messages.size) {
         viewModel.onVisibleMessageIdsChanged(visibleMessageIds)
     }
+
+    LaunchedEffect(chatSearchQuery, searchMatchIndexes.size) {
+        activeSearchResult = activeSearchResult.coerceIn(0, (searchMatchIndexes.size - 1).coerceAtLeast(0))
+    }
+
+    LaunchedEffect(isChatSearchActive, activeSearchIndex) {
+        if (isChatSearchActive && activeSearchIndex != null) {
+            listState.animateScrollToItem(activeSearchIndex)
+        }
+    }
     
     // Auto-scroll to newest message (Bottom)
-    LaunchedEffect(messages.size, focusMessageId) {
+    LaunchedEffect(messages.size, focusMessageId, isChatSearchActive) {
         if (messages.isEmpty()) return@LaunchedEffect
+        if (isChatSearchActive) return@LaunchedEffect
 
         if (!focusResolved && !focusMessageId.isNullOrBlank()) {
             val targetIndex = messages.indexOfFirst { msg ->
@@ -401,7 +435,7 @@ fun ChatScreen(
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 
-                                viewModel.onEditMessage(selectedMessage!!) 
+                                selectedMessage?.let { viewModel.onEditMessage(it) }
                                 viewModel.dismissMessageActions()
                             }
                             .padding(16.dp),
@@ -417,7 +451,7 @@ fun ChatScreen(
                     Row(modifier = Modifier
                         .fillMaxWidth()
                         .clickable { 
-                            viewModel.deleteMessageForMe(selectedMessage!!) 
+                            selectedMessage?.let { viewModel.deleteMessageForMe(it) }
                             viewModel.dismissMessageActions()
                         }
                         .padding(16.dp),
@@ -433,7 +467,7 @@ fun ChatScreen(
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 
-                                viewModel.deleteMessageForEveryone(selectedMessage!!) 
+                                selectedMessage?.let { viewModel.deleteMessageForEveryone(it) }
                                 viewModel.dismissMessageActions()
                             }
                             .padding(16.dp),
@@ -452,7 +486,7 @@ fun ChatScreen(
                      Row(modifier = Modifier
                         .fillMaxWidth()
                         .clickable { 
-                            viewModel.deleteMessageForMe(selectedMessage!!) 
+                            selectedMessage?.let { viewModel.deleteMessageForMe(it) }
                             viewModel.dismissMessageActions()
                         }
                         .padding(16.dp),
@@ -515,7 +549,7 @@ fun ChatScreen(
                  Row(modifier = Modifier
                     .fillMaxWidth()
                     .clickable { 
-                        viewModel.replyToMessage(selectedMessage!!)
+                        selectedMessage?.let { viewModel.replyToMessage(it) }
                         viewModel.dismissMessageActions()
                     }
                     .padding(16.dp),
@@ -548,8 +582,7 @@ fun ChatScreen(
         }
     }
 
-    if (messageForInfo != null) {
-        val msg = messageForInfo!!
+    messageForInfo?.let { msg ->
         val deliveredAt = when {
             msg.status == "read" -> msg.read_at ?: msg.created_at
             msg.status == "delivered" || msg.status == "received" -> msg.created_at
@@ -805,97 +838,201 @@ fun ChatScreen(
 
                 TopAppBar(
                     title = { 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (chatImage != null) {
-                                 Box(modifier = Modifier.clickable {
-                                    // Navigate to full screen image
-                                    // Using navigation for individual profile photos
-                                    navController.navigate(conectate.com.presentation.navigation.Screen.FullScreenImage.createRoute(chatImage))
-                                }) {
-                                    conectate.com.presentation.components.CircularProfileImage(
-                                        imageUrl = chatImage,
-                                        size = 32.dp,
-                                        isVerified = if (chat?.is_group == true) false else otherUser?.is_verified ?: false
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            
-                            // Name and Status
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        if (chat?.is_group != true && otherUser != null) {
-                                            navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(otherUser.id))
-                                        }
-                                    }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = chatName, 
-                                        style = MaterialTheme.typography.titleMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (chat?.is_group != true && (otherUser?.is_admin == true || isUserAdmin(otherUser?.username, otherUser?.email))) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        AdminBadge(showVerifiedLine = false)
-                                    }
-                                    if (chat?.is_group != true && otherUser?.is_verified == true) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = "Verificado",
-                                            tint = Color(0xFF1DA1F2),
-                                            modifier = Modifier.size(14.dp)
+                        if (isChatSearchActive) {
+                            TextField(
+                                value = chatSearchQuery,
+                                onValueChange = {
+                                    chatSearchQuery = it
+                                    activeSearchResult = 0
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                placeholder = { Text("Buscar en este chat") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Search, contentDescription = null)
+                                },
+                                trailingIcon = {
+                                    if (chatSearchQuery.isNotBlank()) {
+                                        Text(
+                                            text = if (searchMatchIndexes.isEmpty()) {
+                                                "0/0"
+                                            } else {
+                                                "$activeSearchOrdinal/${searchMatchIndexes.size}"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = 12.dp)
                                         )
                                     }
+                                },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent
+                                )
+                            )
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (chatImage != null) {
+                                     Box(modifier = Modifier.clickable {
+                                        // Navigate to full screen image
+                                        // Using navigation for individual profile photos
+                                        navController.navigate(conectate.com.presentation.navigation.Screen.FullScreenImage.createRoute(chatImage))
+                                    }) {
+                                        conectate.com.presentation.components.CircularProfileImage(
+                                            imageUrl = chatImage,
+                                            size = 32.dp,
+                                            isVerified = if (chat?.is_group == true) false else otherUser?.is_verified ?: false
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                 }
                                 
-                                // Presence Status
-                                // PRIORIDAD: Flow Reactivo > State estático
-                                val currentOtherUser = otherUserReactive ?: otherUser
-                                
-                                if (chat?.is_group != true && currentOtherUser != null) {
-                                    val statusText = if (currentOtherUser.is_online) {
-                                        "Conectado"
-                                    } else {
-                                        TimeUtils.getRelativeTimeSpanString(currentOtherUser.lastSeen)
+                                // Name and Status
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            if (chat?.is_group != true && otherUser != null) {
+                                                navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(otherUser.id))
+                                            }
+                                        }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = chatName, 
+                                            style = MaterialTheme.typography.titleMedium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (chat?.is_group != true && (otherUser?.is_admin == true || isUserAdmin(otherUser?.username, otherUser?.email))) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            AdminBadge(showVerifiedLine = false)
+                                        }
+                                        if (chat?.is_group != true && otherUser?.is_verified == true) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Verificado",
+                                                tint = Color(0xFF1DA1F2),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
                                     }
                                     
-                                    val statusColor = if (currentOtherUser.is_online) {
-                                        Color(0xFF4CAF50) // Green
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                    }
+                                    // Presence Status
+                                    // PRIORIDAD: Flow Reactivo > State estático
+                                    val currentOtherUser = otherUserReactive ?: otherUser
                                     
-                                    Text(
-                                        text = statusText,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = if (currentOtherUser.is_online) FontWeight.Bold else FontWeight.Medium
-                                        ),
-                                        color = statusColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    if (chat?.is_group != true && currentOtherUser != null) {
+                                        val statusText = if (currentOtherUser.is_online) {
+                                            "Conectado"
+                                        } else {
+                                            TimeUtils.getRelativeTimeSpanString(currentOtherUser.lastSeen)
+                                        }
+                                        
+                                        val statusColor = if (currentOtherUser.is_online) {
+                                            Color(0xFF4CAF50) // Green
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        }
+                                        
+                                        Text(
+                                            text = statusText,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = if (currentOtherUser.is_online) FontWeight.Bold else FontWeight.Medium
+                                            ),
+                                            color = statusColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, "Volver")
+                        IconButton(onClick = {
+                            if (isChatSearchActive) {
+                                isChatSearchActive = false
+                                chatSearchQuery = ""
+                                activeSearchResult = 0
+                            } else {
+                                navController.popBackStack()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (isChatSearchActive) Icons.Default.Close else Icons.Default.ArrowBack,
+                                contentDescription = if (isChatSearchActive) "Cerrar búsqueda" else "Volver"
+                            )
                         }
                     },
                     actions = {
-                        var showMenu by remember { mutableStateOf(false) }
-                        var showReportDialog by remember { mutableStateOf(false) }
+                        if (isChatSearchActive) {
+                            IconButton(
+                                enabled = searchMatchIndexes.isNotEmpty(),
+                                onClick = {
+                                    if (searchMatchIndexes.isNotEmpty()) {
+                                        activeSearchResult =
+                                            (activeSearchResult - 1 + searchMatchIndexes.size) % searchMatchIndexes.size
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Resultado anterior")
+                            }
+                            IconButton(
+                                enabled = searchMatchIndexes.isNotEmpty(),
+                                onClick = {
+                                    if (searchMatchIndexes.isNotEmpty()) {
+                                        activeSearchResult = (activeSearchResult + 1) % searchMatchIndexes.size
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Resultado siguiente")
+                            }
+                        } else {
+                         IconButton(onClick = { isChatSearchActive = true }) {
+                             Icon(Icons.Default.Search, contentDescription = "Buscar en chat")
+                         }
+
+                         // Call buttons (only for 1:1 chats, not groups)
+                         if (chat?.is_group != true) {
+                              IconButton(onClick = {
+                                  scope.launch {
+                                      val result = viewModel.initiateCall(false)
+                                      if (result.isSuccess) {
+                                          val callId = result.getOrThrow()
+                                          navController.navigate(conectate.com.presentation.navigation.Screen.Call.createRoute(callId))
+                                      } else {
+                                          snackbarHostState.showSnackbar("Error llamada: ${result.exceptionOrNull()?.message}")
+                                      }
+                                  }
+                              }) {
+                                 Icon(Icons.Default.Call, "Llamada de voz", tint = MaterialTheme.colorScheme.primary)
+                             }
+                              IconButton(onClick = {
+                                  scope.launch {
+                                      val result = viewModel.initiateCall(true)
+                                      if (result.isSuccess) {
+                                          val callId = result.getOrThrow()
+                                          navController.navigate(conectate.com.presentation.navigation.Screen.Call.createRoute(callId))
+                                      } else {
+                                          snackbarHostState.showSnackbar("Error videollamada: ${result.exceptionOrNull()?.message}")
+                                      }
+                                  }
+                              }) {
+                                 Icon(Icons.Default.Videocam, "Llamada de video", tint = MaterialTheme.colorScheme.primary)
+                             }
+                         }
+
+                         var showMenu by remember { mutableStateOf(false) }
+                         var showReportDialog by remember { mutableStateOf(false) }
 
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Opciones")
@@ -975,6 +1112,7 @@ fun ChatScreen(
                                 }
                             )
                         }
+                        }
                     }
                 )
              }
@@ -1014,7 +1152,7 @@ fun ChatScreen(
                                 MessageBubble(
                                     message = message,
                                     isFromCurrentUser = message.sender_id == currentUserId,
-                                    isSelected = isSelected,
+                                    isSelected = isSelected || message.id == activeSearchMessageId,
                                     onLongClick = {
                                         viewModel.onMessageLongClick(message)
                                     },
@@ -1042,7 +1180,11 @@ fun ChatScreen(
                                             // Reverse so newest is at the start (index 0)
                                             val mediaItems = currentMessages
                                                 .filter { (it.content_type == "image" || it.content_type == "video" || it.content_type == "gif" || it.content_type == "sticker") && it.media_url != null && !it.deleted_for_all }
-                                                .map { conectate.com.presentation.components.MediaItem(it.id, it.media_url!!, it.content_type) }
+                                                .mapNotNull { item ->
+                                                    item.media_url?.let { url ->
+                                                        conectate.com.presentation.components.MediaItem(item.id, url, item.content_type)
+                                                    }
+                                                }
                                                 .reversed()
                                             
                                             val initialRawUrl = message.media_url
@@ -1093,6 +1235,10 @@ fun ChatScreen(
                                     currentUserId = currentUserId,
                                     onReactionClick = { emoji ->
                                         viewModel.reactToMessage(message, emoji)
+                                    },
+                                    linkPreviews = linkPreviews,
+                                    onRequestLinkPreview = { url ->
+                                        viewModel.requestLinkPreview(url)
                                     },
                                     onOpenContactChat = { payload: ChatContactPayload ->
                                         scope.launch {
@@ -1521,10 +1667,12 @@ fun ChatScreen(
         }
     }
     
-    if (pendingMediaUri != null && pendingMediaType != null) {
+    val selectedMediaUri = pendingMediaUri
+    val selectedMediaType = pendingMediaType
+    if (selectedMediaUri != null && selectedMediaType != null) {
         MediaCaptionPreviewDialog(
-            mediaUri = pendingMediaUri!!,
-            mediaType = pendingMediaType!!,
+            mediaUri = selectedMediaUri,
+            mediaType = selectedMediaType,
             caption = pendingMediaCaption,
             onCaptionChange = { pendingMediaCaption = it },
             onDismiss = {
@@ -1997,20 +2145,6 @@ fun ChatScreen(
         )
     }
     
-    // ... Existing dialog code ...
-    if (showStorageDisabledDialog) {
-        AlertDialog(
-            onDismissRequest = { showStorageDisabledDialog = false },
-            title = { Text("Permiso denegado") },
-            text = { Text("Se requiere permiso de almacenamiento para enviar archivos.") },
-            confirmButton = {
-                TextButton(onClick = { showStorageDisabledDialog = false }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
     // Confirm Delete Dialog
     if (showDeleteDialog) {
         AlertDialog(

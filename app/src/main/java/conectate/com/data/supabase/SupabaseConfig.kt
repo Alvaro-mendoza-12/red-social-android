@@ -1,5 +1,6 @@
 package conectate.com.data.supabase
 
+import android.os.Looper
 import android.util.Log
 import conectate.com.BuildConfig
 import io.github.jan.supabase.realtime.RealtimeChannel
@@ -11,9 +12,15 @@ import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.*
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.*
 import io.github.jan.supabase.annotations.SupabaseInternal
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -26,9 +33,23 @@ class SupabaseConfig @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val realtimeMutex = Mutex()
+    private val realtimeProbeMutex = Mutex()
 
-    val supabaseUrl: String = BuildConfig.SUPABASE_URL.ifEmpty { "" }
-    val supabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.ifEmpty { "" }
+    @Volatile
+    private var realtimeDisabledUntilMs: Long = 0L
+
+    @Volatile
+    private var lastRealtimeProbeAtMs: Long = 0L
+
+    @Volatile
+    private var lastRealtimeRestrictionMessage: String? = null
+
+    @Volatile
+    private var lastRealtimeRestrictionLogMs: Long = 0L
+
+    val supabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
+    val supabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
+    val isConfigured: Boolean = supabaseUrl.startsWith("http") && supabaseAnonKey.isNotBlank()
 
     // URLs específicas para diferentes servicios
     val authUrl: String = "$supabaseUrl/auth/v1"
@@ -70,64 +91,26 @@ class SupabaseConfig @Inject constructor(
 
     // Official Supabase Client for Realtime
     // IMPORTANT: Initialized lazily to avoid blocking the Main thread during app startup.
-    // The first access usually occurs in AuthService on a background dispatcher.
+    // The Supabase Auth plugin registers lifecycle callbacks and must be created on Main.
     @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
     val client: io.github.jan.supabase.SupabaseClient by lazy {
         val startAt = System.currentTimeMillis()
         try {
-            // Validation to prevent crash on illegal argument
-            val safeUrl = if (supabaseUrl.isNotBlank() && supabaseUrl.startsWith("http")) supabaseUrl else "https://placeholder.supabase.co"
-            val safeKey = if (supabaseAnonKey.isNotBlank()) supabaseAnonKey else "placeholder-key"
-            
-            io.github.jan.supabase.createSupabaseClient(
-                supabaseUrl = safeUrl,
-                supabaseKey = safeKey
-            ) {
-                httpConfig {
-                    install(HttpTimeout) {
-                        requestTimeoutMillis = 30000
-                        connectTimeoutMillis = 30000
-                        socketTimeoutMillis = 30000
-                    }
-                }
-                defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(Json {
-                    ignoreUnknownKeys = true
-                    isLenient = true
-                    coerceInputValues = true
-                    encodeDefaults = true
-                })
-                install(io.github.jan.supabase.gotrue.Auth) {
-                    scheme = "conectate"
-                    host = "recovery"
-                }
-                install(io.github.jan.supabase.realtime.Realtime)
-                install(io.github.jan.supabase.postgrest.Postgrest)
-                install(io.github.jan.supabase.storage.Storage)
-            }.also {
+            val safeUrl = if (isConfigured) supabaseUrl else DISABLED_SUPABASE_URL
+            val safeKey = if (isConfigured) supabaseAnonKey else DISABLED_SUPABASE_KEY
+
+            createSupabaseClientOnMain(safeUrl, safeKey).also {
                 val endAt = System.currentTimeMillis()
                 Log.d("SupabaseConfig", "✅ Supabase Client initialized in ${endAt - startAt}ms")
             }
         } catch (e: Exception) {
             Log.e("SupabaseConfig", "❌ CRITICAL: Failed to initialize Supabase Client", e)
-            // Return a dummy safe client to prevent DI crash, even if calls will fail later
-            io.github.jan.supabase.createSupabaseClient(
-                supabaseUrl = "https://placeholder.supabase.co",
-                supabaseKey = "placeholder"
-            ) {
-                 defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(Json { ignoreUnknownKeys = true })
-                 install(io.github.jan.supabase.gotrue.Auth) {
-                    scheme = "conectate"
-                    host = "recovery"
-                }
-                install(io.github.jan.supabase.realtime.Realtime)
-                install(io.github.jan.supabase.postgrest.Postgrest)
-                install(io.github.jan.supabase.storage.Storage)
-            }
+            createSupabaseClientOnMain(DISABLED_SUPABASE_URL, DISABLED_SUPABASE_KEY)
         }
     }
 
     init {
-        if (supabaseUrl.isBlank() || supabaseAnonKey.isBlank()) {
+        if (!isConfigured) {
             Log.w("SupabaseConfig", "Supabase URL or Anon Key not configured")
         }
     }
@@ -136,7 +119,134 @@ class SupabaseConfig @Inject constructor(
         return message?.contains("Websocket already connected", ignoreCase = true) == true
     }
 
+    private fun Throwable.isRealtimeHandshakeSerializationError(): Boolean {
+        val raw = stackTraceToString()
+        return raw.contains("DefaultClientWebSocketSession") &&
+            raw.contains("SerializationException") &&
+            raw.contains("ContentNegotiation")
+    }
+
+    private fun logRealtimePaused(reason: String, message: String?) {
+        val now = System.currentTimeMillis()
+        if (now - lastRealtimeRestrictionLogMs < REALTIME_RESTRICTION_LOG_INTERVAL_MS) return
+        lastRealtimeRestrictionLogMs = now
+        Log.w(
+            "SupabaseConfig",
+            "Realtime paused [$reason]: ${message ?: "Supabase service temporarily unavailable"}"
+        )
+    }
+
+    private fun pauseRealtime(reason: String, message: String?) {
+        lastRealtimeRestrictionMessage = message
+        realtimeDisabledUntilMs = System.currentTimeMillis() + REALTIME_RESTRICTION_PAUSE_MS
+        logRealtimePaused(reason, message)
+    }
+
+    fun reportServiceRestrictionIfPresent(reason: String, throwable: Throwable): Boolean {
+        val restrictionMessage = mapSupabaseServiceRestrictionMessage(
+            rawMessage = throwable.message ?: throwable.stackTraceToString()
+        )
+        if (restrictionMessage != null) {
+            pauseRealtime(reason, restrictionMessage)
+            return true
+        }
+        return false
+    }
+
+    private suspend fun shouldSkipRealtimeConnection(reason: String): Boolean {
+        val now = System.currentTimeMillis()
+        if (now < realtimeDisabledUntilMs) {
+            logRealtimePaused(reason, lastRealtimeRestrictionMessage)
+            return true
+        }
+
+        if (supabaseUrl.isBlank() || supabaseAnonKey.isBlank()) return false
+        if (now - lastRealtimeProbeAtMs < REALTIME_RESTRICTION_PROBE_INTERVAL_MS) return false
+
+        return realtimeProbeMutex.withLock {
+            val lockedNow = System.currentTimeMillis()
+            if (lockedNow < realtimeDisabledUntilMs) {
+                logRealtimePaused(reason, lastRealtimeRestrictionMessage)
+                return@withLock true
+            }
+            if (lockedNow - lastRealtimeProbeAtMs < REALTIME_RESTRICTION_PROBE_INTERVAL_MS) {
+                return@withLock false
+            }
+
+            lastRealtimeProbeAtMs = lockedNow
+            val restrictionMessage = runCatching {
+                val response = httpClient.get("${supabaseUrl.removeSuffix("/")}/rest/v1/profiles?select=id&limit=1") {
+                    header("apikey", supabaseAnonKey)
+                    header(HttpHeaders.Authorization, "Bearer $supabaseAnonKey")
+                }
+                val body = response.bodyAsText()
+                mapSupabaseServiceRestrictionMessage(body)
+                    ?: if (response.status.value == 402) {
+                        mapSupabaseServiceRestrictionMessage("402 restricted quota")
+                    } else {
+                        null
+                    }
+            }.getOrNull()
+
+            if (restrictionMessage != null) {
+                pauseRealtime(reason, restrictionMessage)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    private fun createSupabaseClientOnMain(
+        safeUrl: String,
+        safeKey: String
+    ): io.github.jan.supabase.SupabaseClient {
+        return if (Looper.myLooper() == Looper.getMainLooper()) {
+            createSupabaseClientInternal(safeUrl, safeKey)
+        } else {
+            runBlocking(Dispatchers.Main.immediate) {
+                createSupabaseClientInternal(safeUrl, safeKey)
+            }
+        }
+    }
+
+    @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
+    private fun createSupabaseClientInternal(
+        safeUrl: String,
+        safeKey: String
+    ): io.github.jan.supabase.SupabaseClient {
+        return io.github.jan.supabase.createSupabaseClient(
+            supabaseUrl = safeUrl,
+            supabaseKey = safeKey
+        ) {
+            httpConfig {
+                install(HttpTimeout) {
+                    requestTimeoutMillis = 30000
+                    connectTimeoutMillis = 30000
+                    socketTimeoutMillis = 30000
+                }
+            }
+            defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+                coerceInputValues = true
+                encodeDefaults = true
+            })
+            install(io.github.jan.supabase.gotrue.Auth) {
+                scheme = "conectate"
+                host = "recovery"
+            }
+            install(io.github.jan.supabase.realtime.Realtime) {
+                connectOnSubscribe = false
+            }
+            install(io.github.jan.supabase.postgrest.Postgrest)
+            install(io.github.jan.supabase.storage.Storage)
+        }
+    }
+
     private suspend fun connectRealtimeLocked(reason: String) {
+        if (shouldSkipRealtimeConnection(reason)) return
+
         try {
             client.realtime.connect()
             Log.d("SupabaseConfig", "Realtime connect OK [$reason]")
@@ -146,6 +256,12 @@ class SupabaseConfig @Inject constructor(
             } else {
                 throw e
             }
+        } catch (e: Exception) {
+            if (e.isRealtimeHandshakeSerializationError()) {
+                pauseRealtime(reason, "Realtime no pudo abrir WebSocket; el backend puede estar devolviendo una respuesta REST en lugar del upgrade WebSocket.")
+                return
+            }
+            throw e
         }
     }
 
@@ -160,9 +276,18 @@ class SupabaseConfig @Inject constructor(
         reason: String,
         blockUntilSubscribed: Boolean = false
     ) {
+        if (shouldSkipRealtimeConnection(reason)) return
+
         realtimeMutex.withLock {
+            if (shouldSkipRealtimeConnection(reason)) return@withLock
+
             try {
-                // Let Supabase subscribe manage the websocket lifecycle to avoid double-connect races.
+                if (client.realtime.status.value != io.github.jan.supabase.realtime.Realtime.Status.CONNECTED) {
+                    connectRealtimeLocked(reason)
+                    if (client.realtime.status.value != io.github.jan.supabase.realtime.Realtime.Status.CONNECTED) {
+                        return@withLock
+                    }
+                }
                 channel.subscribe(blockUntilSubscribed = blockUntilSubscribed)
                 Log.d("SupabaseConfig", "Realtime subscribe OK [$reason]")
             } catch (e: IllegalStateException) {
@@ -177,8 +302,22 @@ class SupabaseConfig @Inject constructor(
                 delay(150)
                 channel.subscribe(blockUntilSubscribed = blockUntilSubscribed)
                 Log.d("SupabaseConfig", "Realtime subscribe retry OK [$reason]")
+            } catch (e: Exception) {
+                if (e.isRealtimeHandshakeSerializationError()) {
+                    pauseRealtime(reason, "Realtime no pudo abrir WebSocket; el backend puede estar devolviendo una respuesta REST en lugar del upgrade WebSocket.")
+                    return@withLock
+                }
+                throw e
             }
         }
+    }
+
+    private companion object {
+        private const val DISABLED_SUPABASE_URL = "https://disabled.supabase.invalid"
+        private const val DISABLED_SUPABASE_KEY = "disabled-anon-key"
+        private const val REALTIME_RESTRICTION_PAUSE_MS = 5 * 60 * 1_000L
+        private const val REALTIME_RESTRICTION_PROBE_INTERVAL_MS = 60 * 1_000L
+        private const val REALTIME_RESTRICTION_LOG_INTERVAL_MS = 30 * 1_000L
     }
 }
 

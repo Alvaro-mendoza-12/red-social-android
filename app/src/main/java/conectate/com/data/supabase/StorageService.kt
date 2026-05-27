@@ -2,6 +2,7 @@ package conectate.com.data.supabase
 
 import conectate.com.core.media.MediaUploadGuard
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
@@ -37,6 +38,7 @@ data class StorageResponse(
 class StorageService @Inject constructor(
     private val config: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val mediaUploadGuard: MediaUploadGuard,
     private val appMetrics: AppMetrics
 ) {
@@ -75,6 +77,47 @@ class StorageService @Inject constructor(
 
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val fileDisplayName = normalizedPath.substringAfterLast('/').ifBlank { "archivo" }
+                val upload = localFallbackApiClient.uploadFile(
+                    accessToken = accessToken,
+                    bucketName = bucketName,
+                    objectPath = normalizedPath,
+                    bytes = bytes,
+                    contentType = canonicalContentType,
+                    fileName = fileDisplayName
+                )
+                return if (upload.isSuccess) {
+                    val localObject = upload.getOrThrow()
+                    appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs + ("backend" to "local_fallback"))
+                    appMetrics.recordLatency(
+                        metric = "media_upload",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = metricAttrs + ("backend" to "local_fallback")
+                    )
+                    Result.success(
+                        StorageResponse(
+                            Key = localObject.path,
+                            Id = localObject.id,
+                            Name = localObject.path,
+                            BucketId = localObject.bucket,
+                            Size = localObject.size.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                            ContentType = localObject.contentType,
+                            CreatedAt = localObject.createdAt,
+                            UpdatedAt = localObject.updatedAt
+                        )
+                    )
+                } else {
+                    val error = upload.exceptionOrNull() ?: Exception("No se pudo subir el archivo al servidor Ubuntu.")
+                    appMetrics.recordFailure(
+                        metric = "media_upload",
+                        throwable = error,
+                        attributes = metricAttrs + ("backend" to "local_fallback")
+                    )
+                    Result.failure(error)
+                }
+            }
 
             val mediaHash = sha256Hex(bytes)
             val registerResult = registerMediaObject(
@@ -148,6 +191,14 @@ class StorageService @Inject constructor(
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val publicUrl = if (fileName.startsWith("http", ignoreCase = true)) {
+                    fileName
+                } else {
+                    localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
+                }
+                return localFallbackApiClient.downloadPublicFile(publicUrl)
+            }
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
@@ -248,6 +299,10 @@ class StorageService @Inject constructor(
     }
 
     fun getPublicUrl(bucketName: String, fileName: String): String {
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            var normalizedPath = normalizeStoragePath(fileName) ?: return ""
+            return localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
+        }
         var baseUrl = config.supabaseUrl.removeSuffix("/")
         var normalizedPath = normalizeStoragePath(fileName) ?: return ""
         // Join segments manually for simple GET URL
@@ -262,6 +317,9 @@ class StorageService @Inject constructor(
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                return Result.success(localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath))
+            }
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
@@ -337,11 +395,11 @@ class StorageService @Inject constructor(
     }
 
     private fun normalizeContentType(value: String): String {
-        val raw = value.substringBefore("").trim().lowercase()
+        val raw = value.substringBefore(";").trim().lowercase()
         return when (raw) {
             "image/jpg" -> "image/jpeg"
             "audio/m4a", "audio/x-m4a" -> "audio/mp4"
-            else -> raw
+            else -> raw.ifBlank { "application/octet-stream" }
         }
     }
 

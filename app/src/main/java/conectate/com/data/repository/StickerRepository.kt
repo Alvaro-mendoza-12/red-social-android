@@ -67,8 +67,8 @@ class StickerRepository @Inject constructor(
     private val _recentStickerIds = MutableStateFlow<List<String>>(emptyList())
     val recentStickerIds: StateFlow<List<String>> = _recentStickerIds.asStateFlow()
 
-@Composable
-@Composable
+
+
     suspend fun bootstrap() = withContext(Dispatchers.IO) {
         val localCatalog = loadLocalItems().ifEmpty { defaultCatalog() }
         val localPacks = loadLocalPacks().ifEmpty { defaultPacks() }
@@ -88,8 +88,8 @@ class StickerRepository @Inject constructor(
         runCatching { refreshRemotePacks() }
     }
 
-@Composable
-@Composable
+
+
     suspend fun search(query: String): List<StickerItem> = withContext(Dispatchers.Default) {
         val q = query.trim().lowercase()
         val tokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -106,7 +106,7 @@ class StickerRepository @Inject constructor(
         base.forEach { item ->
             var haystackTitle = item.title.lowercase()
             val haystackTags = item.tags.map { it.lowercase() }
-            val score = 0
+            var score = 0
             tokens.forEach { token ->
                 score += when {
                     haystackTitle == token -> 50
@@ -128,8 +128,8 @@ class StickerRepository @Inject constructor(
             .map { pair -> pair.first }
     }
 
-@Composable
-@Composable
+
+
     suspend fun toggleFavorite(stickerId: String): Boolean = withContext(Dispatchers.IO) {
         var clean = stickerId.trim()
         if (clean.isBlank()) return@withContext false
@@ -164,16 +164,16 @@ class StickerRepository @Inject constructor(
         return _favorites.value.contains(stickerId)
     }
 
-@Composable
-@Composable
+
+
     suspend fun toggleFavoriteByMedia(mediaUrl: String, title: String = "Sticker"): Boolean = withContext(Dispatchers.IO) {
         var sticker = ensureStickerForMedia(mediaUrl, title) ?: return@withContext false
         registerRecentSticker(sticker.id)
         toggleFavorite(sticker.id)
     }
 
-@Composable
-@Composable
+
+
     suspend fun createPack(name: String, description: String? = null, isPublic: Boolean = false): Result<StickerPack> = withContext(Dispatchers.IO) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) {
@@ -358,8 +358,8 @@ class StickerRepository @Inject constructor(
         Result.success(copied)
     }
 
-@Composable
-@Composable
+
+
     suspend fun removeStickerFromPack(packId: String, stickerId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var cleanPack = packId.trim()
         var cleanSticker = stickerId.trim()
@@ -397,8 +397,8 @@ class StickerRepository @Inject constructor(
         Result.success(Unit)
     }
 
-@Composable
-@Composable
+
+
     suspend fun deleteSticker(stickerId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var cleanSticker = stickerId.trim()
         if (cleanSticker.isBlank()) {
@@ -449,8 +449,8 @@ class StickerRepository @Inject constructor(
         Result.success(Unit)
     }
 
-@Composable
-@Composable
+
+
     suspend fun downloadPack(packId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var clean = packId.trim()
         if (clean.isBlank()) return@withContext Result.failure(Exception("packId inválido"))

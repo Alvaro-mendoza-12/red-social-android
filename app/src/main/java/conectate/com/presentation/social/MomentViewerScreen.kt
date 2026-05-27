@@ -40,6 +40,7 @@ import coil.compose.AsyncImage
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.profile.MomentHighlightViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -48,12 +49,14 @@ import kotlinx.coroutines.launch
 fun MomentViewerScreen(
     navController: NavController,
     momentId: String,
-    viewModel: MomentViewModel = hiltViewModel()
+    viewModel: MomentViewModel = hiltViewModel(),
+    highlightViewModel: MomentHighlightViewModel = hiltViewModel()
 ) {
     android.util.Log.d("MomentDebug", "Entering MomentViewerScreen for momentId: $momentId")
 
     val moments by viewModel.moments.collectAsState()
     val viewers by viewModel.viewers.collectAsState()
+    val highlightState by highlightViewModel.uiState.collectAsState()
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { moments.size })
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -67,6 +70,17 @@ fun MomentViewerScreen(
 
     var showViewersSheet by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
+    var showSaveHighlightDialog by remember { mutableStateOf(false) }
+    var momentToHighlight by remember { mutableStateOf<Moment?>(null) }
+    var highlightTitle by remember { mutableStateOf("Favoritos") }
+
+    LaunchedEffect(highlightState.message, highlightState.error) {
+        val message = highlightState.message ?: highlightState.error
+        if (!message.isNullOrBlank()) {
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            highlightViewModel.clearTransientMessage()
+        }
+    }
 
     // Track view for the current moment
     LaunchedEffect(pagerState.currentPage, moments.size) {
@@ -301,21 +315,39 @@ fun MomentViewerScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (isMyMoment) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clickable { 
-                                paused = true
-                                showViewersSheet = true 
-                            }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White)
-                        Text(
-                            text = "${viewers.size} vistos",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clickable {
+                                    paused = true
+                                    showViewersSheet = true
+                                }
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White)
+                            Text(
+                                text = "${viewers.size} vistos",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                paused = true
+                                momentToHighlight = currentMoment
+                                showSaveHighlightDialog = true
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.7f))
+                        ) {
+                            Icon(Icons.Default.Star, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Destacar")
+                        }
                     }
                 } else {
                     // Reply UI
@@ -369,6 +401,49 @@ fun MomentViewerScreen(
                 }
             }
         }
+    }
+
+    if (showSaveHighlightDialog && momentToHighlight != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showSaveHighlightDialog = false
+                paused = false
+            },
+            title = { Text("Guardar en destacados") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Elige el nombre del highlight donde se guardará este momento.")
+                    OutlinedTextField(
+                        value = highlightTitle,
+                        onValueChange = { highlightTitle = it.take(60) },
+                        label = { Text("Nombre del destacado") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        momentToHighlight?.let { highlightViewModel.saveMomentToHighlight(it, highlightTitle) }
+                        showSaveHighlightDialog = false
+                        paused = false
+                    },
+                    enabled = highlightTitle.isNotBlank()
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSaveHighlightDialog = false
+                        paused = false
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     if (showViewersSheet) {

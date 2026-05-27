@@ -25,6 +25,9 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -32,6 +35,7 @@ import conectate.com.data.model.Message
 import conectate.com.util.TimeUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.Color
 
 data class ChatSearchResult(
     val message: Message,
@@ -257,7 +261,7 @@ private fun SearchResultItem(
             Spacer(modifier = Modifier.width(8.dp))
             
             Text(
-                text = TimeUtils.formatMessageTime(result.message.created_at),
+                text = TimeUtils.formatTimestamp(result.message.created_at),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -20,33 +21,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
-import conectate.com.data.local.prefs.ThemePreferences
-import kotlinx.coroutines.launch
+import conectate.com.data.local.prefs.MessagesPreferences
+import conectate.com.presentation.navigation.Screen
 
 @HiltViewModel
 class ChatSettingsViewModel @Inject constructor(
-    private val themePreferences: ThemePreferences
+    private val messagesPreferences: MessagesPreferences
 ) : ViewModel() {
-
-    private val _isEnterToSendEnabled = MutableStateFlow(false)
-    val isEnterToSendEnabled: StateFlow<Boolean> = _isEnterToSendEnabled.asStateFlow()
-
-    private val _isMediaAutoDownloadEnabled = MutableStateFlow(true)
-    val isMediaAutoDownloadEnabled: StateFlow<Boolean> = _isMediaAutoDownloadEnabled.asStateFlow()
-
-    private val _isReadReceiptsEnabled = MutableStateFlow(true)
-    val isReadReceiptsEnabled: StateFlow<Boolean> = _isReadReceiptsEnabled.asStateFlow()
+    val isEnterToSendEnabled: StateFlow<Boolean> = messagesPreferences.enterToSendEnabled
+    val isMediaAutoDownloadEnabled: StateFlow<Boolean> = messagesPreferences.mediaAutoDownloadEnabled
+    val isReadReceiptsEnabled: StateFlow<Boolean> = messagesPreferences.readReceiptsEnabled
 
     fun toggleEnterToSend(enabled: Boolean) {
-        _isEnterToSendEnabled.value = enabled
+        messagesPreferences.setEnterToSendEnabled(enabled)
     }
 
     fun toggleMediaAutoDownload(enabled: Boolean) {
-        _isMediaAutoDownloadEnabled.value = enabled
+        messagesPreferences.setMediaAutoDownloadEnabled(enabled)
     }
 
     fun toggleReadReceipts(enabled: Boolean) {
-        _isReadReceiptsEnabled.value = enabled
+        messagesPreferences.setReadReceiptsEnabled(enabled)
     }
 }
 
@@ -115,15 +110,25 @@ fun ChatSettingsScreen(
 
             ListItem(
                 headlineContent = { Text("Fondo de pantalla de chat") },
-                supportingContent = { Text("Cambiar el fondo de tus conversaciones") },
-                modifier = Modifier.clickable { /* TODO */ }
+                supportingContent = { Text("Personaliza tema, fuente y escala del texto") },
+                trailingContent = {
+                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                },
+                modifier = Modifier.clickable {
+                    navController.navigate(Screen.ThemeSettings.route)
+                }
             )
             Divider()
 
             ListItem(
-                headlineContent = { Text("Copia de seguridad") },
-                supportingContent = { Text("Configurar backups de tus mensajes") },
-                modifier = Modifier.clickable { /* TODO */ }
+                headlineContent = { Text("Sincronización y almacenamiento") },
+                supportingContent = { Text("Controla datos, descargas y rendimiento de mensajes") },
+                trailingContent = {
+                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                },
+                modifier = Modifier.clickable {
+                    navController.navigate(Screen.StorageSettings.route)
+                }
             )
         }
     }

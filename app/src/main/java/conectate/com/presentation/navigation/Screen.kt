@@ -4,7 +4,6 @@ sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Login : Screen("login")
     object Register : Screen("register")
-    object PhoneVerification : Screen("phone_verification")
     object Home : Screen("home?startTab={startTab}&sharedText={sharedText}&sharedUri={sharedUri}") {
         fun createRoute(startTab: String? = null, sharedText: String? = null, sharedUri: String? = null): String {
             return buildString {
@@ -75,11 +74,16 @@ sealed class Screen(val route: String) {
     }
     
     object SearchUsers : Screen("search_users")
+    object SocialQrScanner : Screen("social_qr_scanner")
     object CreateGroup : Screen("create_group")
     object CreateCommunity : Screen("create_community")
     object CreateVoiceRoom : Screen("create_voice_room")
 
     object VoiceRoomSearch : Screen("voice_room_search")
+    object RoomDetail : Screen("room_detail/{roomId}") {
+        fun createRoute(roomId: String) = "room_detail/$roomId"
+    }
+    object NotificationAccountBridge : Screen("notification_account_bridge")
     
     object GroupChat : Screen("group_chat/{groupId}?focusMessageId={focusMessageId}") {
         fun createRoute(groupId: String, focusMessageId: String? = null): String {
@@ -109,11 +113,6 @@ sealed class Screen(val route: String) {
         fun createRoute(communityId: String) = "community_detail/$communityId"
     }
     
-    object VoiceRooms : Screen("voice_rooms")
-    object RoomDetail : Screen("room_detail/{roomId}") {
-        fun createRoute(roomId: String) = "room_detail/$roomId"
-    }
-
     object FollowList : Screen("follow_list/{userId}/{type}") {
         fun createRoute(userId: String, type: String) = "follow_list/$userId/$type"
     }
@@ -150,10 +149,15 @@ sealed class Screen(val route: String) {
     object Ranking : Screen("ranking")
     object CallHistory : Screen("call_history")
     object FriendRequests : Screen("friend_requests")
+    object MonetizationCenter : Screen("monetization_center")
+    object CreatorProgram : Screen("creator_program")
     
     object CreateMoment : Screen("create_moment")
     object MomentViewer : Screen("moment_viewer/{momentId}") {
         fun createRoute(momentId: String) = "moment_viewer/$momentId"
+    }
+    object MomentHighlights : Screen("moment_highlights/{userId}") {
+        fun createRoute(userId: String) = "moment_highlights/$userId"
     }
     
     object LiveViewer : Screen("live_viewer/{streamId}") {
@@ -164,8 +168,31 @@ sealed class Screen(val route: String) {
         fun createRoute(liveId: String) = "live_host/$liveId"
     }
     object AddAccountLogin : Screen("add_account_login")
-    object NotificationAccountBridge : Screen("notification_account_bridge")
-    
+    object WebLoginScanner : Screen("web_login_scanner?pairId={pairId}&nonce={nonce}") {
+        fun createRoute(
+            pairId: String? = null,
+            nonce: String? = null
+        ): String {
+            return buildString {
+                append("web_login_scanner")
+                val params = mutableListOf<String>()
+                if (!pairId.isNullOrBlank()) {
+                    params.add("pairId=${android.net.Uri.encode(pairId)}")
+                }
+                if (!nonce.isNullOrBlank()) {
+                    params.add("nonce=${android.net.Uri.encode(nonce)}")
+                }
+                if (params.isNotEmpty()) {
+                    append("?")
+                    append(params.joinToString("&"))
+                }
+            }
+        }
+    }
+    object Call : Screen("call/{callId}") {
+        fun createRoute(callId: String) = "call/$callId"
+    }
+
     object VideoEditor : Screen("video_editor/{videoUri}") {
         fun createRoute(videoUri: android.net.Uri): String {
             val encoded = java.net.URLEncoder.encode(videoUri.toString(), java.nio.charset.StandardCharsets.UTF_8.toString())

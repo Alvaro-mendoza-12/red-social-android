@@ -1,5 +1,7 @@
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js'
+import { isSupabaseServiceRestrictionError } from '../supabase'
 import { textOf, type GenericRow } from '../utils'
+import { isFallbackAuthConfigured, signInWithFallbackAuth } from './fallbackAuth'
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -147,6 +149,10 @@ export async function signInWithResolvedEmail(
   }
 
   if (response.error) {
+    if (isFallbackAuthConfigured && isSupabaseServiceRestrictionError(response.error)) {
+      await signInWithFallbackAuth(normalizedEmail, password)
+      return
+    }
     throw response.error
   }
 

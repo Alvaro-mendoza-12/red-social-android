@@ -8,6 +8,8 @@ fun IO.Options.attachBearerToken(accessToken: String?) {
     extraHeaders = mapOf(
         "Authorization" to listOf("Bearer $token")
     )
+    // FIX: Socket.IO v4+ prefers auth payload over headers for WebSockets
+    auth = mapOf("token" to token)
 }
 
 

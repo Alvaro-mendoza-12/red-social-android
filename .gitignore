@@ -22,6 +22,8 @@ keystore.properties.*
 .android-user-home/
 /.qodo/
 /.backup/
+/.tmp_test/
+/.worktrees/
 
 # Build outputs
 /build/
@@ -38,14 +40,26 @@ app/local.properties
 **/build/
 **/captures/
 **/outputs/
+**/__pycache__/
 *.log
 build*.txt
 compile*.txt
 *.tmp
 *.temp
 *.broken
+audit_files.txt
+errors.txt
 hs_err_pid*.log
 replay_pid*.log
+
+# Local snapshots, captures and recovery folders
+/backup/
+/tmp/
+/app_backup_before_restore/
+/scratch/
+/androidMain/
+/commonMain/
+/IMPORTACION DE SUPABASE POR CSV/
 
 # Google services
 google-services.json

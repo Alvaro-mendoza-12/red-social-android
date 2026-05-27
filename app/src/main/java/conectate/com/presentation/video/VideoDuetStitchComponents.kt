@@ -87,7 +87,7 @@ fun DuetStitchOptionsDialog(
                             maxLines = 1
                         )
                         Text(
-                            text = "@${video.username ?: "usuario"}",
+                            text = "@${video.userName.ifBlank { "usuario" }}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -124,7 +124,7 @@ fun DuetStitchOptionsDialog(
                         }
                     )
                     1 -> StitchOptionsContent(
-                        originalDuration = video.duration ?: 30,
+                        originalDuration = if (video.duration > 0) video.duration.toInt() else 30,
                         onConfigSelected = { config ->
                             onStitchSelected(config)
                             onDismiss()
@@ -305,6 +305,7 @@ private fun StitchOptionsContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             StitchPositionCard(
+                modifier = Modifier.weight(1f),
                 label = "Tu video primero",
                 description = "Tu contenido + original",
                 isSelected = position == StitchPosition.START,
@@ -312,6 +313,7 @@ private fun StitchOptionsContent(
             )
             
             StitchPositionCard(
+                modifier = Modifier.weight(1f),
                 label = "Original primero",
                 description = "Original + tu contenido",
                 isSelected = position == StitchPosition.END,
@@ -392,14 +394,14 @@ private fun StitchOptionsContent(
 
 @Composable
 private fun StitchPositionCard(
+    modifier: Modifier = Modifier,
     label: String,
     description: String,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) 

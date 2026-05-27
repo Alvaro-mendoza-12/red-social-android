@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.system.measureTimeMillis
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 🔥 VOICE ROOM STABILITY MANAGER - SISTEMA DE ESTABILIDAD AVANZADO
@@ -140,8 +141,7 @@ class VoiceRoomStabilityManager @Inject constructor(
     }
     
     // 🔥 ROOM MANAGEMENT
-@Composable
-@Composable
+
     fun registerRoom(roomId: String) {
         var context = RoomStabilityContext(
             roomId = roomId,
@@ -163,10 +163,10 @@ class VoiceRoomStabilityManager @Inject constructor(
     private suspend fun performGlobalHealthCheck() {
         var currentTime = System.currentTimeMillis()
         val allIssues = mutableListOf<StabilityIssue>()
-        val totalHealthScore = 0.0
-        val totalMemoryUsage = 0.0
-        val totalPerformanceScore = 0.0
-        val totalErrorCount = 0
+        var totalHealthScore = 0.0
+        var totalMemoryUsage = 0.0
+        var totalPerformanceScore = 0.0
+        var totalErrorCount = 0
         
         // Check each active room
         activeRooms.values.forEach { context ->
@@ -656,7 +656,7 @@ class PerformanceTuner @Inject constructor() {
 @Singleton
 class StabilityLogger @Inject constructor() {
     
-    fun logEvent(eventType: String, metadata: Map<String, Any>) {
+    fun logEvent(eventType: String, metadata: Map<String, Any?>) {
         Log.i("StabilityLogger", "Event: $eventType - Metadata: $metadata")
     }
 }

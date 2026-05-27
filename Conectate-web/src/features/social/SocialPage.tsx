@@ -25,10 +25,10 @@ export function SocialPage() {
         <div className="social-overview-head">
           <div className="social-overview-copy">
             <span className="brand-tag">Social</span>
-            <h2>La parte social ya no se siente como un prototipo web</h2>
+            <h2>Conecta con lo que está pasando</h2>
             <p>
-              Publicaciones, momentos y retos ahora comparten una cabecera más coherente con móvil,
-              acciones rápidas visibles y un contenedor pensado para escritorio y tablet.
+              Publica, mira momentos, participa en retos y encuentra personas sin salir de la misma
+              experiencia.
             </p>
           </div>
           <div className="row-actions social-overview-actions wrap">
@@ -51,6 +51,7 @@ export function SocialPage() {
           <button
             type="button"
             className={activeTab === 'posts' ? 'chip-btn active' : 'chip-btn'}
+            aria-pressed={activeTab === 'posts'}
             onClick={() => changeTab('posts')}
           >
             Publicaciones
@@ -58,6 +59,7 @@ export function SocialPage() {
           <button
             type="button"
             className={activeTab === 'moments' ? 'chip-btn active' : 'chip-btn'}
+            aria-pressed={activeTab === 'moments'}
             onClick={() => changeTab('moments')}
           >
             Momentos
@@ -65,6 +67,7 @@ export function SocialPage() {
           <button
             type="button"
             className={activeTab === 'challenges' ? 'chip-btn active' : 'chip-btn'}
+            aria-pressed={activeTab === 'challenges'}
             onClick={() => changeTab('challenges')}
           >
             Retos

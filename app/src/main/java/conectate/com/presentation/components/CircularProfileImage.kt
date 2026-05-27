@@ -1,7 +1,6 @@
 package conectate.com.presentation.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -12,18 +11,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 
 @Composable
 fun CircularProfileImage(
@@ -35,6 +37,18 @@ fun CircularProfileImage(
     borderWidth: Dp = 2.dp,
     isVerified: Boolean = false
 ) {
+    val context = LocalContext.current
+    
+    // Optimize ImageRequest: use disk cache and crossfade
+    val imageRequest = remember(imageUrl) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .crossfade(true)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .build()
+    }
+
     Box(modifier = modifier.size(size)) {
         Box(
             modifier = Modifier
@@ -54,7 +68,6 @@ fun CircularProfileImage(
             contentAlignment = Alignment.Center
         ) {
             if (imageUrl.isNullOrEmpty()) {
-                // Placeholder icon
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = "Profile",
@@ -62,26 +75,12 @@ fun CircularProfileImage(
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             } else {
-                // Load image with Coil
-                SubcomposeAsyncImage(
-                    model = imageUrl,
+                // Switched from SubcomposeAsyncImage to AsyncImage for better performance in lists
+                AsyncImage(
+                    model = imageRequest,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(size * 0.4f),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    },
-                    error = {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "Error loading image",
-                            modifier = Modifier.size(size * 0.6f),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
+                    contentScale = ContentScale.Crop
                 )
             }
         }

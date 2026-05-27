@@ -1,6 +1,8 @@
 package conectate.com.presentation.messages
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import conectate.com.design.system.conectateDesignSystem
 import conectate.com.presentation.navigation.Screen
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -41,6 +44,7 @@ fun MessagesScreen(
     var selectedTab by remember { mutableStateOf(MessagesTab.CHATS) }
     var showFilterMenu by remember { mutableStateOf(false) }
     var activeFilter by remember { mutableStateOf(ChatFilter.ALL) }
+    val reduceMotion = MaterialTheme.conectateDesignSystem.motion.reduceMotion
 
     Scaffold(
         topBar = {
@@ -138,7 +142,13 @@ fun MessagesScreen(
             // ── Content ──────────────────────────────────────────────────────
             AnimatedContent(
                 targetState = selectedTab,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                transitionSpec = {
+                    if (reduceMotion) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        fadeIn() togetherWith fadeOut()
+                    }
+                },
                 label = "messages_tab_content",
             ) { tab ->
                 when (tab) {
@@ -146,6 +156,7 @@ fun MessagesScreen(
                         onNavigateToSearch = {
                             navController.navigate(Screen.SearchUsers.route)
                         },
+                        topBarFilter = activeFilter,
                         onNavigateToChat = { chatId ->
                             navController.navigate(Screen.Chat.createRoute(chatId))
                         },

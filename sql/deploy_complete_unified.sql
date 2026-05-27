@@ -49,36 +49,8 @@ END $$;
 -- 2. DROP EXISTING POLICIES TO AVOID CONFLICTS
 -- ============================================
 
--- Drop all existing policies that might conflict
-DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
-DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Public videos are viewable by everyone" ON public.videos;
-DROP POLICY IF EXISTS "Users can insert own videos" ON public.videos;
-DROP POLICY IF EXISTS "Users can update own videos" ON public.videos;
-DROP POLICY IF EXISTS "Users can delete own videos" ON public.videos;
-DROP POLICY IF EXISTS "Likes are viewable by everyone" ON public.video_likes;
-DROP POLICY IF EXISTS "Users can insert own likes" ON public.video_likes;
-DROP POLICY IF EXISTS "Users can delete own likes" ON public.video_likes;
-DROP POLICY IF EXISTS "Comments are viewable by everyone" ON public.video_comments;
-DROP POLICY IF EXISTS "Users can insert own comments" ON public.video_comments;
-DROP POLICY IF EXISTS "Users can view own chats" ON public.chats;
-DROP POLICY IF EXISTS "Users can create chats" ON public.chats;
-DROP POLICY IF EXISTS "Users can update own chats" ON public.chats;
-DROP POLICY IF EXISTS "Users can view messages in own chats" ON public.messages;
-DROP POLICY IF EXISTS "Users can insert messages in own chats" ON public.messages;
-DROP POLICY IF EXISTS "Users can update messages in own chats" ON public.messages;
-DROP POLICY IF EXISTS "Users can view participants in own chats" ON public.chat_participants;
-DROP POLICY IF EXISTS "Users can insert participants" ON public.chat_participants;
-DROP POLICY IF EXISTS "Users can update own participation" ON public.chat_participants;
-DROP POLICY IF EXISTS "Users can delete own participation" ON public.chat_participants;
-DROP POLICY IF EXISTS "Follows are viewable by everyone" ON public.follows;
-DROP POLICY IF EXISTS "Users can insert own follows" ON public.follows;
-DROP POLICY IF EXISTS "Users can delete own follows" ON public.follows;
-DROP POLICY IF EXISTS "Post likes are viewable by everyone" ON public.post_likes;
-DROP POLICY IF EXISTS "Users can insert own post likes" ON public.post_likes;
-DROP POLICY IF EXISTS "Users can delete own post likes" ON public.post_likes;
-DROP POLICY IF EXISTS "Users can manage their own tokens" ON public.fcm_tokens;
+-- Las policies se eliminan justo antes de recrearlas, después de asegurar
+-- que cada tabla existe. Así el archivo funciona en bases frescas y parciales.
 
 -- ============================================
 -- 3. BASE SCHEMA WITH ALL TABLES
@@ -98,6 +70,14 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     cover_url TEXT,
     country TEXT,
     city TEXT,
+    interests TEXT[] NOT NULL DEFAULT '{}',
+    linked_games TEXT[] NOT NULL DEFAULT '{}',
+    game_logo_urls JSONB NOT NULL DEFAULT '{}'::jsonb,
+    favorite_music_url TEXT,
+    favorite_book TEXT,
+    favorite_sport TEXT,
+    career TEXT,
+    availability_schedule TEXT,
     followers_count INTEGER DEFAULT 0,
     following_count INTEGER DEFAULT 0,
     post_count INTEGER DEFAULT 0,
@@ -105,9 +85,55 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     last_name_change TIMESTAMP WITH TIME ZONE,
     is_private BOOLEAN DEFAULT FALSE,
     profile_visibility TEXT DEFAULT 'everyone',
+    last_seen_visibility TEXT NOT NULL DEFAULT 'everyone',
+    online_status_visibility TEXT NOT NULL DEFAULT 'everyone',
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    voice_access_granted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+    suspended_until TIMESTAMP WITH TIME ZONE,
+    suspension_end_date TIMESTAMP WITH TIME ZONE,
+    suspension_reason TEXT,
+    suspension_count INTEGER NOT NULL DEFAULT 0,
+    privacy_policy_accepted BOOLEAN NOT NULL DEFAULT FALSE,
+    privacy_policy_accepted_at TIMESTAMP WITH TIME ZONE,
+    is_online BOOLEAN NOT NULL DEFAULT FALSE,
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- CREATE TABLE IF NOT EXISTS no agrega columnas a instalaciones existentes.
+-- Esta capa mantiene el deploy compatible con bases ya creadas parcialmente.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS interests TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS linked_games TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS game_logo_urls JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS favorite_music_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS favorite_book TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS favorite_sport TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS career TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS availability_schedule TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_seen_visibility TEXT NOT NULL DEFAULT 'everyone';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS online_status_visibility TEXT NOT NULL DEFAULT 'everyone';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS voice_access_granted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS suspension_end_date TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS suspension_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS privacy_policy_accepted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS privacy_policy_accepted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_online BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS balance DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+
+UPDATE public.profiles
+SET suspension_end_date = suspended_until
+WHERE suspension_end_date IS NULL
+  AND suspended_until IS NOT NULL;
 
 -- VIDEOS TABLE
 CREATE TABLE IF NOT EXISTS public.videos (
@@ -131,6 +157,67 @@ CREATE TABLE IF NOT EXISTS public.videos (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Normaliza columnas creadas por versiones antiguas con camelCase sin comillas
+-- (Postgres las guarda en minúsculas: userId -> userid, isPublic -> ispublic).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='userid')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='user_id') THEN
+        ALTER TABLE public.videos RENAME COLUMN userid TO user_id;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='username')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='user_name') THEN
+        ALTER TABLE public.videos RENAME COLUMN username TO user_name;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='userprofileimage')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='user_profile_image') THEN
+        ALTER TABLE public.videos RENAME COLUMN userprofileimage TO user_profile_image;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='videourl')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='video_url') THEN
+        ALTER TABLE public.videos RENAME COLUMN videourl TO video_url;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='thumbnailurl')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='thumbnail_url') THEN
+        ALTER TABLE public.videos RENAME COLUMN thumbnailurl TO thumbnail_url;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='ispublic')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='is_public') THEN
+        ALTER TABLE public.videos RENAME COLUMN ispublic TO is_public;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='likecount')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='like_count') THEN
+        ALTER TABLE public.videos RENAME COLUMN likecount TO like_count;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='commentcount')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='videos' AND column_name='comment_count') THEN
+        ALTER TABLE public.videos RENAME COLUMN commentcount TO comment_count;
+    END IF;
+END $$;
+
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS user_profile_image TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS title TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS video_url TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS thumbnail_url TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS duration BIGINT DEFAULT 0;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS like_count INTEGER DEFAULT 0;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS comment_count INTEGER DEFAULT 0;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS country TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+
 -- VIDEO_LIKES TABLE
 CREATE TABLE IF NOT EXISTS public.video_likes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -149,6 +236,23 @@ CREATE TABLE IF NOT EXISTS public.video_comments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='video_comments' AND column_name='videoid')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='video_comments' AND column_name='video_id') THEN
+        ALTER TABLE public.video_comments RENAME COLUMN videoid TO video_id;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='video_comments' AND column_name='userid')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='video_comments' AND column_name='user_id') THEN
+        ALTER TABLE public.video_comments RENAME COLUMN userid TO user_id;
+    END IF;
+END $$;
+
+ALTER TABLE public.video_comments ADD COLUMN IF NOT EXISTS video_id UUID REFERENCES public.videos(id) ON DELETE CASCADE;
+ALTER TABLE public.video_comments ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.video_comments ADD COLUMN IF NOT EXISTS content TEXT DEFAULT '';
 
 -- CHATS TABLE
 CREATE TABLE IF NOT EXISTS public.chats (
@@ -216,6 +320,54 @@ CREATE TABLE IF NOT EXISTS public.fcm_tokens (
     UNIQUE(user_id, token)
 );
 
+-- PROFILE_LOGIN_EMAILS TABLE
+CREATE TABLE IF NOT EXISTS public.profile_login_emails (
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, email)
+);
+
+UPDATE public.profile_login_emails
+SET email = LOWER(TRIM(email))
+WHERE email <> LOWER(TRIM(email));
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_login_emails_unique_email
+    ON public.profile_login_emails(email);
+
+CREATE INDEX IF NOT EXISTS idx_profile_login_emails_user_created
+    ON public.profile_login_emails(user_id, created_at DESC);
+
+-- NOTIFICATIONS TABLE
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    target_id UUID,
+    target_type TEXT,
+    content TEXT,
+    extra_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS recipient_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS actor_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'message';
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS target_id UUID;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS target_type TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS extra_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_actor_id_fkey;
+ALTER TABLE public.notifications ADD CONSTRAINT notifications_actor_id_fkey
+    FOREIGN KEY (actor_id) REFERENCES public.profiles(id) ON DELETE CASCADE NOT VALID;
+ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_recipient_id_fkey;
+ALTER TABLE public.notifications ADD CONSTRAINT notifications_recipient_id_fkey
+    FOREIGN KEY (recipient_id) REFERENCES public.profiles(id) ON DELETE CASCADE NOT VALID;
+
 -- ============================================
 -- 4. SOCIAL FEATURES TABLES
 -- ============================================
@@ -241,6 +393,18 @@ CREATE TABLE IF NOT EXISTS public.posts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS content TEXT DEFAULT '';
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS media_urls JSONB DEFAULT '[]';
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS visibility TEXT DEFAULT 'public';
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS like_count INT DEFAULT 0;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS comment_count INT DEFAULT 0;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS share_count INT DEFAULT 0;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS save_count INT DEFAULT 0;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS is_promoted BOOLEAN DEFAULT FALSE;
+
 -- POST_LIKES TABLE
 CREATE TABLE IF NOT EXISTS public.post_likes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -249,6 +413,51 @@ CREATE TABLE IF NOT EXISTS public.post_likes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(post_id, user_id)
 );
+
+-- POST_REACTIONS TABLE
+CREATE TABLE IF NOT EXISTS public.post_reactions (
+    post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    reaction_type TEXT NOT NULL CHECK (reaction_type IN ('LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD', 'ANGRY', 'CARE', 'FIRE')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (post_id, user_id)
+);
+
+ALTER TABLE public.post_reactions ADD COLUMN IF NOT EXISTS post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE;
+ALTER TABLE public.post_reactions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.post_reactions ADD COLUMN IF NOT EXISTS reaction_type TEXT NOT NULL DEFAULT 'LIKE';
+ALTER TABLE public.post_reactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.post_reactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.post_reactions'::regclass
+          AND conname = 'post_reactions_pkey'
+    ) THEN
+        ALTER TABLE public.post_reactions ADD CONSTRAINT post_reactions_pkey PRIMARY KEY (post_id, user_id);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'post_reactions primary key skipped: %', SQLERRM;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.post_reactions'::regclass
+          AND conname = 'post_reactions_reaction_type_check'
+    ) THEN
+        ALTER TABLE public.post_reactions
+            ADD CONSTRAINT post_reactions_reaction_type_check
+            CHECK (reaction_type IN ('LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD', 'ANGRY', 'CARE', 'FIRE'));
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'post_reactions reaction_type check skipped: %', SQLERRM;
+END $$;
 
 -- POST_COMMENTS TABLE
 CREATE TABLE IF NOT EXISTS public.post_comments (
@@ -273,10 +482,58 @@ CREATE TABLE IF NOT EXISTS public.moments (
     content TEXT,
     media_url TEXT,
     media_type TEXT DEFAULT 'image' CHECK (media_type IN ('image', 'video')),
+    thumbnail_url TEXT,
+    duration_hours INT DEFAULT 24,
+    duration_type TEXT DEFAULT '24h',
+    visibility TEXT DEFAULT 'all',
+    visibility_type TEXT DEFAULT 'public',
+    excluded_ids UUID[] DEFAULT '{}',
+    caption TEXT,
+    allow_replies BOOLEAN DEFAULT TRUE,
     view_count INT DEFAULT 0,
-    expire_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='moments' AND column_name='expire_at')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='moments' AND column_name='expires_at') THEN
+        ALTER TABLE public.moments RENAME COLUMN expire_at TO expires_at;
+    END IF;
+END $$;
+
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS user_profile_image TEXT DEFAULT '';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS media_url TEXT;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'image';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS duration_hours INT DEFAULT 24;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS duration_type TEXT DEFAULT '24h';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS visibility TEXT DEFAULT 'all';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS visibility_type TEXT DEFAULT 'public';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS excluded_ids UUID[] DEFAULT '{}';
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS caption TEXT;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS allow_replies BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS view_count INT DEFAULT 0;
+ALTER TABLE public.moments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '24 hours');
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='moments' AND column_name='expire_at')
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='moments' AND column_name='expires_at') THEN
+        EXECUTE 'UPDATE public.moments SET expires_at = expire_at WHERE expires_at IS NULL AND expire_at IS NOT NULL';
+    END IF;
+END $$;
+
+UPDATE public.moments
+SET expires_at = COALESCE(expires_at, created_at + INTERVAL '24 hours', NOW() + INTERVAL '24 hours')
+WHERE expires_at IS NULL;
+
+ALTER TABLE public.moments ALTER COLUMN expires_at SET DEFAULT (NOW() + INTERVAL '24 hours');
+ALTER TABLE public.moments ALTER COLUMN expires_at SET NOT NULL;
 
 -- LIVE_STREAMS TABLE
 CREATE TABLE IF NOT EXISTS public.live_streams (
@@ -296,6 +553,21 @@ CREATE TABLE IF NOT EXISTS public.live_streams (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS title TEXT DEFAULT '';
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS stream_key TEXT;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS viewer_count INT DEFAULT 0;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS max_viewers INT DEFAULT 100;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS chat_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS gifts_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'scheduled';
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS started_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS ended_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+ALTER TABLE public.live_streams ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
 -- ============================================
 -- 5. MONETIZATION TABLES
@@ -324,6 +596,29 @@ CREATE TABLE IF NOT EXISTS public.virtual_gifts (
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS price_diamonds INT NOT NULL DEFAULT 0;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS price_credits DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;
+ALTER TABLE public.virtual_gifts ADD COLUMN IF NOT EXISTS animation_url TEXT;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+        WHERE c.conrelid = 'public.virtual_gifts'::regclass
+          AND c.contype = 'u'
+          AND array_length(c.conkey, 1) = 1
+          AND a.attname = 'name'
+    ) THEN
+        ALTER TABLE public.virtual_gifts ADD CONSTRAINT virtual_gifts_name_key UNIQUE (name);
+    END IF;
+END $$;
 
 -- GIFT_TRANSACTIONS TABLE
 CREATE TABLE IF NOT EXISTS public.gift_transactions (
@@ -363,6 +658,28 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
     is_active BOOLEAN NOT NULL DEFAULT true,
     sort_order INT NOT NULL DEFAULT 0
 );
+
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS price_monthly DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS price_yearly DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.subscription_plans ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+        WHERE c.conrelid = 'public.subscription_plans'::regclass
+          AND c.contype = 'u'
+          AND array_length(c.conkey, 1) = 1
+          AND a.attname = 'name'
+    ) THEN
+        ALTER TABLE public.subscription_plans ADD CONSTRAINT subscription_plans_name_key UNIQUE (name);
+    END IF;
+END $$;
 
 -- USER_SUBSCRIPTIONS TABLE
 CREATE TABLE IF NOT EXISTS public.user_subscriptions (
@@ -418,6 +735,24 @@ CREATE TABLE IF NOT EXISTS public.hashtags (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE public.hashtags ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.hashtags ADD COLUMN IF NOT EXISTS post_count INT NOT NULL DEFAULT 0;
+ALTER TABLE public.hashtags ADD COLUMN IF NOT EXISTS video_count INT NOT NULL DEFAULT 0;
+ALTER TABLE public.hashtags ADD COLUMN IF NOT EXISTS trending_score DECIMAL(5,2) DEFAULT 0.00;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+        WHERE c.conrelid = 'public.hashtags'::regclass
+          AND c.contype = 'u'
+          AND array_length(c.conkey, 1) = 1
+          AND a.attname = 'name'
+    ) THEN
+        ALTER TABLE public.hashtags ADD CONSTRAINT hashtags_name_key UNIQUE (name);
+    END IF;
+END $$;
 
 -- POST_HASHTAGS TABLE
 CREATE TABLE IF NOT EXISTS public.post_hashtags (
@@ -455,8 +790,11 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fcm_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profile_login_emails ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.post_likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.post_reactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.post_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.moments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.live_streams ENABLE ROW LEVEL SECURITY;
@@ -477,46 +815,62 @@ ALTER TABLE public.video_hashtags ENABLE ROW LEVEL SECURITY;
 -- ============================================
 
 -- PROFILES POLICIES
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Profiles are viewable by everyone" ON public.profiles
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" ON public.profiles
     FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- VIDEOS POLICIES
+DROP POLICY IF EXISTS "Public videos are viewable by everyone" ON public.videos;
 CREATE POLICY "Public videos are viewable by everyone" ON public.videos
     FOR SELECT USING (is_public = true OR user_id = auth.uid());
+DROP POLICY IF EXISTS "Users can insert own videos" ON public.videos;
 CREATE POLICY "Users can insert own videos" ON public.videos
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own videos" ON public.videos;
 CREATE POLICY "Users can update own videos" ON public.videos
     FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own videos" ON public.videos;
 CREATE POLICY "Users can delete own videos" ON public.videos
     FOR DELETE USING (auth.uid() = user_id);
 
 -- VIDEO_LIKES POLICIES
+DROP POLICY IF EXISTS "Likes are viewable by everyone" ON public.video_likes;
 CREATE POLICY "Likes are viewable by everyone" ON public.video_likes
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own likes" ON public.video_likes;
 CREATE POLICY "Users can insert own likes" ON public.video_likes
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own likes" ON public.video_likes;
 CREATE POLICY "Users can delete own likes" ON public.video_likes
     FOR DELETE USING (auth.uid() = user_id);
 
 -- VIDEO_COMMENTS POLICIES
+DROP POLICY IF EXISTS "Comments are viewable by everyone" ON public.video_comments;
 CREATE POLICY "Comments are viewable by everyone" ON public.video_comments
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own comments" ON public.video_comments;
 CREATE POLICY "Users can insert own comments" ON public.video_comments
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- CHATS POLICIES
+DROP POLICY IF EXISTS "Users can view own chats" ON public.chats;
 CREATE POLICY "Users can view own chats" ON public.chats
     FOR SELECT USING (auth.uid()::TEXT = ANY(participants));
+DROP POLICY IF EXISTS "Users can create chats" ON public.chats;
 CREATE POLICY "Users can create chats" ON public.chats
     FOR INSERT WITH CHECK (auth.uid()::TEXT = ANY(participants));
+DROP POLICY IF EXISTS "Users can update own chats" ON public.chats;
 CREATE POLICY "Users can update own chats" ON public.chats
     FOR UPDATE USING (auth.uid()::TEXT = ANY(participants));
 
 -- MESSAGES POLICIES
+DROP POLICY IF EXISTS "Users can view messages in own chats" ON public.messages;
 CREATE POLICY "Users can view messages in own chats" ON public.messages
     FOR SELECT USING (
         EXISTS (
@@ -525,6 +879,7 @@ CREATE POLICY "Users can view messages in own chats" ON public.messages
             AND auth.uid()::TEXT = ANY(chats.participants)
         )
     );
+DROP POLICY IF EXISTS "Users can insert messages in own chats" ON public.messages;
 CREATE POLICY "Users can insert messages in own chats" ON public.messages
     FOR INSERT WITH CHECK (
         auth.uid() = sender_id AND
@@ -534,6 +889,7 @@ CREATE POLICY "Users can insert messages in own chats" ON public.messages
             AND auth.uid()::TEXT = ANY(chats.participants)
         )
     );
+DROP POLICY IF EXISTS "Users can update messages in own chats" ON public.messages;
 CREATE POLICY "Users can update messages in own chats" ON public.messages
     FOR UPDATE USING (
         EXISTS (
@@ -544,8 +900,10 @@ CREATE POLICY "Users can update messages in own chats" ON public.messages
     );
 
 -- CHAT_PARTICIPANTS POLICIES
+DROP POLICY IF EXISTS "Users can view participants in own chats" ON public.chat_participants;
 CREATE POLICY "Users can view participants in own chats" ON public.chat_participants
     FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert participants" ON public.chat_participants;
 CREATE POLICY "Users can insert participants" ON public.chat_participants
     FOR INSERT WITH CHECK (
         EXISTS (
@@ -554,24 +912,57 @@ CREATE POLICY "Users can insert participants" ON public.chat_participants
             AND auth.uid()::TEXT = ANY(chats.participants)
         )
     );
+DROP POLICY IF EXISTS "Users can update own participation" ON public.chat_participants;
 CREATE POLICY "Users can update own participation" ON public.chat_participants
     FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own participation" ON public.chat_participants;
 CREATE POLICY "Users can delete own participation" ON public.chat_participants
     FOR DELETE USING (auth.uid() = user_id);
 
 -- FOLLOWS POLICIES
+DROP POLICY IF EXISTS "Follows are viewable by everyone" ON public.follows;
 CREATE POLICY "Follows are viewable by everyone" ON public.follows
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own follows" ON public.follows;
 CREATE POLICY "Users can insert own follows" ON public.follows
     FOR INSERT WITH CHECK (auth.uid() = follower_id);
+DROP POLICY IF EXISTS "Users can delete own follows" ON public.follows;
 CREATE POLICY "Users can delete own follows" ON public.follows
     FOR DELETE USING (auth.uid() = follower_id);
 
 -- FCM_TOKENS POLICIES
+DROP POLICY IF EXISTS "Users can manage their own tokens" ON public.fcm_tokens;
 CREATE POLICY "Users can manage their own tokens" ON public.fcm_tokens
     FOR ALL USING (auth.uid() = user_id);
 
+-- PROFILE_LOGIN_EMAILS POLICIES
+DROP POLICY IF EXISTS profile_login_emails_select_own ON public.profile_login_emails;
+CREATE POLICY profile_login_emails_select_own
+    ON public.profile_login_emails
+    FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS profile_login_emails_insert_own ON public.profile_login_emails;
+CREATE POLICY profile_login_emails_insert_own
+    ON public.profile_login_emails
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS profile_login_emails_delete_own ON public.profile_login_emails;
+CREATE POLICY profile_login_emails_delete_own
+    ON public.profile_login_emails
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- NOTIFICATIONS POLICIES
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+CREATE POLICY "Users can view own notifications" ON public.notifications
+    FOR SELECT USING (auth.uid() = recipient_id);
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications" ON public.notifications
+    FOR UPDATE USING (auth.uid() = recipient_id)
+    WITH CHECK (auth.uid() = recipient_id);
+DROP POLICY IF EXISTS "Authenticated users can create notifications" ON public.notifications;
+CREATE POLICY "Authenticated users can create notifications" ON public.notifications
+    FOR INSERT WITH CHECK (auth.uid() = actor_id);
+
 -- POSTS POLICIES
+DROP POLICY IF EXISTS "Posts are viewable by visibility" ON public.posts;
 CREATE POLICY "Posts are viewable by visibility" ON public.posts
     FOR SELECT USING (
         visibility = 'public' OR
@@ -582,32 +973,58 @@ CREATE POLICY "Posts are viewable by visibility" ON public.posts
         )) OR
         user_id = auth.uid()
     );
+DROP POLICY IF EXISTS "Users can insert own posts" ON public.posts;
 CREATE POLICY "Users can insert own posts" ON public.posts
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own posts" ON public.posts;
 CREATE POLICY "Users can update own posts" ON public.posts
     FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own posts" ON public.posts;
 CREATE POLICY "Users can delete own posts" ON public.posts
     FOR DELETE USING (auth.uid() = user_id);
 
 -- POST_LIKES POLICIES
+DROP POLICY IF EXISTS "Post likes are viewable by everyone" ON public.post_likes;
 CREATE POLICY "Post likes are viewable by everyone" ON public.post_likes
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own post likes" ON public.post_likes;
 CREATE POLICY "Users can insert own post likes" ON public.post_likes
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own post likes" ON public.post_likes;
 CREATE POLICY "Users can delete own post likes" ON public.post_likes
     FOR DELETE USING (auth.uid() = user_id);
 
+-- POST_REACTIONS POLICIES
+DROP POLICY IF EXISTS "Post reactions are viewable by everyone" ON public.post_reactions;
+CREATE POLICY "Post reactions are viewable by everyone" ON public.post_reactions
+    FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own post reactions" ON public.post_reactions;
+CREATE POLICY "Users can insert own post reactions" ON public.post_reactions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own post reactions" ON public.post_reactions;
+CREATE POLICY "Users can update own post reactions" ON public.post_reactions
+    FOR UPDATE USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own post reactions" ON public.post_reactions;
+CREATE POLICY "Users can delete own post reactions" ON public.post_reactions
+    FOR DELETE USING (auth.uid() = user_id);
+
 -- POST_COMMENTS POLICIES
+DROP POLICY IF EXISTS "Post comments are viewable by everyone" ON public.post_comments;
 CREATE POLICY "Post comments are viewable by everyone" ON public.post_comments
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert own post comments" ON public.post_comments;
 CREATE POLICY "Users can insert own post comments" ON public.post_comments
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own post comments" ON public.post_comments;
 CREATE POLICY "Users can update own post comments" ON public.post_comments
     FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own post comments" ON public.post_comments;
 CREATE POLICY "Users can delete own post comments" ON public.post_comments
     FOR DELETE USING (auth.uid() = user_id);
 
 -- MOMENTS POLICIES
+DROP POLICY IF EXISTS "Moments are viewable by followers" ON public.moments;
 CREATE POLICY "Moments are viewable by followers" ON public.moments
     FOR SELECT USING (
         EXISTS (
@@ -616,12 +1033,15 @@ CREATE POLICY "Moments are viewable by followers" ON public.moments
             AND follows.following_id = moments.user_id
         ) OR user_id = auth.uid()
     );
+DROP POLICY IF EXISTS "Users can insert own moments" ON public.moments;
 CREATE POLICY "Users can insert own moments" ON public.moments
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own moments" ON public.moments;
 CREATE POLICY "Users can delete own moments" ON public.moments
     FOR DELETE USING (auth.uid() = user_id);
 
 -- LIVE_STREAMS POLICIES
+DROP POLICY IF EXISTS "Live streams are viewable by visibility" ON public.live_streams;
 CREATE POLICY "Live streams are viewable by visibility" ON public.live_streams
     FOR SELECT USING (
         is_public = true OR
@@ -632,54 +1052,69 @@ CREATE POLICY "Live streams are viewable by visibility" ON public.live_streams
         )) OR
         user_id = auth.uid()
     );
+DROP POLICY IF EXISTS "Users can insert own live streams" ON public.live_streams;
 CREATE POLICY "Users can insert own live streams" ON public.live_streams
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own live streams" ON public.live_streams;
 CREATE POLICY "Users can update own live streams" ON public.live_streams
     FOR UPDATE USING (auth.uid() = user_id);
 
 -- WALLETS POLICIES
+DROP POLICY IF EXISTS "Users can view their own wallet" ON public.wallets;
 CREATE POLICY "Users can view their own wallet" ON public.wallets
     FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update their own wallet" ON public.wallets;
 CREATE POLICY "Users can update their own wallet" ON public.wallets
     FOR UPDATE USING (auth.uid() = user_id);
 
 -- VIRTUAL_GIFTS POLICIES
+DROP POLICY IF EXISTS "Virtual gifts are viewable by everyone" ON public.virtual_gifts;
 CREATE POLICY "Virtual gifts are viewable by everyone" ON public.virtual_gifts
     FOR SELECT USING (is_active = true);
 
 -- GIFT_TRANSACTIONS POLICIES
+DROP POLICY IF EXISTS "Users can view their own gift transactions" ON public.gift_transactions;
 CREATE POLICY "Users can view their own gift transactions" ON public.gift_transactions
     FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 
 -- WALLET_TRANSACTIONS POLICIES
+DROP POLICY IF EXISTS "Users can view their own wallet transactions" ON public.wallet_transactions;
 CREATE POLICY "Users can view their own wallet transactions" ON public.wallet_transactions
     FOR SELECT USING (auth.uid() = user_id);
 
 -- SUBSCRIPTION_PLANS POLICIES
+DROP POLICY IF EXISTS "Subscription plans are viewable by everyone" ON public.subscription_plans;
 CREATE POLICY "Subscription plans are viewable by everyone" ON public.subscription_plans
     FOR SELECT USING (is_active = true);
 
 -- USER_SUBSCRIPTIONS POLICIES
+DROP POLICY IF EXISTS "Users can view their own subscriptions" ON public.user_subscriptions;
 CREATE POLICY "Users can view their own subscriptions" ON public.user_subscriptions
     FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can manage their own subscriptions" ON public.user_subscriptions;
 CREATE POLICY "Users can manage their own subscriptions" ON public.user_subscriptions
     FOR ALL USING (auth.uid() = user_id);
 
 -- AD_CAMPAIGNS POLICIES
+DROP POLICY IF EXISTS "Users can view active ad campaigns" ON public.ad_campaigns;
 CREATE POLICY "Users can view active ad campaigns" ON public.ad_campaigns
     FOR SELECT USING (status = 'active' OR advertiser_id = auth.uid());
+DROP POLICY IF EXISTS "Users can manage their own ad campaigns" ON public.ad_campaigns;
 CREATE POLICY "Users can manage their own ad campaigns" ON public.ad_campaigns
     FOR ALL USING (auth.uid() = advertiser_id);
 
 -- HASHTAGS POLICIES
+DROP POLICY IF EXISTS "Hashtags are viewable by everyone" ON public.hashtags;
 CREATE POLICY "Hashtags are viewable by everyone" ON public.hashtags
     FOR SELECT USING (true);
 
 -- POST_HASHTAGS POLICIES
+DROP POLICY IF EXISTS "Post hashtags are viewable by everyone" ON public.post_hashtags;
 CREATE POLICY "Post hashtags are viewable by everyone" ON public.post_hashtags
     FOR SELECT USING (true);
 
 -- VIDEO_HASHTAGS POLICIES
+DROP POLICY IF EXISTS "Video hashtags are viewable by everyone" ON public.video_hashtags;
 CREATE POLICY "Video hashtags are viewable by everyone" ON public.video_hashtags
     FOR SELECT USING (true);
 
@@ -691,6 +1126,13 @@ CREATE POLICY "Video hashtags are viewable by everyone" ON public.video_hashtags
 CREATE INDEX IF NOT EXISTS idx_profiles_numeric_id ON public.profiles(numeric_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
+CREATE INDEX IF NOT EXISTS idx_profiles_online ON public.profiles(is_online) WHERE is_online = true;
+CREATE INDEX IF NOT EXISTS idx_profiles_last_seen ON public.profiles(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_profiles_suspension_state ON public.profiles(is_suspended, COALESCE(suspension_end_date, suspended_until) DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON public.notifications(recipient_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_actor ON public.notifications(actor_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON public.notifications(recipient_id, is_read) WHERE is_read = false;
+CREATE INDEX IF NOT EXISTS idx_notifications_target ON public.notifications(target_id);
 CREATE INDEX IF NOT EXISTS idx_videos_user_id ON public.videos(user_id);
 CREATE INDEX IF NOT EXISTS idx_videos_created_at ON public.videos(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON public.messages(chat_id);
@@ -706,9 +1148,12 @@ CREATE INDEX IF NOT EXISTS idx_posts_created_at ON public.posts(created_at DESC)
 CREATE INDEX IF NOT EXISTS idx_posts_visibility ON public.posts(visibility);
 CREATE INDEX IF NOT EXISTS idx_post_likes_post_id ON public.post_likes(post_id);
 CREATE INDEX IF NOT EXISTS idx_post_likes_user_id ON public.post_likes(user_id);
+CREATE INDEX IF NOT EXISTS idx_post_reactions_post_id ON public.post_reactions(post_id);
+CREATE INDEX IF NOT EXISTS idx_post_reactions_user_id ON public.post_reactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_post_reactions_type ON public.post_reactions(reaction_type);
 CREATE INDEX IF NOT EXISTS idx_post_comments_post_id ON public.post_comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_moments_user_id ON public.moments(user_id);
-CREATE INDEX IF NOT EXISTS idx_moments_expire_at ON public.moments(expire_at);
+CREATE INDEX IF NOT EXISTS idx_moments_expire_at ON public.moments(expires_at);
 CREATE INDEX IF NOT EXISTS idx_live_streams_user_id ON public.live_streams(user_id);
 CREATE INDEX IF NOT EXISTS idx_live_streams_status ON public.live_streams(status);
 CREATE INDEX IF NOT EXISTS idx_live_streams_started_at ON public.live_streams(started_at DESC);
@@ -811,8 +1256,447 @@ BEGIN
 END;
 $$;
 
--- Wallet functions
-CREATE OR REPLACE FUNCTION wallet_add_diamonds(
+CREATE OR REPLACE FUNCTION public.enforce_profile_login_email_rules()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_primary_email TEXT;
+    v_count INTEGER;
+BEGIN
+    NEW.email := LOWER(TRIM(COALESCE(NEW.email, '')));
+
+    IF NEW.email = '' OR NEW.email !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' THEN
+        RAISE EXCEPTION 'INVALID_EMAIL';
+    END IF;
+
+    SELECT LOWER(TRIM(p.email))
+      INTO v_primary_email
+      FROM public.profiles p
+     WHERE p.id = NEW.user_id
+     LIMIT 1;
+
+    IF v_primary_email IS NOT NULL AND NEW.email = v_primary_email THEN
+        RAISE EXCEPTION 'PRIMARY_EMAIL_NOT_ALLOWED';
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        SELECT COUNT(*)
+          INTO v_count
+          FROM public.profile_login_emails ple
+         WHERE ple.user_id = NEW.user_id;
+
+        IF v_count >= 3 THEN
+            RAISE EXCEPTION 'MAX_ADDITIONAL_EMAILS_REACHED';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_profile_login_email_rules ON public.profile_login_emails;
+CREATE TRIGGER trg_profile_login_email_rules
+BEFORE INSERT OR UPDATE OF email ON public.profile_login_emails
+FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_login_email_rules();
+
+CREATE OR REPLACE FUNCTION public.resolve_login_email(p_email TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_lookup TEXT := LOWER(TRIM(COALESCE(p_email, '')));
+    v_user_id UUID;
+    v_primary_email TEXT;
+BEGIN
+    IF v_lookup = '' THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT ple.user_id
+      INTO v_user_id
+      FROM public.profile_login_emails ple
+     WHERE ple.email = v_lookup
+     LIMIT 1;
+
+    IF v_user_id IS NULL THEN
+        RETURN v_lookup;
+    END IF;
+
+    SELECT LOWER(TRIM(p.email))
+      INTO v_primary_email
+      FROM public.profiles p
+     WHERE p.id = v_user_id
+     LIMIT 1;
+
+    RETURN COALESCE(NULLIF(v_primary_email, ''), v_lookup);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.resolve_login_email(TEXT) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.update_user_online_status(
+    user_id UUID,
+    online_status BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR auth.uid() <> user_id THEN
+        RAISE EXCEPTION 'FORBIDDEN';
+    END IF;
+
+    UPDATE public.profiles
+    SET
+        is_online = COALESCE(online_status, false),
+        last_seen = CASE
+            WHEN COALESCE(online_status, false) = false THEN NOW()
+            ELSE COALESCE(last_seen, NOW())
+        END,
+        updated_at = NOW()
+    WHERE id = user_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_user_online_status(UUID, BOOLEAN) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.sync_profile_suspension_dates()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.suspension_end_date IS NOT NULL THEN
+        NEW.suspended_until := NEW.suspension_end_date;
+    ELSE
+        NEW.suspension_end_date := NEW.suspended_until;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_profile_suspension_dates ON public.profiles;
+CREATE TRIGGER trg_sync_profile_suspension_dates
+BEFORE INSERT OR UPDATE OF suspended_until, suspension_end_date
+ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.sync_profile_suspension_dates();
+
+-- CREATE OR REPLACE no puede cambiar RETURNS TABLE en funciones existentes.
+-- Eliminamos versiones antiguas de hotfixes para que el deploy sea repetible.
+DROP FUNCTION IF EXISTS public.secure_admin_set_user_suspension(UUID, BOOLEAN, INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.secure_admin_set_user_suspension(UUID, BOOLEAN, INTEGER);
+DROP FUNCTION IF EXISTS public.secure_admin_set_user_suspension(UUID, BOOLEAN, INTEGER, TEXT, INTEGER, TEXT, BOOLEAN);
+DROP FUNCTION IF EXISTS public.secure_get_my_suspension_state();
+
+CREATE OR REPLACE FUNCTION public.secure_get_my_suspension_state()
+RETURNS TABLE (
+    is_suspended BOOLEAN,
+    suspended_until TIMESTAMPTZ,
+    suspension_end_date TIMESTAMPTZ,
+    suspension_reason TEXT,
+    suspension_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_uid UUID := auth.uid();
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'AUTH_REQUIRED';
+    END IF;
+
+    UPDATE public.profiles p
+    SET
+        is_suspended = false,
+        suspended_until = NULL,
+        suspension_end_date = NULL,
+        suspension_reason = NULL,
+        updated_at = NOW()
+    WHERE p.id = v_uid
+      AND COALESCE(p.is_suspended, false) = true
+      AND COALESCE(p.suspension_end_date, p.suspended_until) IS NOT NULL
+      AND COALESCE(p.suspension_end_date, p.suspended_until) <= NOW();
+
+    RETURN QUERY
+    SELECT
+        COALESCE(p.is_suspended, false),
+        p.suspended_until,
+        COALESCE(p.suspension_end_date, p.suspended_until),
+        p.suspension_reason,
+        COALESCE(p.suspension_count, 0)
+    FROM public.profiles p
+    WHERE p.id = v_uid
+    LIMIT 1;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.secure_admin_set_user_suspension(
+    p_user_id UUID,
+    p_suspend BOOLEAN DEFAULT true,
+    p_days INTEGER DEFAULT 7,
+    p_reason TEXT DEFAULT NULL,
+    p_duration_value INTEGER DEFAULT NULL,
+    p_duration_unit TEXT DEFAULT 'days',
+    p_permanent BOOLEAN DEFAULT false
+)
+RETURNS TABLE (
+    user_id UUID,
+    is_suspended BOOLEAN,
+    suspended_until TIMESTAMPTZ,
+    suspension_end_date TIMESTAMPTZ,
+    suspension_reason TEXT,
+    suspension_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_actor UUID := auth.uid();
+    v_is_admin BOOLEAN := false;
+    v_until TIMESTAMPTZ;
+    v_reason TEXT := NULLIF(TRIM(COALESCE(p_reason, '')), '');
+    v_duration_value INTEGER := GREATEST(COALESCE(p_duration_value, p_days, 7), 1);
+    v_duration_unit TEXT := LOWER(TRIM(COALESCE(p_duration_unit, 'days')));
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'AUTH_REQUIRED';
+    END IF;
+
+    SELECT
+        COALESCE(p.is_admin, false)
+        OR LOWER(TRIM(COALESCE(p.email, ''))) IN (
+            'gamergamerff017@gmail.com',
+            'alvaromendozamarin004@gmail.com'
+        )
+    INTO v_is_admin
+    FROM public.profiles p
+    WHERE p.id = v_actor
+    LIMIT 1;
+
+    IF NOT COALESCE(v_is_admin, false) THEN
+        RAISE EXCEPTION 'ADMIN_REQUIRED';
+    END IF;
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'TARGET_USER_REQUIRED';
+    END IF;
+
+    IF COALESCE(p_suspend, true) THEN
+        IF v_duration_unit NOT IN ('seconds', 'minutes', 'hours', 'days', 'years') THEN
+            v_duration_unit := 'days';
+        END IF;
+
+        IF COALESCE(p_permanent, false) THEN
+            v_until := NULL;
+        ELSE
+            v_until := CASE v_duration_unit
+                WHEN 'seconds' THEN NOW() + make_interval(secs => v_duration_value)
+                WHEN 'minutes' THEN NOW() + make_interval(mins => v_duration_value)
+                WHEN 'hours' THEN NOW() + make_interval(hours => v_duration_value)
+                WHEN 'years' THEN NOW() + make_interval(years => v_duration_value)
+                ELSE NOW() + make_interval(days => v_duration_value)
+            END;
+        END IF;
+
+        UPDATE public.profiles p
+        SET
+            is_suspended = true,
+            suspended_until = v_until,
+            suspension_end_date = v_until,
+            suspension_reason = COALESCE(v_reason, 'Moderación administrativa'),
+            suspension_count = GREATEST(COALESCE(p.suspension_count, 0), 0) + 1,
+            updated_at = NOW()
+        WHERE p.id = p_user_id;
+    ELSE
+        UPDATE public.profiles p
+        SET
+            is_suspended = false,
+            suspended_until = NULL,
+            suspension_end_date = NULL,
+            suspension_reason = NULL,
+            updated_at = NOW()
+        WHERE p.id = p_user_id;
+    END IF;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'TARGET_PROFILE_NOT_FOUND';
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        p.id,
+        COALESCE(p.is_suspended, false),
+        p.suspended_until,
+        COALESCE(p.suspension_end_date, p.suspended_until),
+        p.suspension_reason,
+        COALESCE(p.suspension_count, 0)
+    FROM public.profiles p
+    WHERE p.id = p_user_id
+    LIMIT 1;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.secure_get_my_suspension_state() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.secure_admin_set_user_suspension(UUID, BOOLEAN, INTEGER, TEXT, INTEGER, TEXT, BOOLEAN) TO authenticated;
+
+DROP FUNCTION IF EXISTS public.secure_mark_notifications_read(UUID[], BOOLEAN);
+
+CREATE OR REPLACE FUNCTION public.secure_mark_notifications_read(
+    p_notification_ids UUID[] DEFAULT NULL,
+    p_mark_all BOOLEAN DEFAULT false
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_uid UUID := auth.uid();
+    v_processed INTEGER := 0;
+    v_guard RECORD;
+    v_ids_len INTEGER := COALESCE(array_length(p_notification_ids, 1), 0);
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'AUTH_REQUIRED';
+    END IF;
+
+    IF to_regprocedure('public.guard_rate_limit(uuid,text,text,integer,integer,integer)') IS NOT NULL THEN
+        SELECT * INTO v_guard
+        FROM public.guard_rate_limit(v_uid, 'notifications_read', 'notifications', 180, 60, 90);
+
+        IF v_guard.allowed IS NOT TRUE THEN
+            RAISE EXCEPTION 'RATE_LIMIT_NOTIFICATIONS_READ:%', COALESCE(v_guard.retry_after_ms, 0);
+        END IF;
+    END IF;
+
+    IF COALESCE(p_mark_all, false) THEN
+        UPDATE public.notifications
+        SET is_read = true
+        WHERE recipient_id = v_uid
+          AND is_read = false;
+    ELSE
+        IF v_ids_len <= 0 THEN
+            RAISE EXCEPTION 'NOTIFICATION_IDS_REQUIRED';
+        END IF;
+
+        UPDATE public.notifications
+        SET is_read = true
+        WHERE recipient_id = v_uid
+          AND id = ANY(p_notification_ids)
+          AND is_read = false;
+    END IF;
+
+    GET DIAGNOSTICS v_processed = ROW_COUNT;
+    RETURN v_processed;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.secure_mark_notifications_read(UUID[], BOOLEAN) TO authenticated;
+
+-- Secure self-service account deletion.
+CREATE OR REPLACE FUNCTION public.delete_own_account()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+    v_user_id UUID := auth.uid();
+BEGIN
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'NOT_AUTHENTICATED';
+    END IF;
+
+    IF to_regclass('public.profiles') IS NOT NULL THEN
+        UPDATE public.profiles
+        SET
+            status = 'deactivated',
+            is_private = true,
+            profile_visibility = 'connections',
+            last_seen_visibility = 'nobody',
+            online_status_visibility = 'nobody',
+            updated_at = now()
+        WHERE id = v_user_id;
+    END IF;
+
+    IF to_regclass('public.profile_login_emails') IS NOT NULL THEN
+        DELETE FROM public.profile_login_emails
+        WHERE user_id = v_user_id;
+    END IF;
+
+    IF to_regclass('public.gift_transactions') IS NOT NULL THEN
+        DELETE FROM public.gift_transactions
+        WHERE sender_id = v_user_id OR receiver_id = v_user_id;
+    END IF;
+
+    IF to_regclass('public.wallet_transactions') IS NOT NULL THEN
+        DELETE FROM public.wallet_transactions
+        WHERE user_id = v_user_id;
+    END IF;
+
+    IF to_regclass('public.ad_impressions') IS NOT NULL
+       AND to_regclass('public.ad_campaigns') IS NOT NULL THEN
+        DELETE FROM public.ad_impressions
+        WHERE campaign_id IN (
+            SELECT id FROM public.ad_campaigns WHERE advertiser_id = v_user_id
+        );
+    END IF;
+
+    IF to_regclass('public.ad_impressions') IS NOT NULL THEN
+        UPDATE public.ad_impressions
+        SET user_id = NULL
+        WHERE user_id = v_user_id;
+    END IF;
+
+    IF to_regclass('public.ad_campaigns') IS NOT NULL THEN
+        DELETE FROM public.ad_campaigns
+        WHERE advertiser_id = v_user_id;
+    END IF;
+
+    DELETE FROM auth.users
+    WHERE id = v_user_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_own_account() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.delete_own_account() TO authenticated;
+
+-- Wallet, gifts and premium RPCs.
+-- Estas funciones usan SECURITY DEFINER, por eso cada una valida auth.uid(),
+-- rol de servicio o admin antes de mutar saldos/suscripciones.
+CREATE OR REPLACE FUNCTION public.wallet_get_or_create()
+RETURNS TABLE (
+    user_id UUID,
+    balance_diamonds INT,
+    balance_credits DECIMAL(10,2),
+    total_spent DECIMAL(10,2)
+) AS $$
+DECLARE
+    current_user_id UUID := auth.uid();
+BEGIN
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    INSERT INTO public.wallets (user_id, balance_diamonds, balance_credits, total_spent)
+    VALUES (current_user_id, 0, 0.00, 0.00)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    RETURN QUERY
+    SELECT w.user_id, w.balance_diamonds, w.balance_credits, w.total_spent
+    FROM public.wallets w
+    WHERE w.user_id = current_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.wallet_add_diamonds(
     p_user_id UUID,
     p_amount INT,
     p_source TEXT DEFAULT 'purchase'
@@ -827,34 +1711,57 @@ DECLARE
     new_balance_diamonds INT;
     current_credits DECIMAL(10,2);
     current_total_spent DECIMAL(10,2);
+    caller_is_admin BOOLEAN := EXISTS (
+        SELECT 1
+        FROM public.profiles p
+        WHERE p.id = auth.uid()
+          AND COALESCE(p.is_admin, FALSE) = TRUE
+    );
 BEGIN
-    -- Insertar o actualizar wallet
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'Target user is required';
+    END IF;
+
+    IF COALESCE(p_amount, 0) <= 0 THEN
+        RAISE EXCEPTION 'Amount must be greater than zero';
+    END IF;
+
+    IF COALESCE(auth.role(), '') <> 'service_role' AND NOT caller_is_admin THEN
+        RAISE EXCEPTION 'Only service role or admins can add diamonds';
+    END IF;
+
     INSERT INTO public.wallets (user_id, balance_diamonds, balance_credits, total_spent)
     VALUES (p_user_id, p_amount, 0.00, 0.00)
     ON CONFLICT (user_id) DO UPDATE SET
         balance_diamonds = public.wallets.balance_diamonds + p_amount,
         updated_at = now()
-    RETURNING balance_diamonds, balance_credits, total_spent
+    RETURNING public.wallets.balance_diamonds, public.wallets.balance_credits, public.wallets.total_spent
     INTO new_balance_diamonds, current_credits, current_total_spent;
 
-    -- Registrar transacción
     INSERT INTO public.wallet_transactions (
-        user_id, type, amount_diamonds, balance_after_diamonds,
-        balance_after_credits, description
+        user_id,
+        type,
+        amount_diamonds,
+        balance_after_diamonds,
+        balance_after_credits,
+        description
     ) VALUES (
-        p_user_id, 'deposit', p_amount, new_balance_diamonds,
-        current_credits, 'Diamantes agregados desde: ' || p_source
+        p_user_id,
+        'deposit',
+        p_amount,
+        new_balance_diamonds,
+        current_credits,
+        'Diamantes agregados desde: ' || COALESCE(NULLIF(trim(p_source), ''), 'purchase')
     );
 
-    -- Devolver estado actual del wallet
     RETURN QUERY
     SELECT w.user_id, w.balance_diamonds, w.balance_credits, w.total_spent
     FROM public.wallets w
     WHERE w.user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-CREATE OR REPLACE FUNCTION wallet_spend_diamonds(
+CREATE OR REPLACE FUNCTION public.wallet_spend_diamonds(
     p_user_id UUID,
     p_amount INT,
     p_purpose TEXT,
@@ -871,42 +1778,282 @@ DECLARE
     new_balance INT;
     current_credits DECIMAL(10,2);
     current_total_spent DECIMAL(10,2);
+    caller_is_admin BOOLEAN := EXISTS (
+        SELECT 1
+        FROM public.profiles p
+        WHERE p.id = auth.uid()
+          AND COALESCE(p.is_admin, FALSE) = TRUE
+    );
 BEGIN
-    -- Verificar saldo suficiente
-    SELECT balance_diamonds, balance_credits, total_spent
-    INTO current_balance, current_credits, current_total_spent
-    FROM public.wallets
-    WHERE user_id = p_user_id;
-
-    IF current_balance < p_amount THEN
-        RAISE EXCEPTION 'Saldo insuficiente. Balance actual: %, requerido: %', current_balance, p_amount;
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'Target user is required';
     END IF;
 
-    -- Actualizar balance
+    IF COALESCE(p_amount, 0) <= 0 THEN
+        RAISE EXCEPTION 'Amount must be greater than zero';
+    END IF;
+
+    IF COALESCE(auth.role(), '') <> 'service_role'
+       AND NOT caller_is_admin
+       AND auth.uid() IS DISTINCT FROM p_user_id THEN
+        RAISE EXCEPTION 'Users can only spend their own diamonds';
+    END IF;
+
+    INSERT INTO public.wallets (user_id, balance_diamonds, balance_credits, total_spent)
+    VALUES (p_user_id, 0, 0.00, 0.00)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    SELECT w.balance_diamonds, w.balance_credits, w.total_spent
+    INTO current_balance, current_credits, current_total_spent
+    FROM public.wallets w
+    WHERE w.user_id = p_user_id
+    FOR UPDATE;
+
+    IF COALESCE(current_balance, 0) < p_amount THEN
+        RAISE EXCEPTION 'Saldo insuficiente. Balance actual: %, requerido: %',
+            COALESCE(current_balance, 0),
+            p_amount;
+    END IF;
+
     UPDATE public.wallets SET
         balance_diamonds = balance_diamonds - p_amount,
-        total_spent = total_spent + (p_amount * 0.1), -- asumir 0.1 USD por diamante
+        total_spent = total_spent + (p_amount * 0.1),
         updated_at = now()
-    WHERE user_id = p_user_id
-    RETURNING balance_diamonds, balance_credits, total_spent
+    WHERE public.wallets.user_id = p_user_id
+    RETURNING public.wallets.balance_diamonds, public.wallets.balance_credits, public.wallets.total_spent
     INTO new_balance, current_credits, current_total_spent;
 
-    -- Registrar transacción
     INSERT INTO public.wallet_transactions (
-        user_id, type, amount_diamonds, balance_after_diamonds,
-        balance_after_credits, reference_id, description
+        user_id,
+        type,
+        amount_diamonds,
+        balance_after_diamonds,
+        balance_after_credits,
+        reference_id,
+        description
     ) VALUES (
-        p_user_id, 'purchase', -p_amount, new_balance,
-        current_credits, p_reference_id, 'Compra: ' || p_purpose
+        p_user_id,
+        'purchase',
+        -p_amount,
+        new_balance,
+        current_credits,
+        p_reference_id,
+        'Compra: ' || COALESCE(NULLIF(trim(p_purpose), ''), 'wallet')
     );
 
-    -- Devolver estado actual del wallet
     RETURN QUERY
     SELECT w.user_id, w.balance_diamonds, w.balance_credits, w.total_spent
     FROM public.wallets w
     WHERE w.user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.send_virtual_gift(
+    p_sender_id UUID,
+    p_receiver_id UUID,
+    p_gift_id UUID,
+    p_message TEXT DEFAULT NULL,
+    p_live_stream_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+    transaction_id UUID,
+    sender_balance_diamonds INT,
+    receiver_wallet_created BOOLEAN
+) AS $$
+DECLARE
+    gift_price INT;
+    tx_id UUID;
+    sender_balance INT;
+    inserted_rows INT := 0;
+    caller_is_admin BOOLEAN := EXISTS (
+        SELECT 1
+        FROM public.profiles p
+        WHERE p.id = auth.uid()
+          AND COALESCE(p.is_admin, FALSE) = TRUE
+    );
+BEGIN
+    IF p_sender_id IS NULL OR p_receiver_id IS NULL OR p_gift_id IS NULL THEN
+        RAISE EXCEPTION 'Sender, receiver and gift are required';
+    END IF;
+
+    IF COALESCE(auth.role(), '') <> 'service_role'
+       AND NOT caller_is_admin
+       AND auth.uid() IS DISTINCT FROM p_sender_id THEN
+        RAISE EXCEPTION 'Users can only send gifts from their own account';
+    END IF;
+
+    SELECT vg.price_diamonds
+    INTO gift_price
+    FROM public.virtual_gifts vg
+    WHERE vg.id = p_gift_id
+      AND vg.is_active = TRUE;
+
+    IF gift_price IS NULL THEN
+        RAISE EXCEPTION 'Regalo no encontrado o inactivo';
+    END IF;
+
+    SELECT spent.balance_diamonds
+    INTO sender_balance
+    FROM public.wallet_spend_diamonds(p_sender_id, gift_price, 'regalo_virtual', p_gift_id) spent;
+
+    INSERT INTO public.gift_transactions (
+        sender_id,
+        receiver_id,
+        gift_id,
+        live_stream_id,
+        message,
+        amount_diamonds,
+        amount_credits
+    ) VALUES (
+        p_sender_id,
+        p_receiver_id,
+        p_gift_id,
+        p_live_stream_id,
+        NULLIF(trim(COALESCE(p_message, '')), ''),
+        gift_price,
+        0.00
+    ) RETURNING id INTO tx_id;
+
+    INSERT INTO public.wallets (user_id, balance_diamonds, balance_credits, total_spent)
+    VALUES (p_receiver_id, 0, 0.00, 0.00)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    GET DIAGNOSTICS inserted_rows = ROW_COUNT;
+
+    RETURN QUERY SELECT tx_id, sender_balance, inserted_rows > 0;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.subscribe_to_plan(
+    p_user_id UUID,
+    p_plan_id UUID,
+    p_payment_method TEXT DEFAULT 'wallet'
+)
+RETURNS TABLE (
+    subscription_id UUID,
+    plan_name TEXT,
+    current_period_start TIMESTAMPTZ,
+    current_period_end TIMESTAMPTZ
+) AS $$
+DECLARE
+    selected_plan_price DECIMAL(10,2);
+    selected_plan_name TEXT;
+    sub_id UUID;
+    period_start TIMESTAMPTZ;
+    period_end TIMESTAMPTZ;
+    diamonds_cost INT;
+    normalized_payment_method TEXT := COALESCE(NULLIF(trim(p_payment_method), ''), 'wallet');
+    caller_is_admin BOOLEAN := EXISTS (
+        SELECT 1
+        FROM public.profiles p
+        WHERE p.id = auth.uid()
+          AND COALESCE(p.is_admin, FALSE) = TRUE
+    );
+BEGIN
+    IF p_user_id IS NULL OR p_plan_id IS NULL THEN
+        RAISE EXCEPTION 'User and plan are required';
+    END IF;
+
+    IF COALESCE(auth.role(), '') <> 'service_role'
+       AND NOT caller_is_admin
+       AND auth.uid() IS DISTINCT FROM p_user_id THEN
+        RAISE EXCEPTION 'Users can only subscribe their own account';
+    END IF;
+
+    IF normalized_payment_method <> 'wallet'
+       AND COALESCE(auth.role(), '') <> 'service_role'
+       AND NOT caller_is_admin THEN
+        RAISE EXCEPTION 'Only wallet payments are available from the client';
+    END IF;
+
+    SELECT sp.price_monthly, sp.name
+    INTO selected_plan_price, selected_plan_name
+    FROM public.subscription_plans sp
+    WHERE sp.id = p_plan_id
+      AND sp.is_active = TRUE;
+
+    IF selected_plan_price IS NULL THEN
+        RAISE EXCEPTION 'Plan no encontrado o inactivo';
+    END IF;
+
+    period_start := now();
+    period_end := period_start + INTERVAL '1 month';
+    diamonds_cost := CEIL(selected_plan_price * 10)::INT;
+
+    IF normalized_payment_method = 'wallet' AND diamonds_cost > 0 THEN
+        PERFORM public.wallet_spend_diamonds(
+            p_user_id,
+            diamonds_cost,
+            'suscripcion_premium',
+            p_plan_id
+        );
+    END IF;
+
+    SELECT us.id
+    INTO sub_id
+    FROM public.user_subscriptions us
+    WHERE us.user_id = p_user_id
+      AND us.plan_id = p_plan_id
+      AND us.status = 'active'
+    ORDER BY us.current_period_end DESC
+    LIMIT 1
+    FOR UPDATE;
+
+    IF sub_id IS NOT NULL THEN
+        UPDATE public.user_subscriptions
+        SET current_period_start = period_start,
+            current_period_end = period_end,
+            cancel_at_period_end = FALSE,
+            updated_at = now()
+        WHERE id = sub_id;
+
+        RETURN QUERY SELECT sub_id, selected_plan_name, period_start, period_end;
+        RETURN;
+    END IF;
+
+    UPDATE public.user_subscriptions
+    SET status = 'canceled',
+        cancel_at_period_end = TRUE,
+        updated_at = now()
+    WHERE user_id = p_user_id
+      AND status = 'active';
+
+    INSERT INTO public.user_subscriptions (
+        user_id,
+        plan_id,
+        status,
+        current_period_start,
+        current_period_end,
+        cancel_at_period_end,
+        created_at,
+        updated_at
+    ) VALUES (
+        p_user_id,
+        p_plan_id,
+        'active',
+        period_start,
+        period_end,
+        FALSE,
+        now(),
+        now()
+    )
+    RETURNING id INTO sub_id;
+
+    RETURN QUERY SELECT sub_id, selected_plan_name, period_start, period_end;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION public.wallet_get_or_create() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.wallet_add_diamonds(UUID, INT, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.wallet_spend_diamonds(UUID, INT, TEXT, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.send_virtual_gift(UUID, UUID, UUID, TEXT, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscribe_to_plan(UUID, UUID, TEXT) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.wallet_get_or_create() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.wallet_add_diamonds(UUID, INT, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.wallet_spend_diamonds(UUID, INT, TEXT, UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.send_virtual_gift(UUID, UUID, UUID, TEXT, UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.subscribe_to_plan(UUID, UUID, TEXT) TO authenticated, service_role;
 
 -- Hashtag functions
 CREATE OR REPLACE FUNCTION extract_hashtags(
@@ -1075,15 +2222,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Apply to all tables
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_videos_updated_at ON public.videos;
 CREATE TRIGGER update_videos_updated_at BEFORE UPDATE ON public.videos
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_chats_updated_at ON public.chats;
 CREATE TRIGGER update_chats_updated_at BEFORE UPDATE ON public.chats
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_messages_updated_at ON public.messages;
 CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON public.messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_posts_updated_at ON public.posts;
 CREATE TRIGGER update_posts_updated_at BEFORE UPDATE ON public.posts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_post_reactions_updated_at ON public.post_reactions;
+CREATE TRIGGER update_post_reactions_updated_at BEFORE UPDATE ON public.post_reactions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Message trigger for chat updates
@@ -1113,6 +2268,107 @@ CREATE TRIGGER on_new_message
     AFTER INSERT ON public.messages
     FOR EACH ROW
     EXECUTE FUNCTION handle_new_message();
+
+-- Notification trigger functions
+CREATE OR REPLACE FUNCTION notify_on_follow()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.notifications (recipient_id, actor_id, type, target_id, target_type)
+    VALUES (NEW.following_id, NEW.follower_id, 'follow', NEW.following_id, 'follow');
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Error creating follow notification: %', SQLERRM;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_new_follow ON public.follows;
+CREATE TRIGGER on_new_follow
+    AFTER INSERT ON public.follows
+    FOR EACH ROW EXECUTE FUNCTION notify_on_follow();
+
+CREATE OR REPLACE FUNCTION notify_on_post_reaction()
+RETURNS TRIGGER AS $$
+DECLARE
+    post_owner_id UUID;
+BEGIN
+    SELECT user_id INTO post_owner_id FROM public.posts WHERE id = NEW.post_id;
+    IF post_owner_id IS NOT NULL AND post_owner_id != NEW.user_id THEN
+        INSERT INTO public.notifications (recipient_id, actor_id, type, target_id, target_type, extra_data)
+        VALUES (
+            post_owner_id,
+            NEW.user_id,
+            'reaction_post',
+            NEW.post_id,
+            'post',
+            jsonb_build_object('reaction_type', NEW.reaction_type)
+        );
+    END IF;
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Error creating post reaction notification: %', SQLERRM;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_new_post_reaction ON public.post_reactions;
+CREATE TRIGGER on_new_post_reaction
+    AFTER INSERT ON public.post_reactions
+    FOR EACH ROW EXECUTE FUNCTION notify_on_post_reaction();
+
+CREATE OR REPLACE FUNCTION notify_on_post_comment()
+RETURNS TRIGGER AS $$
+DECLARE
+    post_owner_id UUID;
+BEGIN
+    SELECT user_id INTO post_owner_id FROM public.posts WHERE id = NEW.post_id;
+    IF post_owner_id IS NOT NULL AND post_owner_id != NEW.user_id THEN
+        INSERT INTO public.notifications (recipient_id, actor_id, type, target_id, target_type, content)
+        VALUES (post_owner_id, NEW.user_id, 'comment_post', NEW.post_id, 'post', NEW.content);
+    END IF;
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Error creating post comment notification: %', SQLERRM;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_new_post_comment ON public.post_comments;
+CREATE TRIGGER on_new_post_comment
+    AFTER INSERT ON public.post_comments
+    FOR EACH ROW EXECUTE FUNCTION notify_on_post_comment();
+
+CREATE OR REPLACE FUNCTION notify_on_video_like()
+RETURNS TRIGGER AS $$
+DECLARE
+    video_owner_id UUID;
+BEGIN
+    SELECT user_id INTO video_owner_id FROM public.videos WHERE id = NEW.video_id;
+    IF video_owner_id IS NOT NULL AND video_owner_id != NEW.user_id THEN
+        INSERT INTO public.notifications (recipient_id, actor_id, type, target_id, target_type)
+        VALUES (video_owner_id, NEW.user_id, 'like_video', NEW.video_id, 'video');
+    END IF;
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Error creating video like notification: %', SQLERRM;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_new_video_like ON public.video_likes;
+CREATE TRIGGER on_new_video_like
+    AFTER INSERT ON public.video_likes
+    FOR EACH ROW EXECUTE FUNCTION notify_on_video_like();
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN undefined_object THEN NULL;
+    WHEN OTHERS THEN
+        RAISE NOTICE 'notifications realtime publication skipped: %', SQLERRM;
+END $$;
 
 -- Full-text search triggers
 CREATE OR REPLACE FUNCTION posts_tsvector_trigger() RETURNS trigger AS $$
@@ -1198,12 +2454,19 @@ CREATE TRIGGER auto_tag_video_trigger
 
 -- Insert virtual gifts
 INSERT INTO public.virtual_gifts (name, description, image_url, price_diamonds, price_credits, animation_url, sort_order) VALUES
-('Corazón', 'Un corazón para expresar tu cariño', 'https://example.com/gifts/heart.png', 10, 1.99, 'https://example.com/animations/heart.json', 1),
-('Rosa', 'Una hermosa rosa virtual', 'https://example.com/gifts/rose.png', 25, 4.99, 'https://example.com/animations/rose.json', 2),
-('Trofeo', '¡Felicitaciones por tu victoria!', 'https://example.com/gifts/trophy.png', 50, 9.99, 'https://example.com/animations/trophy.json', 3),
-('Fuegos Artificiales', '¡Celebración épica!', 'https://example.com/gifts/fireworks.png', 100, 19.99, 'https://example.com/animations/fireworks.json', 4),
-('Superestrella', 'Eres una estrella', 'https://example.com/gifts/star.png', 200, 39.99, 'https://example.com/animations/star.json', 5)
-ON CONFLICT (name) DO NOTHING;
+('Corazón', 'Un corazón para expresar tu cariño', 'conectate://gift-assets/heart', 10, 1.99, NULL, 1),
+('Rosa', 'Una hermosa rosa virtual', 'conectate://gift-assets/rose', 25, 4.99, NULL, 2),
+('Trofeo', '¡Felicitaciones por tu victoria!', 'conectate://gift-assets/trophy', 50, 9.99, NULL, 3),
+('Fuegos Artificiales', '¡Celebración épica!', 'conectate://gift-assets/fireworks', 100, 19.99, NULL, 4),
+('Superestrella', 'Eres una estrella', 'conectate://gift-assets/star', 200, 39.99, NULL, 5)
+ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description,
+    image_url = EXCLUDED.image_url,
+    price_diamonds = EXCLUDED.price_diamonds,
+    price_credits = EXCLUDED.price_credits,
+    animation_url = EXCLUDED.animation_url,
+    is_active = true,
+    sort_order = EXCLUDED.sort_order;
 
 -- Insert subscription plans
 INSERT INTO public.subscription_plans (name, description, price_monthly, price_yearly, features, sort_order) VALUES
@@ -1228,6 +2491,8 @@ Para configurar los buckets de Supabase Storage, crea estos buckets desde el Das
 
 Las políticas de storage ya están configuradas en el archivo separado.
 */
+
+NOTIFY pgrst, 'reload schema';
 
 -- ============================================
 -- DEPLOY COMPLETADO

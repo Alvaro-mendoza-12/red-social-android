@@ -188,8 +188,8 @@ class MomentRepository @Inject constructor(
                                     android.util.Log.d("MomentRepository", "⚡ DELETE detectado: $id - Eliminando localmente")
                                     _moments.value = _moments.value.filter { it.id != id }
                                 } else {
-                                    // FALLBACK NUCLEAR: Si no llega ID (por RLS), recargamos TODO.
-                                    android.util.Log.w("MomentRepository", "⚡ DELETE sin ID (Bloqueado por RLS?), ejecutando RECARGA TOTAL...")
+                                    // Si RLS no entrega el ID anterior, sincronizamos de nuevo para mantener consistencia.
+                                    android.util.Log.w("MomentRepository", "DELETE sin ID en realtime; sincronizando momentos")
                                     refreshMoments()
                                 }
                             }
@@ -732,8 +732,8 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun recordView(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("MomentRepository", "========================================")
@@ -793,8 +793,8 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun getMomentViewers(momentId: String): Result<List<MomentView>> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -856,8 +856,8 @@ class MomentRepository @Inject constructor(
         }
     }
 
-@Composable
-@Composable
+
+
     suspend fun deleteMoment(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))

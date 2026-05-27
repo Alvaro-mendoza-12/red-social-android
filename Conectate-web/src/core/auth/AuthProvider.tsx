@@ -5,6 +5,14 @@ import { Navigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { isSupabaseConfigured, supabase } from '../../core/supabase'
 import { textOf, type GenericRow } from '../../core/utils'
+import {
+  clearFallbackSession,
+  fallbackSessionToUser,
+  isFallbackAuthConfigured,
+  onFallbackAuthChanged,
+  readFallbackSession,
+  type FallbackSession,
+} from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
 
 type SuspensionState = {
@@ -18,6 +26,7 @@ type AuthContextValue = {
   loading: boolean
   user: User | null
   session: Session | null
+  isFallbackSession: boolean
   suspension: SuspensionState | null
   suspensionLoading: boolean
   signOut: () => Promise<void>
@@ -27,8 +36,10 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [loading, setLoading] = useState(isSupabaseConfigured)
+  const initialFallbackSession = readFallbackSession()
   const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<User | null>(null)
+  const [fallbackSession, setFallbackSession] = useState<FallbackSession | null>(initialFallbackSession)
+  const [user, setUser] = useState<User | null>(() => fallbackSessionToUser(initialFallbackSession))
   const [suspension, setSuspension] = useState<SuspensionState | null>(null)
   const [suspensionLoading, setSuspensionLoading] = useState(false)
 
@@ -38,8 +49,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     async function applySession(nextSession: Session | null) {
       setSession(nextSession ?? null)
-      setUser(nextSession?.user ?? null)
-      if (!nextSession) return
+      if (!nextSession) {
+        const storedFallbackSession = readFallbackSession()
+        setFallbackSession(storedFallbackSession)
+        setUser(fallbackSessionToUser(storedFallbackSession))
+        return
+      }
+      clearFallbackSession()
+      setFallbackSession(null)
+      setUser(nextSession.user ?? null)
       await bootstrapSessionProfile(client, nextSession)
     }
 
@@ -69,7 +87,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [])
 
   useEffect(() => {
-    if (!supabase || !user) {
+    return onFallbackAuthChanged(() => {
+      const storedFallbackSession = readFallbackSession()
+      setFallbackSession(storedFallbackSession)
+      if (!session) {
+        setUser(fallbackSessionToUser(storedFallbackSession))
+      }
+    })
+  }, [session])
+
+  useEffect(() => {
+    if (!supabase || !user || fallbackSession) {
       setSuspension(null)
       setSuspensionLoading(false)
       return
@@ -138,22 +166,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     void loadSuspensionState()
-  }, [user])
+  }, [fallbackSession, user])
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      configured: isSupabaseConfigured,
+      configured: isSupabaseConfigured || isFallbackAuthConfigured,
       loading,
       session,
+      isFallbackSession: Boolean(fallbackSession),
       user,
       suspension,
       suspensionLoading,
       signOut: async () => {
+        clearFallbackSession()
+        setFallbackSession(null)
+        setSession(null)
+        setUser(null)
         if (!supabase) return
         await supabase.auth.signOut()
       },
     }),
-    [loading, session, suspension, suspensionLoading, user],
+    [fallbackSession, loading, session, suspension, suspensionLoading, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

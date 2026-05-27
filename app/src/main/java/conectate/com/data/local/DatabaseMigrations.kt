@@ -57,7 +57,7 @@ private object LatestSchemaNormalizer {
 
     private val chatsPlan = TablePlan(
         name = "chats",
-        createSql = "CREATE TABLE IF NOT EXISTS `chats` (`id` TEXT NOT NULL, `name` TEXT, `is_group` INTEGER NOT NULL, `created_by` TEXT NOT NULL, `participantsJson` TEXT NOT NULL, `last_message_at` TEXT, `display_name` TEXT, `display_image` TEXT, `unread_count` INTEGER NOT NULL, `other_user_id` TEXT, `last_message_preview` TEXT, `last_message_timestamp` TEXT, `last_message_id` TEXT, `last_message_sender_id` TEXT, `is_deleted` INTEGER NOT NULL, `nickname` TEXT, `cleared_at` TEXT, `is_muted` INTEGER NOT NULL DEFAULT 0, `is_pinned` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `chats` (`id` TEXT NOT NULL, `name` TEXT, `is_group` INTEGER NOT NULL, `created_by` TEXT NOT NULL, `participantsJson` TEXT NOT NULL, `last_message_at` TEXT, `display_name` TEXT, `display_image` TEXT, `unread_count` INTEGER NOT NULL, `other_user_id` TEXT, `last_message_preview` TEXT, `last_message_timestamp` TEXT, `last_message_id` TEXT, `last_message_sender_id` TEXT, `is_deleted` INTEGER NOT NULL, `nickname` TEXT, `cleared_at` TEXT, `is_muted` INTEGER NOT NULL DEFAULT 0, `is_pinned` INTEGER NOT NULL DEFAULT 0, `is_archived` INTEGER NOT NULL DEFAULT 0, `is_favorite` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("name", "NULL", coalesceNulls = false),
@@ -77,11 +77,14 @@ private object LatestSchemaNormalizer {
             ColumnSpec("nickname", "NULL", coalesceNulls = false),
             ColumnSpec("cleared_at", "NULL", coalesceNulls = false),
             ColumnSpec("is_muted", "0"),
-            ColumnSpec("is_pinned", "0")
+            ColumnSpec("is_pinned", "0"),
+            ColumnSpec("is_archived", "0"),
+            ColumnSpec("is_favorite", "0")
         ),
         indexSql = listOf(
             "CREATE INDEX IF NOT EXISTS `index_chats_last_message_at` ON `chats` (`last_message_at`)",
             "CREATE INDEX IF NOT EXISTS `index_chats_is_pinned_last_message_at` ON `chats` (`is_pinned` ASC, `last_message_at` DESC)",
+            "CREATE INDEX IF NOT EXISTS `index_chats_is_archived_is_pinned_is_favorite_last_message_at` ON `chats` (`is_archived` ASC, `is_pinned` ASC, `is_favorite` ASC, `last_message_at` DESC)",
             "CREATE INDEX IF NOT EXISTS `index_chats_is_group` ON `chats` (`is_group`)",
             "CREATE INDEX IF NOT EXISTS `index_chats_unread_count` ON `chats` (`unread_count`)"
         )

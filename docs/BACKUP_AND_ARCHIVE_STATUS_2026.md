@@ -30,6 +30,19 @@ Los snapshots y cuarentenas locales no forman parte del build, del deploy SQL ni
 - Si un backup queda obsoleto y ya no se necesita, debe eliminarse en una tarea explicita aprobada por el owner del repo.
 - La documentacion y los manifiestos activos deben apuntar al codigo vigente, no a snapshots.
 
+## Limpieza estructural 2026-05-14
+
+Los snapshots versionados que estaban compitiendo con el arbol activo en la raiz se archivaron bajo `docs/archive/`:
+
+- `backup/` trackeado paso a `docs/archive/backup-snapshots/backup/`.
+- `tmp/` trackeado paso a `docs/archive/recovery-quarantine/tmp/`.
+- `app_backup_before_restore/` paso a `docs/archive/app-backup-before-restore/app_backup_before_restore/`.
+- logs de build trackeados pasaron a `docs/archive/build-logs/`.
+- documentacion historica de raiz paso a `docs/archive/root-legacy/`.
+- sistemas conceptuales no conectados al build pasaron a `docs/archive/experimental-concepts/`.
+
+Las carpetas locales `backup/` y `tmp/` quedan ignoradas para futuras capturas o pruebas manuales.
+
 ## Validacion relacionada
 
 La pasada del `2026-05-06` actualizo la documentacion activa, wallet/gifts, premium/ads, comentarios con audio y el hardening SQL del manifest. No se modificaron contenidos internos de snapshots para evitar mezclar historial con codigo vigente.

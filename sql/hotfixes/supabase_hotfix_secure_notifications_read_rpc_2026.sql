@@ -7,6 +7,8 @@
 
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.secure_mark_notifications_read(UUID[], BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.secure_mark_notifications_read(
     p_notification_ids UUID[] DEFAULT NULL,
     p_mark_all BOOLEAN DEFAULT FALSE

@@ -1,4 +1,4 @@
-import { supabase } from '../../core/supabase'
+import { removeRealtimeChannel, subscribeRealtimeChannel, supabase } from '../../core/supabase'
 
 export interface RealtimeEvent {
   type: 'message' | 'user_status' | 'typing' | 'presence' | 'notification'
@@ -98,16 +98,24 @@ export class RealtimeManager {
         }
         callback(event)
       })
-      .subscribe((status) => {
+
+    const subscribed = subscribeRealtimeChannel(channel, {
+      reason: 'messages',
+      onStatus: (status, error) => {
         if (status === 'SUBSCRIBED') {
           console.log('Subscribed to messages channel')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to messages channel')
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('Error subscribing to messages channel', error)
           this.handleSubscriptionError('messages')
         }
-      })
+      },
+    })
 
-    this.channels.set('messages', channel)
+    if (subscribed) {
+      this.channels.set('messages', subscribed)
+    }
   }
 
   private subscribeToUserStatus(callback: (event: RealtimeEvent) => void): void {
@@ -131,16 +139,24 @@ export class RealtimeManager {
         }
         callback(event)
       })
-      .subscribe((status) => {
+
+    const subscribed = subscribeRealtimeChannel(channel, {
+      reason: 'user-status',
+      onStatus: (status, error) => {
         if (status === 'SUBSCRIBED') {
           console.log('Subscribed to user status channel')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to user status channel')
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('Error subscribing to user status channel', error)
           this.handleSubscriptionError('user-status')
         }
-      })
+      },
+    })
 
-    this.channels.set('user-status', channel)
+    if (subscribed) {
+      this.channels.set('user-status', subscribed)
+    }
   }
 
   private subscribeToTyping(callback: (event: RealtimeEvent) => void): void {
@@ -160,16 +176,23 @@ export class RealtimeManager {
       callback(event)
     })
 
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('Subscribed to typing indicators channel')
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('Error subscribing to typing indicators channel')
-        this.handleSubscriptionError('typing')
-      }
+    const subscribed = subscribeRealtimeChannel(channel, {
+      reason: 'typing',
+      onStatus: (status, error) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to typing indicators channel')
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('Error subscribing to typing indicators channel', error)
+          this.handleSubscriptionError('typing')
+        }
+      },
     })
 
-    this.channels.set('typing', channel)
+    if (subscribed) {
+      this.channels.set('typing', subscribed)
+    }
   }
 
   private subscribeToPresence(callback: (event: RealtimeEvent) => void): void {
@@ -188,16 +211,24 @@ export class RealtimeManager {
         }
         callback(event)
       })
-      .subscribe((status) => {
+
+    const subscribed = subscribeRealtimeChannel(channel, {
+      reason: 'presence',
+      onStatus: (status, error) => {
         if (status === 'SUBSCRIBED') {
           console.log('Subscribed to presence channel')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to presence channel')
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('Error subscribing to presence channel', error)
           this.handleSubscriptionError('presence')
         }
-      })
+      },
+    })
 
-    this.channels.set('presence', channel)
+    if (subscribed) {
+      this.channels.set('presence', subscribed)
+    }
   }
 
   private subscribeToNotifications(callback: (event: RealtimeEvent) => void): void {
@@ -218,16 +249,24 @@ export class RealtimeManager {
         }
         callback(event)
       })
-      .subscribe((status) => {
+
+    const subscribed = subscribeRealtimeChannel(channel, {
+      reason: 'notifications',
+      onStatus: (status, error) => {
         if (status === 'SUBSCRIBED') {
           console.log('Subscribed to notifications channel')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to notifications channel')
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('Error subscribing to notifications channel', error)
           this.handleSubscriptionError('notifications')
         }
-      })
+      },
+    })
 
-    this.channels.set('notifications', channel)
+    if (subscribed) {
+      this.channels.set('notifications', subscribed)
+    }
   }
 
   unsubscribe(subscriptionId: string): void {
@@ -252,7 +291,7 @@ export class RealtimeManager {
     const channel = this.channels.get(channelKey)
     if (channel) {
       try {
-        channel.unsubscribe()
+        void removeRealtimeChannel(channel)
         this.channels.delete(channelKey)
         
         // Resubscribe after a delay
@@ -276,7 +315,7 @@ export class RealtimeManager {
     
     Array.from(this.channels.entries()).forEach(([key, channel]) => {
       try {
-        channel.unsubscribe()
+        void removeRealtimeChannel(channel)
         this.channels.delete(key)
       } catch (error) {
         console.error(`Error unsubscribing from ${key} channel:`, error)
@@ -343,7 +382,7 @@ export class RealtimeManager {
     // Unsubscribe from all channels
     Array.from(this.channels.entries()).forEach(([key, channel]) => {
       try {
-        channel.unsubscribe()
+        void removeRealtimeChannel(channel)
       } catch (error) {
         console.error(`Error unsubscribing from ${key} channel:`, error)
       }

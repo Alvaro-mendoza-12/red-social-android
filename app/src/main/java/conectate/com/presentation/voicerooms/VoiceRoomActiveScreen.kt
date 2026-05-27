@@ -72,8 +72,9 @@ fun VoiceRoomActiveScreen(
     val screenShareLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            viewModel.toggleScreenShare(result.data!!)
+        val projectionData = result.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && projectionData != null) {
+            viewModel.toggleScreenShare(projectionData)
         } else {
              viewModel.stopVideo() // Reset state if cancelled
         }
@@ -316,12 +317,13 @@ fun VoiceRoomActiveScreen(
                     onDismiss = { navController.popBackStack() }
                 )
             } else if (permissionsState.allPermissionsGranted && room != null) {
+                val activeRoom = room ?: return@Box
                 
                 if (showEditDialog) {
                     EditRoomDialog(
-                        currentName = room!!.name,
-                        isPublic = room!!.isPublic,
-                        currentPassword = room!!.password,
+                        currentName = activeRoom.name,
+                        isPublic = activeRoom.isPublic,
+                        currentPassword = activeRoom.password,
                         onConfirm = { name, isPublic, password ->
                             viewModel.updateRoom(name, isPublic, password)
                             showEditDialog = false
@@ -1277,7 +1279,8 @@ fun ChatBottomSheet(
                                 replyText
                             }
                             
-                            val msgText = if (replyTo != null) "↪ Respondiendo a ${replyTo!!.userName}:\n$actualContent\n\n$text" else text
+                            val reply = replyTo
+                            val msgText = if (reply != null) "↪ Respondiendo a ${reply.userName}:\n$actualContent\n\n$text" else text
                             viewModel.sendMessage(msgText)
                             text = ""
                             replyTo = null

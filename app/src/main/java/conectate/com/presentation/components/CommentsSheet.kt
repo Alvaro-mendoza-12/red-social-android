@@ -42,7 +42,11 @@ fun CommentsSheet(
     
     // Group comments by parent
     val parentComments = remember(comments) { comments.filter { it.parentId == null } }
-    val repliesMap = remember(comments) { comments.filter { it.parentId != null }.groupBy { it.parentId!! } }
+    val repliesMap = remember(comments) {
+        comments.mapNotNull { comment ->
+            comment.parentId?.let { parentId -> parentId to comment }
+        }.groupBy({ it.first }, { it.second })
+    }
 
     Column(
         modifier = Modifier
