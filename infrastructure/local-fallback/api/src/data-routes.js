@@ -1183,6 +1183,27 @@ async function ensureLocalDataTables(pool) {
   ]) {
     await pool.query(statement)
   }
+  await pool.query(`
+    DELETE FROM fallback_follows
+    WHERE COALESCE(NULLIF(trim(follower_id), ''), '') = ''
+       OR COALESCE(NULLIF(trim(following_id), ''), '') = ''
+       OR lower(follower_id) = lower(following_id)
+  `)
+  await pool.query(`
+    DELETE FROM fallback_follows a
+    USING fallback_follows b
+    WHERE a.ctid < b.ctid
+      AND lower(a.follower_id) = lower(b.follower_id)
+      AND lower(a.following_id) = lower(b.following_id)
+  `)
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_follows_unique_pair
+     ON fallback_follows(lower(follower_id), lower(following_id))`,
+  )
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_follows_unique_pair_raw
+     ON fallback_follows(follower_id, following_id)`,
+  )
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_follows_follower
      ON fallback_follows(lower(follower_id), created_at DESC)`,
@@ -1420,7 +1441,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
       const identity = userIdentity(user)
-      const [profiles, importedPosts, fallbackPosts, videos, chats, follows, importedReports, localReports] = await Promise.all([
+      const [profiles, importedPosts, fallbackPosts, videos, chats, follows, importedReports, fallbackReports] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         importedRows(pool, 'posts', 5000),
         localPosts(pool, 5000),
@@ -1431,7 +1452,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         localReports(pool, 5000),
       ])
       const posts = [...importedPosts, ...fallbackPosts]
-      const reports = [...importedReports, ...localReports]
+      const reports = [...importedReports, ...fallbackReports]
 
       const profile =
         profiles.find((row) => rowMatchesAny(row, ['id', 'user_id', 'profile_id', 'supabase_user_id'], identity.ids)) ||
