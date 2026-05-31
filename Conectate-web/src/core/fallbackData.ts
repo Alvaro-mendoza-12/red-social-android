@@ -42,6 +42,8 @@ export type FallbackInboxResponse = {
 
 export type FallbackChatResponse = {
   title: string
+  chat?: GenericRow
+  room?: GenericRow
   otherParticipant: {
     id: string
     name: string
@@ -57,6 +59,18 @@ export type FallbackChatResponse = {
     translateEnabled: boolean
     targetLang: string
   }
+}
+
+export type FallbackVoiceRoom = GenericRow
+
+export type FallbackVoiceRoomsResponse = {
+  rooms: FallbackVoiceRoom[]
+  items?: FallbackVoiceRoom[]
+}
+
+export type FallbackVoiceRoomResponse = {
+  room: FallbackVoiceRoom
+  participants: GenericRow[]
 }
 
 export type FallbackStorageObject = {
@@ -76,6 +90,25 @@ export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse
   return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
 }
 
+export async function updateFallbackProfileMe(input: {
+  displayName?: string | null
+  bio?: string | null
+  country?: string | null
+  city?: string | null
+  status?: string | null
+  avatarUrl?: string | null
+  coverUrl?: string | null
+  isPrivate?: boolean | null
+  profileVisibility?: string | null
+  lastSeenVisibility?: string | null
+  onlineStatusVisibility?: string | null
+}): Promise<FallbackProfileMeResponse> {
+  return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
 export async function loadFallbackFeed(limit = 60): Promise<FallbackFeedResponse> {
   return fallbackApiJson<FallbackFeedResponse>(`/v1/data/feed?limit=${encodeURIComponent(String(limit))}`)
 }
@@ -87,6 +120,16 @@ export async function loadFallbackMessagesInbox(tab: string): Promise<FallbackIn
 export async function loadFallbackChat(chatId: string): Promise<FallbackChatResponse> {
   return fallbackApiJson<FallbackChatResponse>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
+  )
+}
+
+export async function loadFallbackRoomChat(
+  scope: 'group' | 'community',
+  roomId: string,
+): Promise<FallbackChatResponse> {
+  const collection = scope === 'group' ? 'groups' : 'communities'
+  return fallbackApiJson<FallbackChatResponse>(
+    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}`,
   )
 }
 
@@ -109,6 +152,30 @@ export async function sendFallbackChatMessage(
   )
 }
 
+export async function sendFallbackRoomMessage(
+  scope: 'group' | 'community',
+  roomId: string,
+  input: {
+    content: string
+    contentType?: string
+    mediaUrl?: string | null
+    mediaSize?: number
+    replyToId?: string | null
+    isForwarded?: boolean
+    forwardedFromMessageId?: string | null
+    forwardedFromUserId?: string | null
+  },
+): Promise<{ message: GenericRow }> {
+  const collection = scope === 'group' ? 'groups' : 'communities'
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
 export async function uploadFallbackFile(
   bucket: string,
   file: File,
@@ -124,6 +191,44 @@ export async function uploadFallbackFile(
     body: formData,
   })
   return payload.object
+}
+
+export async function loadFallbackVoiceRooms(): Promise<FallbackVoiceRoomsResponse> {
+  return fallbackApiJson<FallbackVoiceRoomsResponse>('/v1/data/voice/rooms')
+}
+
+export async function loadFallbackVoiceRoom(roomId: string): Promise<FallbackVoiceRoomResponse> {
+  return fallbackApiJson<FallbackVoiceRoomResponse>(
+    `/v1/data/voice/rooms/${encodeURIComponent(roomId)}`,
+  )
+}
+
+export async function joinFallbackVoiceRoom(
+  roomId: string,
+  input: {
+    userName?: string
+    userAvatarUrl?: string
+    socketId?: string
+    isMuted?: boolean
+  },
+): Promise<{ participants: GenericRow[] }> {
+  return fallbackApiJson<{ participants: GenericRow[] }>(
+    `/v1/data/voice/rooms/${encodeURIComponent(roomId)}/join`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function leaveFallbackVoiceRoom(roomId: string): Promise<{ ok: boolean }> {
+  return fallbackApiJson<{ ok: boolean }>(
+    `/v1/data/voice/rooms/${encodeURIComponent(roomId)}/leave`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  )
 }
 
 export async function createFallbackPost(input: {

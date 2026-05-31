@@ -3,8 +3,11 @@ import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import {
+  confirmFallbackPasswordReset,
   completeMigratedPasswordReset,
+  isFallbackAuthConfigured,
   isMigratedPasswordResetRequired,
+  requestFallbackPasswordReset,
 } from '../../core/auth/fallbackAuth'
 import { parseRecoverySessionPayload } from '../../core/auth/recoverySession'
 import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
@@ -73,6 +76,8 @@ export function LoginPage() {
   } | null>(null)
   const [migratedNewPassword, setMigratedNewPassword] = useState('')
   const [migratedConfirmPassword, setMigratedConfirmPassword] = useState('')
+  const [fallbackResetPassword, setFallbackResetPassword] = useState('')
+  const [fallbackResetConfirmPassword, setFallbackResetConfirmPassword] = useState('')
   const [activatingMigratedPassword, setActivatingMigratedPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [sendingCode, setSendingCode] = useState(false)
@@ -223,7 +228,6 @@ export function LoginPage() {
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client) return
     setLoading(true)
     setError(null)
     setInfo(null)
@@ -281,7 +285,7 @@ export function LoginPage() {
   }
 
   async function sendAccessCode() {
-    if (!client || sendingCode) return
+    if (sendingCode) return
     const normalizedEmail = normalizeEmail(codeEmail)
     if (!normalizedEmail) {
       setError('Ingresa tu correo para recibir el acceso por código o enlace.')
@@ -292,6 +296,21 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
+      if (!client) {
+        const reset = await requestFallbackPasswordReset(normalizedEmail)
+        if (reset.resetToken) {
+          setAccessCode(reset.resetToken)
+          setInfo('Servidor Ubuntu generó un token de recuperación. Lo pegamos automáticamente; crea tu nueva contraseña.')
+          return
+        }
+        setInfo(
+          reset.delivery === 'console'
+            ? 'Servidor Ubuntu generó un token de recuperación. Revísalo con docker compose logs api y pégalo aquí.'
+            : 'Servidor Ubuntu recibió la solicitud de recuperación.',
+        )
+        return
+      }
+
       const { error: otpError } = await client.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
@@ -310,7 +329,7 @@ export function LoginPage() {
 
   async function verifyAccessCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client || verifyingCode) return
+    if (verifyingCode) return
     const normalizedEmail = normalizeEmail(codeEmail)
     const normalizedCode = accessCode.trim()
     if (!normalizedEmail || !normalizedCode) {
@@ -322,6 +341,21 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
+      if (!client) {
+        const nextPassword = fallbackResetPassword.trim()
+        if (nextPassword.length < 8) {
+          setError('La nueva contraseña debe tener al menos 8 caracteres.')
+          return
+        }
+        if (nextPassword !== fallbackResetConfirmPassword.trim()) {
+          setError('La confirmación no coincide con la contraseña nueva.')
+          return
+        }
+        await confirmFallbackPasswordReset(normalizedCode, nextPassword)
+        navigate(nextPath, { replace: true })
+        return
+      }
+
       const { error: verifyError } = await client.auth.verifyOtp({
         email: normalizedEmail,
         token: normalizedCode,
@@ -362,14 +396,16 @@ export function LoginPage() {
     }
   }
 
-  if (!client) {
+  if (!client && !isFallbackAuthConfigured) {
     return (
       <StatusView
-        title="Supabase no configurado"
-        description="Copia .env.example a .env y completa tus claves."
+        title="Backend no configurado"
+        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu, o VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY si mantienes el puente anterior."
       />
     )
   }
+
+  const fallbackOnlyMode = !client && isFallbackAuthConfigured
 
   return (
     <section className="auth-shell auth-shell-rich">
@@ -569,13 +605,40 @@ export function LoginPage() {
                   onChange={(event) => setAccessCode(event.target.value)}
                 />
               </label>
-              <button className="primary-btn" disabled={verifyingCode} type="submit">
-                {verifyingCode ? 'Validando...' : 'Entrar con código'}
-              </button>
               <small className="auth-foot">
-                Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar
-                el enlace.
+                {fallbackOnlyMode
+                  ? 'En modo Ubuntu, este campo recibe el token de recuperación emitido por tu servidor.'
+                  : 'Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar el enlace.'}
               </small>
+              {fallbackOnlyMode ? (
+                <>
+                  <label>
+                    Nueva contraseña
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={fallbackResetPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setFallbackResetPassword(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Confirmar contraseña
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={fallbackResetConfirmPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setFallbackResetConfirmPassword(event.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
+              <button className="primary-btn" disabled={verifyingCode} type="submit">
+                {verifyingCode ? 'Validando...' : fallbackOnlyMode ? 'Cambiar contraseña y entrar' : 'Entrar con código'}
+              </button>
             </form>
           ) : null}
 

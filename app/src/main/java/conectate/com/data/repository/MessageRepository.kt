@@ -2288,7 +2288,8 @@ class MessageRepository @Inject constructor(
                 contentType = msg.content_type,
                 mediaUrl = msg.media_url,
                 mediaSize = msg.media_size,
-                replyToId = msg.reply_to_id
+                replyToId = msg.reply_to_id,
+                messageId = msg.id
             ).fold(
                 onSuccess = { sent ->
                     BackendSendResult(

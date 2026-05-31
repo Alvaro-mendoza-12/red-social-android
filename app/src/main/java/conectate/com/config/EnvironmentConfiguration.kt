@@ -28,8 +28,10 @@ class EnvironmentConfiguration @Inject constructor() {
     
     // 🔥 CURRENT ENVIRONMENT DETECTION
     val currentEnvironment: Environment = detectEnvironment()
+    private val configuredFallbackApiUrl = BuildConfig.FALLBACK_API_URL.trim()
     private val configuredSupabaseUrl = BuildConfig.SUPABASE_URL.trim()
     private val configuredSupabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY.trim()
+    private val usesUbuntuBackend = configuredFallbackApiUrl.startsWith("http", ignoreCase = true)
     
     private fun detectEnvironment(): Environment {
         return when (System.getProperty("app.env") ?: "development") {
@@ -115,19 +117,19 @@ class EnvironmentConfiguration @Inject constructor() {
     
     val apiConfig: ApiConfig = when (currentEnvironment) {
         Environment.DEVELOPMENT -> ApiConfig(
-            baseUrl = "https://api-dev.conectate.com",
+            baseUrl = configuredFallbackApiUrl.takeIf { usesUbuntuBackend } ?: "https://api-dev.conectate.com",
             timeout = 30000L,
             retryAttempts = 3,
             enableLogging = true
         )
         Environment.STAGING -> ApiConfig(
-            baseUrl = "https://api-staging.conectate.com",
+            baseUrl = configuredFallbackApiUrl.takeIf { usesUbuntuBackend } ?: "https://api-staging.conectate.com",
             timeout = 25000L,
             retryAttempts = 2,
             enableLogging = true
         )
         Environment.PRODUCTION -> ApiConfig(
-            baseUrl = "https://api.conectate.com",
+            baseUrl = configuredFallbackApiUrl.takeIf { usesUbuntuBackend } ?: "https://api.conectate.com",
             timeout = 20000L,
             retryAttempts = 2,
             enableLogging = false
@@ -311,9 +313,11 @@ class EnvironmentConfiguration @Inject constructor() {
     fun validateConfiguration(): ConfigurationValidationResult {
         var issues = mutableListOf<String>()
         
-        // Validar Supabase config
-        if (supabaseConfig.url.isBlank()) issues.add("Supabase URL is required")
-        if (supabaseConfig.anonKey.isBlank()) issues.add("Supabase anon key is required")
+        // Validar backend principal. Ubuntu/Fallback API reemplaza a Supabase cuando esta configurado.
+        if (!usesUbuntuBackend) {
+            if (supabaseConfig.url.isBlank()) issues.add("Supabase URL is required")
+            if (supabaseConfig.anonKey.isBlank()) issues.add("Supabase anon key is required")
+        }
         
         // Validar Firebase config
         if (firebaseConfig.projectId.isBlank()) issues.add("Firebase project ID is required")
@@ -344,6 +348,10 @@ class EnvironmentConfiguration @Inject constructor() {
     fun exportConfiguration(): Map<String, Any> {
         return mapOf(
             "environment" to currentEnvironment.name,
+            "ubuntuBackend" to mapOf(
+                "baseUrl" to configuredFallbackApiUrl,
+                "enabled" to usesUbuntuBackend
+            ),
             "supabase" to mapOf(
                 "url" to supabaseConfig.url,
                 "hasAnonKey" to supabaseConfig.anonKey.isNotBlank(),

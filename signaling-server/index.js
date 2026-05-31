@@ -2,14 +2,27 @@ require('dotenv').config();
 const crypto = require('crypto');
 const http = require('http');
 const { Server } = require('socket.io');
-const { createClient } = require('@supabase/supabase-js');
+let createClient = null;
+
+try {
+    ({ createClient } = require('@supabase/supabase-js'));
+} catch (error) {
+    console.warn('[WARN] @supabase/supabase-js not installed. Supabase auth bridge is disabled.');
+}
 
 const PORT = Number(process.env.PORT || 3001);
 const { resolveLink, resolveCinemaItem } = require('./resolver');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseEnabled = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const localFallbackApiUrl = (
+    process.env.LOCAL_FALLBACK_API_URL ||
+    process.env.FALLBACK_API_URL ||
+    process.env.UBUNTU_API_URL ||
+    ''
+).toString().trim().replace(/\/+$/, '');
+const localAuthEnabled = Boolean(localFallbackApiUrl);
+const supabaseEnabled = Boolean(createClient && supabaseUrl && supabaseServiceRoleKey);
 
 const supabase = supabaseEnabled
     ? createClient(supabaseUrl, supabaseServiceRoleKey, {
@@ -20,8 +33,10 @@ const supabase = supabaseEnabled
     })
     : null;
 
-if (!supabaseEnabled) {
-    console.warn('[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. participant_count sync is disabled.');
+if (!localAuthEnabled && !supabaseEnabled) {
+    console.warn('[WARN] No auth backend configured. Set LOCAL_FALLBACK_API_URL for Ubuntu auth or SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for the legacy bridge.');
+} else if (!supabaseEnabled) {
+    console.warn('[WARN] Supabase bridge disabled. Voice room DB sync to Supabase is disabled.');
 }
 
 const turnHost = process.env.TURN_HOST?.toString().trim() || '';
@@ -177,14 +192,59 @@ async function readJsonBody(req) {
     }
 }
 
-async function authenticateHttpUser(req) {
-    if (!supabase) {
-        return { error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured on server', status: 503 };
+async function authenticateLocalFallbackToken(accessToken) {
+    if (!localAuthEnabled || !accessToken) return null;
+
+    const response = await fetch(`${localFallbackApiUrl}/v1/auth/me`, {
+        headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            'ngrok-skip-browser-warning': 'true'
+        }
+    });
+
+    if (!response.ok) {
+        return null;
     }
 
+    const payload = await response.json();
+    const user = payload?.user;
+    if (!user?.id) return null;
+
+    const authId = (user.supabaseUserId || user.id).toString().trim();
+    if (!authId) return null;
+
+    return {
+        id: authId,
+        localFallbackId: user.id.toString().trim(),
+        email: user.email?.toString().trim().toLowerCase() || '',
+        user_metadata: {
+            display_name: user.displayName || '',
+            avatar_url: user.avatarUrl || '',
+            local_fallback_id: user.id
+        }
+    };
+}
+
+async function authenticateHttpUser(req) {
     const accessToken = extractBearerToken(req.headers.authorization);
     if (!accessToken) {
         return { error: 'Missing bearer token', status: 401 };
+    }
+
+    if (localAuthEnabled) {
+        try {
+            const localUser = await authenticateLocalFallbackToken(accessToken);
+            if (localUser?.id) {
+                return { user: localUser };
+            }
+        } catch (error) {
+            console.error('[AUTH] Failed to validate local fallback token:', error);
+        }
+    }
+
+    if (!supabase) {
+        return { error: 'No auth backend configured on signaling server', status: 503 };
     }
 
     try {
@@ -212,14 +272,29 @@ async function authenticateSocketConnection(socket, next) {
         return;
     }
 
-    if (!supabase) {
-        next(new Error('Supabase auth is not configured on signaling server'));
-        return;
-    }
-
     const accessToken = extractSocketToken(socket);
     if (!accessToken) {
         next(new Error('Missing bearer token'));
+        return;
+    }
+
+    if (localAuthEnabled) {
+        try {
+            const localUser = await authenticateLocalFallbackToken(accessToken);
+            if (localUser?.id) {
+                socket.data.authUserId = localUser.id.toString().trim();
+                socket.data.authLocalFallbackId = localUser.localFallbackId?.toString().trim() || '';
+                socket.data.authEmail = localUser.email?.toString().trim().toLowerCase() || '';
+                next();
+                return;
+            }
+        } catch (error) {
+            console.error('[AUTH] Failed to authenticate local fallback socket:', error);
+        }
+    }
+
+    if (!supabase) {
+        next(new Error('No auth backend is configured on signaling server'));
         return;
     }
 
@@ -344,6 +419,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
         sendJson(req, res, 200, {
             ok: true,
+            localAuthEnabled,
             supabaseEnabled,
             turnConfigured
         });
@@ -354,6 +430,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(req, res, 200, {
             ok: true,
             service: 'webrtc-signaling-server',
+            localAuthEnabled,
             supabaseEnabled,
             turnConfigured
         });

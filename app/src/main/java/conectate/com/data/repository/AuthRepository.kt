@@ -262,7 +262,7 @@ class AuthRepository @Inject constructor(
         var login = authService.signIn(normalizedEmail, password)
 
         // Fallback: support additional login emails mapped to a primary profile email.
-        if (login.isFailure) {
+        if (login.isFailure && !authService.isLocalFallbackModeEnabled()) {
             var resolvedEmail = resolveLoginEmailAlias(normalizedEmail)
             if (!resolvedEmail.isNullOrBlank() && resolvedEmail != normalizedEmail) {
                 resolvedPrimaryEmail = resolvedEmail
@@ -594,7 +594,7 @@ class AuthRepository @Inject constructor(
         // Ensure the user is marked offline as soon as possible.
         runCatching {
             var userId = authService.getCurrentUserId()
-            if (!userId.isNullOrBlank()) {
+            if (!userId.isNullOrBlank() && !authService.isLocalFallbackModeEnabled()) {
                 userRepository.setOnlineStatus(userId, false)
             }
         }.onFailure {
@@ -639,7 +639,7 @@ class AuthRepository @Inject constructor(
             runCatching { authService.clearLocalDataForAccountSwitch() }
                 .onFailure { android.util.Log.w("AuthRepository", "Failed to clear local DB during forceLocalLogout", it) }
             // Mark offline best-effort before SDK signOut potentially revokes the token.
-            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank()) {
+            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank() && !authService.isLocalFallbackModeEnabled()) {
                 runCatching {
                     userRepository.setOnlineStatusWithToken(userIdSnapshot, false, accessTokenSnapshot)
                 }.onFailure {

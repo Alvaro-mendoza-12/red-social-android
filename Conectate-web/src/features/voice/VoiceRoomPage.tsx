@@ -23,6 +23,8 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import WebRTCManager from './WebRTCManager'
 
 type VoiceRoom = {
@@ -117,7 +119,8 @@ const fallbackSignalingUrl = 'https://voice.srv1495648.hstgr.cloud'
 
 function readSignalingUrl(): string {
   const configured = String(import.meta.env.VITE_SIGNALING_URL ?? '').trim()
-  return configured || fallbackSignalingUrl
+  const fallbackApi = String(import.meta.env.VITE_FALLBACK_API_URL ?? '').trim()
+  return configured || fallbackApi || fallbackSignalingUrl
 }
 
 function readJoinedRoomFromStorage(): string | null {
@@ -258,7 +261,7 @@ function RemoteAudio({ stream, muted }: { stream: MediaStream; muted: boolean })
 }
 
 export function VoiceRoomPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
   const [room, setRoom] = useState<VoiceRoom | null>(null)
@@ -388,7 +391,7 @@ export function VoiceRoomPage() {
   }, [emitSpeakingState, stopSpeakingDetection])
 
   const loadRoom = useCallback(async () => {
-    if (!supabase || !roomId) {
+    if (!roomId) {
       setLoading(false)
       setError('ID de sala no válido')
       return
@@ -397,6 +400,18 @@ export function VoiceRoomPage() {
     setLoading(true)
     setError(null)
     try {
+      if (isFallbackSession) {
+        const payload = await loadFallbackVoiceRoom(roomId)
+        setRoom(mapRoom(payload.room, roomId))
+        setParticipants((payload.participants ?? []).map(mapParticipant))
+        return
+      }
+
+      if (!supabase) {
+        setError('Supabase no está configurado.')
+        return
+      }
+
       const { data, error: queryError } = await supabase
         .from('voice_rooms')
         .select('*')
@@ -434,9 +449,41 @@ export function VoiceRoomPage() {
     } finally {
       setLoading(false)
     }
-  }, [roomId])
+  }, [isFallbackSession, roomId])
 
   const loadParticipants = useCallback(async (targetRoomId: string, options?: { silent?: boolean }) => {
+    if (isFallbackSession) {
+      if (options?.silent) {
+        setSyncingParticipants(true)
+      }
+
+      try {
+        const payload = await loadFallbackVoiceRoom(targetRoomId)
+        const mapped = (payload.participants ?? []).map(mapParticipant)
+        setParticipants((current) => {
+          const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
+          return [...mapped, ...signalOnly]
+        })
+        setRoom((current) =>
+          current && current.id === targetRoomId
+            ? { ...current, participantCount: Math.max(mapped.length, current.participantCount) }
+            : current,
+        )
+
+        const self = mapped.find((participant) => participant.userId === user?.id)
+        if (self) {
+          setIsJoined(true)
+          joinedRef.current = true
+          setIsMuted(self.isMuted)
+        }
+      } catch (caught) {
+        setJoinError(friendlyError(caught, 'No se pudieron cargar los participantes desde Ubuntu'))
+      } finally {
+        setSyncingParticipants(false)
+      }
+      return
+    }
+
     if (!supabase) return
     if (options?.silent) {
       setSyncingParticipants(true)
@@ -503,9 +550,17 @@ export function VoiceRoomPage() {
     } finally {
       setSyncingParticipants(false)
     }
-  }, [user?.id])
+  }, [isFallbackSession, user?.id])
 
   const fallbackParticipantUpdate = useCallback(async (targetRoomId: string, delta: number) => {
+    if (isFallbackSession) {
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
+          : current,
+      )
+      return
+    }
     if (!supabase) return
     const { data, error: readError } = await supabase.from('voice_rooms').select('*').eq('id', targetRoomId).limit(1)
     if (readError) {
@@ -529,9 +584,17 @@ export function VoiceRoomPage() {
       setRoom((current) => current && current.id === targetRoomId ? { ...current, participantCount: nextCount } : current)
       return
     }
-  }, [])
+  }, [isFallbackSession])
 
   const syncParticipantCounter = useCallback(async (targetRoomId: string, delta: number) => {
+    if (isFallbackSession) {
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
+          : current,
+      )
+      return
+    }
     if (!supabase) return
     const rpcName = delta > 0 ? 'increment_participant_count' : 'decrement_participant_count'
     const rpcResult = await supabase.rpc(rpcName, { room_id: targetRoomId })
@@ -545,7 +608,7 @@ export function VoiceRoomPage() {
     }
     if (!isMissingFunctionError(rpcResult.error)) throw rpcResult.error
     await fallbackParticipantUpdate(targetRoomId, delta)
-  }, [fallbackParticipantUpdate])
+  }, [fallbackParticipantUpdate, isFallbackSession])
 
   const upsertSignalParticipant = useCallback((participant: SignalingParticipant) => {
     const socketId = String(participant.socketId ?? '').trim()
@@ -644,9 +707,10 @@ export function VoiceRoomPage() {
   }, [])
 
   const connectSignaling = useCallback(async (manager: WebRTCManager) => {
-    if (!supabase || !room || !user) return
-    const { data } = await supabase.auth.getSession()
-    const accessToken = data.session?.access_token?.trim()
+    if (!room || !user) return
+    const accessToken = isFallbackSession
+      ? readFallbackSession()?.accessToken?.trim()
+      : (await supabase?.auth.getSession())?.data.session?.access_token?.trim()
     if (!accessToken) {
       setConnectionLabel('Sin token de voz')
       return
@@ -811,6 +875,7 @@ export function VoiceRoomPage() {
     startPeerOffer,
     stopSignaling,
     upsertSignalParticipant,
+    isFallbackSession,
     user,
   ])
 
@@ -837,7 +902,7 @@ export function VoiceRoomPage() {
   }, [beginSpeakingDetection, user])
 
   const joinRoom = useCallback(async () => {
-    if (!supabase || !user || !room || isJoining || isJoined) return
+    if (!user || !room || isJoining || isJoined) return
     setIsJoining(true)
     setJoinError(null)
     setConnectionLabel('Conectando')
@@ -845,6 +910,41 @@ export function VoiceRoomPage() {
     let incrementedCounter = false
 
     try {
+      if (isFallbackSession) {
+        if (visibleParticipantCount >= room.maxParticipants && !isJoined) {
+          throw new Error('Sala llena')
+        }
+
+        const micStarted = await startLocalAudio()
+        const nextMuted = isMuted || !micStarted
+        setIsMuted(nextMuted)
+        mutedRef.current = nextMuted
+
+        const response = await joinFallbackVoiceRoom(room.id, {
+          userName: displayName,
+          userAvatarUrl: avatarUrl,
+          isMuted: nextMuted,
+        })
+        createdParticipant = true
+        const mappedParticipants = (response.participants ?? []).map(mapParticipant)
+        setParticipants(mappedParticipants)
+        setRoom((current) =>
+          current && current.id === room.id
+            ? { ...current, participantCount: Math.max(mappedParticipants.length, current.participantCount + 1) }
+            : current,
+        )
+        setIsJoined(true)
+        joinedRef.current = true
+        writeJoinedRoomToStorage(room.id)
+        const manager = webrtcManagerRef.current
+        if (manager) {
+          await connectSignaling(manager)
+        }
+        return
+      }
+
+      if (!supabase) throw new Error('Supabase no está configurado.')
+
       const existingResult = await supabase
         .from('voice_room_participants')
         .select('id')
@@ -892,11 +992,15 @@ export function VoiceRoomPage() {
       }
     } catch (caught) {
       if (createdParticipant) {
-        await supabase
-          .from('voice_room_participants')
-          .delete()
-          .eq('room_id', room.id)
-          .eq('user_id', user.id)
+        if (isFallbackSession) {
+          await leaveFallbackVoiceRoom(room.id).catch(() => {})
+        } else {
+          await supabase
+            ?.from('voice_room_participants')
+            .delete()
+            .eq('room_id', room.id)
+            .eq('user_id', user.id)
+        }
       }
       if (incrementedCounter) {
         await syncParticipantCounter(room.id, -1).catch(() => {})
@@ -915,6 +1019,7 @@ export function VoiceRoomPage() {
     displayName,
     isJoined,
     isJoining,
+    isFallbackSession,
     isMuted,
     loadParticipants,
     room,
@@ -926,7 +1031,7 @@ export function VoiceRoomPage() {
   ])
 
   const leaveRoom = useCallback(async () => {
-    if (!supabase || !user || !room || isLeaving) {
+    if (!user || !room || isLeaving) {
       navigate('/app/voice')
       return
     }
@@ -934,6 +1039,19 @@ export function VoiceRoomPage() {
     setIsLeaving(true)
     setJoinError(null)
     try {
+      if (isFallbackSession) {
+        await leaveFallbackVoiceRoom(room.id)
+        setIsJoined(false)
+        joinedRef.current = false
+        writeJoinedRoomToStorage(null)
+        stopLocalMedia()
+        await loadParticipants(room.id, { silent: true })
+        navigate('/app/voice')
+        return
+      }
+
+      if (!supabase) throw new Error('Supabase no está configurado.')
+
       const { data, error: deleteError } = await supabase
         .from('voice_room_participants')
         .delete()
@@ -954,10 +1072,10 @@ export function VoiceRoomPage() {
     } finally {
       setIsLeaving(false)
     }
-  }, [isLeaving, loadParticipants, navigate, room, stopLocalMedia, syncParticipantCounter, user])
+  }, [isFallbackSession, isLeaving, loadParticipants, navigate, room, stopLocalMedia, syncParticipantCounter, user])
 
   const toggleMute = useCallback(async () => {
-    if (!supabase || !user || !room || !isJoined) return
+    if (!user || !room || !isJoined) return
     const nextMuted = !isMuted
     setIsMuted(nextMuted)
     mutedRef.current = nextMuted
@@ -967,6 +1085,17 @@ export function VoiceRoomPage() {
     emitMuteState(nextMuted)
 
     try {
+      if (isFallbackSession) {
+        await joinFallbackVoiceRoom(room.id, {
+          userName: displayName,
+          userAvatarUrl: avatarUrl,
+          isMuted: nextMuted,
+        })
+        return
+      }
+
+      if (!supabase) throw new Error('Supabase no está configurado.')
+
       const { error: updateError } = await supabase
         .from('voice_room_participants')
         .update({ is_muted: nextMuted })
@@ -979,7 +1108,7 @@ export function VoiceRoomPage() {
       emitMuteState(!nextMuted)
       setJoinError(friendlyError(caught, 'No se pudo actualizar el micrófono'))
     }
-  }, [emitMuteState, isJoined, isMuted, room, user])
+  }, [avatarUrl, displayName, emitMuteState, isFallbackSession, isJoined, isMuted, room, user])
 
   const toggleDeafen = useCallback(() => {
     setIsDeafened((current) => !current)
@@ -1004,7 +1133,7 @@ export function VoiceRoomPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !room?.id) return
+    if (!client || !room?.id || isFallbackSession) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer)
@@ -1026,7 +1155,15 @@ export function VoiceRoomPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadParticipants, room?.id])
+  }, [isFallbackSession, loadParticipants, room?.id])
+
+  useEffect(() => {
+    if (!isFallbackSession || !room?.id) return
+    const intervalId = window.setInterval(() => {
+      void loadParticipants(room.id, { silent: true })
+    }, 5000)
+    return () => window.clearInterval(intervalId)
+  }, [isFallbackSession, loadParticipants, room?.id])
 
   useEffect(() => {
     return () => {

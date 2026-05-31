@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { signUpAndBootstrapProfile } from '../../core/auth/sessionBootstrap'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
@@ -14,18 +15,17 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  if (!client) {
+  if (!client && !isFallbackAuthConfigured) {
     return (
       <StatusView
-        title="Supabase no configurado"
-        description="Copia .env.example a .env y completa tus claves."
+        title="Backend no configurado"
+        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu, o VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY si mantienes el puente anterior."
       />
     )
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client) return
     setLoading(true)
     setError(null)
     try {
@@ -47,7 +47,7 @@ export function RegisterPage() {
       <form className="auth-card" onSubmit={handleSubmit}>
         <p className="brand-tag">Conectate-web</p>
         <h1>Crear cuenta</h1>
-        <p>Usa el mismo backend Supabase del móvil.</p>
+        <p>Usa tu servidor Ubuntu como backend principal.</p>
         <label>
           Nombre visible
           <input
@@ -72,7 +72,7 @@ export function RegisterPage() {
           <input
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={password}
             autoComplete="new-password"
             onChange={(event) => setPassword(event.target.value)}

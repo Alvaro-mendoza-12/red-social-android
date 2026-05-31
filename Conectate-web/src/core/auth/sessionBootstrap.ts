@@ -1,7 +1,7 @@
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js'
 import { isSupabaseServiceRestrictionError } from '../supabase'
 import { textOf, type GenericRow } from '../utils'
-import { isFallbackAuthConfigured, signInWithFallbackAuth } from './fallbackAuth'
+import { isFallbackAuthConfigured, signInWithFallbackAuth, signUpWithFallbackAuth } from './fallbackAuth'
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -128,11 +128,16 @@ export async function bootstrapSessionProfile(
 }
 
 export async function signInWithResolvedEmail(
-  client: SupabaseClient,
+  client: SupabaseClient | null,
   email: string,
   password: string,
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(email)
+  if (!client) {
+    await signInWithFallbackAuth(normalizedEmail, password)
+    return
+  }
+
   let response = await client.auth.signInWithPassword({
     email: normalizedEmail,
     password,
@@ -160,7 +165,7 @@ export async function signInWithResolvedEmail(
 }
 
 export async function signUpAndBootstrapProfile(
-  client: SupabaseClient,
+  client: SupabaseClient | null,
   params: {
     email: string
     password: string
@@ -169,6 +174,15 @@ export async function signUpAndBootstrapProfile(
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(params.email)
   const cleanDisplayName = params.displayName.trim()
+  if (!client) {
+    await signUpWithFallbackAuth({
+      email: normalizedEmail,
+      password: params.password,
+      displayName: cleanDisplayName,
+    })
+    return
+  }
+
   const response = await client.auth.signUp({
     email: normalizedEmail,
     password: params.password,
@@ -181,6 +195,14 @@ export async function signUpAndBootstrapProfile(
   })
 
   if (response.error) {
+    if (isFallbackAuthConfigured && isSupabaseServiceRestrictionError(response.error)) {
+      await signUpWithFallbackAuth({
+        email: normalizedEmail,
+        password: params.password,
+        displayName: cleanDisplayName,
+      })
+      return
+    }
     throw response.error
   }
 

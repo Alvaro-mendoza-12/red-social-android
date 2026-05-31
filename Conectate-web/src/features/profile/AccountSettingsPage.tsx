@@ -8,6 +8,7 @@ import { useWebPreferences } from '../../core/webPreferences'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
+import { loadFallbackProfileMe, updateFallbackProfileMe, uploadFallbackFile } from '../../core/fallbackData'
 
 type SettingsModel = {
   displayName: string
@@ -108,6 +109,7 @@ export function AccountSettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPrivacy, setSavingPrivacy] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [uploadingAsset, setUploadingAsset] = useState<'avatar' | 'cover' | null>(null)
   const [sendingAccessLink, setSendingAccessLink] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -199,18 +201,32 @@ export function AccountSettingsPage() {
 
   const loadSettings = useCallback(async () => {
     if (isFallbackSession) {
-      const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
-      const fallbackName = textOf(metadata, ['display_name', 'full_name'], user?.email ?? '')
-      setModel((current) => ({
-        ...current,
-        displayName: fallbackName,
-        avatarUrl: textOf(metadata, ['avatar_url'], ''),
-      }))
-      setHasIsPrivate(false)
-      setHasProfileVisibility(false)
-      setHasPrivacyAcceptance(false)
+      setLoading(true)
       setError(null)
-      setLoading(false)
+      try {
+        const response = await loadFallbackProfileMe()
+        const profile = response.profile ?? {}
+        const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
+        setModel((current) => ({
+          ...current,
+          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], textOf(metadata, ['display_name', 'full_name'], user?.email ?? '')),
+          username: textOf(profile, ['username'], ''),
+          bio: textOf(profile, ['bio'], ''),
+          avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'], textOf(metadata, ['avatar_url'], '')),
+          coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
+          lastSeenVisibility: textOf(profile, ['last_seen_visibility', 'lastSeenVisibility'], current.lastSeenVisibility),
+          onlineStatusVisibility: textOf(profile, ['online_status_visibility', 'onlineStatusVisibility'], current.onlineStatusVisibility),
+          isPrivate: toBoolean(profile.is_private ?? profile.isPrivate),
+          profileVisibility: textOf(profile, ['profile_visibility', 'profileVisibility'], current.profileVisibility),
+        }))
+        setHasIsPrivate(true)
+        setHasProfileVisibility(true)
+        setHasPrivacyAcceptance(false)
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo cargar ajustes locales'))
+      } finally {
+        setLoading(false)
+      }
       return
     }
     if (!supabase || !user) {
@@ -264,7 +280,35 @@ export function AccountSettingsPage() {
 
   async function saveProfileBasics() {
     if (isFallbackSession) {
-      setInfo('Durante la migración local, el perfil se edita desde los datos restaurados. La subida de avatar/fotos queda pendiente hasta activar storage local.')
+      if (savingProfile) return
+      setSavingProfile(true)
+      setError(null)
+      setInfo(null)
+      try {
+        const response = await updateFallbackProfileMe({
+          displayName: model.displayName.trim() || user?.email || 'Usuario',
+          bio: model.bio.trim() || null,
+          avatarUrl: model.avatarUrl.trim() || null,
+          coverUrl: model.coverUrl.trim() || null,
+          isPrivate: model.isPrivate,
+          profileVisibility: model.profileVisibility,
+          lastSeenVisibility: model.lastSeenVisibility,
+          onlineStatusVisibility: model.onlineStatusVisibility,
+        })
+        const profile = response.profile ?? {}
+        setModel((current) => ({
+          ...current,
+          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], current.displayName),
+          bio: textOf(profile, ['bio'], current.bio),
+          avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl'], current.avatarUrl),
+          coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
+        }))
+        setInfo('Perfil actualizado en Ubuntu.')
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo guardar perfil local'))
+      } finally {
+        setSavingProfile(false)
+      }
       return
     }
     if (!supabase || !user || savingProfile) return
@@ -314,7 +358,7 @@ export function AccountSettingsPage() {
 
   async function savePrivacySettings() {
     if (isFallbackSession) {
-      setInfo('La privacidad fina se reactivará cuando conectemos las rutas locales completas de perfil.')
+      await saveProfileBasics()
       return
     }
     if (!supabase || !user || savingPrivacy) return
@@ -389,6 +433,29 @@ export function AccountSettingsPage() {
       setError(friendlyError(caught, 'No se pudo actualizar contraseña'))
     } finally {
       setSavingPassword(false)
+    }
+  }
+
+  async function uploadProfileAsset(kind: 'avatar' | 'cover', file: File | undefined) {
+    if (!file || !isFallbackSession || uploadingAsset) return
+    setUploadingAsset(kind)
+    setError(null)
+    setInfo(null)
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      const userId = user?.id?.trim() || 'me'
+      const path = `${userId}/${crypto.randomUUID()}_${kind}.${extension}`
+      const uploaded = await uploadFallbackFile('avatars', file, path)
+      setModel((current) =>
+        kind === 'avatar'
+          ? { ...current, avatarUrl: uploaded.publicUrl }
+          : { ...current, coverUrl: uploaded.publicUrl },
+      )
+      setInfo(kind === 'avatar' ? 'Avatar subido. Guarda el perfil para aplicarlo.' : 'Banner subido. Guarda el perfil para aplicarlo.')
+    } catch (caught) {
+      setError(friendlyError(caught, kind === 'avatar' ? 'No se pudo subir avatar' : 'No se pudo subir banner'))
+    } finally {
+      setUploadingAsset(null)
     }
   }
 
@@ -506,12 +573,30 @@ export function AccountSettingsPage() {
               value={model.avatarUrl}
               onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
             />
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={uploadingAsset !== null}
+                onChange={(event) => void uploadProfileAsset('avatar', event.currentTarget.files?.[0])}
+              />
+            ) : null}
             <input
               className="text-input"
               placeholder="Banner / cover URL"
               value={model.coverUrl}
               onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
             />
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={uploadingAsset !== null}
+                onChange={(event) => void uploadProfileAsset('cover', event.currentTarget.files?.[0])}
+              />
+            ) : null}
             <input
               className="text-input"
               placeholder="Intereses separados por coma: anime, juegos, música"

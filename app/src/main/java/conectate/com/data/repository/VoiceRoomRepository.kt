@@ -6,6 +6,7 @@ import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
@@ -59,6 +60,7 @@ class VoiceRoomRepository @Inject constructor(
     @ApplicationContext val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val appMetrics: AppMetrics,
     private val crashReporter: CrashReporter
 ) {
@@ -787,6 +789,21 @@ class VoiceRoomRepository @Inject constructor(
     suspend fun refreshRooms(): Result<List<VoiceRoom>> {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val rooms = localFallbackApiClient.loadVoiceRooms(token)
+                    .getOrThrow()
+                    .map(::normalizeRoomForUi)
+                val visibleRooms = rooms.filter { shouldShowRoomInLobby(it, currentUserId) }
+                _activeRooms.value = visibleRooms
+                val normalizedActiveRoomId = activeRoomId?.trim()?.lowercase()
+                if (!normalizedActiveRoomId.isNullOrBlank()) {
+                    _currentRoom.value = rooms.firstOrNull { it.id.trim().lowercase() == normalizedActiveRoomId }
+                        ?: _currentRoom.value
+                }
+                return Result.success(visibleRooms)
+            }
             var rooms = supabaseConfig.client.postgrest["voice_rooms"].select {
                 filter {
                     eq("is_active", true)
@@ -824,6 +841,11 @@ class VoiceRoomRepository @Inject constructor(
 
     suspend fun getRoomById(id: String): Result<VoiceRoom> = withContext(Dispatchers.IO) {
         try {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                return@withContext localFallbackApiClient.loadVoiceRoom(token, id).map { it.room }
+            }
             var room = supabaseConfig.client.postgrest["voice_rooms"].select {
                 filter { eq("readable_id", id) } // Try to find by readable_id first
             }.decodeSingleOrNull<VoiceRoom>() 
@@ -859,6 +881,28 @@ class VoiceRoomRepository @Inject constructor(
                 password = password,
                 agoraChannelName = "room_$roomId"
             )
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val createdRoom = localFallbackApiClient.createVoiceRoom(
+                    accessToken = token,
+                    id = roomId,
+                    name = name,
+                    description = description,
+                    isPublic = isPublic,
+                    maxParticipants = DEFAULT_ROOM_CAPACITY,
+                    agoraChannelName = "room_$roomId"
+                ).getOrThrow().let(::normalizeRoomForUi)
+                if (shouldShowRoomInLobby(createdRoom, userId.trim().lowercase())) {
+                    _activeRooms.update { current ->
+                        listOf(createdRoom) + current.filterNot { existing ->
+                            existing.id.trim().lowercase() == createdRoom.id.trim().lowercase()
+                        }
+                    }
+                }
+                return@withContext Result.success(createdRoom)
+            }
 
             // Insert without readable_id/created_at to let DB handle defaults
             supabaseConfig.client.postgrest["voice_rooms"].insert(room)
@@ -927,6 +971,18 @@ class VoiceRoomRepository @Inject constructor(
             )
             if (_currentParticipants.value.none { it.id == userId }) {
                 _currentParticipants.value = _currentParticipants.value + self
+            }
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.joinVoiceRoom(
+                        accessToken = token,
+                        roomId = roomLookupId,
+                        userName = displayName,
+                        userAvatarUrl = avatarUrl,
+                        socketId = socket?.id() ?: userId,
+                        isMuted = false
+                    )
+                }
             }
             
             prepareVoiceAudioSession(forceMicUnmute = true)
@@ -1019,18 +1075,33 @@ class VoiceRoomRepository @Inject constructor(
             android.util.Log.i("VoiceRoomRepository", "📡 Connecting to Signaling: $SIGNALING_URL")
             setupSocketSignaling(signalRoom, userId, displayName, avatarUrl)
 
-            // 2. Setup Realtime Channel
-            try {
-                android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
-                roomChannel = supabaseConfig.client.channel("room:$roomId")
-                roomChannel?.let {
-                    supabaseConfig.subscribeRealtimeChannel(
-                        channel = it,
-                        reason = "voice-room-$roomId"
-                    )
+            // 2. Setup participants persistence. Ubuntu mode uses local API + Socket.IO; Supabase mode keeps realtime channel.
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.joinVoiceRoom(
+                        accessToken = token,
+                        roomId = roomLookupId,
+                        userName = displayName,
+                        userAvatarUrl = avatarUrl,
+                        socketId = socket?.id() ?: userId,
+                        isMuted = false
+                    ).onSuccess { participants ->
+                        _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                    }
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("VoiceRoomRepository", "⚠️ Supabase Realtime Subscription Error (Proceeding anyway): ${e.message}")
+            } else {
+                try {
+                    android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
+                    roomChannel = supabaseConfig.client.channel("room:$roomId")
+                    roomChannel?.let {
+                        supabaseConfig.subscribeRealtimeChannel(
+                            channel = it,
+                            reason = "voice-room-$roomId"
+                        )
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("VoiceRoomRepository", "⚠️ Supabase Realtime Subscription Error (Proceeding anyway): ${e.message}")
+                }
             }
             
             // Late sync cinema state
@@ -1115,6 +1186,22 @@ class VoiceRoomRepository @Inject constructor(
                     (current.filterNot { it.id == userId } + self.copy(socketId = sid)).distinctBy { it.socketId }
                 }
                 refreshParticipantAliases()
+                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                    scope.launch {
+                        authService.getAccessTokenAwait()?.let { token ->
+                            localFallbackApiClient.joinVoiceRoom(
+                                accessToken = token,
+                                roomId = roomId,
+                                userName = name,
+                                userAvatarUrl = avatarUrl,
+                                socketId = sid.ifBlank { userId },
+                                isMuted = false
+                            ).onSuccess { participants ->
+                                _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                            }
+                        }
+                    }
+                }
                 
                 socket?.emit("join-room", org.json.JSONObject().apply {
                     put("roomId", roomId.trim())
@@ -1642,6 +1729,12 @@ class VoiceRoomRepository @Inject constructor(
             pendingConnectStartedAtMs = null
             reconnectFailureCount = 0
 
+            if (!actualRoomId.isNullOrBlank() && authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.leaveVoiceRoom(token, actualRoomId)
+                }
+            }
+
             // 1. Disconnect Signaling FIRST to prevent new negotiation during teardown
             socket?.let {
                 it.off()
@@ -1774,6 +1867,10 @@ class VoiceRoomRepository @Inject constructor(
 
 
     private suspend fun subscribeToVoiceRooms() {
+        if (authService.isLocalFallbackModeEnabled()) {
+            android.util.Log.d("VoiceRoomRepository", "Ubuntu mode: Supabase voice realtime disabled; lobby refresh uses local API.")
+            return
+        }
         var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
         while (currentCoroutineContext().isActive) {
             var channel: RealtimeChannel? = null

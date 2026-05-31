@@ -1,10 +1,10 @@
 const bcrypt = require('bcryptjs')
 const cors = require('cors')
+const crypto = require('crypto')
 const express = require('express')
 const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
-const { createClient } = require('@supabase/supabase-js')
 const { ensureLocalDataTables, registerDataRoutes } = require('./data-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
 
@@ -21,6 +21,11 @@ const supabaseAdminKey = String(
   process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 ).trim()
 const adminSyncToken = String(process.env.ADMIN_SYNC_TOKEN || '').trim()
+const passwordResetDelivery = String(process.env.PASSWORD_RESET_DELIVERY || 'console').trim().toLowerCase()
+const passwordResetTokenTtlMinutes = Math.max(
+  10,
+  Math.min(Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 30), 24 * 60),
+)
 const migrationPasswordCutoff = new Date('2026-05-25T00:00:00.000Z')
 
 if (!databaseUrl) {
@@ -105,14 +110,83 @@ function sanitizeUser(row) {
   }
 }
 
+async function parseJsonResponse(response) {
+  const text = await response.text()
+  if (!text.trim()) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
+}
+
+function toRemoteAuthError(response, payload) {
+  const message =
+    payload?.msg ||
+    payload?.message ||
+    payload?.error_description ||
+    payload?.error ||
+    `Remote auth returned ${response.status}`
+  const error = new Error(String(message))
+  error.status = response.status
+  error.payload = payload
+  return error
+}
+
+async function remoteSupabaseAuthRequest(path, options = {}) {
+  const headers = {
+    apikey: supabaseAdminKey,
+    authorization: options.authorization || `Bearer ${supabaseAdminKey}`,
+  }
+  if (options.body != null) {
+    headers['content-type'] = 'application/json'
+  }
+
+  const response = await fetch(`${supabaseUrl}${path}`, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body == null ? undefined : JSON.stringify(options.body),
+  })
+  const payload = await parseJsonResponse(response)
+  if (!response.ok) {
+    return { data: null, error: toRemoteAuthError(response, payload) }
+  }
+  return { data: payload, error: null }
+}
+
 function getSupabaseAdminClient() {
   if (!supabaseUrl || !supabaseAdminKey) return null
-  return createClient(supabaseUrl, supabaseAdminKey, {
+
+  return {
     auth: {
-      autoRefreshToken: false,
-      persistSession: false,
+      admin: {
+        async createUser(payload) {
+          const result = await remoteSupabaseAuthRequest('/auth/v1/admin/users', {
+            method: 'POST',
+            body: payload,
+          })
+          if (result.error) return result
+          return { data: { user: result.data?.user || result.data }, error: null }
+        },
+        async listUsers({ page = 1, perPage = 100 } = {}) {
+          const params = new URLSearchParams({
+            page: String(page),
+            per_page: String(perPage),
+          })
+          const result = await remoteSupabaseAuthRequest(`/auth/v1/admin/users?${params}`)
+          if (result.error) return result
+          return { data: { ...result.data, users: result.data?.users || [] }, error: null }
+        },
+      },
+      async getUser(accessToken) {
+        const result = await remoteSupabaseAuthRequest('/auth/v1/user', {
+          authorization: `Bearer ${accessToken}`,
+        })
+        if (result.error) return result
+        return { data: { user: result.data?.user || result.data }, error: null }
+      },
     },
-  })
+  }
 }
 
 function isSupabaseRestriction(error) {
@@ -197,6 +271,33 @@ function verifyMigrationPasswordToken(token) {
     throw new Error('INVALID_MIGRATION_TOKEN')
   }
   return payload
+}
+
+function createPasswordResetToken() {
+  return crypto.randomBytes(32).toString('hex')
+}
+
+function hashPasswordResetToken(token) {
+  return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
+}
+
+function shouldExposePasswordResetToken() {
+  return passwordResetDelivery === 'response'
+}
+
+async function deliverPasswordResetToken(user, token) {
+  if (passwordResetDelivery === 'disabled') {
+    return { delivery: 'disabled' }
+  }
+
+  if (passwordResetDelivery === 'response') {
+    return { delivery: 'response', resetToken: token }
+  }
+
+  console.warn(
+    `[auth] password reset token for ${user.email}: ${token} (expires in ${passwordResetTokenTtlMinutes} minutes)`,
+  )
+  return { delivery: 'console' }
 }
 
 function authRequired(req, res, next) {
@@ -294,6 +395,25 @@ async function ensureAuthMetadataColumns() {
   await pool.query(
     'ALTER TABLE fallback_users ADD COLUMN IF NOT EXISTS password_changed_by_user_at TIMESTAMPTZ',
   )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_password_reset_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_user
+    ON fallback_password_reset_tokens(user_id, created_at DESC)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_active
+    ON fallback_password_reset_tokens(expires_at)
+    WHERE consumed_at IS NULL
+  `)
 }
 
 async function syncLocalUserToSupabase(user, password) {
@@ -756,6 +876,133 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_change_password', user.id, { email: user.email })
+    return res.json({
+      ok: true,
+      user,
+      accessToken: signUserToken(user),
+      tokenType: 'Bearer',
+      expiresIn: jwtExpiresIn,
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/password-reset/request', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body?.email)
+    const baseResponse = {
+      ok: true,
+      delivery: passwordResetDelivery === 'response' ? 'response' : passwordResetDelivery,
+      expiresInMinutes: passwordResetTokenTtlMinutes,
+    }
+
+    if (!isValidEmail(email) || passwordResetDelivery === 'disabled') {
+      return res.json(baseResponse)
+    }
+
+    const { rows } = await pool.query(
+      `SELECT ${userSelectColumns}
+       FROM fallback_users
+       WHERE email = $1
+       LIMIT 1`,
+      [email],
+    )
+
+    if (!rows[0]) {
+      return res.json(baseResponse)
+    }
+
+    const row = rows[0]
+    const token = createPasswordResetToken()
+    const tokenHash = hashPasswordResetToken(token)
+    await pool.query(
+      `UPDATE fallback_password_reset_tokens
+       SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [row.id],
+    )
+    await pool.query(
+      `INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval)`,
+      [row.id, tokenHash, passwordResetTokenTtlMinutes],
+    )
+
+    const delivery = await deliverPasswordResetToken(sanitizeUser(await hydrateUserRow(row)), token)
+    await recordAudit('auth_password_reset_requested', row.id, {
+      email,
+      delivery: delivery.delivery,
+    })
+
+    return res.json({
+      ...baseResponse,
+      delivery: delivery.delivery,
+      resetToken: shouldExposePasswordResetToken() ? delivery.resetToken : undefined,
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
+  try {
+    const resetToken = String(req.body?.resetToken || req.body?.token || '').trim()
+    const newPassword = String(req.body?.newPassword || req.body?.password || '')
+
+    if (!resetToken || newPassword.length < 8) {
+      return res.status(400).json({ error: 'RESET_TOKEN_AND_PASSWORD_REQUIRED' })
+    }
+
+    const tokenHash = hashPasswordResetToken(resetToken)
+    const { rows } = await pool.query(
+      `SELECT token.id AS token_id, token.user_id, ${userSelectColumns
+        .split(',')
+        .map((column) => `fallback_users.${column.trim()}`)
+        .join(', ')}
+       FROM fallback_password_reset_tokens token
+       JOIN fallback_users ON fallback_users.id = token.user_id
+       WHERE token.token_hash = $1
+         AND token.consumed_at IS NULL
+         AND token.expires_at > NOW()
+       LIMIT 1`,
+      [tokenHash],
+    )
+
+    const row = rows[0]
+    if (!row) {
+      return res.status(401).json({ error: 'INVALID_OR_EXPIRED_RESET_TOKEN' })
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12)
+    await pool.query(
+      `UPDATE fallback_password_reset_tokens
+       SET consumed_at = NOW()
+       WHERE id = $1`,
+      [row.token_id],
+    )
+    const updated = await pool.query(
+      `UPDATE fallback_users
+       SET password_hash = $2,
+           password_enabled = TRUE,
+           local_password_set_at = NOW(),
+           password_changed_by_user_at = NOW(),
+           sync_status = CASE
+             WHEN supabase_user_id IS NULL THEN 'local_only'
+             ELSE 'synced'
+           END,
+           sync_source = CASE
+             WHEN supabase_user_id IS NULL THEN 'local'
+             ELSE 'both'
+           END,
+           sync_error = NULL,
+           last_login_at = NOW()
+       WHERE id = $1
+       RETURNING ${userSelectColumns}`,
+      [row.user_id, passwordHash],
+    )
+
+    const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
+    await recordAudit('auth_password_reset_completed', user.id, { email: user.email })
     return res.json({
       ok: true,
       user,

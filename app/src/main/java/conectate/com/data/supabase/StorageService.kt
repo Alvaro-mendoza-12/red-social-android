@@ -237,6 +237,10 @@ class StorageService @Inject constructor(
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
 
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                return localFallbackApiClient.deleteFile(accessToken, bucketName, normalizedPath)
+            }
+
             var response = config.httpClient.delete {
                 url {
                     takeFrom(config.supabaseUrl)
@@ -268,6 +272,13 @@ class StorageService @Inject constructor(
         return try {
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val prefix = normalizeStoragePath(path) ?: ""
+                return localFallbackApiClient
+                    .listStorageObjects(accessToken, bucketName, prefix)
+                    .map { objects -> objects.map { it.path } }
+            }
 
             var response = config.httpClient.get {
                 url {

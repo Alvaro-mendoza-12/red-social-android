@@ -162,6 +162,11 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun subscribeToProfileUpdates(userId: String) {
+        if (authService.isLocalFallbackSession()) {
+            android.util.Log.d("ProfileViewModel", "Skipping Supabase realtime for local fallback profile")
+            return
+        }
+
         realtimeJob = viewModelScope.launch {
             try {
                 android.util.Log.d("ProfileViewModel", "Subscribing to realtime updates for user: $userId")
@@ -514,6 +519,10 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun loadUserVideos(userId: String) {
+        if (authService.isLocalFallbackModeEnabled()) {
+            _userVideos.value = emptyList()
+            return
+        }
         viewModelScope.launch {
             try {
                 videoRepository.getUserVideos(userId).collect { videos ->
@@ -526,6 +535,10 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun loadUserPosts(userId: String) {
+        if (authService.isLocalFallbackModeEnabled()) {
+            _userPosts.value = emptyList()
+            return
+        }
         viewModelScope.launch {
             try {
                 postRepository.getUserPosts(userId).collect { posts ->
@@ -538,6 +551,11 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun loadSharedContent(userId: String) {
+        if (authService.isLocalFallbackModeEnabled()) {
+            _sharedPosts.value = emptyList()
+            _sharedVideos.value = emptyList()
+            return
+        }
         viewModelScope.launch {
             try {
                 // Fetch shared posts for this user

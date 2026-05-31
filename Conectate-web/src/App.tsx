@@ -109,8 +109,8 @@ function RootRoute() {
   if (!configured) {
     return (
       <StatusView
-        title="Configura Supabase"
-        description="Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env para conectar Conectate-web."
+        title="Configura el backend"
+        description="Agrega VITE_FALLBACK_API_URL en .env para usar tu servidor Ubuntu."
       />
     )
   }

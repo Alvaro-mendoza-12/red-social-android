@@ -177,6 +177,54 @@ class AuthService @Inject constructor(
         authPrefsOrNull?.edit()?.putBoolean(KEY_FORCED_LOGOUT, enabled)?.apply()
     }
 
+    fun isLocalFallbackModeEnabled(): Boolean = localFallbackApiClient.isConfigured
+
+    fun isLocalFallbackStoredSessionToken(accessToken: String, refreshToken: String): Boolean {
+        val access = accessToken.trim()
+        val refresh = refreshToken.trim()
+        if (!isLocalFallbackModeEnabled() || access.isBlank() || refresh.isBlank()) return false
+        if (access != refresh) return false
+        return extractJwtClaim(access, "provider") == "local-fallback"
+    }
+
+    fun importLocalFallbackStoredSession(
+        accessToken: String,
+        refreshToken: String,
+        email: String,
+        userId: String?,
+        displayName: String?,
+        avatarUrl: String?
+    ): Result<Unit> {
+        val access = accessToken.trim()
+        val refresh = refreshToken.trim()
+        if (!isLocalFallbackStoredSessionToken(access, refresh)) {
+            return Result.failure(Exception("La cuenta guardada pertenece a la base anterior. Ingresa con correo y contraseña para activarla en Ubuntu."))
+        }
+
+        val resolvedEmail = email.trim().lowercase().ifBlank {
+            extractJwtClaim(access, "email")?.lowercase().orEmpty()
+        }
+        val resolvedUserId = userId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: extractJwtClaim(access, "sub")?.lowercase()
+            ?: resolvedEmail
+        if (resolvedEmail.isBlank() || resolvedUserId.isBlank()) {
+            return Result.failure(Exception("No se pudo restaurar la cuenta local guardada."))
+        }
+
+        persistLocalFallbackSession(
+            LocalFallbackAuthResponse(
+                accessToken = access,
+                user = LocalFallbackUser(
+                    id = resolvedUserId,
+                    email = resolvedEmail,
+                    displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
+                    avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotBlank() }
+                )
+            )
+        )
+        return Result.success(Unit)
+    }
+
     /**
      * Immediate local logout gate.
      * Prevents the app from treating an old SDK session as logged-in (even if signOut() fails).
@@ -291,6 +339,11 @@ class AuthService @Inject constructor(
                 _currentSession.value = localSession
                 _isInitializing.value = false
                 Log.d("AuthService", "Local fallback session recovered at startup")
+            } else if (isLocalFallbackModeEnabled()) {
+                _currentSession.value = null
+                clearPersistedSessionSnapshot()
+                _isInitializing.value = false
+                Log.w("AuthService", "Local fallback mode enabled: ignoring persisted Supabase session")
             } else {
                 // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
                 authScope.launch {
@@ -350,6 +403,12 @@ class AuthService @Inject constructor(
                     }
                     recoverPersistedLocalFallbackSession()?.let { localSession ->
                         _currentSession.value = localSession
+                        _isInitializing.value = false
+                        return@collect
+                    }
+                    if (isLocalFallbackModeEnabled()) {
+                        _currentSession.value = null
+                        clearPersistedSessionSnapshot()
                         _isInitializing.value = false
                         return@collect
                     }
@@ -769,6 +828,7 @@ class AuthService @Inject constructor(
         TestRuntimeOverrides.currentSession(context)?.let { return it.userId.trim().lowercase() }
         if (isForcedLogout()) return null
         localFallbackDisplayUserIdFromPrefs()?.let { return it }
+        if (isLocalFallbackModeEnabled()) return null
         val sdkUserId = supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
         if (!sdkUserId.isNullOrBlank()) return sdkUserId
         val cachedUserId = _currentSession.value?.user?.id?.trim()?.lowercase()
@@ -782,6 +842,7 @@ class AuthService @Inject constructor(
         TestRuntimeOverrides.currentSession(context)?.let { return it.email.trim().lowercase() }
         if (isForcedLogout()) return null
         localFallbackEmailFromPrefs()?.let { return it }
+        if (isLocalFallbackModeEnabled()) return null
         val sdkEmail = supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase()
         if (!sdkEmail.isNullOrBlank()) return sdkEmail
         val cachedEmail = _currentSession.value?.user?.email?.trim()?.lowercase()
@@ -794,12 +855,13 @@ class AuthService @Inject constructor(
     fun getAccessToken(): String? =
         TestRuntimeOverrides.currentSession(context)?.accessToken
             ?: if (isForcedLogout()) null else readLocalFallbackAccessToken()
-                ?: supabaseConfig.client.auth.currentAccessTokenOrNull()
+                ?: if (isLocalFallbackModeEnabled()) null else supabaseConfig.client.auth.currentAccessTokenOrNull()
 
     fun getRefreshToken(): String? {
         TestRuntimeOverrides.currentSession(context)?.refreshToken?.let { return it }
         if (isForcedLogout()) return null
         readLocalFallbackAccessToken()?.let { return it }
+        if (isLocalFallbackModeEnabled()) return null
         return supabaseConfig.client.auth.currentSessionOrNull()?.refreshToken
             ?: authPrefsOrNull?.getString(KEY_REFRESH_TOKEN, null)
     }
@@ -815,6 +877,7 @@ class AuthService @Inject constructor(
             return it
         }
         readLocalFallbackAccessToken()?.let { return it }
+        if (isLocalFallbackModeEnabled()) return null
         var currentToken = getAccessToken()
         if (currentToken.isNullOrBlank() && !isForcedLogout()) {
             repeat(12) {

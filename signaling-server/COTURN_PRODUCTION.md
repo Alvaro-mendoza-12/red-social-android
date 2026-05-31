@@ -8,7 +8,9 @@ Esta app ya puede pedir credenciales TURN temporales al signaling server en:
 
 - `GET /turn-credentials`
 
-Ese endpoint valida el `Bearer` de Supabase y firma credenciales tipo TURN REST con `TURN_SECRET`.
+Ese endpoint valida el `Bearer` contra el backend Ubuntu (`LOCAL_FALLBACK_API_URL`)
+y, si aun esta configurado, contra el puente legacy de Supabase. Luego firma
+credenciales tipo TURN REST con `TURN_SECRET`.
 
 ## 1. Instalar coturn en la VPS
 
@@ -94,6 +96,7 @@ Copia `signaling-server/.env.example` a `signaling-server/.env` y completa:
 ```env
 SUPABASE_URL=https://tu-proyecto.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=tu-service-role-key
+LOCAL_FALLBACK_API_URL=https://tu-backend-ubuntu.ngrok-free.dev
 SIGNALING_ALLOWED_ORIGINS=https://app.tudominio.com,https://admin.tudominio.com
 HTTP_RATE_LIMIT_PER_MINUTE=180
 SOCKET_RATE_LIMIT_PER_MINUTE=90

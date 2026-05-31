@@ -1,17 +1,39 @@
-# Conectate Local Fallback Server
+# Conectate Ubuntu Backend
 
-Servidor secundario local para mantener Conectate operando cuando Supabase
-responde con restriccion de cuota, timeout o error temporal.
+Servidor local para mantener Conectate operando desde infraestructura propia
+Ubuntu. Originalmente nacio como fallback ante restricciones de Supabase, pero
+ahora tambien puede usarse como backend principal para autenticacion, datos
+basicos, storage local y pantallas web/Android ya migradas.
 
-Este modulo no reemplaza Supabase ni modifica sus credenciales actuales. Es una
-pieza aparte: Postgres local + API HTTP local. La app/web se adaptaran despues
-para usarla solo cuando Supabase falle.
+El puente con Supabase queda como herramienta opcional de importacion/sync. El
+servidor puede arrancar sin `SUPABASE_URL`, sin `SUPABASE_SERVICE_ROLE_KEY` y
+sin el SDK de Supabase.
 
 ## Servicios
 
 - `api`: API Node en `http://127.0.0.1:3001`
 - `db`: Postgres privado en `127.0.0.1:5433`
 - `storage`: volumen local Docker `conectate-fallback-storage` montado en `/data/storage`
+- `signaling`: Socket.IO para voz, llamadas y lives, autenticado contra la API Ubuntu
+- `edge`: proxy local en `http://127.0.0.1:3080` para exponer API, storage y Socket.IO con una sola URL de ngrok
+
+## Modo backend principal
+
+Para web, configura solo:
+
+```env
+VITE_FALLBACK_API_URL=https://tu-url-ngrok.ngrok-free.dev
+```
+
+Para Android, en `secrets.properties`:
+
+```properties
+FALLBACK_API_URL=https://tu-url-ngrok.ngrok-free.dev
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+```
+
+Voz, llamadas y audio usan la misma URL cuando ngrok apunta al puerto `3080`.
 
 ## Copiar desde Windows a la VM
 
@@ -19,6 +41,7 @@ Desde CMD o PowerShell, en la raiz del repo:
 
 ```powershell
 scp -P 2222 -r infrastructure/local-fallback alvaro@127.0.0.1:~/conectate-local-fallback
+scp -P 2222 -r signaling-server alvaro@127.0.0.1:~/signaling-server
 ```
 
 ## Levantar en Ubuntu
@@ -27,16 +50,14 @@ Dentro del SSH de Ubuntu:
 
 ```bash
 cd ~/conectate-local-fallback
-cp config.example .env
-JWT_SECRET=$(openssl rand -hex 32)
-ADMIN_SYNC_TOKEN=$(openssl rand -hex 32)
-sed -i "s|JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" .env
-sed -i "s|ADMIN_SYNC_TOKEN=.*|ADMIN_SYNC_TOKEN=$ADMIN_SYNC_TOKEN|" .env
-# Opcional, recomendado si usas un dominio fijo de ngrok:
-# sed -i "s|PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://tu-dominio.ngrok-free.dev|" .env
-docker compose up -d --build
-docker compose ps
-curl http://127.0.0.1:3001/ready
+PUBLIC_BASE_URL=https://tu-dominio.ngrok-free.dev bash scripts/repair-ubuntu-primary.sh
+```
+
+Si todavia no tienes dominio fijo, ejecuta:
+
+```bash
+cd ~/conectate-local-fallback
+bash scripts/repair-ubuntu-primary.sh
 ```
 
 ## Probar login local
@@ -68,10 +89,12 @@ Luego agrega tu token de ngrok:
 
 ```bash
 ngrok config add-authtoken "TU_TOKEN_DE_NGROK"
-ngrok http 3001
+ngrok http 3080
 ```
 
 La URL HTTPS que te entregue ngrok sera la `FALLBACK_API_URL` para web y Android.
+Debe apuntar al puerto `3080`, no al `3001`, para que tambien funcionen voz,
+llamadas, audio y WebSocket.
 
 ## Conectar sincronizacion con Supabase
 
@@ -179,12 +202,32 @@ Notas:
 - `POST /v1/auth/register`: crea usuario local de respaldo.
 - `POST /v1/auth/login`: inicia sesion local de respaldo.
 - `GET /v1/auth/me`: valida token local.
+- `POST /v1/auth/change-password`: cambia password con sesion local.
+- `POST /v1/auth/password-reset/request`: genera token local de recuperacion.
+- `POST /v1/auth/password-reset/confirm`: confirma token y crea password nueva.
 - `POST /v1/auth/activate-local-password`: usuario logueado en Supabase activa
   su password local.
 - `POST /v1/auth/sync-to-supabase`: usuario local reintenta crear su cuenta en
   Supabase cuando el upstream vuelve.
 - `POST /v1/admin/sync/import-supabase-users`: importa usuarios Auth de Supabase.
 - `GET /v1/admin/sync/status`: resumen de estados de sincronizacion.
+
+## Recuperacion de contrasena local
+
+Por defecto `PASSWORD_RESET_DELIVERY=console`: el token se imprime en logs de la
+API para uso manual durante la migracion.
+
+```bash
+docker compose logs -f api
+```
+
+Para entornos de prueba donde quieras que la web reciba el token directamente:
+
+```env
+PASSWORD_RESET_DELIVERY=response
+```
+
+No uses `response` en produccion publica.
 
 ## Notas
 

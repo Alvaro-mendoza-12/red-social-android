@@ -146,6 +146,25 @@ class AccountSessionRepository @Inject constructor(
         }
 
         return@withContext runCatching {
+            if (authService.isLocalFallbackStoredSessionToken(target.access_token, target.refresh_token)) {
+                authService.importLocalFallbackStoredSession(
+                    accessToken = target.access_token,
+                    refreshToken = target.refresh_token,
+                    email = target.email,
+                    userId = target.user_id,
+                    displayName = target.display_name,
+                    avatarUrl = target.avatar_url
+                ).getOrThrow()
+
+                return@runCatching storeAccountSnapshot(
+                    target.copy(last_used_at = System.currentTimeMillis())
+                )
+            }
+
+            if (authService.isLocalFallbackModeEnabled()) {
+                throw IllegalStateException("Esta cuenta guardada pertenece a Supabase. Ingresa con correo y contraseña para activarla en Ubuntu.")
+            }
+
             authService.importSession(target.access_token, target.refresh_token)
             var expectedUserId = target.user_id?.trim()?.lowercase()
                 ?: extractJwtClaim(target.access_token, "sub")?.lowercase()

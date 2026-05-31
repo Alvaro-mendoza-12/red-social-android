@@ -6,6 +6,13 @@ function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+function validUuid(value) {
+  const text = normalizeId(value)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)
+    ? text
+    : null
+}
+
 function parseCell(value) {
   if (value == null) return ''
   if (value instanceof Date) return value.toISOString()
@@ -46,6 +53,11 @@ function textOf(row, keys, fallback = '') {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   }
   return fallback
+}
+
+function cleanText(value, maxLength = 160) {
+  const text = String(value || '').trim()
+  return text ? text.slice(0, maxLength) : ''
 }
 
 function boolOf(row, keys, fallback = false) {
@@ -223,6 +235,89 @@ async function localMessages(pool, chatIds) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localCollectionMessages(pool, kind, roomId) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  const cleanRoomId = normalizeId(roomId)
+  if (!cleanRoomId || !['group', 'community'].includes(cleanKind)) return []
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        room_id,
+        CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
+        CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
+        sender_id,
+        content,
+        content_type,
+        media_url,
+        media_size,
+        status,
+        reply_to_id,
+        poll_id,
+        is_forwarded,
+        forwarded_from_message_id,
+        forwarded_from_user_id,
+        created_at,
+        updated_at,
+        '{}'::jsonb AS reactions,
+        '[]'::jsonb AS deleted_by,
+        FALSE AS deleted_for_all,
+        FALSE AS is_edited
+     FROM fallback_room_messages
+     WHERE room_kind = $1 AND lower(room_id) = $2
+     ORDER BY created_at ASC`,
+    [cleanKind, cleanRoomId],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localCollectionRooms(pool, kind, limit = 2000) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  if (!['group', 'community'].includes(cleanKind)) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 2000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        room_kind,
+        name,
+        image,
+        description,
+        category,
+        is_public,
+        creator_id,
+        is_deleted,
+        only_admins_can_talk,
+        created_at,
+        updated_at
+     FROM fallback_collection_rooms
+     WHERE room_kind = $1 AND is_deleted = FALSE
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT $2`,
+    [cleanKind, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localCollectionMembers(pool, kind, limit = 10_000) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  if (!['group', 'community'].includes(cleanKind)) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        room_id AS group_id,
+        room_id AS community_id,
+        room_id,
+        user_id,
+        role,
+        joined_at
+     FROM fallback_collection_members
+     WHERE room_kind = $1
+     ORDER BY joined_at ASC
+     LIMIT $2`,
+    [cleanKind, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
 async function localPosts(pool, limit = 5000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
   const { rows } = await pool.query(
@@ -246,6 +341,37 @@ async function localPosts(pool, limit = 5000) {
     [safeLimit],
   )
   return rows.map(normalizeImportedRow)
+}
+
+async function fallbackUserProfileRows(pool, limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text AS id,
+        supabase_user_id::text AS supabase_user_id,
+        email,
+        display_name,
+        display_name AS full_name,
+        avatar_url,
+        created_at,
+        last_login_at AS updated_at
+     FROM fallback_users
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localProfileOverride(pool, userId) {
+  const { rows } = await pool.query(
+    `SELECT profile
+     FROM fallback_profile_overrides
+     WHERE user_id = $1
+     LIMIT 1`,
+    [userId],
+  )
+  return normalizeImportedRow(rows[0]?.profile || {})
 }
 
 async function getCurrentUser(pool, req) {
@@ -290,6 +416,63 @@ function fallbackProfileRow(user) {
   }
 }
 
+function buildProfileForUser(user, importedProfile = {}, overrideProfile = {}) {
+  const base = Object.keys(importedProfile || {}).length > 0 ? importedProfile : fallbackProfileRow(user)
+  const merged = {
+    ...base,
+    ...overrideProfile,
+  }
+  return {
+    ...merged,
+    id: textOf(merged, ['id'], user.supabase_user_id || user.id),
+    email: textOf(merged, ['email'], user.email),
+    display_name: profileName(merged, user.display_name || user.email),
+    full_name: textOf(merged, ['full_name'], profileName(merged, user.display_name || user.email)),
+    avatar_url: profileAvatar(merged),
+    created_at: textOf(merged, ['created_at'], user.created_at),
+    updated_at: textOf(merged, ['updated_at'], new Date().toISOString()),
+  }
+}
+
+function profilePatchFromBody(body) {
+  const patch = {}
+
+  const stringFields = [
+    ['display_name', ['display_name', 'displayName', 'full_name', 'fullName']],
+    ['bio', ['bio']],
+    ['country', ['country']],
+    ['city', ['city']],
+    ['status', ['status']],
+    ['avatar_url', ['avatar_url', 'avatarUrl']],
+    ['cover_url', ['cover_url', 'coverUrl']],
+    ['profile_visibility', ['profile_visibility', 'profileVisibility']],
+    ['last_seen_visibility', ['last_seen_visibility', 'lastSeenVisibility']],
+    ['online_status_visibility', ['online_status_visibility', 'onlineStatusVisibility']],
+  ]
+
+  for (const [targetKey, sourceKeys] of stringFields) {
+    for (const sourceKey of sourceKeys) {
+      if (Object.prototype.hasOwnProperty.call(body || {}, sourceKey)) {
+        const value = cleanText(body[sourceKey], targetKey.endsWith('_url') ? 700 : 280)
+        if (value) patch[targetKey] = value
+        break
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'is_private')) {
+    patch.is_private = Boolean(body.is_private)
+  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'isPrivate')) {
+    patch.is_private = Boolean(body.isPrivate)
+  }
+
+  if (patch.display_name && !patch.full_name) {
+    patch.full_name = patch.display_name
+  }
+
+  return patch
+}
+
 function isOwnedBy(row, identity) {
   return rowMatchesAny(row, ['user_id', 'owner_id', 'author_id', 'creator_id', 'profile_id', 'id'], identity.ids)
 }
@@ -311,6 +494,243 @@ function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) 
     like_count: numberOf(row, ['like_count', 'likes_count'], likeCounts.get(postId) || 0),
     comment_count: numberOf(row, ['comment_count', 'comments_count'], commentCounts.get(postId) || 0),
     liked_by_me: likedPostIds.has(postId),
+  }
+}
+
+function collectionConfig(kind) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  if (cleanKind === 'group' || cleanKind === 'groups') {
+    return {
+      kind: 'group',
+      roomTable: 'groups',
+      memberTable: 'group_members',
+      messageTable: 'group_messages',
+      roomKey: 'group_id',
+      titleFallback: 'Grupo',
+      openPathPrefix: '/app/messages/group/',
+    }
+  }
+  if (cleanKind === 'community' || cleanKind === 'communities') {
+    return {
+      kind: 'community',
+      roomTable: 'communities',
+      memberTable: 'community_members',
+      messageTable: 'community_messages',
+      roomKey: 'community_id',
+      titleFallback: 'Comunidad',
+      openPathPrefix: '/app/messages/community/',
+    }
+  }
+  return null
+}
+
+function memberUserId(row) {
+  return normalizeId(textOf(row, ['user_id', 'profile_id', 'member_id'], ''))
+}
+
+function roomIdOf(row, key) {
+  return normalizeId(textOf(row, [key, 'room_id'], ''))
+}
+
+function collectionRoomTitle(row, fallback) {
+  return textOf(row, ['name', 'title', 'group_name', 'community_name', 'readable_id'], fallback)
+}
+
+function collectionRoomAvatar(row) {
+  return textOf(row, ['avatar_url', 'cover_url', 'image_url', 'group_image', 'community_image', 'image'], '')
+}
+
+function enrichCollectionMessage(row, config, profilesById) {
+  const senderId = normalizeId(textOf(row, ['sender_id', 'user_id', 'profile_id', 'author_id'], ''))
+  const profile = senderId ? profilesById.get(senderId) : null
+  const roomId = textOf(row, [config.roomKey, 'room_id'], '')
+  const createdAt = textOf(row, ['created_at', 'updated_at'], new Date().toISOString())
+  return {
+    ...row,
+    id: textOf(row, ['id'], `${config.kind}-${roomId}-${createdAt}-${senderId}`),
+    [config.roomKey]: roomId,
+    sender_id: senderId,
+    content: textOf(row, ['content', 'text', 'message'], ''),
+    content_type: textOf(row, ['content_type', 'message_type', 'type'], 'text'),
+    media_url: textOf(row, ['media_url', 'file_url', 'attachment_url', 'url'], ''),
+    media_size: numberOf(row, ['media_size', 'size', 'size_bytes'], 0),
+    status: textOf(row, ['status'], 'sent'),
+    reply_to_id: textOf(row, ['reply_to_id'], ''),
+    poll_id: textOf(row, ['poll_id'], ''),
+    created_at: createdAt,
+    updated_at: textOf(row, ['updated_at', 'created_at'], createdAt),
+    sender_name: textOf(row, ['sender_name', 'user_name', 'display_name'], '') || profileName(profile, senderId || 'Usuario'),
+    sender_image: textOf(row, ['sender_image', 'user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
+    reactions: row.reactions && typeof row.reactions === 'object' ? row.reactions : {},
+    deleted_by: Array.isArray(row.deleted_by) ? row.deleted_by : [],
+    deleted_for_all: boolOf(row, ['deleted_for_all'], false),
+    is_edited: boolOf(row, ['is_edited'], false),
+    is_forwarded: boolOf(row, ['is_forwarded'], false),
+    forwarded_from_message_id: textOf(row, ['forwarded_from_message_id'], ''),
+    forwarded_from_user_id: textOf(row, ['forwarded_from_user_id'], ''),
+  }
+}
+
+async function loadCollectionRoomPayload(pool, user, kind, roomId) {
+  const config = collectionConfig(kind)
+  const cleanRoomId = normalizeId(roomId)
+  if (!config || !cleanRoomId) return null
+
+  const identity = userIdentity(user)
+  const [importedProfiles, localProfiles, importedRooms, importedMembers, importedMessages, localRooms, localMembers] = await Promise.all([
+    importedRows(pool, 'profiles', 5000),
+    fallbackUserProfileRows(pool, 5000),
+    importedRows(pool, config.roomTable, 5000),
+    importedRows(pool, config.memberTable, 10_000),
+    importedRows(pool, config.messageTable, 10_000),
+    localCollectionRooms(pool, config.kind, 5000),
+    localCollectionMembers(pool, config.kind, 10_000),
+  ])
+  const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+  const rooms = [...importedRooms, ...localRooms]
+  const members = [...importedMembers, ...localMembers]
+  const room = rooms.find((row) => normalizeId(textOf(row, ['id'], '')) === cleanRoomId)
+  if (!room) return null
+
+  const roomMembers = members.filter((row) => roomIdOf(row, config.roomKey) === cleanRoomId)
+  const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+  const isMember = roomMembers.some((row) => identity.ids.has(memberUserId(row)))
+  const isPublicCommunity = config.kind === 'community' && boolOf(room, ['is_public', 'public'], true)
+  const hasAccess = isCreator || isMember || isPublicCommunity || roomMembers.length === 0
+  if (!hasAccess) return null
+
+  const importedRoomMessages = importedMessages.filter((row) => roomIdOf(row, config.roomKey) === cleanRoomId)
+  const messages = [
+    ...importedRoomMessages,
+    ...(await localCollectionMessages(pool, config.kind, cleanRoomId)),
+  ]
+    .map((row) => enrichCollectionMessage(row, config, profilesById))
+    .sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
+
+  return {
+    chat: room,
+    room,
+    title: collectionRoomTitle(room, config.titleFallback),
+    otherParticipant: null,
+    participants: roomMembers.map((row) => {
+      const id = memberUserId(row)
+      const profile = id ? profilesById.get(id) : null
+      return {
+        id,
+        name: textOf(row, ['user_name', 'display_name', 'name'], '') || profileName(profile, id || 'Usuario'),
+        avatarUrl: textOf(row, ['user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
+        role: textOf(row, ['role'], 'member'),
+        joinedAt: textOf(row, ['joined_at', 'created_at'], ''),
+      }
+    }),
+    messages,
+    settings: {
+      isMuted: false,
+      isPinned: false,
+      isArchived: false,
+      isFavorite: false,
+      translateEnabled: false,
+      targetLang: 'es',
+    },
+  }
+}
+
+function voiceRoomId(row) {
+  return normalizeId(textOf(row, ['id', 'room_id', 'voice_room_id'], ''))
+}
+
+function voiceParticipantRoomId(row) {
+  return normalizeId(textOf(row, ['room_id', 'voice_room_id'], ''))
+}
+
+async function localVoiceParticipants(pool, roomId = '') {
+  const cleanRoomId = normalizeId(roomId)
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        room_id,
+        user_id,
+        user_name,
+        user_avatar_url,
+        socket_id,
+        is_muted,
+        is_speaking,
+        joined_at,
+        updated_at
+     FROM fallback_voice_room_participants
+     WHERE ($1::text = '' OR lower(room_id) = $1)
+     ORDER BY joined_at ASC`,
+    [cleanRoomId],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localVoiceRooms(pool, limit = 1000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 1000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        name,
+        description,
+        creator_id,
+        max_participants,
+        is_public,
+        is_active,
+        agora_channel_name,
+        readable_id,
+        created_at,
+        updated_at
+     FROM fallback_voice_rooms
+     WHERE is_active = TRUE
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+function mapVoiceParticipant(row, profilesById) {
+  const userId = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
+  const profile = userId ? profilesById.get(userId) : null
+  const roomId = textOf(row, ['room_id', 'voice_room_id'], '')
+  return {
+    ...row,
+    id: textOf(row, ['id'], userId || `${roomId}-participant` || `${Date.now()}`),
+    room_id: roomId,
+    user_id: userId,
+    socket_id: textOf(row, ['socket_id'], ''),
+    user_name: textOf(row, ['user_name', 'display_name', 'name'], '') || profileName(profile, userId || 'Usuario'),
+    user_avatar_url: textOf(row, ['user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
+    is_muted: boolOf(row, ['is_muted'], false),
+    is_speaking: boolOf(row, ['is_speaking'], false),
+    joined_at: textOf(row, ['joined_at', 'created_at'], ''),
+  }
+}
+
+function mapVoiceRoom(row, profilesById, participantCount) {
+  const creatorId = normalizeId(textOf(row, ['creator_id', 'owner_id', 'user_id'], ''))
+  const creatorProfile = creatorId ? profilesById.get(creatorId) : null
+  const id = voiceRoomId(row)
+  const count = Math.max(
+    0,
+    participantCount,
+    numberOf(row, ['current_participants', 'participant_count', 'active_participants'], 0),
+  )
+  return {
+    ...row,
+    id,
+    name: textOf(row, ['name', 'title', 'readable_id'], 'Sala de voz'),
+    title: textOf(row, ['title', 'name', 'readable_id'], 'Sala de voz'),
+    topic: textOf(row, ['topic', 'description'], 'Sala disponible'),
+    description: textOf(row, ['description', 'topic'], ''),
+    creator_id: creatorId,
+    creator_name: textOf(row, ['creator_name', 'owner_name'], '') || profileName(creatorProfile, creatorId || 'Creador'),
+    creator_avatar_url: textOf(row, ['creator_avatar_url', 'avatar_url'], '') || profileAvatar(creatorProfile),
+    current_participants: count,
+    participant_count: count,
+    max_participants: Math.max(1, numberOf(row, ['max_participants', 'capacity'], 10)),
+    updated_at: textOf(row, ['updated_at', 'created_at'], ''),
+    created_at: textOf(row, ['created_at'], textOf(row, ['updated_at'], '')),
   }
 }
 
@@ -356,6 +776,191 @@ async function ensureLocalDataTables(pool) {
     `CREATE INDEX IF NOT EXISTS idx_fallback_posts_created
      ON fallback_posts(created_at DESC)`,
   )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_room_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
+      room_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      content_type TEXT NOT NULL DEFAULT 'text',
+      media_url TEXT,
+      media_size BIGINT NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'sent',
+      reply_to_id TEXT,
+      poll_id TEXT,
+      is_forwarded BOOLEAN NOT NULL DEFAULT FALSE,
+      forwarded_from_message_id TEXT,
+      forwarded_from_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS room_kind TEXT NOT NULL DEFAULT 'group'`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS room_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS sender_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'text'`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS media_url TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS media_size BIGINT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'sent'`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS reply_to_id TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS poll_id TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS is_forwarded BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS forwarded_from_user_id TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_room_messages_room_created
+     ON fallback_room_messages(room_kind, lower(room_id), created_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_collection_rooms (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
+      name TEXT NOT NULL,
+      image TEXT,
+      description TEXT,
+      category TEXT,
+      is_public BOOLEAN NOT NULL DEFAULT TRUE,
+      creator_id TEXT NOT NULL,
+      is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      only_admins_can_talk BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS room_kind TEXT NOT NULL DEFAULT 'group'`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Sin nombre'`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS image TEXT`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS category TEXT`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS creator_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS only_admins_can_talk BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_collection_rooms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_collection_rooms_kind_created
+     ON fallback_collection_rooms(room_kind, is_deleted, created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_collection_members (
+      room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (room_kind, room_id, user_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS room_kind TEXT NOT NULL DEFAULT 'group'`,
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS room_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member'`,
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_collection_members_user
+     ON fallback_collection_members(room_kind, lower(user_id), lower(room_id))`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_voice_rooms (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      creator_id TEXT NOT NULL,
+      max_participants INTEGER NOT NULL DEFAULT 50,
+      is_public BOOLEAN NOT NULL DEFAULT TRUE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      agora_channel_name TEXT NOT NULL DEFAULT '',
+      readable_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Sala de voz'`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS creator_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS max_participants INTEGER NOT NULL DEFAULT 50`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS agora_channel_name TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS readable_id TEXT`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_voice_rooms_active_created
+     ON fallback_voice_rooms(is_active, created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_voice_room_participants (
+      id UUID NOT NULL DEFAULT gen_random_uuid(),
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL DEFAULT 'Usuario',
+      user_avatar_url TEXT NOT NULL DEFAULT '',
+      socket_id TEXT NOT NULL DEFAULT '',
+      is_muted BOOLEAN NOT NULL DEFAULT FALSE,
+      is_speaking BOOLEAN NOT NULL DEFAULT FALSE,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (room_id, user_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid()`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS room_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT 'Usuario'`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS user_avatar_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS socket_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS is_speaking BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(`
+    DELETE FROM fallback_voice_room_participants a
+    USING fallback_voice_room_participants b
+    WHERE a.ctid < b.ctid
+      AND lower(a.room_id) = lower(b.room_id)
+      AND lower(a.user_id) = lower(b.user_id)
+  `)
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_voice_room_participants_room_user
+     ON fallback_voice_room_participants(room_id, user_id)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_voice_room_participants_room
+     ON fallback_voice_room_participants(lower(room_id), joined_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_profile_overrides (
+      user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+      profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
 }
 
 function registerDataRoutes(app, { pool, authRequired }) {
@@ -380,6 +985,8 @@ function registerDataRoutes(app, { pool, authRequired }) {
         profiles.find((row) => rowMatchesAny(row, ['id', 'user_id', 'profile_id', 'supabase_user_id'], identity.ids)) ||
         profiles.find((row) => normalizeId(row.email) === identity.email) ||
         fallbackProfileRow(user)
+      const overrideProfile = await localProfileOverride(pool, user.id)
+      const mergedProfile = buildProfileForUser(user, profile, overrideProfile)
 
       const myPosts = sortByDateDesc(
         posts.filter((row) => isOwnedBy(row, identity)),
@@ -392,7 +999,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
       ).slice(0, 12)
 
       res.json({
-        profile,
+        profile: mergedProfile,
         posts: myPosts,
         reports: myReports,
         stats: {
@@ -404,6 +1011,47 @@ function registerDataRoutes(app, { pool, authRequired }) {
           reportsSent: myReports.length || countRows(reports, (row) => rowMatchesAny(row, ['reporter_id', 'user_id'], identity.ids)),
         },
       })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/profile/me', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const patch = profilePatchFromBody(req.body || {})
+      if (Object.keys(patch).length === 0) {
+        const current = buildProfileForUser(user, fallbackProfileRow(user), await localProfileOverride(pool, user.id))
+        return res.json({ profile: current, stats: {} })
+      }
+
+      patch.updated_at = new Date().toISOString()
+
+      await pool.query(
+        `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           profile = fallback_profile_overrides.profile || EXCLUDED.profile,
+           updated_at = NOW()`,
+        [user.id, JSON.stringify(patch)],
+      )
+
+      const nextDisplayName = patch.display_name || patch.full_name || null
+      const nextAvatarUrl = patch.avatar_url || null
+      await pool.query(
+        `UPDATE fallback_users
+         SET display_name = COALESCE($2, display_name),
+             avatar_url = COALESCE($3, avatar_url)
+         WHERE id = $1`,
+        [user.id, nextDisplayName, nextAvatarUrl],
+      )
+
+      const refreshedUser = { ...user, display_name: nextDisplayName || user.display_name, avatar_url: nextAvatarUrl || user.avatar_url }
+      const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
+      res.json({ profile: current, stats: {} })
     } catch (error) {
       next(error)
     }
@@ -519,17 +1167,36 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const tab = String(req.query.tab || 'chats')
 
       if (tab === 'voice') {
-        const rooms = sortByDateDesc(await importedRows(pool, 'voice_rooms', 1000), ['updated_at', 'created_at'])
+        const [importedProfiles, localProfiles, importedRooms, importedParticipants, fallbackParticipants, fallbackRooms] = await Promise.all([
+          importedRows(pool, 'profiles', 5000),
+          fallbackUserProfileRows(pool, 5000),
+          importedRows(pool, 'voice_rooms', 1000),
+          importedRows(pool, 'voice_room_participants', 10_000),
+          localVoiceParticipants(pool),
+          localVoiceRooms(pool, 1000),
+        ])
+        const rooms = [...importedRooms, ...fallbackRooms]
+        const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+        const countByRoom = new Map()
+        for (const row of [...importedParticipants, ...fallbackParticipants]) {
+          const id = voiceParticipantRoomId(row)
+          if (!id) continue
+          countByRoom.set(id, (countByRoom.get(id) || 0) + 1)
+        }
+        const mappedRooms = rooms.map((row) => {
+          const id = voiceRoomId(row)
+          return mapVoiceRoom(row, profilesById, countByRoom.get(id) || 0)
+        })
         return res.json({
-          items: rooms.slice(0, 40).map((row) => {
+          items: sortByDateDesc(mappedRooms, ['updated_at', 'created_at']).slice(0, 40).map((row) => {
             const id = textOf(row, ['id'], '')
             return {
               id,
-              title: textOf(row, ['name', 'title', 'readable_id'], 'Sala de voz'),
+              title: textOf(row, ['title', 'name', 'readable_id'], 'Sala de voz'),
               subtitle: textOf(row, ['topic', 'description'], 'Sala disponible'),
               updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
               kind: 'voice',
-              avatarUrl: textOf(row, ['avatar_url', 'cover_url', 'image_url'], ''),
+              avatarUrl: textOf(row, ['creator_avatar_url', 'avatar_url', 'cover_url', 'image_url'], ''),
               profileId: null,
               unreadCount: 0,
               isPinned: false,
@@ -544,32 +1211,50 @@ function registerDataRoutes(app, { pool, authRequired }) {
       }
 
       if (tab === 'groups' || tab === 'communities') {
-        const membershipTable = tab === 'groups' ? 'group_members' : 'community_members'
-        const roomTable = tab === 'groups' ? 'groups' : 'communities'
-        const roomKey = tab === 'groups' ? 'group_id' : 'community_id'
-        const kind = tab === 'groups' ? 'group' : 'community'
-        const prefix = tab === 'groups' ? '/app/messages/group/' : '/app/messages/community/'
-        const [memberships, rooms] = await Promise.all([
-          importedRows(pool, membershipTable, 5000),
-          importedRows(pool, roomTable, 2000),
+        const config = collectionConfig(tab)
+        const [importedMemberships, importedRooms, importedMessages, localRooms, localMemberships] = await Promise.all([
+          importedRows(pool, config.memberTable, 5000),
+          importedRows(pool, config.roomTable, 2000),
+          importedRows(pool, config.messageTable, 10_000),
+          localCollectionRooms(pool, config.kind, 2000),
+          localCollectionMembers(pool, config.kind, 10_000),
         ])
+        const memberships = [...importedMemberships, ...localMemberships]
+        const rooms = [...importedRooms, ...localRooms]
         const roomIds = cleanSet(
           memberships
             .filter((row) => rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids))
-            .map((row) => textOf(row, [roomKey, 'room_id'], '')),
+            .map((row) => textOf(row, [config.roomKey, 'room_id'], '')),
         )
+        const importedLatestByRoom = new Map()
+        for (const message of sortByDateDesc(importedMessages, ['created_at', 'updated_at'])) {
+          const roomId = roomIdOf(message, config.roomKey)
+          if (roomId && !importedLatestByRoom.has(roomId)) importedLatestByRoom.set(roomId, message)
+        }
+        const localLatestRows = []
+        for (const id of Array.from(roomIds)) {
+          const localRows = await localCollectionMessages(pool, config.kind, id)
+          if (localRows.length > 0) localLatestRows.push(localRows[localRows.length - 1])
+        }
+        const localLatestByRoom = new Map(localLatestRows.map((row) => [roomIdOf(row, config.roomKey), row]))
         const items = sortByDateDesc(
           rooms.filter((row) => roomIds.size === 0 || roomIds.has(normalizeId(textOf(row, ['id'], '')))),
           ['updated_at', 'created_at'],
         ).slice(0, 60).map((row) => {
           const id = textOf(row, ['id'], '')
+          const cleanId = normalizeId(id)
+          const importedLatest = importedLatestByRoom.get(cleanId)
+          const localLatest = localLatestByRoom.get(cleanId)
+          const latest = toMillis(textOf(localLatest || {}, ['created_at'], '')) > toMillis(textOf(importedLatest || {}, ['created_at'], ''))
+            ? localLatest
+            : importedLatest
           return {
             id,
-            title: textOf(row, ['name', 'title', 'group_name', 'community_name'], tab === 'groups' ? 'Grupo' : 'Comunidad'),
-            subtitle: textOf(row, ['description', 'about'], 'Sin actividad reciente'),
-            updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
-            kind,
-            avatarUrl: textOf(row, ['avatar_url', 'cover_url', 'image_url', 'group_image', 'community_image'], ''),
+            title: collectionRoomTitle(row, config.titleFallback),
+            subtitle: previewFromMessage(latest || {}) || textOf(row, ['last_message', 'description', 'about'], 'Sin actividad reciente'),
+            updatedAt: textOf(latest || {}, ['created_at', 'updated_at'], '') || textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
+            kind: config.kind,
+            avatarUrl: collectionRoomAvatar(row),
             profileId: null,
             unreadCount: 0,
             isPinned: false,
@@ -577,7 +1262,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             isArchived: false,
             isFavorite: false,
             folders: [],
-            openPath: `${prefix}${id}`,
+            openPath: `${config.openPathPrefix}${id}`,
           }
         })
         return res.json({ items })
@@ -669,6 +1354,459 @@ function registerDataRoutes(app, { pool, authRequired }) {
         })
 
       res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/:collection(groups|communities)', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(req.params.collection)
+      if (!config) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
+
+      const name = cleanText(req.body?.name, 120)
+      if (!name) return res.status(400).json({ error: 'NAME_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const requestedId = validUuid(req.body?.id)
+      const description = cleanText(req.body?.description, 500) || null
+      const image = cleanText(req.body?.image || req.body?.imageUrl, 700) || null
+      const category = config.kind === 'community' ? cleanText(req.body?.category, 80) || null : null
+      const isPublic = config.kind === 'community'
+        ? (Object.prototype.hasOwnProperty.call(req.body || {}, 'isPublic') ? Boolean(req.body.isPublic) : Boolean(req.body?.is_public ?? true))
+        : true
+      const memberIds = Array.from(cleanSet([...asArray(req.body?.members), ...asArray(req.body?.memberIds), identity.displayUserId]))
+
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_collection_rooms(
+            id,
+            room_kind,
+            name,
+            image,
+            description,
+            category,
+            is_public,
+            creator_id,
+            is_deleted,
+            only_admins_can_talk,
+            created_at,
+            updated_at
+         )
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, FALSE, FALSE, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET
+            room_kind = EXCLUDED.room_kind,
+            name = EXCLUDED.name,
+            image = EXCLUDED.image,
+            description = EXCLUDED.description,
+            category = EXCLUDED.category,
+            is_public = EXCLUDED.is_public,
+            creator_id = EXCLUDED.creator_id,
+            is_deleted = FALSE,
+            updated_at = NOW()
+         RETURNING
+            id::text,
+            room_kind,
+            name,
+            image,
+            description,
+            category,
+            is_public,
+            creator_id,
+            is_deleted,
+            only_admins_can_talk,
+            created_at,
+            updated_at`,
+        [requestedId, config.kind, name, image, description, category, isPublic, identity.displayUserId],
+      )
+      const roomId = textOf(normalizeImportedRow(rows[0]), ['id'], '')
+
+      for (const memberId of memberIds) {
+        await pool.query(
+          `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (room_kind, room_id, user_id)
+           DO UPDATE SET role = EXCLUDED.role`,
+          [config.kind, roomId, memberId, memberId === identity.displayUserId ? 'admin' : 'member'],
+        )
+      }
+
+      res.status(201).json({ room: normalizeImportedRow(rows[0]), id: roomId })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/messages/:collection(groups|communities)/:roomId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const payload = await loadCollectionRoomPayload(pool, user, req.params.collection, req.params.roomId)
+      if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+      res.json(payload)
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/join', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(req.params.collection)
+      const roomId = normalizeId(req.params.roomId)
+      if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
+      const role = cleanText(req.body?.role, 40) || 'member'
+      const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
+      if (!room && config.kind === 'group') return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+
+      await pool.query(
+        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (room_kind, room_id, user_id)
+         DO UPDATE SET role = COALESCE(NULLIF(fallback_collection_members.role, ''), EXCLUDED.role)`,
+        [config.kind, roomId, targetUserId, role],
+      )
+
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/leave', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(req.params.collection)
+      const roomId = normalizeId(req.params.roomId)
+      if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      await pool.query(
+        `DELETE FROM fallback_collection_members
+         WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = $3`,
+        [config.kind, roomId, identity.displayUserId],
+      )
+
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/messages', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(req.params.collection)
+      const roomId = normalizeId(req.params.roomId)
+      const content = String(req.body?.content || '').trim()
+      const contentType = String(req.body?.contentType || 'text').trim() || 'text'
+      const mediaUrl = String(req.body?.mediaUrl || '').trim()
+      const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
+      const replyToId = String(req.body?.replyToId || '').trim() || null
+      const pollId = String(req.body?.pollId || '').trim() || null
+      const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
+      const forwardedFromMessageId = String(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id || '').trim() || null
+      const forwardedFromUserId = String(req.body?.forwardedFromUserId || req.body?.forwarded_from_user_id || '').trim() || null
+      const requestedId = validUuid(req.body?.id)
+      if (!config || !roomId || (!content && !mediaUrl)) {
+        return res.status(400).json({ error: 'ROOM_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
+      }
+
+      const existingRoom = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
+      if (!existingRoom) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const senderId = identity.displayUserId
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_room_messages(
+            id,
+            room_kind,
+            room_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            reply_to_id,
+            poll_id,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id
+         )
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (id) DO UPDATE SET
+            room_kind = EXCLUDED.room_kind,
+            room_id = EXCLUDED.room_id,
+            sender_id = EXCLUDED.sender_id,
+            content = EXCLUDED.content,
+            content_type = EXCLUDED.content_type,
+            media_url = EXCLUDED.media_url,
+            media_size = EXCLUDED.media_size,
+            reply_to_id = EXCLUDED.reply_to_id,
+            poll_id = EXCLUDED.poll_id,
+            is_forwarded = EXCLUDED.is_forwarded,
+            forwarded_from_message_id = EXCLUDED.forwarded_from_message_id,
+            forwarded_from_user_id = EXCLUDED.forwarded_from_user_id,
+            status = 'sent',
+            updated_at = NOW()
+         RETURNING
+            id::text,
+            room_id,
+            CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
+            CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            status,
+            reply_to_id,
+            poll_id,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id,
+            created_at,
+            updated_at`,
+        [
+          requestedId,
+          config.kind,
+          roomId,
+          senderId,
+          content,
+          contentType,
+          mediaUrl || null,
+          mediaSize,
+          replyToId,
+          pollId,
+          isForwarded,
+          forwardedFromMessageId,
+          forwardedFromUserId,
+        ],
+      )
+
+      const profilesById = indexProfiles([
+        ...(await importedRows(pool, 'profiles', 5000)),
+        ...(await fallbackUserProfileRows(pool, 5000)),
+      ])
+      res.status(201).json({ message: enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/voice/rooms', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const name = cleanText(req.body?.name, 120) || 'Sala de voz'
+      const description = cleanText(req.body?.description, 500)
+      const requestedId = validUuid(req.body?.id)
+      const requestedMaxParticipants = Number(req.body?.maxParticipants || req.body?.max_participants || 50)
+      const maxParticipants = Number.isFinite(requestedMaxParticipants)
+        ? Math.max(2, Math.min(requestedMaxParticipants, 200))
+        : 50
+      const isPublic = Object.prototype.hasOwnProperty.call(req.body || {}, 'isPublic')
+        ? Boolean(req.body.isPublic)
+        : Boolean(req.body?.is_public ?? true)
+
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_voice_rooms(
+            id,
+            name,
+            description,
+            creator_id,
+            max_participants,
+            is_public,
+            is_active,
+            agora_channel_name,
+            readable_id,
+            created_at,
+            updated_at
+         )
+         VALUES (
+            COALESCE($1::uuid, gen_random_uuid()),
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            TRUE,
+            COALESCE(NULLIF($7, ''), 'room_' || COALESCE($1::text, gen_random_uuid()::text)),
+            NULLIF($8, ''),
+            NOW(),
+            NOW()
+         )
+         ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            creator_id = EXCLUDED.creator_id,
+            max_participants = EXCLUDED.max_participants,
+            is_public = EXCLUDED.is_public,
+            is_active = TRUE,
+            updated_at = NOW()
+         RETURNING
+            id::text,
+            name,
+            description,
+            creator_id,
+            max_participants,
+            is_public,
+            is_active,
+            agora_channel_name,
+            readable_id,
+            created_at,
+            updated_at`,
+        [
+          requestedId,
+          name,
+          description,
+          identity.displayUserId,
+          maxParticipants,
+          isPublic,
+          String(req.body?.agoraChannelName || req.body?.agora_channel_name || '').trim(),
+          String(req.body?.readableId || req.body?.readable_id || '').trim(),
+        ],
+      )
+
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.status(201).json({ room: mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, 0) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/voice/rooms', authRequired, async (_req, res, next) => {
+    try {
+      const [importedProfiles, localProfiles, importedRooms, importedParticipants, fallbackParticipants, fallbackRooms] = await Promise.all([
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+        importedRows(pool, 'voice_rooms', 1000),
+        importedRows(pool, 'voice_room_participants', 10_000),
+        localVoiceParticipants(pool),
+        localVoiceRooms(pool, 1000),
+      ])
+      const rooms = [...importedRooms, ...fallbackRooms]
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const countByRoom = new Map()
+      for (const row of [...importedParticipants, ...fallbackParticipants]) {
+        const id = voiceParticipantRoomId(row)
+        if (!id) continue
+        countByRoom.set(id, (countByRoom.get(id) || 0) + 1)
+      }
+      const items = sortByDateDesc(
+        rooms.map((row) => {
+          const id = voiceRoomId(row)
+          return mapVoiceRoom(row, profilesById, countByRoom.get(id) || 0)
+        }),
+        ['updated_at', 'created_at'],
+      )
+      res.json({ rooms: items, items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/voice/rooms/:roomId', authRequired, async (req, res, next) => {
+    try {
+      const cleanRoomId = normalizeId(req.params.roomId)
+      const [importedProfiles, localProfiles, importedRooms, importedParticipants, fallbackParticipants, fallbackRooms] = await Promise.all([
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+        importedRows(pool, 'voice_rooms', 1000),
+        importedRows(pool, 'voice_room_participants', 10_000),
+        localVoiceParticipants(pool, cleanRoomId),
+        localVoiceRooms(pool, 1000),
+      ])
+      const rooms = [...importedRooms, ...fallbackRooms]
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const room = rooms.find((row) => voiceRoomId(row) === cleanRoomId)
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      const participants = [...importedParticipants, ...fallbackParticipants]
+        .filter((row) => voiceParticipantRoomId(row) === cleanRoomId)
+        .map((row) => mapVoiceParticipant(row, profilesById))
+      res.json({
+        room: mapVoiceRoom(room, profilesById, participants.length),
+        participants,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/voice/rooms/:roomId/join', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const cleanRoomId = normalizeId(req.params.roomId)
+      if (!cleanRoomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
+      const room = rooms.find((row) => voiceRoomId(row) === cleanRoomId)
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      await pool.query(
+        `INSERT INTO fallback_voice_room_participants(
+            room_id,
+            user_id,
+            user_name,
+            user_avatar_url,
+            socket_id,
+            is_muted,
+            is_speaking,
+            joined_at,
+            updated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, FALSE, NOW(), NOW())
+         ON CONFLICT (room_id, user_id)
+         DO UPDATE SET
+            user_name = EXCLUDED.user_name,
+            user_avatar_url = EXCLUDED.user_avatar_url,
+            socket_id = EXCLUDED.socket_id,
+            is_muted = EXCLUDED.is_muted,
+            updated_at = NOW()`,
+        [
+          cleanRoomId,
+          identity.displayUserId,
+          String(req.body?.userName || user.display_name || user.email || 'Usuario').trim(),
+          String(req.body?.userAvatarUrl || user.avatar_url || '').trim(),
+          String(req.body?.socketId || '').trim(),
+          Boolean(req.body?.isMuted),
+        ],
+      )
+      const payload = await localVoiceParticipants(pool, cleanRoomId)
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.json({ participants: payload.map((row) => mapVoiceParticipant(row, profilesById)) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/voice/rooms/:roomId/leave', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await pool.query(
+        `DELETE FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1 AND lower(user_id) = $2`,
+        [normalizeId(req.params.roomId), identity.displayUserId],
+      )
+      res.json({ ok: true })
     } catch (error) {
       next(error)
     }
@@ -775,6 +1913,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
       const replyToId = String(req.body?.replyToId || '').trim() || null
+      const requestedId = validUuid(req.body?.id)
       if (!chatId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
@@ -782,10 +1921,20 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const identity = userIdentity(user)
       const senderId = identity.displayUserId
       const { rows } = await pool.query(
-        `INSERT INTO fallback_messages(chat_id, sender_id, content, content_type, media_url, media_size, reply_to_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO fallback_messages(id, chat_id, sender_id, content, content_type, media_url, media_size, reply_to_id)
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (id) DO UPDATE SET
+            chat_id = EXCLUDED.chat_id,
+            sender_id = EXCLUDED.sender_id,
+            content = EXCLUDED.content,
+            content_type = EXCLUDED.content_type,
+            media_url = EXCLUDED.media_url,
+            media_size = EXCLUDED.media_size,
+            reply_to_id = EXCLUDED.reply_to_id,
+            status = 'sent',
+            updated_at = NOW()
          RETURNING id::text, chat_id, sender_id, content, content_type, media_url, media_size, status, reply_to_id, created_at, updated_at`,
-        [chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
+        [requestedId, chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
       )
       res.status(201).json({ message: normalizeImportedRow(rows[0]) })
     } catch (error) {

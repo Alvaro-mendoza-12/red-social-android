@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import conectate.com.core.testing.TestRuntimeOverrides
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.LocalFallbackProfileResponse
 import conectate.com.data.model.User
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.repository.user.UserLocalStateStore
@@ -61,6 +63,7 @@ class UserRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val storageService: StorageService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val userDao: conectate.com.data.local.dao.UserDao,
     @ApplicationContext private val context: Context
 ) {
@@ -101,6 +104,122 @@ class UserRepository @Inject constructor(
 
     private fun buildDeterministicUsername(userId: String): String {
         return "usuario_${normalizePrivacyUserId(userId).take(8)}"
+    }
+
+    private fun JsonObject.stringValue(vararg keys: String): String? {
+        return keys.firstNotNullOfOrNull { key ->
+            runCatching {
+                this[key]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            }.getOrNull()
+        }
+    }
+
+    private fun JsonObject.intValue(vararg keys: String): Int? {
+        return keys.firstNotNullOfOrNull { key ->
+            runCatching {
+                this[key]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.trim()
+                    ?.toDoubleOrNull()
+                    ?.toInt()
+            }.getOrNull()
+        }
+    }
+
+    private fun JsonObject.booleanValue(vararg keys: String): Boolean? {
+        return keys.firstNotNullOfOrNull { key ->
+            runCatching {
+                when (this[key]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()) {
+                    "true", "1", "yes" -> true
+                    "false", "0", "no" -> false
+                    else -> null
+                }
+            }.getOrNull()
+        }
+    }
+
+    private fun sanitizeLocalFallbackAssetUrl(value: String?): String? {
+        val clean = sanitizeProfileText(value) ?: return null
+        return clean.takeUnless {
+            it.contains(".supabase.co/storage/", ignoreCase = true) ||
+                it.contains(".supabase.in/storage/", ignoreCase = true)
+        }
+    }
+
+    private fun mapLocalFallbackProfile(
+        response: LocalFallbackProfileResponse,
+        fallbackId: String,
+        fallbackEmail: String?
+    ): User? {
+        val profile = response.profile ?: return null
+        val normalizedId = normalizePrivacyUserId(
+            profile.stringValue("id", "user_id", "profile_id", "supabase_user_id")
+                ?: fallbackId
+        )
+        val email = sanitizeProfileText(profile.stringValue("email"))
+            ?: fallbackEmail?.trim()?.lowercase()
+            ?: authService.getCurrentUserEmail()?.trim()?.lowercase()
+            ?: ""
+        val displayName = sanitizeProfileText(
+            profile.stringValue("display_name", "displayName", "full_name", "name", "username")
+        ) ?: email.substringBefore("@").ifBlank { "Usuario" }
+
+        return applyLocalUserOverrides(
+            User(
+                id = normalizedId,
+                email = email,
+                username = sanitizeProfileText(profile.stringValue("username"))
+                    ?: slugifyUsername(displayName).ifBlank { buildDeterministicUsername(normalizedId) },
+                full_name = sanitizeProfileText(profile.stringValue("full_name", "fullName", "name")) ?: displayName,
+                display_name = displayName,
+                phone = sanitizeProfileText(profile.stringValue("phone", "phone_number")),
+                bio = sanitizeProfileText(profile.stringValue("bio", "about")),
+                avatar_url = sanitizeLocalFallbackAssetUrl(
+                    profile.stringValue("avatar_url", "avatarUrl", "photo_url", "profile_image", "picture", "image")
+                ),
+                cover_url = sanitizeLocalFallbackAssetUrl(profile.stringValue("cover_url", "coverUrl", "cover_image")),
+                country = sanitizeProfileText(profile.stringValue("country")),
+                city = sanitizeProfileText(profile.stringValue("city")),
+                status = sanitizeProfileText(profile.stringValue("status")),
+                followers_count = profile.intValue("followers_count", "follower_count", "followers") ?: response.stats.followers,
+                following_count = profile.intValue("following_count", "following") ?: response.stats.following,
+                post_count = profile.intValue("post_count", "posts_count", "posts") ?: response.stats.posts,
+                is_private = profile.booleanValue("is_private", "private") ?: false,
+                profile_visibility = sanitizeProfileText(profile.stringValue("profile_visibility")) ?: "everyone",
+                last_seen_visibility = sanitizeProfileText(profile.stringValue("last_seen_visibility")) ?: "everyone",
+                online_status_visibility = sanitizeProfileText(profile.stringValue("online_status_visibility")) ?: "everyone",
+                is_admin = profile.booleanValue("is_admin", "admin") ?: false,
+                voice_access_granted = profile.booleanValue("voice_access_granted") ?: false,
+                is_verified = profile.booleanValue("is_verified", "verified") ?: false,
+                privacy_policy_accepted = profile.booleanValue("privacy_policy_accepted") ?: true,
+                privacy_policy_accepted_at = sanitizeProfileText(profile.stringValue("privacy_policy_accepted_at")),
+                created_at = sanitizeProfileText(profile.stringValue("created_at")) ?: "",
+                updated_at = sanitizeProfileText(profile.stringValue("updated_at")) ?: ""
+            )
+        )
+    }
+
+    private suspend fun loadCurrentLocalFallbackProfile(): Result<User?> {
+        val token = authService.getAccessTokenAwait()
+            ?: return Result.failure(Exception("No access token"))
+        val fallbackId = authService.getCurrentUserId()
+            ?: return Result.failure(Exception("No user logged in"))
+        val fallbackEmail = authService.getCurrentUserEmail()
+
+        return localFallbackApiClient.loadCurrentProfile(token)
+            .map { response ->
+                val user = mapLocalFallbackProfile(response, fallbackId, fallbackEmail)
+                if (user != null) {
+                    userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(user))
+                    saveProfileLocally(user)
+                }
+                user
+            }
     }
 
     private suspend fun isUsernameAvailable(
@@ -370,6 +489,14 @@ class UserRepository @Inject constructor(
         TestRuntimeOverrides.currentUser(context)?.let { fakeUser ->
             return Result.success(fakeUser)
         }
+
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            return loadCurrentLocalFallbackProfile()
+                .mapCatching { user ->
+                    user ?: throw IllegalStateException("No se pudo cargar el perfil desde Ubuntu")
+                }
+        }
+
         var currentUserId = authService.getCurrentUserId()
             ?.let(::normalizePrivacyUserId)
             ?: return Result.failure(Exception("No user logged in"))
@@ -457,6 +584,27 @@ class UserRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
             var remoteLookupWasEmpty = false
             var remoteFailure: Throwable? = null
+
+            if (
+                authService.isLocalFallbackSession() &&
+                localFallbackApiClient.isConfigured &&
+                (currentUserId == null || normalizedUserId == currentUserId)
+            ) {
+                val localResult = loadCurrentLocalFallbackProfile()
+                localResult.onSuccess { localUser -> return Result.success(localUser) }
+
+                userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
+                    return Result.success(applyLocalUserOverrides(cachedUser))
+                }
+                getLocalProfile()?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }?.let { localUser ->
+                    return Result.success(localUser)
+                }
+
+                return Result.failure(
+                    localResult.exceptionOrNull()
+                        ?: Exception("No se pudo cargar el perfil desde Ubuntu")
+                )
+            }
 
             if (token != null) {
                 fetchRemoteUserById(normalizedUserId, token, currentUserId)
@@ -1167,6 +1315,41 @@ class UserRepository @Inject constructor(
                 )
             }
 
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val response = localFallbackApiClient.updateCurrentProfile(
+                    accessToken = token,
+                    displayName = request.display_name,
+                    bio = request.bio,
+                    country = request.country,
+                    city = request.city,
+                    status = request.status,
+                    avatarUrl = request.avatar_url,
+                    coverUrl = request.cover_url,
+                    isPrivate = request.is_private,
+                    profileVisibility = request.profile_visibility,
+                    lastSeenVisibility = request.last_seen_visibility,
+                    onlineStatusVisibility = request.online_status_visibility
+                )
+
+                response.onSuccess { profileResponse ->
+                    val updatedUser = mapLocalFallbackProfile(
+                        response = profileResponse,
+                        fallbackId = normalizedUserId,
+                        fallbackEmail = authService.getCurrentUserEmail()
+                    )
+                    if (updatedUser != null) {
+                        userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
+                        saveProfileLocally(updatedUser)
+                    }
+                    return Result.success(Unit)
+                }
+
+                return Result.failure(
+                    response.exceptionOrNull()
+                        ?: Exception("No se pudo actualizar el perfil en Ubuntu")
+                )
+            }
+
             // ✅ ENFORCE 7-DAY NAME CHANGE COOLDOWN
             if (request.display_name != null) {
                 // Get current user profile to check last_name_change
@@ -1387,7 +1570,7 @@ class UserRepository @Inject constructor(
 
             val allowedImageMimeTypes = setOf("image/jpeg", "image/png", "image/webp")
             val hintedMime = context.contentResolver.getType(uri)
-                ?.substringBefore("")
+                ?.substringBefore(";")
                 ?.trim()
                 ?.lowercase()
             val inferredMime = inferImageMimeType(bytes)
@@ -2372,6 +2555,10 @@ class UserRepository @Inject constructor(
      */
     suspend fun setOnlineStatus(userId: String, isOnline: Boolean): Result<Unit> {
         return try {
+            if (authService.isLocalFallbackModeEnabled()) {
+                android.util.Log.d("UserRepository", "Skipping Supabase online status in local fallback mode")
+                return Result.success(Unit)
+            }
             var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
             android.util.Log.d("UserRepository", "Setting online status for $userId to $isOnline")
@@ -2412,6 +2599,10 @@ class UserRepository @Inject constructor(
         accessToken: String
     ): Result<Unit> {
         return try {
+            if (authService.isLocalFallbackModeEnabled()) {
+                android.util.Log.d("UserRepository", "Skipping Supabase online status with token in local fallback mode")
+                return Result.success(Unit)
+            }
             var token = accessToken.trim()
             if (token.isBlank()) return Result.failure(Exception("No token"))
 
@@ -2450,6 +2641,11 @@ class UserRepository @Inject constructor(
     fun observeUserPresence(userId: String): Flow<User> = callbackFlow {
         val cleanUserId = userId.trim().lowercase()
         if (cleanUserId.isBlank()) {
+            close()
+            return@callbackFlow
+        }
+        if (authService.isLocalFallbackModeEnabled()) {
+            getUserById(cleanUserId).getOrNull()?.let { trySend(it) }
             close()
             return@callbackFlow
         }

@@ -647,7 +647,7 @@ class MomentRepository @Inject constructor(
     }
 
     private fun canonicalizeContentType(contentType: String?): String? {
-        val clean = contentType?.trim()?.lowercase()?.substringBefore("")?.trim().orEmpty()
+        val clean = contentType?.trim()?.lowercase()?.substringBefore(";")?.trim().orEmpty()
         if (clean.isBlank()) return null
         return when (clean) {
             "image/jpg" -> "image/jpeg"

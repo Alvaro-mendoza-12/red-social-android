@@ -205,8 +205,8 @@ export function RequireAuth({ children }: PropsWithChildren) {
   if (!configured) {
     return (
       <StatusView
-        title="Falta conectar Supabase"
-        description="Configura las variables VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en el archivo .env."
+        title="Falta conectar el backend"
+        description="Configura VITE_FALLBACK_API_URL en .env para usar tu servidor Ubuntu."
       />
     )
   }

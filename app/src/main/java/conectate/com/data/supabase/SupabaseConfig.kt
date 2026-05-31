@@ -47,9 +47,12 @@ class SupabaseConfig @Inject constructor(
     @Volatile
     private var lastRealtimeRestrictionLogMs: Long = 0L
 
-    val supabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
-    val supabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
-    val isConfigured: Boolean = supabaseUrl.startsWith("http") && supabaseAnonKey.isNotBlank()
+    private val rawSupabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
+    private val rawSupabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
+    val isLocalFallbackPrimary: Boolean = BuildConfig.FALLBACK_API_URL.trim().startsWith("http")
+    val supabaseUrl: String = if (isLocalFallbackPrimary) DISABLED_SUPABASE_URL else rawSupabaseUrl
+    val supabaseAnonKey: String = if (isLocalFallbackPrimary) DISABLED_SUPABASE_KEY else rawSupabaseAnonKey
+    val isConfigured: Boolean = !isLocalFallbackPrimary && rawSupabaseUrl.startsWith("http") && rawSupabaseAnonKey.isNotBlank()
 
     // URLs específicas para diferentes servicios
     val authUrl: String = "$supabaseUrl/auth/v1"
@@ -154,6 +157,11 @@ class SupabaseConfig @Inject constructor(
     }
 
     private suspend fun shouldSkipRealtimeConnection(reason: String): Boolean {
+        if (isLocalFallbackPrimary || !isConfigured) {
+            logRealtimePaused(reason, "Realtime de Supabase desactivado porque Ubuntu/Fallback API es el backend principal.")
+            return true
+        }
+
         val now = System.currentTimeMillis()
         if (now < realtimeDisabledUntilMs) {
             logRealtimePaused(reason, lastRealtimeRestrictionMessage)

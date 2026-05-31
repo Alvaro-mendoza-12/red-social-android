@@ -235,15 +235,55 @@ function registerStorageRoutes(app, { pool, authRequired }) {
   app.get('/v1/storage/objects', authRequired, async (req, res, next) => {
     try {
       const bucket = cleanBucketName(req.query?.bucket)
+      const prefix = normalizeObjectPath(req.query?.prefix || '', '') || ''
       const { rows } = await pool.query(
         `SELECT *
          FROM fallback_storage_objects
          WHERE ($1::text = '' OR bucket_id = $1)
+           AND ($2::text = '' OR name LIKE ($2 || '%'))
          ORDER BY updated_at DESC
          LIMIT 200`,
-        [bucket],
+        [bucket, prefix],
       )
       res.json({ objects: rows.map(mapObjectRow) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete(/^\/v1\/storage\/objects\/([^/]+)\/(.+)$/, authRequired, async (req, res, next) => {
+    try {
+      const bucket = cleanBucketName(req.params[0])
+      const objectPath = normalizeObjectPath(decodeURIComponent(req.params[1] || ''), '')
+      if (!bucket || !objectPath) return res.status(400).json({ error: 'INVALID_STORAGE_PATH' })
+
+      const { rows } = await pool.query(
+        `SELECT *
+         FROM fallback_storage_objects
+         WHERE bucket_id = $1 AND name = $2
+         LIMIT 1`,
+        [bucket, objectPath],
+      )
+      const row = rows[0]
+      if (!row) return res.status(404).json({ error: 'NOT_FOUND' })
+      if (row.owner_id && row.owner_id !== req.auth.sub) {
+        return res.status(403).json({ error: 'FORBIDDEN' })
+      }
+
+      await pool.query(
+        `DELETE FROM fallback_storage_objects
+         WHERE bucket_id = $1 AND name = $2`,
+        [bucket, objectPath],
+      )
+
+      const filePath = row.local_path || objectFilePath(bucket, objectPath)
+      try {
+        await fs.promises.unlink(filePath)
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+      }
+
+      res.json({ ok: true })
     } catch (error) {
       next(error)
     }

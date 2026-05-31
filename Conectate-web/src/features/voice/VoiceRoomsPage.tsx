@@ -11,6 +11,7 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { loadFallbackVoiceRooms } from '../../core/fallbackData'
 
 type VoiceRoom = {
   id: string
@@ -84,7 +85,7 @@ function mapRoom(row: GenericRow): VoiceRoom {
 }
 
 export function VoiceRoomsPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -99,6 +100,29 @@ export function VoiceRoomsPage() {
   const totalParticipants = rooms.reduce((sum, room) => sum + room.participantCount, 0)
 
   const loadRooms = useCallback(async (options?: { silent?: boolean }) => {
+    if (isFallbackSession) {
+      if (options?.silent) {
+        setSyncing(true)
+      } else {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        const response = await loadFallbackVoiceRooms()
+        const mapped = (response.rooms ?? response.items ?? []).map(mapRoom)
+        setRooms(mapped)
+        writeCachedValue(roomsCacheKey, mapped)
+      } catch (caught) {
+        if (!options?.silent) {
+          setError(friendlyError(caught, 'No se pudieron cargar las salas de voz desde Ubuntu'))
+        }
+      } finally {
+        setLoading(false)
+        setSyncing(false)
+      }
+      return
+    }
+
     if (!supabase) {
       setLoading(false)
       setError('Supabase no está configurado.')
@@ -157,7 +181,7 @@ export function VoiceRoomsPage() {
       setLoading(false)
       setSyncing(false)
     }
-  }, [])
+  }, [isFallbackSession])
 
   useEffect(() => {
     const cached = readCachedValue<VoiceRoom[]>(roomsCacheKey, 1000 * 60 * 60 * 8)
@@ -176,7 +200,7 @@ export function VoiceRoomsPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client) return
+    if (!client || isFallbackSession) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) {
@@ -196,7 +220,15 @@ export function VoiceRoomsPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadRooms])
+  }, [isFallbackSession, loadRooms])
+
+  useEffect(() => {
+    if (!isFallbackSession) return
+    const intervalId = window.setInterval(() => {
+      void loadRooms({ silent: true })
+    }, 7000)
+    return () => window.clearInterval(intervalId)
+  }, [isFallbackSession, loadRooms])
 
   if (loading) return <StatusView title="Cargando voz" description="Buscando salas..." />
   if (error && rooms.length === 0) return <StatusView title="Voz no disponible" description={error} />

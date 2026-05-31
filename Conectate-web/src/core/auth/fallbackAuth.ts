@@ -249,6 +249,48 @@ export async function signInWithFallbackAuth(email: string, password: string): P
   })
 }
 
+export async function signUpWithFallbackAuth(params: {
+  email: string
+  password: string
+  displayName: string
+}): Promise<User> {
+  if (!isFallbackAuthConfigured) {
+    throw new Error('El servidor Ubuntu no está configurado para esta web.')
+  }
+
+  const response = await fetch(`${fallbackApiUrl}/v1/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({
+      email: normalizeEmail(params.email),
+      password: params.password,
+      displayName: params.displayName.trim(),
+    }),
+  })
+  const payload = await parseFallbackResponse(response)
+
+  if (!response.ok) {
+    const code = String(payload.error || payload.message || '').trim()
+    if (code === 'EMAIL_ALREADY_EXISTS') {
+      throw new Error('Ese correo ya existe en el servidor Ubuntu.')
+    }
+    if (code === 'PASSWORD_TOO_SHORT') {
+      throw new Error('La contraseña debe tener al menos 8 caracteres.')
+    }
+    throw new Error(code || 'No se pudo crear la cuenta en el servidor Ubuntu.')
+  }
+
+  return persistFallbackSession(payload as {
+    accessToken?: string
+    tokenType?: string
+    expiresIn?: string | number
+    user?: FallbackUser
+  })
+}
+
 export function isMigratedPasswordResetRequired(error: unknown): error is MigratedPasswordResetRequiredError {
   return error instanceof MigratedPasswordResetRequiredError
 }
@@ -284,6 +326,40 @@ export async function changeFallbackPassword(currentPassword: string, newPasswor
     method: 'POST',
     body: JSON.stringify({
       currentPassword,
+      newPassword,
+    }),
+  })
+
+  return persistFallbackSession(payload)
+}
+
+export async function requestFallbackPasswordReset(email: string): Promise<{
+  ok: boolean
+  delivery?: string
+  resetToken?: string
+  expiresInMinutes?: number
+}> {
+  return fallbackApiJson('/v1/auth/password-reset/request', {
+    method: 'POST',
+    auth: false,
+    body: JSON.stringify({ email: normalizeEmail(email) }),
+  })
+}
+
+export async function confirmFallbackPasswordReset(
+  resetToken: string,
+  newPassword: string,
+): Promise<User> {
+  const payload = await fallbackApiJson<{
+    accessToken?: string
+    tokenType?: string
+    expiresIn?: string | number
+    user?: FallbackUser
+  }>('/v1/auth/password-reset/confirm', {
+    method: 'POST',
+    auth: false,
+    body: JSON.stringify({
+      resetToken,
       newPassword,
     }),
   })
