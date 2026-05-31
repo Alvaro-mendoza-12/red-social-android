@@ -107,6 +107,11 @@ export type FallbackPublicProfileResponse = {
   }
 }
 
+export type FallbackNotificationsResponse = {
+  items: GenericRow[]
+  unreadCount: number
+}
+
 export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse> {
   return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
 }
@@ -170,6 +175,29 @@ export async function submitFallbackUserReport(input: {
   return fallbackApiJson<{ report: GenericRow }>('/v1/data/reports/users', {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+export async function loadFallbackNotifications(limit = 200): Promise<FallbackNotificationsResponse> {
+  return fallbackApiJson<FallbackNotificationsResponse>(
+    `/v1/data/notifications?limit=${encodeURIComponent(String(limit))}`,
+  )
+}
+
+export async function markFallbackNotificationRead(notificationId: string): Promise<{ ok: boolean }> {
+  return fallbackApiJson<{ ok: boolean }>(
+    `/v1/data/notifications/${encodeURIComponent(notificationId)}/read`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    },
+  )
+}
+
+export async function markAllFallbackNotificationsRead(): Promise<{ ok: boolean }> {
+  return fallbackApiJson<{ ok: boolean }>('/v1/data/notifications/read-all', {
+    method: 'POST',
+    body: JSON.stringify({}),
   })
 }
 

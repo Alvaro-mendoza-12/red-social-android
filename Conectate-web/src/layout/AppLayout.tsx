@@ -17,6 +17,12 @@ import {
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
 import { changeFallbackPassword } from '../core/auth/fallbackAuth'
+import {
+  loadFallbackMessagesInbox,
+  loadFallbackNotifications,
+  markAllFallbackNotificationsRead,
+  markFallbackNotificationRead,
+} from '../core/fallbackData'
 import { useWebPreferences } from '../core/webPreferences'
 import { sendCallResponse, type CallInvitePayload } from '../features/calls/callRealtime'
 import '../features/calls/incomingCallOverlay.css'
@@ -328,6 +334,29 @@ export function AppLayout() {
   const [savingMigrationPassword, setSavingMigrationPassword] = useState(false)
 
   const loadShellCounters = useCallback(async () => {
+    if (isFallbackSession && user) {
+      try {
+        const [notifications, inbox] = await Promise.all([
+          loadFallbackNotifications(500),
+          loadFallbackMessagesInbox('chats'),
+        ])
+        setNotificationUnreadCount(
+          Number.isFinite(Number(notifications.unreadCount))
+            ? Number(notifications.unreadCount)
+            : (notifications.items ?? []).filter((row) => !Boolean(row.is_read ?? row.isRead)).length,
+        )
+        setMessageUnreadCount(
+          (inbox.items ?? []).reduce(
+            (total, item) => total + Math.max(0, Number(item.unreadCount) || 0),
+            0,
+          ),
+        )
+      } catch (caught) {
+        console.warn('loadShellCounters fallback failed', caught)
+      }
+      return
+    }
+
     const client = supabase
     if (!client || !user) {
       setMessageUnreadCount(0)
@@ -407,7 +436,7 @@ export function AppLayout() {
       reportSupabaseServiceRestrictionIfPresent('shell-counters', caught)
       console.warn('loadShellCounters failed', caught)
     }
-  }, [user])
+  }, [isFallbackSession, user])
 
   useEffect(() => {
     void loadShellCounters()
@@ -415,7 +444,7 @@ export function AppLayout() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !user) return
+    if (isFallbackSession || !client || !user) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) {
@@ -445,7 +474,7 @@ export function AppLayout() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadShellCounters, user])
+  }, [isFallbackSession, loadShellCounters, user])
 
   useEffect(() => {
     return onSupabaseRestrictionChanged(setSupabaseRestriction)
@@ -536,6 +565,21 @@ export function AppLayout() {
 
   const executeDeferredMutation = useCallback(
     async (mutation: DeferredMutation) => {
+      if (isFallbackSession && user) {
+        if (mutation.type === 'notification_mark_read') {
+          const notificationId = String((mutation.payload as { notificationId?: string }).notificationId ?? '')
+          if (notificationId) {
+            await markFallbackNotificationRead(notificationId)
+          }
+          return
+        }
+
+        if (mutation.type === 'notification_mark_all') {
+          await markAllFallbackNotificationsRead()
+          return
+        }
+      }
+
       const client = supabase
       if (!client || !user) {
         throw new Error('AUTH_REQUIRED_FOR_DEFERRED_MUTATION')
@@ -610,7 +654,7 @@ export function AppLayout() {
         if (participantError) throw participantError
       }
     },
-    [user],
+    [isFallbackSession, user],
   )
 
   useEffect(() => {
@@ -637,7 +681,7 @@ export function AppLayout() {
   }, [])
 
   useEffect(() => {
-    if (!isOnline || !user || !supabase) return
+    if (!isOnline || !user || (!isFallbackSession && !supabase)) return
     let isCancelled = false
 
     const flush = async () => {
@@ -660,7 +704,7 @@ export function AppLayout() {
       isCancelled = true
       clearInterval(intervalId)
     }
-  }, [executeDeferredMutation, isOnline, loadShellCounters, user])
+  }, [executeDeferredMutation, isFallbackSession, isOnline, loadShellCounters, user])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

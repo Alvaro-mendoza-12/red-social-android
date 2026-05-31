@@ -490,6 +490,111 @@ async function localReports(pool, limit = 10_000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localNotifications(pool, limit = 10_000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        recipient_id,
+        actor_id,
+        actor_name,
+        actor_avatar_url,
+        type,
+        target_id,
+        target_type,
+        content,
+        is_read,
+        extra_data,
+        created_at,
+        updated_at,
+        TRUE AS local_only
+     FROM fallback_notifications
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+function notificationRecipientId(row) {
+  return normalizeId(textOf(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], ''))
+}
+
+function normalizeNotification(row, profilesById) {
+  const actorId = normalizeId(textOf(row, ['actor_id', 'sender_id', 'from_user_id'], ''))
+  const actorProfile = actorId ? profilesById.get(actorId) : null
+  const extraData = row?.extra_data && typeof row.extra_data === 'object' ? row.extra_data : {}
+  return {
+    ...row,
+    id: textOf(row, ['id'], `${notificationRecipientId(row)}-${textOf(row, ['created_at'], '')}-${actorId}`),
+    recipient_id: notificationRecipientId(row),
+    actor_id: actorId,
+    actor_name: textOf(row, ['actor_name', 'sender_name'], '') || profileName(actorProfile, actorId || 'Sistema'),
+    actor_avatar_url: textOf(row, ['actor_avatar_url', 'sender_avatar_url'], '') || profileAvatar(actorProfile),
+    type: textOf(row, ['type', 'notification_type'], 'activity'),
+    target_id: normalizeId(textOf(row, ['target_id', 'post_id', 'video_id', 'chat_id', 'group_id', 'community_id'], '')),
+    target_type: textOf(row, ['target_type'], ''),
+    content: textOf(row, ['content', 'message', 'body', 'title'], ''),
+    is_read: boolOf(row, ['is_read', 'read'], false),
+    extra_data: extraData,
+    created_at: textOf(row, ['created_at'], new Date().toISOString()),
+  }
+}
+
+async function createLocalNotification(pool, input) {
+  const recipientId = normalizeId(input?.recipientId || input?.recipient_id || '')
+  const actorId = normalizeId(input?.actorId || input?.actor_id || '')
+  const type = cleanText(input?.type || 'activity', 80)
+  if (!recipientId || !type || recipientId === actorId) return null
+
+  const targetId = cleanText(input?.targetId || input?.target_id, 160) || null
+  const targetType = cleanText(input?.targetType || input?.target_type, 80) || null
+  const content = cleanText(input?.content, 700) || null
+  const actorName = cleanText(input?.actorName || input?.actor_name, 160) || null
+  const actorAvatarUrl = cleanText(input?.actorAvatarUrl || input?.actor_avatar_url, 700) || null
+  const extraData = input?.extraData && typeof input.extraData === 'object' ? input.extraData : {}
+
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_notifications(
+        recipient_id,
+        actor_id,
+        actor_name,
+        actor_avatar_url,
+        type,
+        target_id,
+        target_type,
+        content,
+        extra_data
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+     RETURNING id::text,
+       recipient_id,
+       actor_id,
+       actor_name,
+       actor_avatar_url,
+       type,
+       target_id,
+       target_type,
+       content,
+       is_read,
+       extra_data,
+       created_at,
+       updated_at`,
+    [
+      recipientId,
+      actorId || null,
+      actorName,
+      actorAvatarUrl,
+      type,
+      targetId,
+      targetType,
+      content,
+      JSON.stringify(extraData),
+    ],
+  )
+  return normalizeImportedRow(rows[0])
+}
+
 async function localProfileOverride(pool, userId) {
   const { rows } = await pool.query(
     `SELECT profile
@@ -1248,6 +1353,47 @@ async function ensureLocalDataTables(pool) {
      ON fallback_reports(lower(reported_user_id), created_at DESC)`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      recipient_id TEXT NOT NULL,
+      actor_id TEXT,
+      actor_name TEXT,
+      actor_avatar_url TEXT,
+      type TEXT NOT NULL DEFAULT 'activity',
+      target_id TEXT,
+      target_type TEXT,
+      content TEXT,
+      is_read BOOLEAN NOT NULL DEFAULT FALSE,
+      extra_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS recipient_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS actor_id TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS actor_name TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS actor_avatar_url TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'activity'`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS target_id TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS target_type TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS content TEXT`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS extra_data JSONB NOT NULL DEFAULT '{}'::jsonb`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_notifications ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_notifications_recipient
+     ON fallback_notifications(lower(recipient_id), is_read, created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_notifications_target
+     ON fallback_notifications(target_type, lower(target_id), created_at DESC)`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_room_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
@@ -1658,6 +1804,16 @@ function registerDataRoutes(app, { pool, authRequired }) {
          ON CONFLICT (follower_id, following_id) DO NOTHING`,
         [identity.displayUserId, profileId],
       )
+      await createLocalNotification(pool, {
+        recipientId: profileId,
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: 'follow',
+        targetId: identity.displayUserId,
+        targetType: 'profile',
+        content: `${user.display_name || user.email || 'Alguien'} empezó a seguirte.`,
+      })
       res.json({ ok: true, isFollowing: true })
     } catch (error) {
       next(error)
@@ -1721,6 +1877,102 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ],
       )
       res.status(201).json({ report: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/notifications', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 200, 500))
+      const unreadOnly = String(req.query.unreadOnly || req.query.unread_only || '').toLowerCase() === 'true'
+      const [profiles, importedNotifications, fallbackNotifications] = await Promise.all([
+        allPublicProfiles(pool),
+        importedRows(pool, 'notifications', 20_000),
+        localNotifications(pool, 20_000),
+      ])
+      const profilesById = indexProfiles(profiles)
+      const items = sortByDateDesc(
+        [...importedNotifications, ...fallbackNotifications]
+          .filter((row) => rowMatchesAny(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], identity.ids))
+          .map((row) => normalizeNotification(row, profilesById))
+          .filter((row) => !unreadOnly || !row.is_read),
+        ['created_at', 'updated_at'],
+      ).slice(0, limit)
+
+      res.json({
+        items,
+        unreadCount: items.filter((row) => !row.is_read).length,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/notifications', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const recipientId = normalizeId(req.body?.recipientId || req.body?.recipient_id || '')
+      if (!recipientId) return res.status(400).json({ error: 'RECIPIENT_ID_REQUIRED' })
+
+      const notification = await createLocalNotification(pool, {
+        recipientId,
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: req.body?.type,
+        targetId: req.body?.targetId || req.body?.target_id,
+        targetType: req.body?.targetType || req.body?.target_type,
+        content: req.body?.content,
+        extraData: req.body?.extraData || req.body?.extra_data,
+      })
+      if (!notification) return res.status(400).json({ error: 'NOTIFICATION_NOT_CREATED' })
+      res.status(201).json({ notification })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/notifications/:notificationId/read', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const notificationId = validUuid(req.params.notificationId)
+      if (!notificationId) return res.status(400).json({ error: 'NOTIFICATION_ID_REQUIRED' })
+
+      await pool.query(
+        `UPDATE fallback_notifications
+         SET is_read = TRUE, updated_at = NOW()
+         WHERE id = $1
+           AND lower(recipient_id) = ANY($2::text[])`,
+        [notificationId, identity.values],
+      )
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/notifications/read-all', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await pool.query(
+        `UPDATE fallback_notifications
+         SET is_read = TRUE, updated_at = NOW()
+         WHERE lower(recipient_id) = ANY($1::text[])
+           AND is_read = FALSE`,
+        [identity.values],
+      )
+      res.json({ ok: true })
     } catch (error) {
       next(error)
     }
@@ -1979,6 +2231,17 @@ function registerDataRoutes(app, { pool, authRequired }) {
         [postId, identity.displayUserId, content, parentId, mediaUrl, mediaType],
       )
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      await createLocalNotification(pool, {
+        recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: 'comment_post',
+        targetId: postId,
+        targetType: 'post',
+        content: content || 'Comentó tu publicación.',
+        extraData: { post_id: postId, comment_id: textOf(rows[0], ['id'], '') },
+      })
       res.status(201).json({ comment: enrichPostComment(normalizeImportedRow(rows[0]), profilesById) })
     } catch (error) {
       next(error)
@@ -2025,6 +2288,17 @@ function registerDataRoutes(app, { pool, authRequired }) {
          DO UPDATE SET reaction_type = EXCLUDED.reaction_type, updated_at = NOW()`,
         [postId, identity.displayUserId, reactionType],
       )
+      await createLocalNotification(pool, {
+        recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: 'like_post',
+        targetId: postId,
+        targetType: 'post',
+        content: `${user.display_name || user.email || 'Alguien'} reaccionó a tu publicación.`,
+        extraData: { post_id: postId, reaction_type: reactionType },
+      })
 
       const payload = await loadPostDetailPayload(pool, user, postId)
       res.json({ ok: true, post: payload?.post || existing.post })
@@ -2069,6 +2343,17 @@ function registerDataRoutes(app, { pool, authRequired }) {
          ON CONFLICT (user_id, post_id, content_type) DO NOTHING`,
         [identity.displayUserId, postId],
       )
+      await createLocalNotification(pool, {
+        recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: 'share_post',
+        targetId: postId,
+        targetType: 'post',
+        content: `${user.display_name || user.email || 'Alguien'} compartió tu publicación.`,
+        extraData: { post_id: postId },
+      })
       const payload = await loadPostDetailPayload(pool, user, postId)
       res.status(201).json({ ok: true, post: payload?.post || existing.post })
     } catch (error) {
@@ -2518,6 +2803,27 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ...(await importedRows(pool, 'profiles', 5000)),
         ...(await fallbackUserProfileRows(pool, 5000)),
       ])
+      await Promise.all(
+        (existingRoom.participants || [])
+          .map((participant) => normalizeId(participant.id))
+          .filter((participantId) => participantId && !identity.ids.has(participantId))
+          .map((participantId) =>
+            createLocalNotification(pool, {
+              recipientId: participantId,
+              actorId: identity.displayUserId,
+              actorName: user.display_name || user.email || 'Usuario',
+              actorAvatarUrl: user.avatar_url || '',
+              type: 'message',
+              targetId: roomId,
+              targetType: config.kind,
+              content: content || previewFromMessage({ content_type: contentType }),
+              extraData: {
+                [`${config.kind}_id`]: roomId,
+                message_id: textOf(rows[0], ['id'], ''),
+              },
+            }),
+          ),
+      )
       res.status(201).json({ message: enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById) })
     } catch (error) {
       next(error)
@@ -2853,6 +3159,34 @@ function registerDataRoutes(app, { pool, authRequired }) {
             updated_at = NOW()
          RETURNING id::text, chat_id, sender_id, content, content_type, media_url, media_size, status, reply_to_id, created_at, updated_at`,
         [requestedId, chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
+      )
+      const [chats, participants] = await Promise.all([
+        importedRows(pool, 'chats', 5000),
+        importedRows(pool, 'chat_participants', 10_000),
+      ])
+      const chat = chats.find((row) => normalizeId(textOf(row, ['id'], '')) === chatId)
+      const recipientIds = new Set([
+        ...participants
+          .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId)
+          .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
+        ...arrayOf(chat || {}, ['participants']).map(normalizeId),
+      ])
+      await Promise.all(
+        Array.from(recipientIds)
+          .filter((recipientId) => recipientId && !identity.ids.has(recipientId))
+          .map((recipientId) =>
+            createLocalNotification(pool, {
+              recipientId,
+              actorId: identity.displayUserId,
+              actorName: user.display_name || user.email || 'Usuario',
+              actorAvatarUrl: user.avatar_url || '',
+              type: 'message',
+              targetId: chatId,
+              targetType: 'chat',
+              content: content || previewFromMessage({ content_type: contentType }),
+              extraData: { chat_id: chatId, message_id: textOf(rows[0], ['id'], '') },
+            }),
+          ),
       )
       res.status(201).json({ message: normalizeImportedRow(rows[0]) })
     } catch (error) {

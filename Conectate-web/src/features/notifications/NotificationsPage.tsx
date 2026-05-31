@@ -15,6 +15,12 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import {
+  loadFallbackNotifications,
+  markAllFallbackNotificationsRead,
+  markFallbackNotificationRead,
+} from '../../core/fallbackData'
 
 type NotificationItem = {
   id: string
@@ -206,6 +212,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
 export function NotificationsPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const isUsingFallback = Boolean(readFallbackSession())
   const [items, setItems] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -252,13 +259,24 @@ export function NotificationsPage() {
   }, [activeFilter, normalizedQuery])
 
   const loadNotifications = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
+      if (isUsingFallback) {
+        const payload = await loadFallbackNotifications(200)
+        setItems(((payload.items ?? []) as GenericRow[]).map(mapNotification))
+        return
+      }
+
+      if (!supabase) {
+        setItems([])
+        return
+      }
+
       const { data, error: queryError } = await supabase
         .from('notifications')
         .select('*')
@@ -277,7 +295,7 @@ export function NotificationsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [isUsingFallback, user])
 
   useEffect(() => {
     void loadNotifications()
@@ -285,7 +303,7 @@ export function NotificationsPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !user) return
+    if (isUsingFallback || !client || !user) return
     const channel = client
       .channel('web-notifications-live')
       .on(
@@ -299,11 +317,22 @@ export function NotificationsPage() {
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadNotifications, user])
+  }, [isUsingFallback, loadNotifications, user])
 
   async function markNotificationsReadRemote(notificationIds: string[], markAll: boolean): Promise<void> {
-    if (!supabase || !user) {
+    if (!user) {
       throw new Error('AUTH_REQUIRED')
+    }
+    if (isUsingFallback) {
+      if (markAll) {
+        await markAllFallbackNotificationsRead()
+        return
+      }
+      await Promise.all(notificationIds.map((notificationId) => markFallbackNotificationRead(notificationId)))
+      return
+    }
+    if (!supabase) {
+      throw new Error('SUPABASE_NOT_CONFIGURED')
     }
     const client = supabase
 
@@ -347,7 +376,7 @@ export function NotificationsPage() {
   }
 
   async function markAsRead(notificationId: string, silent = false): Promise<boolean> {
-    if (!supabase || !user) return false
+    if (!user || (!isUsingFallback && !supabase)) return false
     if (!notificationId.trim()) return false
 
     setItems((prev) => prev.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item)))
@@ -384,7 +413,7 @@ export function NotificationsPage() {
   }
 
   async function markAllAsRead() {
-    if (!supabase || !user) return
+    if (!user || (!isUsingFallback && !supabase)) return
     const previous = items
     setItems((prev) => prev.map((item) => ({ ...item, isRead: true })))
     setActionMessage(null)
@@ -412,7 +441,7 @@ export function NotificationsPage() {
   }
 
   async function markVisibleAsRead() {
-    if (!supabase || !user || markingVisible) return
+    if (!user || (!isUsingFallback && !supabase) || markingVisible) return
     const unreadIds = filteredItems.filter((item) => !item.isRead).map((item) => item.id)
     if (unreadIds.length === 0) return
 
@@ -466,7 +495,7 @@ export function NotificationsPage() {
     }
   }
 
-  if (!supabase) {
+  if (!isUsingFallback && !supabase) {
     return <StatusView title="Supabase no configurado" description="Configura .env para usar notificaciones." />
   }
   if (loading) return <StatusView title="Cargando notificaciones" description="Espera un momento..." />
