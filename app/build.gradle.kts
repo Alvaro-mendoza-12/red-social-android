@@ -50,8 +50,8 @@ android {
             val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
             val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
             val realDebridToken = props.getProperty("REAL_DEBRID_TOKEN") ?: ""
-            val fallbackApiUrl = props.getProperty("FALLBACK_API_URL")
-                ?: props.getProperty("LOCAL_FALLBACK_API_URL")
+            val fallbackApiUrl = props.getNonBlank("FALLBACK_API_URL")
+                ?: props.getNonBlank("LOCAL_FALLBACK_API_URL")
                 ?: "https://celtic-poise-omission.ngrok-free.dev"
             buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
             buildConfigField("String", "SUPABASE_ANON_KEY", supabaseAnon.asBuildConfigString())
