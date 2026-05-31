@@ -4,6 +4,8 @@ import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { searchFallbackProfiles, submitFallbackUserReport } from '../../core/fallbackData'
 
 type ProfileCard = {
   id: string
@@ -30,11 +32,26 @@ export function SearchPage() {
   const [reportReasonById, setReportReasonById] = useState<Record<string, string>>({})
   const [reportDetailsById, setReportDetailsById] = useState<Record<string, string>>({})
   const [reportingById, setReportingById] = useState<Record<string, boolean>>({})
+  const useFallback = Boolean(readFallbackSession())
 
   useEffect(() => {
     async function loadProfiles() {
+      if (useFallback) {
+        setLoading(true)
+        setError(null)
+        try {
+          const response = await searchFallbackProfiles('', 120)
+          setItems(response.items.map(mapProfile))
+        } catch (caught) {
+          setError(friendlyError(caught, 'No se pudo cargar perfiles desde Ubuntu'))
+        } finally {
+          setLoading(false)
+        }
+        return
+      }
+
       if (!supabase) {
-        setError('Supabase no está configurado.')
+        setError('No hay servidor Ubuntu ni Supabase configurado para búsqueda.')
         setLoading(false)
         return
       }
@@ -53,7 +70,7 @@ export function SearchPage() {
     }
 
     void loadProfiles()
-  }, [])
+  }, [useFallback])
 
   const filtered = useMemo(() => {
     const clean = query.trim().toLowerCase()
@@ -68,7 +85,7 @@ export function SearchPage() {
   }, [items, query])
 
   async function submitUserReport(profile: ProfileCard) {
-    if (!supabase || !user) return
+    if (!user) return
     if (profile.id === user.id) {
       setError('No puedes reportarte a ti mismo.')
       return
@@ -83,6 +100,19 @@ export function SearchPage() {
     setError(null)
     try {
       const reporterName = (user.email ?? 'Usuario').split('@')[0]
+      if (useFallback) {
+        await submitFallbackUserReport({
+          reportedUserId: profile.id,
+          reportedUserName: profile.name,
+          reason,
+          description: details || null,
+        })
+        setReportReasonById((current) => ({ ...current, [profile.id]: '' }))
+        setReportDetailsById((current) => ({ ...current, [profile.id]: '' }))
+        return
+      }
+
+      if (!supabase) throw new Error('No hay Supabase configurado para enviar el reporte.')
       const rpcResult = await supabase.rpc('secure_submit_report', {
         p_reported_user_id: profile.id,
         p_reported_user_name: profile.name,

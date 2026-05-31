@@ -91,6 +91,22 @@ export type FallbackStorageObject = {
   updatedAt: string
 }
 
+export type FallbackProfilesResponse = {
+  items: GenericRow[]
+}
+
+export type FallbackPublicProfileResponse = {
+  profile: GenericRow
+  posts: GenericRow[]
+  isFollowing: boolean
+  stats: {
+    posts: number
+    followers: number
+    following: number
+    reports: number
+  }
+}
+
 export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse> {
   return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
 }
@@ -110,6 +126,49 @@ export async function updateFallbackProfileMe(input: {
 }): Promise<FallbackProfileMeResponse> {
   return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me', {
     method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function searchFallbackProfiles(query = '', limit = 120): Promise<FallbackProfilesResponse> {
+  const params = new URLSearchParams()
+  if (query.trim()) params.set('q', query.trim())
+  params.set('limit', String(limit))
+  return fallbackApiJson<FallbackProfilesResponse>(`/v1/data/profiles/search?${params.toString()}`)
+}
+
+export async function loadFallbackPublicProfile(profileId: string): Promise<FallbackPublicProfileResponse> {
+  return fallbackApiJson<FallbackPublicProfileResponse>(
+    `/v1/data/profiles/${encodeURIComponent(profileId)}`,
+  )
+}
+
+export async function setFallbackProfileFollow(
+  profileId: string,
+  shouldFollow: boolean,
+): Promise<{ ok: boolean; isFollowing: boolean }> {
+  return fallbackApiJson<{ ok: boolean; isFollowing: boolean }>(
+    `/v1/data/profiles/${encodeURIComponent(profileId)}/follow`,
+    {
+      method: shouldFollow ? 'POST' : 'DELETE',
+      body: shouldFollow ? JSON.stringify({}) : undefined,
+    },
+  )
+}
+
+export async function loadFallbackFollows(tab: 'following' | 'followers'): Promise<FallbackProfilesResponse> {
+  return fallbackApiJson<FallbackProfilesResponse>(`/v1/data/follows?tab=${encodeURIComponent(tab)}`)
+}
+
+export async function submitFallbackUserReport(input: {
+  reportedUserId: string
+  reportedUserName?: string | null
+  reason: string
+  description?: string | null
+  evidenceUrl?: string | null
+}): Promise<{ report: GenericRow }> {
+  return fallbackApiJson<{ report: GenericRow }>('/v1/data/reports/users', {
+    method: 'POST',
     body: JSON.stringify(input),
   })
 }

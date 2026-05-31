@@ -450,6 +450,46 @@ async function fallbackUserProfileRows(pool, limit = 5000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localFollows(pool, limit = 10_000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        follower_id,
+        following_id,
+        created_at,
+        TRUE AS local_only
+     FROM fallback_follows
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localReports(pool, limit = 10_000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        reporter_id,
+        reporter_name,
+        reported_user_id,
+        reported_user_name,
+        reason,
+        description,
+        evidence_url,
+        status,
+        created_at,
+        TRUE AS local_only
+     FROM fallback_reports
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
 async function localProfileOverride(pool, userId) {
   const { rows } = await pool.query(
     `SELECT profile
@@ -459,6 +499,76 @@ async function localProfileOverride(pool, userId) {
     [userId],
   )
   return normalizeImportedRow(rows[0]?.profile || {})
+}
+
+function normalizeProfileForPublic(row, fallbackId = '') {
+  const id = profileId(row) || normalizeId(fallbackId)
+  return {
+    ...row,
+    id,
+    display_name: profileName(row),
+    full_name: textOf(row, ['full_name'], profileName(row)),
+    username: textOf(row, ['username', 'handle'], ''),
+    bio: textOf(row, ['bio', 'description', 'about'], ''),
+    avatar_url: profileAvatar(row),
+    cover_url: textOf(row, ['cover_url', 'banner_url'], ''),
+    is_private: boolOf(row, ['is_private', 'private'], false),
+    created_at: textOf(row, ['created_at'], ''),
+    updated_at: textOf(row, ['updated_at'], textOf(row, ['created_at'], '')),
+  }
+}
+
+async function allPublicProfiles(pool) {
+  const [importedProfiles, fallbackProfiles] = await Promise.all([
+    importedRows(pool, 'profiles', 10_000),
+    fallbackUserProfileRows(pool, 10_000),
+  ])
+  const byId = new Map()
+
+  for (const row of importedProfiles) {
+    const profile = normalizeProfileForPublic(row)
+    if (profile.id && !byId.has(profile.id)) byId.set(profile.id, profile)
+  }
+
+  for (const row of fallbackProfiles) {
+    const profile = normalizeProfileForPublic(row)
+    if (!profile.id) continue
+    const existing = byId.get(profile.id) || {}
+    byId.set(profile.id, normalizeProfileForPublic({ ...existing, ...profile }, profile.id))
+    const supabaseId = normalizeId(profile.supabase_user_id)
+    if (supabaseId && !byId.has(supabaseId)) {
+      byId.set(supabaseId, normalizeProfileForPublic({ ...existing, ...profile, id: supabaseId }, supabaseId))
+    }
+  }
+
+  return Array.from(byId.values())
+}
+
+function profileMatchesQuery(profile, query) {
+  if (!query) return true
+  const haystack = [
+    profile.id,
+    profile.email,
+    profile.display_name,
+    profile.full_name,
+    profile.username,
+    profile.bio,
+  ].map((entry) => String(entry || '').toLowerCase()).join(' ')
+  return haystack.includes(query)
+}
+
+function followMatches(row, followerIds, followingIds) {
+  const follower = normalizeId(textOf(row, ['follower_id', 'user_id'], ''))
+  const following = normalizeId(textOf(row, ['following_id', 'target_user_id'], ''))
+  return follower && following && followerIds.has(follower) && followingIds.has(following)
+}
+
+async function combinedFollows(pool) {
+  const [imported, local] = await Promise.all([
+    importedRows(pool, 'follows', 20_000),
+    localFollows(pool, 20_000),
+  ])
+  return [...imported, ...local]
 }
 
 async function getCurrentUser(pool, req) {
@@ -1058,6 +1168,65 @@ async function ensureLocalDataTables(pool) {
      ON fallback_shares(content_type, lower(post_id), created_at DESC)`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_follows (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      follower_id TEXT NOT NULL,
+      following_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (follower_id, following_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_follows ADD COLUMN IF NOT EXISTS follower_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_follows ADD COLUMN IF NOT EXISTS following_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_follows ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_follows_follower
+     ON fallback_follows(lower(follower_id), created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_follows_following
+     ON fallback_follows(lower(following_id), created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_reports (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      reporter_id TEXT NOT NULL,
+      reporter_name TEXT NOT NULL DEFAULT 'Usuario',
+      reported_user_id TEXT NOT NULL,
+      reported_user_name TEXT NOT NULL DEFAULT 'Usuario',
+      reason TEXT NOT NULL,
+      description TEXT,
+      evidence_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pendiente',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS reporter_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS reporter_name TEXT NOT NULL DEFAULT 'Usuario'`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS reported_user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS reported_user_name TEXT NOT NULL DEFAULT 'Usuario'`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'otro'`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS evidence_url TEXT`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pendiente'`,
+    `ALTER TABLE fallback_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_reports_reporter
+     ON fallback_reports(lower(reporter_id), created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_reports_reported
+     ON fallback_reports(lower(reported_user_id), created_at DESC)`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_room_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
@@ -1251,16 +1420,18 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
       const identity = userIdentity(user)
-      const [profiles, importedPosts, fallbackPosts, videos, chats, follows, reports] = await Promise.all([
+      const [profiles, importedPosts, fallbackPosts, videos, chats, follows, importedReports, localReports] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         importedRows(pool, 'posts', 5000),
         localPosts(pool, 5000),
         importedRows(pool, 'videos', 5000),
         importedRows(pool, 'chats', 5000),
-        importedRows(pool, 'follows', 5000),
+        combinedFollows(pool),
         importedRows(pool, 'reports', 5000),
+        localReports(pool, 5000),
       ])
       const posts = [...importedPosts, ...fallbackPosts]
+      const reports = [...importedReports, ...localReports]
 
       const profile =
         profiles.find((row) => rowMatchesAny(row, ['id', 'user_id', 'profile_id', 'supabase_user_id'], identity.ids)) ||
@@ -1333,6 +1504,202 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const refreshedUser = { ...user, display_name: nextDisplayName || user.display_name, avatar_url: nextAvatarUrl || user.avatar_url }
       const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
       res.json({ profile: current, stats: {} })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/profiles/search', authRequired, async (req, res, next) => {
+    try {
+      const query = cleanText(req.query.q || req.query.query || '', 120).toLowerCase()
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 120, 250))
+      const profiles = await allPublicProfiles(pool)
+      const items = profiles
+        .filter((profile) => profileMatchesQuery(profile, query))
+        .sort((a, b) => toMillis(b.updated_at || b.created_at) - toMillis(a.updated_at || a.created_at))
+        .slice(0, limit)
+      res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/profiles/:profileId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const [profiles, importedPosts, fallbackPosts, follows, importedReports, fallbackReports] = await Promise.all([
+        allPublicProfiles(pool),
+        importedRows(pool, 'posts', 5000),
+        localPosts(pool, 5000),
+        combinedFollows(pool),
+        importedRows(pool, 'reports', 5000),
+        localReports(pool, 5000),
+      ])
+      const reportRows = [...importedReports, ...fallbackReports]
+      const profile = profiles.find((row) => {
+        const ids = cleanSet([row.id, row.user_id, row.profile_id, row.supabase_user_id])
+        return ids.has(profileId)
+      })
+      if (!profile) return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
+
+      const targetIds = cleanSet([profile.id, profile.user_id, profile.profile_id, profile.supabase_user_id, profileId])
+      const viewerIsTarget = Array.from(targetIds).some((id) => identity.ids.has(id))
+      const isFollowing = follows.some((row) => followMatches(row, identity.ids, targetIds))
+      const posts = [...importedPosts, ...fallbackPosts]
+        .filter((row) => rowMatchesAny(row, ['user_id', 'owner_id', 'author_id', 'creator_id', 'profile_id'], targetIds))
+        .filter((row) => {
+          const visibility = textOf(row, ['visibility'], 'public').toLowerCase()
+          return viewerIsTarget || isFollowing || visibility === 'public' || visibility === ''
+        })
+
+      const postIds = posts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const [fallbackLikes, fallbackComments, importedLikes, importedComments] = await Promise.all([
+        localPostReactions(pool, postIds, 10_000),
+        localPostComments(pool, postIds, 10_000),
+        importedRows(pool, 'post_likes', 10_000),
+        importedRows(pool, 'post_comments', 10_000),
+      ])
+      const profilesById = indexProfiles(profiles)
+      const likeCounts = new Map()
+      const commentCounts = new Map()
+      const likedPostIds = new Set()
+      for (const row of [...importedLikes, ...fallbackLikes]) {
+        const id = textOf(row, ['post_id'], '')
+        if (!id || (postIds.length > 0 && !postIds.includes(id))) continue
+        likeCounts.set(id, (likeCounts.get(id) || 0) + 1)
+        if (rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids)) likedPostIds.add(id)
+      }
+      for (const row of [...importedComments, ...fallbackComments]) {
+        const id = textOf(row, ['post_id'], '')
+        if (!id || (postIds.length > 0 && !postIds.includes(id))) continue
+        commentCounts.set(id, (commentCounts.get(id) || 0) + 1)
+      }
+
+      res.json({
+        profile,
+        posts: sortByDateDesc(posts, ['created_at', 'updated_at'])
+          .slice(0, 30)
+          .map((row) => enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds)),
+        isFollowing,
+        stats: {
+          posts: posts.length,
+          followers: countRows(follows, (row) => followMatches(row, cleanSet([textOf(row, ['follower_id', 'user_id'], '')]), targetIds)),
+          following: countRows(follows, (row) => followMatches(row, targetIds, cleanSet([textOf(row, ['following_id', 'target_user_id'], '')]))),
+          reports: countRows(reportRows, (row) => rowMatchesAny(row, ['reported_user_id', 'target_user_id', 'user_id'], targetIds)),
+        },
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/follows', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const tab = String(req.query.tab || 'following').toLowerCase() === 'followers' ? 'followers' : 'following'
+      const identity = userIdentity(user)
+      const [profiles, follows] = await Promise.all([allPublicProfiles(pool), combinedFollows(pool)])
+      const profilesById = indexProfiles(profiles)
+      const items = follows
+        .filter((row) => rowMatchesAny(row, [tab === 'following' ? 'follower_id' : 'following_id'], identity.ids))
+        .map((row) => {
+          const targetId = normalizeId(textOf(row, [tab === 'following' ? 'following_id' : 'follower_id'], ''))
+          const profile = targetId ? profilesById.get(targetId) : null
+          return profile ? normalizeProfileForPublic(profile, targetId) : null
+        })
+        .filter(Boolean)
+      res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/profiles/:profileId/follow', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+      if (identity.ids.has(profileId)) return res.status(400).json({ error: 'CANNOT_FOLLOW_SELF' })
+
+      await pool.query(
+        `INSERT INTO fallback_follows(follower_id, following_id)
+         VALUES ($1, $2)
+         ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        [identity.displayUserId, profileId],
+      )
+      res.json({ ok: true, isFollowing: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/profiles/:profileId/follow', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+
+      await pool.query(
+        `DELETE FROM fallback_follows
+         WHERE lower(follower_id) = ANY($1::text[])
+           AND lower(following_id) = $2`,
+        [identity.values, profileId],
+      )
+      res.json({ ok: true, isFollowing: false })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/reports/users', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const reportedUserId = normalizeId(req.body?.reportedUserId || req.body?.reported_user_id || '')
+      const reason = cleanText(req.body?.reason, 120)
+      if (!reportedUserId || !reason) return res.status(400).json({ error: 'REPORTED_USER_AND_REASON_REQUIRED' })
+      if (identity.ids.has(reportedUserId)) return res.status(400).json({ error: 'CANNOT_REPORT_SELF' })
+
+      const reportedUserName = cleanText(req.body?.reportedUserName || req.body?.reported_user_name, 160) || reportedUserId
+      const description = cleanText(req.body?.description || req.body?.details, 1200) || null
+      const evidenceUrl = cleanText(req.body?.evidenceUrl || req.body?.evidence_url, 700) || null
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_reports(
+            reporter_id,
+            reporter_name,
+            reported_user_id,
+            reported_user_name,
+            reason,
+            description,
+            evidence_url,
+            status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente')
+         RETURNING id::text, reporter_id, reporter_name, reported_user_id, reported_user_name, reason, description, evidence_url, status, created_at`,
+        [
+          identity.displayUserId,
+          user.display_name || user.email || 'Usuario',
+          reportedUserId,
+          reportedUserName,
+          reason,
+          description,
+          evidenceUrl,
+        ],
+      )
+      res.status(201).json({ report: normalizeImportedRow(rows[0]) })
     } catch (error) {
       next(error)
     }

@@ -4,6 +4,8 @@ import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { loadFallbackFollows, setFallbackProfileFollow } from '../../core/fallbackData'
 
 type FollowTab = 'following' | 'followers'
 
@@ -28,6 +30,7 @@ export function FollowsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const useFallback = Boolean(readFallbackSession())
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -38,6 +41,20 @@ export function FollowsPage() {
   }, [items, search])
 
   const load = useCallback(async () => {
+    if (useFallback) {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await loadFallbackFollows(activeTab)
+        setItems(response.items.map(mapProfile))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo cargar follows desde Ubuntu'))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     if (!supabase || !user) {
       setLoading(false)
       return
@@ -72,14 +89,25 @@ export function FollowsPage() {
     } finally {
       setLoading(false)
     }
-  }, [activeTab, user])
+  }, [activeTab, user, useFallback])
 
   useEffect(() => {
     void load()
   }, [load])
 
   async function toggleFollow(targetUserId: string) {
-    if (!supabase || !user) return
+    if (!user) return
+    if (useFallback) {
+      try {
+        await setFallbackProfileFollow(targetUserId, activeTab !== 'following')
+        await load()
+      } catch (caught) {
+        setError(friendlyError(caught, activeTab === 'following' ? 'No se pudo dejar de seguir' : 'No se pudo seguir al usuario'))
+      }
+      return
+    }
+
+    if (!supabase) return
     if (activeTab === 'following') {
       const { error: deleteError } = await supabase
         .from('follows')
@@ -103,8 +131,8 @@ export function FollowsPage() {
     await load()
   }
 
-  if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar follows." />
+  if (!supabase && !useFallback) {
+    return <StatusView title="Servidor social no configurado" description="Configura Ubuntu o Supabase para usar follows." />
   }
   if (loading) return <StatusView title="Cargando red social" description="Espera un momento..." />
   if (error) return <StatusView title="Follows no disponibles" description={error} />

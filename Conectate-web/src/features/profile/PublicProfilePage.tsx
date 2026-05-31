@@ -5,6 +5,8 @@ import { QrCodeTile } from '../../components/QrCodeTile'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { loadFallbackPublicProfile, setFallbackProfileFollow, submitFallbackUserReport } from '../../core/fallbackData'
 import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 import { getOrCreateDirectChat } from '../messages/directChat'
@@ -35,6 +37,26 @@ function isMissingFunctionError(error: unknown): boolean {
   )
 }
 
+function mapPublicProfile(row: GenericRow, fallbackId: string): PublicProfileData {
+  return {
+    id: textOf(row, ['id'], fallbackId),
+    name: textOf(row, ['displayName', 'display_name', 'full_name', 'name'], 'Usuario'),
+    username: textOf(row, ['username'], ''),
+    bio: textOf(row, ['bio', 'description'], ''),
+    avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
+    isPrivate: Boolean(row.is_private),
+  }
+}
+
+function mapPublicPost(row: GenericRow): PublicPost {
+  return {
+    id: textOf(row, ['id'], crypto.randomUUID()),
+    content: textOf(row, ['content', 'caption', 'description', 'text'], 'Publicación'),
+    createdAt: textOf(row, ['created_at', 'updated_at'], ''),
+    media: extractMediaEntries(row),
+  }
+}
+
 export function PublicProfilePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -52,6 +74,7 @@ export function PublicProfilePage() {
   const [reportDetails, setReportDetails] = useState('')
   const [reporting, setReporting] = useState(false)
   const [shareStatus, setShareStatus] = useState<string | null>(null)
+  const useFallback = Boolean(readFallbackSession())
 
   const isSelf = Boolean(user && cleanProfileId && user.id === cleanProfileId)
   const canSeePosts = Boolean(profile && (!profile.isPrivate || isSelf || isFollowing))
@@ -61,6 +84,26 @@ export function PublicProfilePage() {
   const chatQrValue = useMemo(() => (cleanProfileId ? buildProfileChatQrPayload(cleanProfileId) : ''), [cleanProfileId])
 
   const loadProfile = useCallback(async () => {
+    if (useFallback) {
+      if (!cleanProfileId) {
+        setLoading(false)
+        return
+      }
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await loadFallbackPublicProfile(cleanProfileId)
+        setProfile(mapPublicProfile(response.profile, cleanProfileId))
+        setIsFollowing(Boolean(response.isFollowing))
+        setPosts((response.posts ?? []).map(mapPublicPost))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo cargar el perfil desde Ubuntu'))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     if (!supabase || !cleanProfileId) {
       setLoading(false)
       return
@@ -82,14 +125,7 @@ export function PublicProfilePage() {
         return
       }
 
-      const nextProfile: PublicProfileData = {
-        id: textOf(profileRow, ['id'], cleanProfileId),
-        name: textOf(profileRow, ['displayName', 'display_name', 'full_name'], 'Usuario'),
-        username: textOf(profileRow, ['username'], ''),
-        bio: textOf(profileRow, ['bio'], ''),
-        avatarUrl: textOf(profileRow, ['avatar_url', 'photo_url', 'profile_image'], ''),
-        isPrivate: Boolean(profileRow.is_private),
-      }
+      const nextProfile = mapPublicProfile(profileRow, cleanProfileId)
       setProfile(nextProfile)
 
       if (!isSelf && user) {
@@ -113,29 +149,31 @@ export function PublicProfilePage() {
         .limit(30)
       if (postsError) throw postsError
       setPosts(
-        ((postRows ?? []) as GenericRow[]).map((row) => ({
-          id: textOf(row, ['id'], crypto.randomUUID()),
-          content: textOf(row, ['content', 'caption', 'description', 'text'], 'Publicación'),
-          createdAt: textOf(row, ['created_at', 'updated_at'], ''),
-          media: extractMediaEntries(row),
-        })),
+        ((postRows ?? []) as GenericRow[]).map(mapPublicPost),
       )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo cargar el perfil'))
     } finally {
       setLoading(false)
     }
-  }, [cleanProfileId, isSelf, user])
+  }, [cleanProfileId, isSelf, user, useFallback])
 
   useEffect(() => {
     void loadProfile()
   }, [loadProfile])
 
   async function toggleFollow() {
-    if (!supabase || !user || isSelf || followingAction) return
+    if (!user || isSelf || followingAction) return
     setFollowingAction(true)
     setError(null)
     try {
+      if (useFallback) {
+        const response = await setFallbackProfileFollow(cleanProfileId, !isFollowing)
+        setIsFollowing(Boolean(response.isFollowing))
+        return
+      }
+
+      if (!supabase) throw new Error('No hay Supabase configurado para actualizar seguimiento.')
       if (isFollowing) {
         const { error: deleteError } = await supabase
           .from('follows')
@@ -164,6 +202,10 @@ export function PublicProfilePage() {
     setOpeningChat(true)
     setError(null)
     try {
+      if (useFallback) {
+        setError('En modo Ubuntu, abre el chat desde Mensajes mientras se activa creación directa desde perfil.')
+        return
+      }
       const chatId = await getOrCreateDirectChat(user.id, cleanProfileId)
       navigate(`/app/messages/${chatId}`)
     } catch (caught) {
@@ -199,7 +241,7 @@ export function PublicProfilePage() {
   }
 
   async function submitUserReport() {
-    if (!supabase || !user || !profile || isSelf || reporting) return
+    if (!user || !profile || isSelf || reporting) return
     const reason = reportReason.trim()
     const details = reportDetails.trim()
     if (!reason) return
@@ -207,6 +249,19 @@ export function PublicProfilePage() {
     setReporting(true)
     setError(null)
     try {
+      if (useFallback) {
+        await submitFallbackUserReport({
+          reportedUserId: profile.id,
+          reportedUserName: profile.name,
+          reason,
+          description: details || null,
+        })
+        setReportDetails('')
+        setReportReason('spam')
+        return
+      }
+
+      if (!supabase) throw new Error('No hay Supabase configurado para enviar reportes.')
       const reporterName = (user.email ?? 'Usuario').split('@')[0]
       const rpcResult = await supabase.rpc('secure_submit_report', {
         p_reported_user_id: profile.id,
@@ -255,7 +310,7 @@ export function PublicProfilePage() {
     }
   }
 
-  if (!supabase) return <StatusView title="Supabase no configurado" description="Configura .env para usar perfiles." />
+  if (!supabase && !useFallback) return <StatusView title="Servidor de perfiles no configurado" description="Configura Ubuntu o Supabase para usar perfiles." />
   if (loading) return <StatusView title="Cargando perfil" description="Espera un momento..." />
   if (error && !profile) return <StatusView title="Perfil no disponible" description={error} />
   if (!profile) return <StatusView title="Perfil no encontrado" description="No existe o no está disponible." />

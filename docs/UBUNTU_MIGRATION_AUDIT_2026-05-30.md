@@ -14,6 +14,11 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Feed social: lectura de posts restaurados/locales, creacion de posts con media local, detalle de post,
   comentarios, audio-comentarios, likes/reacciones simples, compartir desde la web y rutas Android
   principales contra Ubuntu.
+- Busqueda social web: `/app/search` consulta perfiles restaurados/locales desde Ubuntu cuando la sesion
+  activa es local.
+- Perfil publico web: lectura de perfil, posts publicos, seguir/dejar de seguir y reporte de usuario
+  usan Ubuntu en sesion local.
+- Follows web: listado de seguidores/siguiendo y acciones basicas usan Ubuntu en sesion local.
 - Salas de voz base: listado, detalle, crear, entrar y salir.
 - Signaling via Ubuntu/ngrok: disponible desde el servicio `signaling` y expuesto por `edge` en el puerto 3080.
 
@@ -23,8 +28,9 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Multimedia historico: los metadatos de `storage.objects` se restauraron, pero los binarios anteriores de Supabase Storage no se pudieron descargar por la restriccion de cuota.
 - Perfil avanzado: Ubuntu guarda campos basicos y algunas preferencias, pero no todo el modelo extendido historico.
 - Feed/social: web y Android ya usan Ubuntu para feed, posts de usuario, detalle, crear posts,
-  comentarios, audio-comentarios, likes/reacciones y edicion/eliminacion de posts locales. Siguen
-  faltando follows/social avanzado y algunas pantallas legacy fuera de `PostRepository`.
+  comentarios, audio-comentarios, likes/reacciones, edicion/eliminacion de posts locales, busqueda
+  web de perfiles y follows basicos. Siguen faltando friend requests y varias pantallas legacy fuera
+  de `PostRepository`.
 - Voz/llamadas: signaling basico existe; llamadas completas y sincronizacion historica aun tienen rutas legacy.
 
 ## Aun depende de Supabase o esta incompleto
@@ -33,7 +39,7 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Retos/challenges y ranking de retos.
 - Monetizacion, wallets, gifts, creator program y pagos.
 - Badges/stickers avanzados.
-- Friend requests, follows avanzados, busqueda global completa.
+- Friend requests, follows avanzados fuera del flujo web basico y busqueda global de contenido.
 - Notificaciones persistentes y push completo.
 - Moderacion/admin y metricas avanzadas.
 - Momentos/stories y highlights completos.
@@ -60,6 +66,11 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
   hacia Supabase.
 - La web ahora da prioridad a la sesion Ubuntu guardada frente a cualquier sesion Supabase legacy del
   navegador, para evitar que vistas migradas vuelvan a consultar Supabase despues de iniciar con Ubuntu.
+- Backend Ubuntu agrega tablas locales `fallback_follows` y `fallback_reports`, mas rutas
+  `/v1/data/profiles/search`, `/v1/data/profiles/:profileId`, `/v1/data/profiles/:profileId/follow`,
+  `/v1/data/follows` y `/v1/data/reports/users`.
+- Web `SearchPage`, `PublicProfilePage` y `FollowsPage` usan esas rutas locales cuando hay sesion Ubuntu,
+  reduciendo consultas directas a Supabase en busqueda, perfil publico, follows y reportes basicos.
 
 ## Verificaciones locales
 
