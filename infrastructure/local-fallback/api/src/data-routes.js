@@ -343,6 +343,75 @@ async function localPosts(pool, limit = 5000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localPostComments(pool, postIds, limit = 10_000) {
+  const ids = Array.from(cleanSet(postIds))
+  if (ids.length === 0) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        post_id,
+        user_id,
+        content,
+        parent_id,
+        media_url,
+        media_type,
+        created_at,
+        updated_at,
+        TRUE AS local_only
+     FROM fallback_post_comments
+     WHERE is_deleted = FALSE
+       AND lower(post_id) = ANY($1::text[])
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [ids, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localPostReactions(pool, postIds, limit = 10_000) {
+  const ids = Array.from(cleanSet(postIds))
+  if (ids.length === 0) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        post_id,
+        user_id,
+        reaction_type,
+        created_at,
+        updated_at,
+        TRUE AS local_only
+     FROM fallback_post_reactions
+     WHERE lower(post_id) = ANY($1::text[])
+     ORDER BY updated_at DESC
+     LIMIT $2`,
+    [ids, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localPostShares(pool, postIds, limit = 10_000) {
+  const ids = Array.from(cleanSet(postIds))
+  if (ids.length === 0) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        post_id,
+        user_id,
+        content_type,
+        created_at,
+        TRUE AS local_only
+     FROM fallback_shares
+     WHERE content_type = 'post'
+       AND lower(post_id) = ANY($1::text[])
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [ids, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
 async function fallbackUserProfileRows(pool, limit = 5000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
   const { rows } = await pool.query(
@@ -494,6 +563,104 @@ function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) 
     like_count: numberOf(row, ['like_count', 'likes_count'], likeCounts.get(postId) || 0),
     comment_count: numberOf(row, ['comment_count', 'comments_count'], commentCounts.get(postId) || 0),
     liked_by_me: likedPostIds.has(postId),
+  }
+}
+
+function postIdOf(row) {
+  return normalizeId(textOf(row, ['post_id', 'id'], ''))
+}
+
+function postOwnerId(row) {
+  return normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], ''))
+}
+
+function countPostInteractions(rows, identity, postIdKeys = ['post_id']) {
+  const counts = new Map()
+  const mine = new Set()
+
+  for (const row of rows) {
+    const postId = normalizeId(textOf(row, postIdKeys, ''))
+    if (!postId) continue
+    counts.set(postId, (counts.get(postId) || 0) + 1)
+    if (rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids)) {
+      mine.add(postId)
+    }
+  }
+
+  return { counts, mine }
+}
+
+function enrichPostComment(row, profilesById) {
+  const userId = normalizeId(textOf(row, ['user_id', 'profile_id', 'author_id'], ''))
+  const profile = userId ? profilesById.get(userId) : null
+  const createdAt = textOf(row, ['created_at', 'updated_at'], new Date().toISOString())
+
+  return {
+    ...row,
+    id: textOf(row, ['id'], `${textOf(row, ['post_id'], 'post')}-${createdAt}-${userId}`),
+    post_id: normalizeId(textOf(row, ['post_id'], '')),
+    user_id: userId,
+    user_name: textOf(row, ['user_name', 'display_name', 'author_name'], '') || profileName(profile, userId || 'Usuario'),
+    user_avatar_url: textOf(row, ['user_avatar_url', 'avatar_url', 'user_profile_image'], '') || profileAvatar(profile),
+    content: textOf(row, ['content', 'text', 'body'], ''),
+    created_at: createdAt,
+    updated_at: textOf(row, ['updated_at', 'created_at'], createdAt),
+  }
+}
+
+async function loadPostDetailPayload(pool, user, rawPostId) {
+  const postId = normalizeId(rawPostId)
+  if (!postId) return null
+
+  const identity = userIdentity(user)
+  const [importedProfiles, localProfiles, importedPosts, fallbackPosts, importedLikes, importedReactions, localReactions, importedComments, localComments, importedShares, localShares] =
+    await Promise.all([
+      importedRows(pool, 'profiles', 5000),
+      fallbackUserProfileRows(pool, 5000),
+      importedRows(pool, 'posts', 10_000),
+      localPosts(pool, 10_000),
+      importedRows(pool, 'post_likes', 50_000),
+      importedRows(pool, 'post_reactions', 50_000),
+      localPostReactions(pool, [postId], 50_000),
+      importedRows(pool, 'post_comments', 50_000),
+      localPostComments(pool, [postId], 50_000),
+      importedRows(pool, 'shares', 50_000),
+      localPostShares(pool, [postId], 50_000),
+    ])
+
+  const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+  const posts = [...importedPosts, ...fallbackPosts]
+  const post = posts.find((row) => normalizeId(textOf(row, ['id'], '')) === postId)
+  if (!post) return null
+
+  const relevantLikes = [
+    ...importedLikes.filter((row) => postIdOf(row) === postId),
+    ...importedReactions.filter((row) => postIdOf(row) === postId),
+    ...localReactions,
+  ]
+  const relevantComments = [
+    ...importedComments.filter((row) => postIdOf(row) === postId),
+    ...localComments,
+  ]
+  const relevantShares = [
+    ...importedShares.filter((row) => postIdOf(row) === postId),
+    ...localShares,
+  ]
+
+  const { counts: likeCounts, mine: likedPostIds } = countPostInteractions(relevantLikes, identity)
+  const commentCounts = new Map([[postId, relevantComments.length]])
+  const { counts: shareCounts, mine: sharedPostIds } = countPostInteractions(relevantShares, identity)
+  const enrichedPost = enrichPost(post, profilesById, likeCounts, commentCounts, likedPostIds)
+
+  return {
+    post: {
+      ...enrichedPost,
+      share_count: numberOf(enrichedPost, ['share_count', 'shares_count'], shareCounts.get(postId) || 0),
+      shared_by_me: sharedPostIds.has(postId),
+    },
+    comments: relevantComments
+      .map((row) => enrichPostComment(row, profilesById))
+      .sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], ''))),
   }
 }
 
@@ -775,6 +942,82 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_posts_created
      ON fallback_posts(created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_post_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      parent_id TEXT,
+      media_url TEXT,
+      media_type TEXT,
+      is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS post_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS parent_id TEXT`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS media_url TEXT`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS media_type TEXT`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_post_comments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_post_comments_post_created
+     ON fallback_post_comments(lower(post_id), is_deleted, created_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_post_reactions (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      reaction_type TEXT NOT NULL DEFAULT 'LIKE',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (post_id, user_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_post_reactions ADD COLUMN IF NOT EXISTS post_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_post_reactions ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_post_reactions ADD COLUMN IF NOT EXISTS reaction_type TEXT NOT NULL DEFAULT 'LIKE'`,
+    `ALTER TABLE fallback_post_reactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_post_reactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_post_reactions_post
+     ON fallback_post_reactions(lower(post_id), updated_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_shares (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'post',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, post_id, content_type)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_shares ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_shares ADD COLUMN IF NOT EXISTS post_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_shares ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'post'`,
+    `ALTER TABLE fallback_shares ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_shares_post
+     ON fallback_shares(content_type, lower(post_id), created_at DESC)`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_room_messages (
@@ -1064,21 +1307,27 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const identity = userIdentity(user)
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 60, 200))
-      const [profiles, importedPosts, fallbackPosts, likes, comments] = await Promise.all([
+      const [profiles, importedPosts, fallbackPosts, likes, reactions, comments] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         importedRows(pool, 'posts', 5000),
         localPosts(pool, 5000),
         importedRows(pool, 'post_likes', 10_000),
+        importedRows(pool, 'post_reactions', 10_000),
         importedRows(pool, 'post_comments', 10_000),
       ])
       const posts = [...importedPosts, ...fallbackPosts]
+      const postIds = posts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const [fallbackLikes, fallbackComments] = await Promise.all([
+        localPostReactions(pool, postIds, 10_000),
+        localPostComments(pool, postIds, 10_000),
+      ])
 
       const profilesById = indexProfiles(profiles)
       const likeCounts = new Map()
       const commentCounts = new Map()
       const likedPostIds = new Set()
 
-      for (const row of likes) {
+      for (const row of [...likes, ...reactions, ...fallbackLikes]) {
         const postId = textOf(row, ['post_id'], '')
         if (!postId) continue
         likeCounts.set(postId, (likeCounts.get(postId) || 0) + 1)
@@ -1087,7 +1336,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         }
       }
 
-      for (const row of comments) {
+      for (const row of [...comments, ...fallbackComments]) {
         const postId = textOf(row, ['post_id'], '')
         if (!postId) continue
         commentCounts.set(postId, (commentCounts.get(postId) || 0) + 1)
@@ -1153,6 +1402,142 @@ function registerDataRoutes(app, { pool, authRequired }) {
       )
 
       res.status(201).json({ post: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/feed/posts/:postId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const payload = await loadPostDetailPayload(pool, user, req.params.postId)
+      if (!payload) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      res.json(payload)
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/feed/posts/:postId/comments', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      const content = cleanText(req.body?.content, 4000)
+      const parentId = cleanText(req.body?.parentId || req.body?.parent_id, 120) || null
+      const mediaUrl = cleanText(req.body?.mediaUrl || req.body?.media_url, 700) || null
+      const mediaType = cleanText(req.body?.mediaType || req.body?.media_type, 80) || null
+      if (!postId || (!content && !mediaUrl)) {
+        return res.status(400).json({ error: 'POST_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
+      }
+
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_post_comments(post_id, user_id, content, parent_id, media_url, media_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id::text, post_id, user_id, content, parent_id, media_url, media_type, created_at, updated_at`,
+        [postId, identity.displayUserId, content, parentId, mediaUrl, mediaType],
+      )
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.status(201).json({ comment: enrichPostComment(normalizeImportedRow(rows[0]), profilesById) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/feed/comments/:commentId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const commentId = validUuid(req.params.commentId)
+      if (!commentId) return res.status(400).json({ error: 'COMMENT_ID_REQUIRED' })
+
+      const { rowCount } = await pool.query(
+        `UPDATE fallback_post_comments
+         SET is_deleted = TRUE, updated_at = NOW()
+         WHERE id = $1 AND lower(user_id) = $2`,
+        [commentId, identity.displayUserId],
+      )
+      if (!rowCount) return res.status(404).json({ error: 'COMMENT_NOT_FOUND' })
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const reactionType = cleanText(req.body?.reactionType || req.body?.reaction_type || 'LIKE', 40).toUpperCase() || 'LIKE'
+      await pool.query(
+        `INSERT INTO fallback_post_reactions(post_id, user_id, reaction_type, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (post_id, user_id)
+         DO UPDATE SET reaction_type = EXCLUDED.reaction_type, updated_at = NOW()`,
+        [postId, identity.displayUserId, reactionType],
+      )
+
+      const payload = await loadPostDetailPayload(pool, user, postId)
+      res.json({ ok: true, post: payload?.post || existing.post })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      const identity = userIdentity(user)
+      await pool.query(
+        `DELETE FROM fallback_post_reactions
+         WHERE lower(post_id) = $1 AND lower(user_id) = $2`,
+        [postId, identity.displayUserId],
+      )
+      const payload = postId ? await loadPostDetailPayload(pool, user, postId) : null
+      res.json({ ok: true, post: payload?.post || null })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/feed/posts/:postId/share', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      await pool.query(
+        `INSERT INTO fallback_shares(user_id, post_id, content_type, created_at)
+         VALUES ($1, $2, 'post', NOW())
+         ON CONFLICT (user_id, post_id, content_type) DO NOTHING`,
+        [identity.displayUserId, postId],
+      )
+      const payload = await loadPostDetailPayload(pool, user, postId)
+      res.status(201).json({ ok: true, post: payload?.post || existing.post })
     } catch (error) {
       next(error)
     }

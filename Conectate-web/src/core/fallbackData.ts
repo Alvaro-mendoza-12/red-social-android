@@ -19,6 +19,11 @@ export type FallbackFeedResponse = {
   items: GenericRow[]
 }
 
+export type FallbackPostDetailResponse = {
+  post: GenericRow
+  comments: GenericRow[]
+}
+
 export type FallbackInboxItem = {
   id: string
   title: string
@@ -111,6 +116,54 @@ export async function updateFallbackProfileMe(input: {
 
 export async function loadFallbackFeed(limit = 60): Promise<FallbackFeedResponse> {
   return fallbackApiJson<FallbackFeedResponse>(`/v1/data/feed?limit=${encodeURIComponent(String(limit))}`)
+}
+
+export async function loadFallbackPostDetail(postId: string): Promise<FallbackPostDetailResponse> {
+  return fallbackApiJson<FallbackPostDetailResponse>(
+    `/v1/data/feed/posts/${encodeURIComponent(postId)}`,
+  )
+}
+
+export async function addFallbackPostComment(
+  postId: string,
+  input: {
+    content: string
+    parentId?: string | null
+    mediaUrl?: string | null
+    mediaType?: string | null
+  },
+): Promise<{ comment: GenericRow }> {
+  return fallbackApiJson<{ comment: GenericRow }>(
+    `/v1/data/feed/posts/${encodeURIComponent(postId)}/comments`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function setFallbackPostReaction(
+  postId: string,
+  liked: boolean,
+  reactionType = 'LIKE',
+): Promise<{ ok: boolean; post?: GenericRow | null }> {
+  return fallbackApiJson<{ ok: boolean; post?: GenericRow | null }>(
+    `/v1/data/feed/posts/${encodeURIComponent(postId)}/reaction`,
+    {
+      method: liked ? 'POST' : 'DELETE',
+      body: liked ? JSON.stringify({ reactionType }) : undefined,
+    },
+  )
+}
+
+export async function shareFallbackPost(postId: string): Promise<{ ok: boolean; post?: GenericRow | null }> {
+  return fallbackApiJson<{ ok: boolean; post?: GenericRow | null }>(
+    `/v1/data/feed/posts/${encodeURIComponent(postId)}/share`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  )
 }
 
 export async function loadFallbackMessagesInbox(tab: string): Promise<FallbackInboxResponse> {

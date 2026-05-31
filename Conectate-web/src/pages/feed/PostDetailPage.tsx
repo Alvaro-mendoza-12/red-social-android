@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link, useParams } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
+import { addFallbackPostComment, loadFallbackPostDetail, shareFallbackPost } from '../../core/fallbackData'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
@@ -42,7 +43,7 @@ function initialsOf(name: string): string {
 }
 
 export function PostDetailPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [webPreferences] = useWebPreferences()
   const { postId = '' } = useParams()
   const cleanPostId = useMemo(() => postId.trim().toLowerCase(), [postId])
@@ -53,13 +54,44 @@ export function PostDetailPage() {
   const [commentDraft, setCommentDraft] = useState('')
 
   const load = useCallback(async () => {
-    if (!supabase || !cleanPostId) {
+    if (!cleanPostId) {
       setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
+      if (isFallbackSession) {
+        const payload = await loadFallbackPostDetail(cleanPostId)
+        const row = payload.post
+        const postUserId = textOf(row, ['user_id'], '')
+        setPost({
+          id: textOf(row, ['id'], ''),
+          userId: postUserId,
+          userName: textOf(row, ['user_name', 'display_name'], '') || 'Usuario',
+          userAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url'], ''),
+          content: textOf(row, ['content'], ''),
+          media: extractMediaEntries(row),
+          createdAt: textOf(row, ['created_at'], ''),
+        })
+        setComments(
+          payload.comments.map((comment) => ({
+            id: textOf(comment, ['id'], crypto.randomUUID()),
+            postId: textOf(comment, ['post_id'], ''),
+            userId: textOf(comment, ['user_id'], ''),
+            userName: textOf(comment, ['user_name', 'display_name'], '') || 'Usuario',
+            userAvatarUrl: textOf(comment, ['user_avatar_url', 'avatar_url'], ''),
+            content: textOf(comment, ['content'], ''),
+            createdAt: textOf(comment, ['created_at'], ''),
+          })),
+        )
+        return
+      }
+
+      if (!supabase) {
+        setError('Servidor de publicaciones no configurado.')
+        return
+      }
       const { data: postRows, error: postError } = await supabase
         .from('posts')
         .select('*')
@@ -136,7 +168,7 @@ export function PostDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [cleanPostId])
+  }, [cleanPostId, isFallbackSession])
 
   useEffect(() => {
     void load()
@@ -144,7 +176,7 @@ export function PostDetailPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !cleanPostId) return
+    if (!client || !cleanPostId || isFallbackSession) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) {
@@ -166,13 +198,24 @@ export function PostDetailPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void client.removeChannel(channel)
     }
-  }, [cleanPostId, load])
+  }, [cleanPostId, isFallbackSession, load])
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase || !user || !cleanPostId) return
+    if (!user || !cleanPostId) return
     const content = commentDraft.trim()
     if (!content) return
+    if (isFallbackSession) {
+      try {
+        await addFallbackPostComment(cleanPostId, { content })
+        setCommentDraft('')
+        await load()
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo comentar en Ubuntu'))
+      }
+      return
+    }
+    if (!supabase) return
     const { error: insertError } = await supabase.from('post_comments').insert({
       post_id: cleanPostId,
       user_id: user.id,
@@ -187,7 +230,16 @@ export function PostDetailPage() {
   }
 
   async function sharePost() {
-    if (!supabase || !user || !cleanPostId) return
+    if (!user || !cleanPostId) return
+    if (isFallbackSession) {
+      try {
+        await shareFallbackPost(cleanPostId)
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo compartir desde Ubuntu'))
+      }
+      return
+    }
+    if (!supabase) return
     const { error: shareError } = await supabase.from('shares').insert({
       user_id: user.id,
       post_id: cleanPostId,
@@ -198,7 +250,7 @@ export function PostDetailPage() {
     }
   }
 
-  if (!supabase) return <StatusView title="Supabase no configurado" description="Configura .env para usar posts." />
+  if (!supabase && !isFallbackSession) return <StatusView title="Backend no configurado" description="Configura Ubuntu o Supabase legacy para usar posts." />
   if (loading) return <StatusView title="Cargando publicación" description="Espera un momento..." />
   if (error && !post) {
     return (

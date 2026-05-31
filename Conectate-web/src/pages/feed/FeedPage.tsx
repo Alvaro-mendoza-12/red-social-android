@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
-import { createFallbackPost, loadFallbackFeed, uploadFallbackFile } from '../../core/fallbackData'
+import { createFallbackPost, loadFallbackFeed, setFallbackPostReaction, uploadFallbackFile } from '../../core/fallbackData'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   removeRealtimeChannel,
@@ -63,7 +63,7 @@ function mapPost(row: GenericRow): FeedItem {
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     likeCount: Number(row.like_count ?? 0),
     commentCount: Number(row.comment_count ?? 0),
-    likedByMe: false,
+    likedByMe: Boolean(row.liked_by_me ?? row.likedByMe ?? false),
   }
 }
 
@@ -282,7 +282,25 @@ export function FeedPage() {
 
   async function toggleLike(item: FeedItem) {
     if (isFallbackSession) {
-      setError('Los likes en modo servidor local quedan para la siguiente etapa.')
+      try {
+        const nextLiked = !item.likedByMe
+        setItems((current) =>
+          current.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  likedByMe: nextLiked,
+                  likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)),
+                }
+              : entry,
+          ),
+        )
+        await setFallbackPostReaction(item.id, nextLiked)
+        await loadFeed({ silent: true })
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo actualizar el like en Ubuntu'))
+        await loadFeed({ silent: true })
+      }
       return
     }
     if (!supabase || !user) return
