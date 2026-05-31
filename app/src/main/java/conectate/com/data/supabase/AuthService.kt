@@ -1066,9 +1066,23 @@ class AuthService @Inject constructor(
     fun isLocalFallbackSession(): Boolean {
         val prefs = authPrefsOrNull ?: return false
         if (isForcedLogout()) return false
-        return prefs.getBoolean(KEY_LOCAL_FALLBACK_SESSION, false) &&
+        val hasPersistedLocalSession = prefs.getBoolean(KEY_LOCAL_FALLBACK_SESSION, false) &&
             !prefs.getString(KEY_ACCESS_TOKEN, null).isNullOrBlank() &&
             !prefs.getString(KEY_LOCAL_FALLBACK_EMAIL, null).isNullOrBlank()
+        if (hasPersistedLocalSession) return true
+
+        val activeSession = _currentSession.value
+        if (
+            activeSession != null &&
+            isLocalFallbackStoredSessionToken(activeSession.accessToken, activeSession.refreshToken)
+        ) {
+            return true
+        }
+
+        return isLocalFallbackStoredSessionToken(
+            prefs.getString(KEY_ACCESS_TOKEN, null).orEmpty(),
+            prefs.getString(KEY_REFRESH_TOKEN, null).orEmpty()
+        ) && !prefs.getString(KEY_LOCAL_FALLBACK_EMAIL, null).isNullOrBlank()
     }
 
     private fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
