@@ -40,8 +40,18 @@ Voz, llamadas y audio usan la misma URL cuando ngrok apunta al puerto `3080`.
 Desde CMD o PowerShell, en la raiz del repo:
 
 ```powershell
-scp -P 2222 -r infrastructure/local-fallback alvaro@127.0.0.1:~/conectate-local-fallback
+ssh -p 2222 alvaro@127.0.0.1 "mkdir -p ~/conectate-local-fallback"
+scp -P 2222 -r infrastructure/local-fallback/* alvaro@127.0.0.1:~/conectate-local-fallback/
 scp -P 2222 -r signaling-server alvaro@127.0.0.1:~/signaling-server
+```
+
+Si solo quieres actualizar rapido el backend despues de un cambio:
+
+```powershell
+scp -P 2222 infrastructure/local-fallback/api/src/data-routes.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/data-routes.js
+scp -P 2222 infrastructure/local-fallback/api/src/storage-routes.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/storage-routes.js
+scp -P 2222 infrastructure/local-fallback/api/src/server.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/server.js
+scp -P 2222 -r infrastructure/local-fallback/scripts alvaro@127.0.0.1:~/conectate-local-fallback/
 ```
 
 ## Levantar en Ubuntu
@@ -59,6 +69,17 @@ Si todavia no tienes dominio fijo, ejecuta:
 cd ~/conectate-local-fallback
 bash scripts/repair-ubuntu-primary.sh
 ```
+
+Si `api` queda en `unhealthy` o `Restarting`, ejecuta el diagnostico:
+
+```bash
+cd ~/conectate-local-fallback
+bash scripts/diagnose-api.sh
+```
+
+El diagnostico valida si quedo codigo viejo con rutas incompatibles de Express,
+revisa sintaxis dentro de Docker, imprime estado de Postgres y muestra los logs
+exactos del contenedor `api`.
 
 ## Probar login local
 

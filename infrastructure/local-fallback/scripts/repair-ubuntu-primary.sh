@@ -7,8 +7,43 @@ FALLBACK_EDGE_PORT_INPUT="${FALLBACK_EDGE_PORT:-3080}"
 
 cd "$ROOT_DIR"
 
+print_service_logs() {
+  echo
+  echo "==> Estado Docker"
+  docker compose ps || true
+  echo
+  echo "==> Logs api"
+  docker compose logs --tail=180 api || true
+  echo
+  echo "==> Logs realtime/signaling/edge"
+  docker compose logs --tail=80 realtime-gateway signaling edge || true
+}
+
+fail_with_logs() {
+  echo "ERROR: $*" >&2
+  print_service_logs
+  exit 1
+}
+
+require_file() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    fail_with_logs "falta $file. Copia de nuevo infrastructure/local-fallback completo a Ubuntu."
+  fi
+}
+
 if [ ! -f ".env" ]; then
   cp config.example .env
+fi
+
+require_file "docker-compose.yml"
+require_file "api/package.json"
+require_file "api/src/server.js"
+require_file "api/src/data-routes.js"
+require_file "api/src/storage-routes.js"
+
+if grep -RInE ":[A-Za-z0-9_]+\\([^)]*\\)" api/src; then
+  fail_with_logs "hay rutas Express 5 incompatibles en api/src. Copia la version actual del repo antes de levantar."
 fi
 
 set_env_value() {
@@ -55,6 +90,12 @@ fi
 
 mkdir -p imports logs
 
+echo "==> Validando JavaScript del backend"
+docker compose build api
+docker compose run --rm --no-deps api node --check src/server.js
+docker compose run --rm --no-deps api node --check src/data-routes.js
+docker compose run --rm --no-deps api node --check src/storage-routes.js
+
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db
 for migration in db/migrations/*.sql; do
@@ -78,8 +119,7 @@ wait_http() {
     fi
     sleep 2
   done
-  echo "ERROR $name no respondió: $url" >&2
-  return 1
+  fail_with_logs "$name no respondio: $url"
 }
 
 wait_http "api" "http://127.0.0.1:3001/ready"
