@@ -104,7 +104,7 @@ type ServerEvents = {
 }
 
 type ClientEvents = {
-  'join-room': (payload: { roomId: string; userId: string; name: string; avatarUrl: string }) => void
+  'join-room': (payload: { roomId: string; userId: string; name: string; avatarUrl: string; isMuted?: boolean }) => void
   offer: (payload: { target: string; offer: RTCSessionDescriptionInit; userId: string; name: string }) => void
   answer: (payload: { target: string; answer: RTCSessionDescriptionInit; userId: string; name: string }) => void
   'ice-candidate': (payload: { target: string; candidate: RTCIceCandidateInit; userId: string; name: string }) => void
@@ -753,6 +753,7 @@ export function VoiceRoomPage() {
         userId: user.id,
         name: displayName,
         avatarUrl,
+        isMuted: mutedRef.current,
       })
     })
 

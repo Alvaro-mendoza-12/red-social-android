@@ -53,6 +53,11 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Android `PostRepository` ahora consulta Ubuntu para feed, posts por usuario, detalle, crear posts,
   comentarios, audio-comentarios, likes/reacciones y edicion/eliminacion cuando `FALLBACK_API_URL`
   esta configurado.
+- Android endurece la deteccion de sesion Ubuntu usando el access token local aunque el flag persistido
+  quede incompleto, evitando que perfil/storage vuelvan accidentalmente a Supabase.
+- Signaling ahora registra y limpia participantes de salas de voz contra la API Ubuntu cuando el socket
+  viene autenticado con token local, en vez de depender solo de memoria o de la sincronizacion legacy
+  hacia Supabase.
 
 ## Verificaciones locales
 
@@ -61,6 +66,7 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - `.\gradlew.bat compileDebugKotlin --no-daemon --console=plain`: OK.
 - `node --check` en backend local-fallback, storage y signaling: OK.
 - `docker compose -f infrastructure/local-fallback/docker-compose.yml config --quiet`: OK.
+- `node --check signaling-server/index.js`: OK tras sincronizacion de participantes Ubuntu.
 
 ## Nota de infraestructura
 

@@ -285,6 +285,7 @@ async function authenticateSocketConnection(socket, next) {
                 socket.data.authUserId = localUser.id.toString().trim();
                 socket.data.authLocalFallbackId = localUser.localFallbackId?.toString().trim() || '';
                 socket.data.authEmail = localUser.email?.toString().trim().toLowerCase() || '';
+                socket.data.authToken = accessToken;
                 next();
                 return;
             }
@@ -306,11 +307,77 @@ async function authenticateSocketConnection(socket, next) {
         }
         socket.data.authUserId = data.user.id.toString().trim();
         socket.data.authEmail = data.user.email?.toString().trim().toLowerCase() || '';
+        socket.data.authToken = accessToken;
         next();
     } catch (error) {
         console.error('[AUTH] Failed to authenticate socket connection:', error);
         next(new Error('Token validation failed'));
     }
+}
+
+async function callLocalFallbackApi(socket, path, options = {}) {
+    const accessToken = socket?.data?.authToken?.toString().trim();
+    if (!localAuthEnabled || !accessToken) return null;
+
+    try {
+        const response = await fetch(`${localFallbackApiUrl}${path}`, {
+            method: options.method || 'GET',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: options.body == null ? undefined : JSON.stringify(options.body)
+        });
+
+        const rawText = await response.text();
+        let payload = {};
+        if (rawText.trim()) {
+            try {
+                payload = JSON.parse(rawText);
+            } catch {
+                payload = { message: rawText };
+            }
+        }
+
+        if (!response.ok) {
+            console.warn(`[LOCAL-FALLBACK] ${options.method || 'GET'} ${path} -> ${response.status}`, payload);
+            return null;
+        }
+
+        return payload;
+    } catch (error) {
+        console.warn(`[LOCAL-FALLBACK] Failed ${options.method || 'GET'} ${path}:`, error.message || error);
+        return null;
+    }
+}
+
+async function syncLocalVoiceJoin(socket, roomId, details = {}) {
+    if (!socket?.data?.authLocalFallbackId) return null;
+    const cleanRoomId = roomId?.toString().trim();
+    if (!cleanRoomId) return null;
+
+    return callLocalFallbackApi(socket, `/v1/data/voice/rooms/${encodeURIComponent(cleanRoomId)}/join`, {
+        method: 'POST',
+        body: {
+            userName: details.name?.toString().trim() || socket.data.authEmail || socket.data.authUserId,
+            userAvatarUrl: details.avatarUrl?.toString().trim() || '',
+            socketId: socket.id,
+            isMuted: Boolean(details.isMuted)
+        }
+    });
+}
+
+async function syncLocalVoiceLeave(socket, roomId) {
+    if (!socket?.data?.authLocalFallbackId) return null;
+    const cleanRoomId = roomId?.toString().trim();
+    if (!cleanRoomId) return null;
+
+    return callLocalFallbackApi(socket, `/v1/data/voice/rooms/${encodeURIComponent(cleanRoomId)}/leave`, {
+        method: 'POST',
+        body: {}
+    });
 }
 
 function requireSocketUser(socket, claimedUserId) {
@@ -763,6 +830,7 @@ io.on('connection', (socket) => {
             userId,
             name,
             avatarUrl,
+            isMuted: Boolean(data.isMuted),
             isCameraSharing: false,
             isScreenSharing: false
         });
@@ -770,6 +838,11 @@ io.on('connection', (socket) => {
 
         console.log(`[JOIN] User ${userId} joined room ${roomId}. Room population: ${currentRoomParticipants.size}`);
         console.log(`[ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
+        await syncLocalVoiceJoin(socket, roomId, {
+            name,
+            avatarUrl,
+            isMuted: Boolean(data.isMuted)
+        });
         await setParticipantCount(roomId, currentRoomParticipants.size);
 
         // Notify others in the room
@@ -950,6 +1023,7 @@ io.on('connection', (socket) => {
 
             console.log(`[LEAVE] User disconnected from room ${roomId}. Population: ${participants.size}`);
             socket.to(roomId).emit('user-left', socket.id);
+            await syncLocalVoiceLeave(socket, roomId);
             await setParticipantCount(roomId, participants.size);
 
             if (participants.size === 0) {
