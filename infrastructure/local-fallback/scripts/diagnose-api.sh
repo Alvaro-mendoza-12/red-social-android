@@ -54,6 +54,10 @@ docker compose run --rm --no-deps api node --check src/data-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
 
 echo
+echo "==> Validacion de registro de rutas Express dentro de la imagen api"
+docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
+
+echo
 echo "==> Salud de Postgres"
 docker compose up -d db
 docker compose exec -T db pg_isready -U conectate -d conectate_fallback || true
@@ -78,4 +82,3 @@ docker compose logs --tail=240 api || true
 echo
 echo "==> Ready local"
 curl -i http://127.0.0.1:3001/ready || true
-

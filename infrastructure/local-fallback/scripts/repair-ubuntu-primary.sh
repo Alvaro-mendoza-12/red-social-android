@@ -91,10 +91,11 @@ fi
 mkdir -p imports logs
 
 echo "==> Validando JavaScript del backend"
-docker compose build api
+docker compose build --no-cache api
 docker compose run --rm --no-deps api node --check src/server.js
 docker compose run --rm --no-deps api node --check src/data-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
+docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
 
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db

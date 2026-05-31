@@ -1226,6 +1226,11 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: 'INTERNAL_ERROR' })
 })
 
+if (process.env.ROUTE_CHECK_ONLY === '1') {
+  console.log(`${serviceName} ${version} route registration OK`)
+  process.exit(0)
+}
+
 let server
 
 ensureAuthMetadataColumns()
