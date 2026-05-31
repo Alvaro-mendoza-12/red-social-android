@@ -11,8 +11,9 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Storage local: buckets, upload, listado, descarga publica y eliminacion por propietario.
 - Mensajeria privada: bandeja, detalle de chat y envio de mensajes.
 - Grupos y comunidades: listado por bandeja, crear, entrar, salir, detalle y envio de mensajes.
-- Feed social: lectura de posts restaurados/locales, creacion simple de posts, detalle de post,
-  comentarios, likes/reacciones simples y compartir desde la web contra Ubuntu.
+- Feed social: lectura de posts restaurados/locales, creacion de posts con media local, detalle de post,
+  comentarios, audio-comentarios, likes/reacciones simples, compartir desde la web y rutas Android
+  principales contra Ubuntu.
 - Salas de voz base: listado, detalle, crear, entrar y salir.
 - Signaling via Ubuntu/ngrok: disponible desde el servicio `signaling` y expuesto por `edge` en el puerto 3080.
 
@@ -21,8 +22,9 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Realtime: existe `realtime-gateway`, pero no todos los flujos publican eventos ahi. La web y Android aun conservan suscripciones Supabase en varias pantallas legacy.
 - Multimedia historico: los metadatos de `storage.objects` se restauraron, pero los binarios anteriores de Supabase Storage no se pudieron descargar por la restriccion de cuota.
 - Perfil avanzado: Ubuntu guarda campos basicos y algunas preferencias, pero no todo el modelo extendido historico.
-- Feed/social: web ya usa Ubuntu para posts, detalle, comentarios, likes y compartir; Android
-  aun conserva `PostRepository` mayormente contra Supabase y falta follows/social avanzado.
+- Feed/social: web y Android ya usan Ubuntu para feed, posts de usuario, detalle, crear posts,
+  comentarios, audio-comentarios, likes/reacciones y edicion/eliminacion de posts locales. Siguen
+  faltando follows/social avanzado y algunas pantallas legacy fuera de `PostRepository`.
 - Voz/llamadas: signaling basico existe; llamadas completas y sincronizacion historica aun tienen rutas legacy.
 
 ## Aun depende de Supabase o esta incompleto
@@ -46,6 +48,11 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - La inferencia MIME de avatar/momentos tenia `substringBefore("")`, que puede dejar el tipo vacio. Ahora usa `substringBefore(";")`.
 - Web perfil local ya puede subir avatar/banner a Ubuntu Storage y guardar la URL local.
 - Web feed local ya puede comentar, reaccionar y compartir posts contra Ubuntu, no contra Supabase.
+- Backend Ubuntu normaliza `media_urls` para web/Android, filtra feed por usuario, respeta visibilidad
+  basica y agrega `PATCH/DELETE /v1/data/feed/posts/:postId` para posts locales.
+- Android `PostRepository` ahora consulta Ubuntu para feed, posts por usuario, detalle, crear posts,
+  comentarios, audio-comentarios, likes/reacciones y edicion/eliminacion cuando `FALLBACK_API_URL`
+  esta configurado.
 
 ## Verificaciones locales
 

@@ -1,9 +1,11 @@
 package conectate.com.data.localfallback
 
 import conectate.com.BuildConfig
+import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
+import conectate.com.data.model.Post
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.SupabaseConfig
@@ -28,6 +30,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -128,6 +131,15 @@ data class LocalFallbackProfileStats(
 data class LocalFallbackProfileResponse(
     val profile: JsonObject? = null,
     val stats: LocalFallbackProfileStats = LocalFallbackProfileStats()
+)
+
+data class LocalFallbackFeedResponse(
+    val items: List<Post> = emptyList()
+)
+
+data class LocalFallbackPostDetailResponse(
+    val post: Post,
+    val comments: List<Comment> = emptyList()
 )
 
 @Serializable
@@ -239,6 +251,34 @@ private data class LocalFallbackUpdateProfileRequest(
 )
 
 @Serializable
+private data class LocalFallbackCreatePostRequest(
+    val content: String,
+    val mediaUrl: String? = null,
+    val mediaUrls: List<String> = emptyList(),
+    val mediaType: String? = null,
+    val visibility: String = "public"
+)
+
+@Serializable
+private data class LocalFallbackPatchPostRequest(
+    val content: String? = null,
+    val visibility: String? = null
+)
+
+@Serializable
+private data class LocalFallbackCreateCommentRequest(
+    val content: String,
+    val parentId: String? = null,
+    val mediaUrl: String? = null,
+    val mediaType: String? = null
+)
+
+@Serializable
+private data class LocalFallbackReactionRequest(
+    val reactionType: String = "LIKE"
+)
+
+@Serializable
 private data class LocalFallbackErrorResponse(
     val error: String? = null,
     val message: String? = null,
@@ -291,6 +331,27 @@ private data class LocalFallbackVoiceJoinRequest(
 @Serializable
 private data class LocalFallbackVoiceParticipantsResponse(
     val participants: List<JsonObject> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackRawFeedResponse(
+    val items: List<JsonObject> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackRawPostDetailResponse(
+    val post: JsonObject? = null,
+    val comments: List<JsonObject> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackRawPostResponse(
+    val post: JsonObject? = null
+)
+
+@Serializable
+private data class LocalFallbackRawCommentResponse(
+    val comment: JsonObject? = null
 )
 
 class LocalFallbackMigratedPasswordResetRequiredException(
@@ -451,6 +512,193 @@ class LocalFallbackApiClient @Inject constructor(
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadFeed(
+        accessToken: String,
+        limit: Int = 60,
+        offset: Int = 0,
+        userId: String? = null
+    ): Result<LocalFallbackFeedResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val query = buildString {
+            append("$baseUrl/v1/data/feed?limit=$limit&offset=$offset")
+            userId?.trim()?.takeIf { it.isNotBlank() }?.let {
+                append("&userId=${urlEncode(it)}")
+            }
+        }
+        return requestJson<LocalFallbackRawFeedResponse>(query, accessToken)
+            .map { response -> LocalFallbackFeedResponse(response.items.map { mapPost(it) }) }
+    }
+
+    suspend fun loadPostDetail(accessToken: String, postId: String): Result<LocalFallbackPostDetailResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackRawPostDetailResponse>(
+            "$baseUrl/v1/data/feed/posts/${urlEncode(postId)}",
+            accessToken
+        ).mapCatching { response ->
+            val post = response.post ?: throw IllegalStateException("Publicación no encontrada")
+            LocalFallbackPostDetailResponse(
+                post = mapPost(post),
+                comments = response.comments.map { mapComment(it, postId) }
+            )
+        }
+    }
+
+    suspend fun createPost(
+        accessToken: String,
+        content: String,
+        mediaUrls: List<String>,
+        mediaType: String?,
+        visibility: String
+    ): Result<Post> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/feed/posts") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    LocalFallbackCreatePostRequest(
+                        content = content,
+                        mediaUrl = mediaUrls.firstOrNull(),
+                        mediaUrls = mediaUrls,
+                        mediaType = mediaType,
+                        visibility = visibility
+                    )
+                )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post
+                    ?: return Result.failure(Exception("El servidor Ubuntu no devolvió la publicación."))
+                Result.success(mapPost(post))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updatePost(
+        accessToken: String,
+        postId: String,
+        content: String? = null,
+        visibility: String? = null
+    ): Result<Post> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackPatchPostRequest(content = content, visibility = visibility))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post
+                    ?: return Result.failure(Exception("El servidor Ubuntu no devolvió la publicación."))
+                Result.success(mapPost(post))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun deletePost(accessToken: String, postId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun addPostComment(
+        accessToken: String,
+        postId: String,
+        content: String,
+        parentId: String? = null,
+        mediaUrl: String? = null,
+        mediaType: String? = null
+    ): Result<Comment> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/comments") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    LocalFallbackCreateCommentRequest(
+                        content = content,
+                        parentId = parentId,
+                        mediaUrl = mediaUrl,
+                        mediaType = mediaType
+                    )
+                )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val comment = json.decodeFromString<LocalFallbackRawCommentResponse>(body).comment
+                    ?: return Result.failure(Exception("El servidor Ubuntu no devolvió el comentario."))
+                Result.success(mapComment(comment, postId))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun deletePostComment(accessToken: String, commentId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/feed/comments/${urlEncode(commentId)}") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setPostReaction(
+        accessToken: String,
+        postId: String,
+        reactionType: String?
+    ): Result<Post?> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = if (reactionType.isNullOrBlank()) {
+                supabaseConfig.httpClient.delete("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/reaction") {
+                    localHeaders(accessToken)
+                }
+            } else {
+                supabaseConfig.httpClient.post("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/reaction") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    setBody(LocalFallbackReactionRequest(reactionType))
+                }
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val post = runCatching { json.decodeFromString<LocalFallbackRawPostResponse>(body).post }
+                    .getOrNull()
+                    ?.let { mapPost(it) }
+                Result.success(post)
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
@@ -988,6 +1236,105 @@ class LocalFallbackApiClient @Inject constructor(
             }
         }
         return fallback
+    }
+
+    private fun mediaUrlsOf(row: JsonObject): List<String> {
+        val urls = linkedSetOf<String>()
+
+        fun addUrl(value: String?) {
+            value?.trim()?.takeIf { it.isNotBlank() }?.let { urls += it }
+        }
+
+        fun collect(element: kotlinx.serialization.json.JsonElement?) {
+            when (element) {
+                is JsonArray -> element.forEach { collect(it) }
+                is JsonObject -> {
+                    addUrl(textOf(element, "url", "media_url", "public_url", "path"))
+                }
+                else -> {
+                    val text = element?.jsonPrimitive?.contentOrNull?.trim()
+                    if (text.isNullOrBlank()) return
+                    if (text.startsWith("[") || text.startsWith("{")) {
+                        runCatching { json.parseToJsonElement(text) }
+                            .onSuccess { collect(it) }
+                            .onFailure { addUrl(text) }
+                    } else {
+                        addUrl(text)
+                    }
+                }
+            }
+        }
+
+        collect(row["media_urls"])
+        collect(row["mediaUrls"])
+        collect(row["media"])
+        addUrl(textOf(row, "media_url", "image_url", "video_url"))
+        return urls.toList()
+    }
+
+    private fun reactionCountsOf(row: JsonObject): Map<String, Int> {
+        val element = row["reaction_counts"] ?: row["reactionCounts"] ?: return emptyMap()
+        val obj = when (element) {
+            is JsonObject -> element
+            else -> runCatching { json.parseToJsonElement(element.jsonPrimitive.content) as? JsonObject }
+                .getOrNull()
+        } ?: return emptyMap()
+        return obj.mapNotNull { (key, value) ->
+            val count = value.jsonPrimitive.intOrNull
+                ?: value.jsonPrimitive.contentOrNull?.toIntOrNull()
+                ?: return@mapNotNull null
+            key.uppercase() to count
+        }.toMap()
+    }
+
+    private fun mapPost(row: JsonObject): Post {
+        val mediaUrls = mediaUrlsOf(row)
+        val reactionCounts = reactionCountsOf(row)
+        val likeCount = intOf(
+            row,
+            "like_count",
+            "likes_count",
+            fallback = reactionCounts.values.sum().takeIf { it > 0 } ?: 0
+        )
+        return Post(
+            id = textOf(row, "id").ifBlank { "post-${System.currentTimeMillis()}" },
+            userId = textOf(row, "user_id", "owner_id", "author_id", "creator_id"),
+            userName = textOf(row, "user_name", "display_name", "author_name").ifBlank { "Usuario" },
+            userProfileImage = textOf(row, "user_profile_image", "avatar_url", "photo_url").ifBlank { null },
+            content = textOf(row, "content", "caption", "description", "text"),
+            mediaUrls = mediaUrls,
+            mediaUrlLegacy = mediaUrls.firstOrNull(),
+            createdAt = textOf(row, "created_at", "updated_at"),
+            likeCount = likeCount,
+            commentCount = intOf(row, "comment_count", "comments_count"),
+            shareCount = intOf(row, "share_count", "shares_count"),
+            likedByMe = boolOf(row, "liked_by_me", "likedByMe"),
+            sharedByMe = boolOf(row, "shared_by_me", "sharedByMe"),
+            myReaction = textOf(row, "my_reaction", "myReaction").ifBlank { null },
+            reactionCounts = reactionCounts,
+            isVerified = boolOf(row, "is_verified", "verified"),
+            visibility = textOf(row, "visibility").ifBlank { "public" }
+        )
+    }
+
+    private fun mapComment(row: JsonObject, fallbackPostId: String): Comment {
+        val content = textOf(row, "content", "body", "text")
+        val mediaUrl = textOf(row, "media_url", "audio_url", "file_url").ifBlank {
+            content.removePrefix("[Audio]").trim().takeIf { content.startsWith("[Audio]") && it.startsWith("http") }
+        }
+        return Comment(
+            id = textOf(row, "id").ifBlank { "comment-${System.currentTimeMillis()}" },
+            postId = textOf(row, "post_id").ifBlank { fallbackPostId },
+            userId = textOf(row, "user_id", "profile_id", "author_id"),
+            content = if (content.startsWith("[Audio]") && mediaUrl != null) "[Audio]" else content,
+            createdAt = textOf(row, "created_at", "updated_at"),
+            userName = textOf(row, "user_name", "display_name", "author_name").ifBlank { "Usuario" },
+            userAvatar = textOf(row, "user_avatar", "user_avatar_url", "avatar_url", "user_profile_image").ifBlank { null },
+            isVerified = boolOf(row, "is_verified", "verified"),
+            isMine = boolOf(row, "is_mine", "isMine"),
+            parentId = textOf(row, "parent_id", "parentId").ifBlank { null },
+            audioUrl = mediaUrl
+        )
     }
 
     private fun mapVoiceRoom(row: JsonObject): VoiceRoom {

@@ -8,6 +8,7 @@ import conectate.com.core.moderation.ModerationContext
 import conectate.com.core.moderation.ModerationVerdict
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.cache.UpstashCacheService
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.Post
 import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
@@ -48,6 +49,7 @@ class PostRepository @Inject constructor(
     private val userRepository: UserRepository,
     private val hashtagRepository: HashtagRepository,
     private val upstashCache: UpstashCacheService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     @ApplicationContext private val context: Context
 ) {
     private val cacheJson = Json {
@@ -89,6 +91,33 @@ class PostRepository @Inject constructor(
         val cacheKey = "posts:global:offset=$offset:limit=$limit"
         
         try {
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val accessToken = authService.getAccessToken()
+                if (accessToken == null) {
+                    appMetrics.recordFailure(
+                        metric = "posts_fetch",
+                        attributes = mapOf("source" to "ubuntu", "reason" to "missing_access_token")
+                    )
+                    emit(emptyList())
+                    return@flow
+                }
+                val result = localFallbackApiClient.loadFeed(accessToken, limit, offset)
+                if (result.isFailure) {
+                    val error = result.exceptionOrNull()
+                    android.util.Log.e("PostRepository", "Error fetching Ubuntu feed", error)
+                    appMetrics.recordFailure("posts_fetch", error, mapOf("source" to "ubuntu"))
+                    emit(emptyList())
+                    return@flow
+                }
+                val posts = result.getOrThrow().items
+                appMetrics.incrementCounter(
+                    metric = "posts_fetch_success",
+                    attributes = mapOf("source" to "ubuntu", "count" to posts.size.toString())
+                )
+                emit(posts)
+                return@flow
+            }
+
             if (offset == 0) {
                 val cachedJson = upstashCache.get(cacheKey)
                 val cachedPosts = cachedJson
@@ -167,6 +196,24 @@ class PostRepository @Inject constructor(
         try {
             var accessToken = authService.getAccessToken()
             if (accessToken != null) {
+                if (supabaseConfig.isLocalFallbackPrimary) {
+                    val result = localFallbackApiClient.loadFeed(
+                        accessToken = accessToken,
+                        limit = 120,
+                        offset = 0,
+                        userId = userId
+                    )
+                    if (result.isFailure) {
+                        val error = result.exceptionOrNull()
+                        android.util.Log.e("PostRepository", "Error fetching Ubuntu user posts", error)
+                        emit(emptyList())
+                        return@flow
+                    }
+                    val posts = result.getOrThrow().items
+                    emit(posts)
+                    return@flow
+                }
+
                 var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
@@ -208,6 +255,19 @@ class PostRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()
             
             if (accessToken != null) {
+                if (supabaseConfig.isLocalFallbackPrimary) {
+                    val result = localFallbackApiClient.loadFeed(accessToken, limit = 120, offset = 0)
+                    if (result.isFailure) {
+                        android.util.Log.e("PostRepository", "Error fetching Ubuntu shared posts", result.exceptionOrNull())
+                        emit(emptyList())
+                        return@flow
+                    }
+                    val posts = result.getOrThrow().items
+                        .filter { it.sharedByMe || userId == currentUserId && it.sharedByMe }
+                    emit(posts)
+                    return@flow
+                }
+
                 // Step 1: Get shared post IDs for this user
                 var sharedIds = getUserSharedContentIds(userId, "post")
                 
@@ -249,6 +309,11 @@ class PostRepository @Inject constructor(
     suspend fun getPostById(postId: String): Result<Post> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.loadPostDetail(accessToken, postId)
+                    .map { it.post }
+            }
+
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -448,6 +513,7 @@ class PostRepository @Inject constructor(
             val extractedHashtags = hashtagRepository.extractHashtagsFromText(sanitizedContent)
 
             var mediaUrls = mutableListOf<String>()
+            var firstMediaType: String? = null
             
             // Upload media sequentially to reduce memory pressure on lower-end devices.
             for (uri in mediaUris) {
@@ -464,6 +530,14 @@ class PostRepository @Inject constructor(
                     )
 
                     if (uploadResult.isSuccess) {
+                        if (firstMediaType == null) {
+                            firstMediaType = when {
+                                mediaPayload.contentType.startsWith("image/") -> "image"
+                                mediaPayload.contentType.startsWith("video/") -> "video"
+                                mediaPayload.contentType.startsWith("audio/") -> "audio"
+                                else -> "file"
+                            }
+                        }
                         storageService.getPublicUrl("post-media", fileName).let { mediaUrls.add(it) }
                     } else {
                         val error = uploadResult.exceptionOrNull()
@@ -492,6 +566,30 @@ class PostRepository @Inject constructor(
                 ?: "Usuario"
             val userImage: String? = currentProfile?.avatar_url
             var isVerified = currentProfile?.is_verified ?: false
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val created = localFallbackApiClient.createPost(
+                    accessToken = accessToken,
+                    content = sanitizedContent,
+                    mediaUrls = mediaUrls,
+                    mediaType = firstMediaType,
+                    visibility = visibility
+                )
+                if (created.isSuccess) {
+                    appMetrics.incrementCounter(
+                        metric = "post_create_success",
+                        attributes = mapOf("source" to "ubuntu", "media_count" to mediaUrls.size.toString())
+                    )
+                    appMetrics.recordLatency(
+                        metric = "post_create",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = mapOf("source" to "ubuntu", "media_count" to mediaUrls.size.toString())
+                    )
+                    return created
+                }
+                appMetrics.recordFailure("post_create", created.exceptionOrNull(), mapOf("source" to "ubuntu"))
+                return Result.failure(created.exceptionOrNull() ?: Exception("No se pudo crear la publicación en Ubuntu"))
+            }
 
             val postRequest = PostInsertRequest(
                 userId = userId,
@@ -566,6 +664,15 @@ class PostRepository @Inject constructor(
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             val normalizedReaction = normalizePostReaction(reactionType)
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val result = localFallbackApiClient.setPostReaction(accessToken, postId, normalizedReaction)
+                if (result.isSuccess) {
+                    invalidateGlobalPostCache()
+                    return Result.success(Unit)
+                }
+                return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo guardar la reacción en Ubuntu"))
+            }
 
             if (normalizedReaction == null) {
                 val detailedResult = deletePostReactionRow(accessToken, userId, postId)
@@ -745,6 +852,9 @@ class PostRepository @Inject constructor(
     suspend fun deletePost(postId: String): Result<Unit> {
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient.deletePost(accessToken, postId)
+            }
             
             supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -760,6 +870,13 @@ class PostRepository @Inject constructor(
     suspend fun updatePostVisibility(postId: String, visibility: String): Result<Unit> {
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient.updatePost(
+                    accessToken = accessToken,
+                    postId = postId,
+                    visibility = visibility
+                ).map { Unit }
+            }
 
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -777,6 +894,13 @@ class PostRepository @Inject constructor(
     suspend fun updatePostContent(postId: String, content: String): Result<Unit> {
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient.updatePost(
+                    accessToken = accessToken,
+                    postId = postId,
+                    content = content
+                ).map { Unit }
+            }
 
             supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
@@ -814,6 +938,29 @@ class PostRepository @Inject constructor(
             var sanitizedContent = moderation.sanitizedText
             if (sanitizedContent.isBlank()) {
                 return@withContext Result.failure(Exception("El comentario no puede estar vacio"))
+            }
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val result = localFallbackApiClient.addPostComment(
+                    accessToken = accessToken,
+                    postId = postId,
+                    content = sanitizedContent,
+                    parentId = parentId
+                )
+                if (result.isSuccess) {
+                    appMetrics.incrementCounter(
+                        metric = "post_comment_create_success",
+                        attributes = mapOf("source" to "ubuntu", "has_parent" to (parentId != null).toString())
+                    )
+                    appMetrics.recordLatency(
+                        metric = "post_comment_create",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = mapOf("source" to "ubuntu", "has_parent" to (parentId != null).toString())
+                    )
+                    return@withContext result
+                }
+                appMetrics.recordFailure("post_comment_create", result.exceptionOrNull(), mapOf("source" to "ubuntu"))
+                return@withContext Result.failure(result.exceptionOrNull() ?: Exception("No se pudo comentar en Ubuntu"))
             }
 
             var queryParams = mutableMapOf(
@@ -932,6 +1079,16 @@ class PostRepository @Inject constructor(
                  
                  var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
+                 if (supabaseConfig.isLocalFallbackPrimary) {
+                    return localFallbackApiClient.addPostComment(
+                        accessToken = accessToken,
+                        postId = postId,
+                        content = "[Audio]",
+                        mediaUrl = publicUrl,
+                        mediaType = "audio"
+                    ).map { Unit }
+                 }
+
                  var queryParams = mutableMapOf(
                     "post_id" to postId,
                     "user_id" to userId,
@@ -979,6 +1136,17 @@ class PostRepository @Inject constructor(
         try {
             var accessToken = authService.getAccessToken()
             if (accessToken != null) {
+                if (supabaseConfig.isLocalFallbackPrimary) {
+                    val result = localFallbackApiClient.loadPostDetail(accessToken, postId)
+                    if (result.isSuccess) {
+                        emit(result.getOrThrow().comments.take(limit))
+                    } else {
+                        android.util.Log.e("PostRepository", "Error fetching Ubuntu post comments", result.exceptionOrNull())
+                        emit(emptyList())
+                    }
+                    return@flow
+                }
+
                 // We need to fetch comments and join with profiles to get user info.
                 // Supabase syntax for joining: select=*,profiles(username,full_name,avatar_url,is_verified)
                 // Note: This requires foreign key from post_comments.user_id to profiles.id (or whatever table profiles are in)
@@ -1085,6 +1253,9 @@ class PostRepository @Inject constructor(
         return try {
             android.util.Log.d("PostRepository", "deleteComment: commentId=$commentId")
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient.deletePostComment(accessToken, commentId)
+            }
 
             val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_delete_post_comment") {
                 header("Authorization", "Bearer $accessToken")

@@ -330,6 +330,7 @@ async function localPosts(pool, limit = 5000) {
         media_url,
         media_urls,
         media_type,
+        visibility,
         created_at,
         updated_at,
         0::int AS like_count,
@@ -341,6 +342,23 @@ async function localPosts(pool, limit = 5000) {
     [safeLimit],
   )
   return rows.map(normalizeImportedRow)
+}
+
+function normalizePostMediaUrls(row) {
+  const urls = []
+  const mediaUrls = row?.media_urls
+  if (Array.isArray(mediaUrls)) {
+    for (const entry of mediaUrls) {
+      if (typeof entry === 'string' && entry.trim()) urls.push(entry.trim())
+      if (entry && typeof entry === 'object') {
+        const url = textOf(entry, ['url', 'media_url', 'public_url'], '')
+        if (url) urls.push(url)
+      }
+    }
+  }
+  const single = textOf(row, ['media_url', 'image_url', 'video_url'], '')
+  if (single) urls.push(single)
+  return Array.from(new Set(urls))
 }
 
 async function localPostComments(pool, postIds, limit = 10_000) {
@@ -554,12 +572,16 @@ function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) 
   const authorId = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], ''))
   const profile = authorId ? profilesById.get(authorId) : null
   const postId = textOf(row, ['id'], '')
+  const mediaUrls = normalizePostMediaUrls(row)
 
   return {
     ...row,
     user_id: authorId || textOf(row, ['user_id'], ''),
     user_name: textOf(row, ['user_name', 'display_name'], '') || profileName(profile, 'Usuario'),
     user_profile_image: textOf(row, ['user_profile_image', 'avatar_url'], '') || profileAvatar(profile),
+    media_urls: mediaUrls,
+    media_url: textOf(row, ['media_url'], '') || mediaUrls[0] || '',
+    visibility: textOf(row, ['visibility'], 'public'),
     like_count: numberOf(row, ['like_count', 'likes_count'], likeCounts.get(postId) || 0),
     comment_count: numberOf(row, ['comment_count', 'comments_count'], commentCounts.get(postId) || 0),
     liked_by_me: likedPostIds.has(postId),
@@ -572,6 +594,10 @@ function postIdOf(row) {
 
 function postOwnerId(row) {
   return normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], ''))
+}
+
+function canMutateLocalPost(row, identity) {
+  return Boolean(row?.local_only && rowMatchesAny(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], identity.ids))
 }
 
 function countPostInteractions(rows, identity, postIdKeys = ['post_id']) {
@@ -935,10 +961,15 @@ async function ensureLocalDataTables(pool) {
       media_url TEXT,
       media_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
       media_type TEXT,
+      visibility TEXT NOT NULL DEFAULT 'public',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(
+    `ALTER TABLE fallback_posts
+     ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'`,
+  )
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_posts_created
      ON fallback_posts(created_at DESC)`,
@@ -1307,22 +1338,31 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const identity = userIdentity(user)
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 60, 200))
-      const [profiles, importedPosts, fallbackPosts, likes, reactions, comments] = await Promise.all([
+      const offset = Math.max(0, Number(req.query.offset) || 0)
+      const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
+      const [importedProfiles, localProfiles, importedPosts, fallbackPosts, likes, reactions, comments] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'posts', 5000),
         localPosts(pool, 5000),
         importedRows(pool, 'post_likes', 10_000),
         importedRows(pool, 'post_reactions', 10_000),
         importedRows(pool, 'post_comments', 10_000),
       ])
-      const posts = [...importedPosts, ...fallbackPosts]
+      const posts = [...importedPosts, ...fallbackPosts].filter((row) => {
+        const ownerId = postOwnerId(row)
+        const isMine = ownerId && identity.ids.has(ownerId)
+        const visibility = textOf(row, ['visibility'], 'public').toLowerCase()
+        if (requestedUserId && ownerId !== requestedUserId) return false
+        return isMine || visibility === 'public' || visibility === ''
+      })
       const postIds = posts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const [fallbackLikes, fallbackComments] = await Promise.all([
         localPostReactions(pool, postIds, 10_000),
         localPostComments(pool, postIds, 10_000),
       ])
 
-      const profilesById = indexProfiles(profiles)
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
       const likeCounts = new Map()
       const commentCounts = new Map()
       const likedPostIds = new Set()
@@ -1343,7 +1383,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
       }
 
       const items = sortByDateDesc(posts, ['created_at', 'updated_at'])
-        .slice(0, limit)
+        .slice(offset, offset + limit)
         .map((row) => enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds))
 
       res.json({ items })
@@ -1359,8 +1399,16 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const identity = userIdentity(user)
       const content = String(req.body?.content || '').trim()
-      const mediaUrl = String(req.body?.mediaUrl || '').trim()
+      const requestedMediaUrls = [
+        ...asArray(req.body?.mediaUrls),
+        ...asArray(req.body?.media_urls),
+      ]
+      const explicitMediaUrl = String(req.body?.mediaUrl || req.body?.media_url || '').trim()
+      const mediaUrls = Array.from(new Set([explicitMediaUrl, ...requestedMediaUrls].filter(Boolean)))
+      const mediaUrl = mediaUrls[0] || ''
       const mediaType = String(req.body?.mediaType || '').trim() || null
+      const rawVisibility = String(req.body?.visibility || 'public').trim().toLowerCase()
+      const visibility = ['public', 'followers', 'private'].includes(rawVisibility) ? rawVisibility : 'public'
       if (!content && !mediaUrl) {
         return res.status(400).json({ error: 'POST_CONTENT_OR_MEDIA_REQUIRED' })
       }
@@ -1373,9 +1421,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
             content,
             media_url,
             media_urls,
-            media_type
+            media_type,
+            visibility
          )
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
          RETURNING
             id::text,
             user_id,
@@ -1385,6 +1434,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             media_url,
             media_urls,
             media_type,
+            visibility,
             created_at,
             updated_at,
             0::int AS like_count,
@@ -1396,8 +1446,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
           user.avatar_url || null,
           content,
           mediaUrl || null,
-          JSON.stringify(mediaUrl ? [{ url: mediaUrl, media_type: mediaType || 'file' }] : []),
+          JSON.stringify(mediaUrls.map((url) => ({ url, media_type: mediaType || 'file' }))),
           mediaType,
+          visibility,
         ],
       )
 
@@ -1416,6 +1467,93 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!payload) return res.status(404).json({ error: 'POST_NOT_FOUND' })
 
       res.json(payload)
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/feed/posts/:postId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      if (!canMutateLocalPost(existing.post, identity)) {
+        return res.status(403).json({ error: 'POST_EDIT_REQUIRES_LOCAL_OWNER' })
+      }
+
+      const patch = {}
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'content')) {
+        patch.content = cleanText(req.body.content, 5000)
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'visibility')) {
+        const visibility = cleanText(req.body.visibility, 40).toLowerCase()
+        if (!['public', 'followers', 'private'].includes(visibility)) {
+          return res.status(400).json({ error: 'INVALID_POST_VISIBILITY' })
+        }
+        patch.visibility = visibility
+      }
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ error: 'POST_PATCH_EMPTY' })
+      }
+
+      const assignments = []
+      const values = []
+      Object.entries(patch).forEach(([key, value]) => {
+        values.push(value)
+        assignments.push(`${quoteIdentifier(key)} = $${values.length}`)
+      })
+      values.push(postId, identity.displayUserId)
+
+      const { rowCount } = await pool.query(
+        `UPDATE fallback_posts
+         SET ${assignments.join(', ')}, updated_at = NOW()
+         WHERE lower(id::text) = $${values.length - 1}
+           AND lower(user_id) = $${values.length}`,
+        values,
+      )
+      if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const payload = await loadPostDetailPayload(pool, user, postId)
+      res.json({ post: payload?.post || existing.post })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/feed/posts/:postId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      if (!canMutateLocalPost(existing.post, identity)) {
+        return res.status(403).json({ error: 'POST_DELETE_REQUIRES_LOCAL_OWNER' })
+      }
+
+      await pool.query('DELETE FROM fallback_post_reactions WHERE lower(post_id) = $1', [postId])
+      await pool.query('DELETE FROM fallback_post_comments WHERE lower(post_id) = $1', [postId])
+      await pool.query('DELETE FROM fallback_shares WHERE content_type = $2 AND lower(post_id) = $1', [postId, 'post'])
+      const { rowCount } = await pool.query(
+        `DELETE FROM fallback_posts
+         WHERE lower(id::text) = $1 AND lower(user_id) = $2`,
+        [postId, identity.displayUserId],
+      )
+      if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      res.json({ ok: true })
     } catch (error) {
       next(error)
     }
