@@ -99,6 +99,25 @@ docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
 
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db
+docker compose exec -T db pg_isready -U conectate -d conectate_fallback
+
+postgres_password="$(grep -E '^POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2- || true)"
+if [ -z "$postgres_password" ]; then
+  fail_with_logs "POSTGRES_PASSWORD esta vacio en .env"
+fi
+
+echo "==> Sincronizando contraseña del usuario Postgres conectate"
+docker compose exec -T db psql -U conectate -d postgres \
+  -v ON_ERROR_STOP=1 \
+  -v db_password="$postgres_password" <<'SQL'
+ALTER USER conectate WITH PASSWORD :'db_password';
+SQL
+
+echo "==> Verificando autenticacion Postgres por TCP con la contraseña de .env"
+docker compose exec -T \
+  -e PGPASSWORD="$postgres_password" \
+  db psql -h 127.0.0.1 -U conectate -d conectate_fallback -v ON_ERROR_STOP=1 -Atc "select 'postgres_auth_ok';"
+
 for migration in db/migrations/*.sql; do
   [ -f "$migration" ] || continue
   echo "---- $migration"

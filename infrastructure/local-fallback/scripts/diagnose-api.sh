@@ -61,6 +61,15 @@ echo
 echo "==> Salud de Postgres"
 docker compose up -d db
 docker compose exec -T db pg_isready -U conectate -d conectate_fallback || true
+postgres_password="$(grep -E '^POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2- || true)"
+if [ -n "$postgres_password" ]; then
+  echo "==> Prueba de autenticacion Postgres TCP con POSTGRES_PASSWORD de .env"
+  docker compose exec -T \
+    -e PGPASSWORD="$postgres_password" \
+    db psql -h 127.0.0.1 -U conectate -d conectate_fallback -Atc "select 'postgres_auth_ok';" || true
+else
+  echo "ERROR: POSTGRES_PASSWORD esta vacio en .env"
+fi
 docker compose exec -T db psql -U conectate -d conectate_fallback -Atc "
 select 'fallback_users,' || count(*) from fallback_users
 union all select 'supabase_import_tables,' || count(*) from pg_tables where schemaname = 'supabase_import'
