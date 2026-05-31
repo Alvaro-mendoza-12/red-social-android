@@ -717,6 +717,13 @@ function collectionConfig(kind) {
   return null
 }
 
+function messageCollectionFromRequest(req) {
+  const explicit = req.params?.collection
+  if (explicit) return explicit
+  const match = String(req.path || '').match(/\/v1\/data\/messages\/([^/]+)/)
+  return match?.[1] || ''
+}
+
 function memberUserId(row) {
   return normalizeId(textOf(row, ['user_id', 'profile_id', 'member_id'], ''))
 }
@@ -1882,12 +1889,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.post('/v1/data/messages/:collection(groups|communities)', authRequired, async (req, res, next) => {
+  app.post(['/v1/data/messages/groups', '/v1/data/messages/communities'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const config = collectionConfig(req.params.collection)
+      const config = collectionConfig(messageCollectionFromRequest(req))
       if (!config) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
 
       const name = cleanText(req.body?.name, 120)
@@ -1962,12 +1969,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.get('/v1/data/messages/:collection(groups|communities)/:roomId', authRequired, async (req, res, next) => {
+  app.get(['/v1/data/messages/groups/:roomId', '/v1/data/messages/communities/:roomId'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const payload = await loadCollectionRoomPayload(pool, user, req.params.collection, req.params.roomId)
+      const payload = await loadCollectionRoomPayload(pool, user, messageCollectionFromRequest(req), req.params.roomId)
       if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
       res.json(payload)
     } catch (error) {
@@ -1975,12 +1982,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/join', authRequired, async (req, res, next) => {
+  app.post(['/v1/data/messages/groups/:roomId/join', '/v1/data/messages/communities/:roomId/join'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const config = collectionConfig(req.params.collection)
+      const config = collectionConfig(messageCollectionFromRequest(req))
       const roomId = normalizeId(req.params.roomId)
       if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
 
@@ -2004,12 +2011,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/leave', authRequired, async (req, res, next) => {
+  app.post(['/v1/data/messages/groups/:roomId/leave', '/v1/data/messages/communities/:roomId/leave'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const config = collectionConfig(req.params.collection)
+      const config = collectionConfig(messageCollectionFromRequest(req))
       const roomId = normalizeId(req.params.roomId)
       if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
 
@@ -2026,12 +2033,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.post('/v1/data/messages/:collection(groups|communities)/:roomId/messages', authRequired, async (req, res, next) => {
+  app.post(['/v1/data/messages/groups/:roomId/messages', '/v1/data/messages/communities/:roomId/messages'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const config = collectionConfig(req.params.collection)
+      const config = collectionConfig(messageCollectionFromRequest(req))
       const roomId = normalizeId(req.params.roomId)
       const content = String(req.body?.content || '').trim()
       const contentType = String(req.body?.contentType || 'text').trim() || 'text'
