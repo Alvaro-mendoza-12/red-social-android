@@ -58,6 +58,8 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Signaling ahora registra y limpia participantes de salas de voz contra la API Ubuntu cuando el socket
   viene autenticado con token local, en vez de depender solo de memoria o de la sincronizacion legacy
   hacia Supabase.
+- La web ahora da prioridad a la sesion Ubuntu guardada frente a cualquier sesion Supabase legacy del
+  navegador, para evitar que vistas migradas vuelvan a consultar Supabase despues de iniciar con Ubuntu.
 
 ## Verificaciones locales
 

@@ -35,8 +35,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [loading, setLoading] = useState(isSupabaseConfigured)
   const initialFallbackSession = readFallbackSession()
+  const [loading, setLoading] = useState(isSupabaseConfigured && !initialFallbackSession)
   const [session, setSession] = useState<Session | null>(null)
   const [fallbackSession, setFallbackSession] = useState<FallbackSession | null>(initialFallbackSession)
   const [user, setUser] = useState<User | null>(() => fallbackSessionToUser(initialFallbackSession))
@@ -48,14 +48,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const client = supabase as NonNullable<typeof supabase>
 
     async function applySession(nextSession: Session | null) {
-      setSession(nextSession ?? null)
-      if (!nextSession) {
-        const storedFallbackSession = readFallbackSession()
+      const storedFallbackSession = readFallbackSession()
+      if (storedFallbackSession) {
+        setSession(null)
         setFallbackSession(storedFallbackSession)
         setUser(fallbackSessionToUser(storedFallbackSession))
         return
       }
-      clearFallbackSession()
+
+      setSession(nextSession ?? null)
+      if (!nextSession) {
+        setFallbackSession(null)
+        setUser(null)
+        return
+      }
       setFallbackSession(null)
       setUser(nextSession.user ?? null)
       await bootstrapSessionProfile(client, nextSession)
@@ -90,9 +96,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return onFallbackAuthChanged(() => {
       const storedFallbackSession = readFallbackSession()
       setFallbackSession(storedFallbackSession)
-      if (!session) {
+      if (storedFallbackSession) {
+        setSession(null)
         setUser(fallbackSessionToUser(storedFallbackSession))
+        void supabase?.auth.signOut().catch((error) => {
+          console.warn('AuthProvider Supabase signOut after fallback session failed', error)
+        })
+        return
       }
+      if (!session) setUser(null)
     })
   }, [session])
 
