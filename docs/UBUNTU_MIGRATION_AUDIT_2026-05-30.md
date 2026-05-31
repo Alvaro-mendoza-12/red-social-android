@@ -11,7 +11,8 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Storage local: buckets, upload, listado, descarga publica y eliminacion por propietario.
 - Mensajeria privada: bandeja, detalle de chat y envio de mensajes.
 - Grupos y comunidades: listado por bandeja, crear, entrar, salir, detalle y envio de mensajes.
-- Feed basico: lectura de posts restaurados/locales y creacion simple de posts.
+- Feed social: lectura de posts restaurados/locales, creacion simple de posts, detalle de post,
+  comentarios, likes/reacciones simples y compartir desde la web contra Ubuntu.
 - Salas de voz base: listado, detalle, crear, entrar y salir.
 - Signaling via Ubuntu/ngrok: disponible desde el servicio `signaling` y expuesto por `edge` en el puerto 3080.
 
@@ -20,7 +21,8 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Realtime: existe `realtime-gateway`, pero no todos los flujos publican eventos ahi. La web y Android aun conservan suscripciones Supabase en varias pantallas legacy.
 - Multimedia historico: los metadatos de `storage.objects` se restauraron, pero los binarios anteriores de Supabase Storage no se pudieron descargar por la restriccion de cuota.
 - Perfil avanzado: Ubuntu guarda campos basicos y algunas preferencias, pero no todo el modelo extendido historico.
-- Feed/social: lectura y post simple funcionan; comentarios, likes, shares, follows y detalle avanzado siguen mezclados con Supabase.
+- Feed/social: web ya usa Ubuntu para posts, detalle, comentarios, likes y compartir; Android
+  aun conserva `PostRepository` mayormente contra Supabase y falta follows/social avanzado.
 - Voz/llamadas: signaling basico existe; llamadas completas y sincronizacion historica aun tienen rutas legacy.
 
 ## Aun depende de Supabase o esta incompleto
@@ -43,10 +45,12 @@ Ubuntu ya puede actuar como backend principal para los flujos basicos de acceso,
 - Storage Android todavia listaba/eliminaba contra Supabase en sesion local. Ahora usa rutas Ubuntu.
 - La inferencia MIME de avatar/momentos tenia `substringBefore("")`, que puede dejar el tipo vacio. Ahora usa `substringBefore(";")`.
 - Web perfil local ya puede subir avatar/banner a Ubuntu Storage y guardar la URL local.
+- Web feed local ya puede comentar, reaccionar y compartir posts contra Ubuntu, no contra Supabase.
 
 ## Verificaciones locales
 
 - `npm run build:web`: OK.
+- `node --check infrastructure/local-fallback/api/src/data-routes.js`: OK despues de rutas sociales.
 - `.\gradlew.bat compileDebugKotlin --no-daemon --console=plain`: OK.
 - `node --check` en backend local-fallback, storage y signaling: OK.
 - `docker compose -f infrastructure/local-fallback/docker-compose.yml config --quiet`: OK.
