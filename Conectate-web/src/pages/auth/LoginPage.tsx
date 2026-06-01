@@ -183,7 +183,7 @@ export function LoginPage() {
           pairing.pairId,
           pairing.nonce ?? '',
         )
-        if (!supabaseClient) {
+        if (isFallbackAuthConfigured) {
           persistFallbackSession(consumed)
           if (!cancelled) {
             navigate(nextPath, { replace: true })
@@ -194,6 +194,9 @@ export function LoginPage() {
         const refreshToken = consumed.refreshToken?.trim()
         if (!accessToken || !refreshToken) {
           throw new Error('La sesión aprobada llegó incompleta.')
+        }
+        if (!supabaseClient) {
+          throw new Error('No hay cliente Supabase activo para completar este QR.')
         }
         const { error: sessionError } = await supabaseClient.auth.setSession({
           access_token: accessToken,
@@ -357,7 +360,7 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
-      if (!client) {
+      if (isFallbackAuthConfigured) {
         const nextPassword = fallbackResetPassword.trim()
         if (nextPassword.length < 8) {
           setError('La nueva contraseña debe tener al menos 8 caracteres.')
@@ -372,6 +375,9 @@ export function LoginPage() {
         return
       }
 
+      if (!client) {
+        throw new Error('No hay cliente Supabase activo para validar este código.')
+      }
       const { error: verifyError } = await client.auth.verifyOtp({
         email: normalizedEmail,
         token: normalizedCode,
@@ -421,7 +427,7 @@ export function LoginPage() {
     )
   }
 
-  const fallbackOnlyMode = !client && isFallbackAuthConfigured
+  const fallbackOnlyMode = isFallbackAuthConfigured
 
   return (
     <section className="auth-shell auth-shell-rich auth-shell-centered">

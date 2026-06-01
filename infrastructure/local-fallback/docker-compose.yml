@@ -1,0 +1,107 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conectate_fallback
+      POSTGRES_USER: conectate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${FALLBACK_DB_PORT:-5433}:5432"
+    volumes:
+      - conectate-fallback-db:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conectate -d conectate_fallback"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://conectate:${POSTGRES_PASSWORD}@db:5432/conectate_fallback
+      STORAGE_ROOT: /data/storage
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+    volumes:
+      - ./imports:/imports:ro
+      - conectate-fallback-storage:/data/storage
+    ports:
+      - "127.0.0.1:${FALLBACK_API_PORT:-3001}:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  signaling:
+    build:
+      context: ${SIGNALING_CONTEXT:-../../signaling-server}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      LOCAL_FALLBACK_API_URL: http://api:3001
+      SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:-*}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/turn-credentials').then(r=>process.exit([200,401,503].includes(r.status)?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  edge:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${FALLBACK_EDGE_PORT:-3080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      signaling:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  realtime-gateway:
+    build:
+      context: ./realtime-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-conectate-local-fallback}
+    ports:
+      - "127.0.0.1:${FALLBACK_REALTIME_PORT:-3002}:3002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  conectate-fallback-db:
+    name: conectate-fallback-db
+  conectate-fallback-storage:
+    name: conectate-fallback-storage

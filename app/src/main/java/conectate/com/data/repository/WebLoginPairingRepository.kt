@@ -1,5 +1,6 @@
 package conectate.com.data.repository
 
+import conectate.com.BuildConfig
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -50,8 +51,18 @@ class WebLoginPairingRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig
 ) {
 
+    private val fallbackBaseUrl: String
+        get() = BuildConfig.FALLBACK_API_URL.trim().trimEnd('/')
+
+    private val useUbuntuPrimary: Boolean
+        get() = fallbackBaseUrl.startsWith("http://") || fallbackBaseUrl.startsWith("https://")
+
     private val functionUrl: String
-        get() = "${supabaseConfig.supabaseUrl}/functions/v1/web-login-pairing"
+        get() = if (useUbuntuPrimary) {
+            "$fallbackBaseUrl/v1/auth/web-login-pairing"
+        } else {
+            "${supabaseConfig.supabaseUrl}/functions/v1/web-login-pairing"
+        }
 
     suspend fun getPairingStatus(pairId: String, nonce: String): Result<WebLoginPairingSession> {
         return invoke(
@@ -100,7 +111,11 @@ class WebLoginPairingRepository @Inject constructor(
         accessToken: String? = null
     ): Result<WebLoginPairingSession> = runCatching {
         val response = supabaseConfig.httpClient.post(functionUrl) {
-            header("apikey", supabaseConfig.supabaseAnonKey)
+            if (useUbuntuPrimary) {
+                header("ngrok-skip-browser-warning", "true")
+            } else {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+            }
             accessToken?.takeIf { it.isNotBlank() }?.let { bearer ->
                 header("Authorization", "Bearer $bearer")
             }
@@ -115,7 +130,11 @@ class WebLoginPairingRepository @Inject constructor(
             }.getOrNull()
             val message = parsed?.message
                 ?: parsed?.error
-                ?: "No se pudo completar la operación QR segura."
+                ?: if (useUbuntuPrimary) {
+                    "No se pudo completar el QR con Ubuntu. Verifica que la VM, Docker y ngrok estén encendidos."
+                } else {
+                    "No se pudo completar la operación QR segura."
+                }
             throw IllegalStateException(message)
         }
 

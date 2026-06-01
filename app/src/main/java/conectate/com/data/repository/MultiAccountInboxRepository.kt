@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import android.content.Context
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.messaging.MessageStatusNormalizer
@@ -160,6 +158,8 @@ class MultiAccountInboxRepository @Inject constructor(
         started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
+
+
 
     suspend fun refreshInactiveAccounts() = withContext(Dispatchers.IO) {
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -366,7 +366,8 @@ class MultiAccountInboxRepository @Inject constructor(
                             focusMessageId = messageId,
                             receivedAt = createdAt.toSortableEpochMillis()
                         )
-                        if (latestUnreadDestination == null || destination.receivedAt >= latestUnreadDestination!!.receivedAt) {
+                        val latestDestination = latestUnreadDestination
+                        if (latestDestination == null || destination.receivedAt >= latestDestination.receivedAt) {
                             latestUnreadDestination = destination
                         }
                     }
@@ -572,7 +573,8 @@ class MultiAccountInboxRepository @Inject constructor(
                             focusMessageId = messageId,
                             receivedAt = createdAt.toSortableEpochMillis()
                         )
-                        if (latestUnreadDestination == null || destination.receivedAt >= latestUnreadDestination!!.receivedAt) {
+                        val latestDestination = latestUnreadDestination
+                        if (latestDestination == null || destination.receivedAt >= latestDestination.receivedAt) {
                             latestUnreadDestination = destination
                         }
                     }
@@ -681,7 +683,8 @@ internal fun mergeInactiveUnreadSnapshots(
     snapshots.forEach { snapshot ->
         mergedKeys += snapshot.pendingConversationKeys
         val candidate = snapshot.latestPendingDestination ?: return@forEach
-        if (latestDestination == null || candidate.receivedAt >= latestDestination!!.receivedAt) {
+        val currentLatest = latestDestination
+        if (currentLatest == null || candidate.receivedAt >= currentLatest.receivedAt) {
             latestDestination = candidate
         }
     }

@@ -62,8 +62,18 @@ function normalizeEmail(value: string): string {
 }
 
 function fallbackErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  if (error instanceof Error && error.message.trim()) {
+    const message = error.message.trim()
+    if (/failed to fetch|networkerror|load failed|fetch/i.test(message)) {
+      return fallbackConnectionErrorMessage()
+    }
+    return message
+  }
   return String(error ?? 'No se pudo usar el servidor de respaldo.')
+}
+
+function fallbackConnectionErrorMessage(): string {
+  return 'No se pudo conectar con el servidor Ubuntu. Revisa que la VM, Docker y ngrok esten encendidos, y que VITE_FALLBACK_API_URL apunte a tu URL publica actual.'
 }
 
 async function parseFallbackResponse(response: Response) {
@@ -98,7 +108,7 @@ export async function fallbackApiJson<T>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${fallbackApiUrl}${normalizedPath}`, {
+  const response = await fetchFallback(normalizedPath, {
     ...init,
     headers,
   })
@@ -108,6 +118,16 @@ export async function fallbackApiJson<T>(
     throw new Error(code || 'No se pudo consultar el servidor de respaldo.')
   }
   return payload as T
+}
+
+async function fetchFallback(path: string, init: RequestInit): Promise<Response> {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  try {
+    return await fetch(`${fallbackApiUrl}${normalizedPath}`, init)
+  } catch (error) {
+    console.error('Conectate Ubuntu backend is unreachable', error)
+    throw new Error(fallbackConnectionErrorMessage())
+  }
 }
 
 function notifyFallbackAuthChanged() {
@@ -222,7 +242,7 @@ export async function signInWithFallbackAuth(email: string, password: string): P
     throw new Error('El servidor de respaldo no está configurado para esta web.')
   }
 
-  const response = await fetch(`${fallbackApiUrl}/v1/auth/login`, {
+  const response = await fetchFallback('/v1/auth/login', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -270,7 +290,7 @@ export async function signUpWithFallbackAuth(params: {
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
-  const response = await fetch(`${fallbackApiUrl}/v1/auth/register`, {
+  const response = await fetchFallback('/v1/auth/register', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

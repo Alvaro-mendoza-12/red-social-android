@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -190,8 +188,8 @@ class MomentRepository @Inject constructor(
                                     android.util.Log.d("MomentRepository", "⚡ DELETE detectado: $id - Eliminando localmente")
                                     _moments.value = _moments.value.filter { it.id != id }
                                 } else {
-                                    // FALLBACK NUCLEAR: Si no llega ID (por RLS), recargamos TODO.
-                                    android.util.Log.w("MomentRepository", "⚡ DELETE sin ID (Bloqueado por RLS?), ejecutando RECARGA TOTAL...")
+                                    // Si RLS no entrega el ID anterior, sincronizamos de nuevo para mantener consistencia.
+                                    android.util.Log.w("MomentRepository", "DELETE sin ID en realtime; sincronizando momentos")
                                     refreshMoments()
                                 }
                             }
@@ -649,7 +647,7 @@ class MomentRepository @Inject constructor(
     }
 
     private fun canonicalizeContentType(contentType: String?): String? {
-        val clean = contentType?.trim()?.lowercase()?.substringBefore("")?.trim().orEmpty()
+        val clean = contentType?.trim()?.lowercase()?.substringBefore(";")?.trim().orEmpty()
         if (clean.isBlank()) return null
         return when (clean) {
             "image/jpg" -> "image/jpeg"
@@ -734,6 +732,8 @@ class MomentRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun recordView(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("MomentRepository", "========================================")
@@ -792,6 +792,8 @@ class MomentRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun getMomentViewers(momentId: String): Result<List<MomentView>> = withContext(Dispatchers.IO) {
         try {
@@ -853,6 +855,8 @@ class MomentRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun deleteMoment(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {

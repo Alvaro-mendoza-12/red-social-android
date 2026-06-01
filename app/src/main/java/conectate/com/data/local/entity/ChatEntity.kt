@@ -15,6 +15,7 @@ import kotlinx.serialization.decodeFromString
         Index(value = ["last_message_at"]),  // Index for ordering chats by recent activity
         // Keep DESC to match historical migration schema and avoid startup crash on upgrades.
         Index(value = ["is_pinned", "last_message_at"], orders = [Index.Order.ASC, Index.Order.DESC]),
+        Index(value = ["is_archived", "is_pinned", "is_favorite", "last_message_at"], orders = [Index.Order.ASC, Index.Order.ASC, Index.Order.ASC, Index.Order.DESC]),
         Index(value = ["is_group"]),         // Index for filtering group vs direct chats
         Index(value = ["unread_count"])      // Index for unread message queries
     ]
@@ -42,7 +43,11 @@ data class ChatEntity(
     @ColumnInfo(defaultValue = "0")
     val is_muted: Boolean = false,
     @ColumnInfo(defaultValue = "0")
-    val is_pinned: Boolean = false
+    val is_pinned: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
+    val is_archived: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
+    val is_favorite: Boolean = false
 ) {
     fun toDomain(): Chat {
         val participantsList = try {
@@ -60,6 +65,8 @@ data class ChatEntity(
             nickname = nickname,
             is_muted = is_muted,
             is_pinned = is_pinned,
+            is_archived = is_archived,
+            is_favorite = is_favorite,
             cleared_at = cleared_at
         )
     }
@@ -114,7 +121,9 @@ data class ChatEntity(
                 nickname = nickname ?: chat.nickname,
                 cleared_at = clearedAt,
                 is_muted = chat.is_muted,
-                is_pinned = chat.is_pinned
+                is_pinned = chat.is_pinned,
+                is_archived = chat.is_archived,
+                is_favorite = chat.is_favorite
             )
         }
     }

@@ -2,6 +2,7 @@ package conectate.com.data.supabase
 
 import conectate.com.core.media.MediaUploadGuard
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
@@ -37,15 +38,10 @@ data class StorageResponse(
 class StorageService @Inject constructor(
     private val config: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val mediaUploadGuard: MediaUploadGuard,
     private val appMetrics: AppMetrics
 ) {
-    companion object {
-        private const val INVALID_STORAGE_PATH_MESSAGE =
-            "El archivo seleccionado no es válido. Intenta elegirlo de nuevo."
-        private const val SIGNED_URL_UNAVAILABLE_MESSAGE =
-            "No se pudo preparar el acceso temporal al archivo."
-    }
 
     suspend fun uploadFile(
         bucketName: String,
@@ -56,7 +52,7 @@ class StorageService @Inject constructor(
     ): Result<StorageResponse> {
         val startedAt = System.currentTimeMillis()
         var normalizedPath = normalizeStoragePath(fileName)
-            ?: return invalidStoragePathFailure()
+            ?: return Result.failure(Exception("Invalid storage path"))
         val canonicalContentType = normalizeContentType(contentType)
         val metricAttrs = mapOf(
             "bucket" to bucketName,
@@ -80,7 +76,48 @@ class StorageService @Inject constructor(
             }
 
             var accessToken = authService.getAccessTokenAwait()
-                ?: return missingSessionFailure()
+                ?: return Result.failure(Exception("No access token available"))
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val fileDisplayName = normalizedPath.substringAfterLast('/').ifBlank { "archivo" }
+                val upload = localFallbackApiClient.uploadFile(
+                    accessToken = accessToken,
+                    bucketName = bucketName,
+                    objectPath = normalizedPath,
+                    bytes = bytes,
+                    contentType = canonicalContentType,
+                    fileName = fileDisplayName
+                )
+                return if (upload.isSuccess) {
+                    val localObject = upload.getOrThrow()
+                    appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs + ("backend" to "local_fallback"))
+                    appMetrics.recordLatency(
+                        metric = "media_upload",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = metricAttrs + ("backend" to "local_fallback")
+                    )
+                    Result.success(
+                        StorageResponse(
+                            Key = localObject.path,
+                            Id = localObject.id,
+                            Name = localObject.path,
+                            BucketId = localObject.bucket,
+                            Size = localObject.size.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                            ContentType = localObject.contentType,
+                            CreatedAt = localObject.createdAt,
+                            UpdatedAt = localObject.updatedAt
+                        )
+                    )
+                } else {
+                    val error = upload.exceptionOrNull() ?: Exception("No se pudo subir el archivo al servidor Ubuntu.")
+                    appMetrics.recordFailure(
+                        metric = "media_upload",
+                        throwable = error,
+                        attributes = metricAttrs + ("backend" to "local_fallback")
+                    )
+                    Result.failure(error)
+                }
+            }
 
             val mediaHash = sha256Hex(bytes)
             val registerResult = registerMediaObject(
@@ -153,9 +190,17 @@ class StorageService @Inject constructor(
     suspend fun downloadFile(bucketName: String, fileName: String): Result<ByteArray> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return invalidStoragePathFailure()
+                ?: return Result.failure(Exception("Invalid storage path"))
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val publicUrl = if (fileName.startsWith("http", ignoreCase = true)) {
+                    fileName
+                } else {
+                    localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
+                }
+                return localFallbackApiClient.downloadPublicFile(publicUrl)
+            }
             var accessToken = authService.getAccessTokenAwait()
-                ?: return missingSessionFailure()
+                ?: return Result.failure(Exception("No access token available"))
 
             var response = config.httpClient.get {
                 url {
@@ -188,9 +233,13 @@ class StorageService @Inject constructor(
     suspend fun deleteFile(bucketName: String, fileName: String): Result<Unit> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return invalidStoragePathFailure()
+                ?: return Result.failure(Exception("Invalid storage path"))
             var accessToken = authService.getAccessTokenAwait()
-                ?: return missingSessionFailure()
+                ?: return Result.failure(Exception("No access token available"))
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                return localFallbackApiClient.deleteFile(accessToken, bucketName, normalizedPath)
+            }
 
             var response = config.httpClient.delete {
                 url {
@@ -222,7 +271,14 @@ class StorageService @Inject constructor(
     suspend fun listFiles(bucketName: String, path: String = ""): Result<List<String>> {
         return try {
             var accessToken = authService.getAccessTokenAwait()
-                ?: return missingSessionFailure()
+                ?: return Result.failure(Exception("No access token available"))
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val prefix = normalizeStoragePath(path) ?: ""
+                return localFallbackApiClient
+                    .listStorageObjects(accessToken, bucketName, prefix)
+                    .map { objects -> objects.map { it.path } }
+            }
 
             var response = config.httpClient.get {
                 url {
@@ -254,6 +310,10 @@ class StorageService @Inject constructor(
     }
 
     fun getPublicUrl(bucketName: String, fileName: String): String {
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            var normalizedPath = normalizeStoragePath(fileName) ?: return ""
+            return localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
+        }
         var baseUrl = config.supabaseUrl.removeSuffix("/")
         var normalizedPath = normalizeStoragePath(fileName) ?: return ""
         // Join segments manually for simple GET URL
@@ -267,9 +327,12 @@ class StorageService @Inject constructor(
     suspend fun createSignedUrl(bucketName: String, fileName: String, expiresIn: Int = 3600): Result<String> {
         return try {
             var normalizedPath = normalizeStoragePath(fileName)
-                ?: return invalidStoragePathFailure()
+                ?: return Result.failure(Exception("Invalid storage path"))
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                return Result.success(localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath))
+            }
             var accessToken = authService.getAccessTokenAwait()
-                ?: return missingSessionFailure()
+                ?: return Result.failure(Exception("No access token available"))
 
             val signBody = mapOf("expiresIn" to expiresIn)
             
@@ -287,8 +350,7 @@ class StorageService @Inject constructor(
 
             if (response.status.isSuccess()) {
                 val responseBody: Map<String, String> = response.body()
-                val signedUrlPath = responseBody["signedURL"]
-                    ?: return Result.failure(Exception(SIGNED_URL_UNAVAILABLE_MESSAGE))
+                val signedUrlPath = responseBody["signedURL"] ?: return Result.failure(Exception("No signedURL in response"))
                 
                 android.util.Log.e("StorageService", "Sign SUCCESS raw: $signedUrlPath")
                 
@@ -344,11 +406,11 @@ class StorageService @Inject constructor(
     }
 
     private fun normalizeContentType(value: String): String {
-        val raw = value.substringBefore("").trim().lowercase()
+        val raw = value.substringBefore(";").trim().lowercase()
         return when (raw) {
             "image/jpg" -> "image/jpeg"
             "audio/m4a", "audio/x-m4a" -> "audio/mp4"
-            else -> raw
+            else -> raw.ifBlank { "application/octet-stream" }
         }
     }
 
@@ -394,12 +456,6 @@ class StorageService @Inject constructor(
             Result.failure(error)
         }
     }
-
-    private fun <T> invalidStoragePathFailure(): Result<T> =
-        Result.failure(Exception(INVALID_STORAGE_PATH_MESSAGE))
-
-    private fun <T> missingSessionFailure(): Result<T> =
-        Result.failure(Exception("Tu sesión venció o dejó de ser válida. Inicia sesión de nuevo."))
 
     private fun sha256Hex(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

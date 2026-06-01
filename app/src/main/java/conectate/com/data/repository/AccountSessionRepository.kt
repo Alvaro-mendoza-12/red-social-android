@@ -146,6 +146,25 @@ class AccountSessionRepository @Inject constructor(
         }
 
         return@withContext runCatching {
+            if (authService.isLocalFallbackStoredSessionToken(target.access_token, target.refresh_token)) {
+                authService.importLocalFallbackStoredSession(
+                    accessToken = target.access_token,
+                    refreshToken = target.refresh_token,
+                    email = target.email,
+                    userId = target.user_id,
+                    displayName = target.display_name,
+                    avatarUrl = target.avatar_url
+                ).getOrThrow()
+
+                return@runCatching storeAccountSnapshot(
+                    target.copy(last_used_at = System.currentTimeMillis())
+                )
+            }
+
+            if (authService.isLocalFallbackModeEnabled()) {
+                throw IllegalStateException("Esta cuenta guardada pertenece a Supabase. Ingresa con correo y contraseña para activarla en Ubuntu.")
+            }
+
             authService.importSession(target.access_token, target.refresh_token)
             var expectedUserId = target.user_id?.trim()?.lowercase()
                 ?: extractJwtClaim(target.access_token, "sub")?.lowercase()
@@ -411,28 +430,27 @@ class AccountSessionRepository @Inject constructor(
         }.getOrNull()
     }
 
-    private fun createSecurePrefsState(): SecurePrefsState = runCatching {
+    private fun createSecurePrefsState(): SecurePrefsState = try {
         val key = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        val prefs = EncryptedSharedPreferences.create(
             context,
             PREFS,
             key,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-    }.fold(
-        onSuccess = { SecurePrefsState(prefs = it, initializationError = null) },
-        onFailure = { error ->
-            android.util.Log.e(
-                "AccountSessionRepository",
-                "Secure quick-switch storage unavailable. Stored accounts will be disabled.",
-                error
-            )
-            SecurePrefsState(prefs = null, initializationError = error)
+        SecurePrefsState(prefs = prefs, initializationError = null)
+    } catch (error: Throwable) {
+        android.util.Log.e("AccountSessionRepository", "Secure storage failed, falling back to insecure storage", error)
+        try {
+            val fallbackPrefs = context.getSharedPreferences("account_switch_fallback", Context.MODE_PRIVATE)
+            SecurePrefsState(prefs = fallbackPrefs, initializationError = error)
+        } catch (e: Throwable) {
+            SecurePrefsState(prefs = null, initializationError = e)
         }
-    )
+    }
 }
 
 

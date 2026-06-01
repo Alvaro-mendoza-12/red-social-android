@@ -48,17 +48,26 @@ android {
             val supabaseAnon = props.getProperty("SUPABASE_ANON_KEY") ?: ""
             val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
             val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
-            buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
-            buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnon\"")
-            buildConfigField("String", "UPSTASH_REST_URL", "\"$upstashRestUrl\"")
-            buildConfigField("String", "UPSTASH_TOKEN", "\"$upstashToken\"")
-            buildConfigField("String", "TMDB_API_KEY", "\"\"")
+            val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
+            val realDebridToken = props.getProperty("REAL_DEBRID_TOKEN") ?: ""
+            val fallbackApiUrl = props.getNonBlank("FALLBACK_API_URL")
+                ?: props.getNonBlank("LOCAL_FALLBACK_API_URL")
+                ?: "https://celtic-poise-omission.ngrok-free.dev"
+            buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
+            buildConfigField("String", "SUPABASE_ANON_KEY", supabaseAnon.asBuildConfigString())
+            buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
+            buildConfigField("String", "UPSTASH_REST_URL", upstashRestUrl.asBuildConfigString())
+            buildConfigField("String", "UPSTASH_TOKEN", upstashToken.asBuildConfigString())
+            buildConfigField("String", "TMDB_API_KEY", tmdbApiKey.asBuildConfigString())
+            buildConfigField("String", "REAL_DEBRID_TOKEN", realDebridToken.asBuildConfigString())
         } else {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
+            buildConfigField("String", "FALLBACK_API_URL", "\"https://celtic-poise-omission.ngrok-free.dev\"")
             buildConfigField("String", "UPSTASH_REST_URL", "\"\"")
             buildConfigField("String", "UPSTASH_TOKEN", "\"\"")
             buildConfigField("String", "TMDB_API_KEY", "\"\"")
+            buildConfigField("String", "REAL_DEBRID_TOKEN", "\"\"")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,15 +77,21 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     signingConfigs {
         getByName("debug") {
-            val repoDebugKeystore = rootProject.file("../keystores/debug.keystore")
-            if (repoDebugKeystore.exists()) {
-                storeFile = repoDebugKeystore
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
+            storeFile = file("../keystores/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
 
         if (hasReleaseSigning) {
@@ -167,12 +182,6 @@ android {
     }
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-    arg("room.incremental", "true")
-    arg("room.generateKotlin", "true")
-}
-
 tasks.register("qualityGateDebug") {
     group = "verification"
     description = "Runs the local quality gate (unit tests + lint) for debug."
@@ -233,6 +242,7 @@ dependencies {
     implementation(libs.mlkit.text.recognition)
     implementation(libs.zxing.android.embedded)
     implementation(libs.zxing.core)
+    implementation(libs.googleauth)
 
     implementation(libs.webrtc)
     implementation(libs.socket.io.client) {
@@ -241,7 +251,6 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    implementation("org.jsoup:jsoup:1.22.1")
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.multiplatform.settings)
@@ -253,10 +262,14 @@ dependencies {
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
-    implementation(libs.googleauth)
+    implementation(libs.jsoup)
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

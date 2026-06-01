@@ -1,7 +1,5 @@
 package conectate.com.data.cache
 
-import androidx.compose.runtime.Composable
-
 import android.util.Log
 import conectate.com.BuildConfig
 import io.ktor.client.*
@@ -19,22 +17,26 @@ class UpstashCacheService @Inject constructor(
 ) {
     companion object {
         private const val TAG = "UpstashCache"
-        private const val UPSTASH_REST_URL = BuildConfig.UPSTASH_REST_URL // ej: https://red-social-123.upstash.io
-        private const val UPSTASH_TOKEN = BuildConfig.UPSTASH_TOKEN
+        private val restUrl = BuildConfig.UPSTASH_REST_URL.trim().trimEnd('/')
+        private val token = BuildConfig.UPSTASH_TOKEN.trim()
+        private val isConfigured = restUrl.isNotBlank() && token.isNotBlank()
     }
 
     /**
      * Obtiene un valor de cache (si existe).
      * Retorna null si no encontrado o error.
      */
+
     suspend fun get(key: String): String? = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext null
+
         try {
-            var response = httpClient.get("$UPSTASH_REST_URL/get") {
-                header("Authorization", "Bearer $UPSTASH_TOKEN")
+            val response = httpClient.get("$restUrl/get") {
+                header("Authorization", "Bearer $token")
                 parameter("key", key)
             }
             if (response.status.isSuccess()) {
-                var body = response.body<UpstashGetResponse>()
+                val body = response.body<UpstashGetResponse>()
                 if (body.result == "OK") {
                     return@withContext body.value
                 }
@@ -49,10 +51,13 @@ class UpstashCacheService @Inject constructor(
     /**
      * Guarda un valor en cache con TTL en segundos.
      */
+
     suspend fun set(key: String, value: String, exSeconds: Int = 300): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext false
+
         try {
-            var response = httpClient.post("$UPSTASH_REST_URL/set") {
-                header("Authorization", "Bearer $UPSTASH_TOKEN")
+            val response = httpClient.post("$restUrl/set") {
+                header("Authorization", "Bearer $token")
                 contentType(ContentType.Application.FormUrlEncoded)
                 buildParameters {
                     append("key", key)
@@ -70,10 +75,13 @@ class UpstashCacheService @Inject constructor(
     /**
      * Elimina una clave de cache.
      */
+
     suspend fun delete(key: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext false
+
         try {
-            var response = httpClient.post("$UPSTASH_REST_URL/del") {
-                header("Authorization", "Bearer $UPSTASH_TOKEN")
+            val response = httpClient.post("$restUrl/del") {
+                header("Authorization", "Bearer $token")
                 contentType(ContentType.Application.FormUrlEncoded)
                 buildParameters { append("key", key) }
             }
@@ -87,10 +95,13 @@ class UpstashCacheService @Inject constructor(
     /**
      * Incrementa un contador (para stats).
      */
+
     suspend fun increment(key: String, amount: Int = 1): Long? = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext null
+
         try {
-            var response = httpClient.post("$UPSTASH_REST_URL/incrby") {
-                header("Authorization", "Bearer $UPSTASH_TOKEN")
+            val response = httpClient.post("$restUrl/incrby") {
+                header("Authorization", "Bearer $token")
                 contentType(ContentType.Application.FormUrlEncoded)
                 buildParameters {
                     append("key", key)
@@ -98,7 +109,7 @@ class UpstashCacheService @Inject constructor(
                 }
             }
             if (response.status.isSuccess()) {
-                var body = response.body<UpstashIncrResponse>()
+                val body = response.body<UpstashIncrResponse>()
                 return@withContext body.result?.toLongOrNull()
             }
             null
@@ -117,10 +128,6 @@ class UpstashCacheService @Inject constructor(
     private data class UpstashGetResponse(
         val result: String,
         val value: String?
-    )
-
-    private data class UpstashSetResponse(
-        val result: String
     )
 
     private data class UpstashIncrResponse(

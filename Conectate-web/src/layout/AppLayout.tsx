@@ -343,7 +343,7 @@ export function AppLayout() {
         setNotificationUnreadCount(
           Number.isFinite(Number(notifications.unreadCount))
             ? Number(notifications.unreadCount)
-            : (notifications.items ?? []).filter((row) => !Boolean(row.is_read ?? row.isRead)).length,
+            : (notifications.items ?? []).filter((row) => !(row.is_read ?? row.isRead)).length,
         )
         setMessageUnreadCount(
           (inbox.items ?? []).reduce(

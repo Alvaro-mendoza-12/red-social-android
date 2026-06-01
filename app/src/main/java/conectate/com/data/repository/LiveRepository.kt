@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -151,6 +149,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun refreshActiveStreams() = withContext(Dispatchers.IO) {
         try {
             reconcileOwnedGhostStreamsIfNeeded()
@@ -162,7 +162,11 @@ class LiveRepository @Inject constructor(
             val normalized = normalizeActiveStreams(streams)
             _activeStreams.value = filterToServerActiveStreams(normalized)
         } catch (e: Exception) {
-            android.util.Log.e("LiveRepository", "Error refreshing live streams", e)
+            if (supabaseConfig.reportServiceRestrictionIfPresent("live-streams-refresh", e)) {
+                android.util.Log.w("LiveRepository", "Live streams unavailable because the Supabase project is restricted.")
+            } else {
+                android.util.Log.e("LiveRepository", "Error refreshing live streams", e)
+            }
         }
     }
 
@@ -313,6 +317,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
+
+
     private suspend fun subscribeToLiveStreams() {
         var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
         while (currentCoroutineContext().isActive) {
@@ -354,6 +360,8 @@ class LiveRepository @Inject constructor(
             }
         }
     }
+
+
 
     suspend fun getLiveStreamById(id: String): Result<LiveStream> = withContext(Dispatchers.IO) {
         try {
@@ -444,6 +452,8 @@ class LiveRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun hostLive(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -495,6 +505,8 @@ class LiveRepository @Inject constructor(
             Result.failure(Exception(resolveLiveStartupError(e, fallback = "No se pudo iniciar el live.")))
         }
     }
+
+
 
     suspend fun joinLiveAsViewer(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -707,6 +719,8 @@ class LiveRepository @Inject constructor(
         return started
     }
 
+
+
     suspend fun sendComment(content: String): Result<Unit> = withContext(Dispatchers.IO) {
         var session = _activeSession.value ?: return@withContext Result.failure(Exception("No hay live activo"))
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -749,6 +763,8 @@ class LiveRepository @Inject constructor(
         }
         runCatching { socket?.emit("send-reaction", payload) }
     }
+
+
 
     suspend fun endLive(): Result<Unit> = withContext(Dispatchers.IO) {
         var session = _activeSession.value ?: return@withContext Result.success(Unit)
@@ -822,6 +838,7 @@ class LiveRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10_000
+                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
             socket = IO.socket(signalingUrl, options)

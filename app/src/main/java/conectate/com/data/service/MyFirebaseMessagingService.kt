@@ -45,7 +45,6 @@ import conectate.com.util.notificationAccountTargetFromRemoteData
 import conectate.com.util.putNotificationAccountTarget
 import conectate.com.util.resolveStoredAccountForTarget
 import conectate.com.util.storedAccountDisplayLabel
-import conectate.com.util.TrustedNavigationIntents.markTrusted
 import conectate.com.services.IncomingCallForegroundService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +194,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 var contextId = (data["call_context_id"] ?: data["context_id"]).orEmpty().trim().ifBlank { null }
                 val callerAvatar = data["sender_avatar"] ?: data["senderAvatar"]
                 val callCreatedAt = data["call_created_at"] ?: data["callCreatedAt"]
+                val isVideoCall = listOf(
+                    data["call_is_video"],
+                    data["is_video"],
+                    data["isVideo"]
+                ).any { it.equals("true", ignoreCase = true) || it == "1" }
 
                 if (callId.isBlank() || senderId.isNullOrBlank()) return
                 if (wasCallRecentlyCancelled(callId)) {
@@ -207,6 +211,27 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     return
                 }
 
+                // BUSY HANDLING: If already in a call, auto-reject this invite (Edge Case: Multiple Calls)
+                if (callRepository.activeCall.value != null && !callRepository.activeCall.value?.callId.equals(callId)) {
+                    android.util.Log.i(TAG, "User busy in another call. Auto-declining callId=$callId")
+                    serviceScope.launch {
+                        runCatching {
+                            val invite = conectate.com.data.model.CallInvite(
+                                callId = callId,
+                                title = callTitle,
+                                callerUserId = senderId,
+                                callerName = senderName,
+                                callerAvatarUrl = callerAvatar,
+                                contextType = contextType,
+                                contextId = contextId,
+                                isVideo = isVideoCall
+                            )
+                            callRepository.declineIncomingCall(invite)
+                        }
+                    }
+                    return
+                }
+
                 var invite = conectate.com.data.model.CallInvite(
                     callId = callId,
                     title = callTitle,
@@ -214,7 +239,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     callerName = senderName,
                     callerAvatarUrl = callerAvatar,
                     contextType = contextType,
-                    contextId = contextId
+                    contextId = contextId,
+                    isVideo = isVideoCall
                 )
 
                 var isForeground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
@@ -420,7 +446,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }.putNotificationAccountTarget(
             notificationAccountTarget,
             accountLabel
-        ).also { markTrusted(this, it) }
+        ).also { conectate.com.util.TrustedNavigationIntents.markTrusted(this, it) }
 
         var pendingIntent = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         var avatarBitmap = getAvatarBitmap(senderAvatar)
@@ -666,6 +692,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             putExtra("call_title", invite.title)
             putExtra("call_context_type", invite.contextType)
             putExtra("call_context_id", invite.contextId ?: "")
+            putExtra("call_is_video", invite.isVideo)
             avatarBytes?.let {
                 putExtra(conectate.com.presentation.calls.IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
             }

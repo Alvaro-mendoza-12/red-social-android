@@ -305,7 +305,7 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
                 parameter("on_conflict", "folder_id,chat_id")
                 setBody(buildJsonObject { put("folder_id", cleanFolder); put("chat_id", cleanChat) })
@@ -330,7 +330,7 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("folder_id", "eq.`$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
             }
             if (!r.status.isSuccess()) {
@@ -395,7 +395,7 @@ class AdvancedMessagingRepository @Inject constructor(
                 }
             }
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_translation_settings") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
                 setBody(payload)
             }
             if (!r.status.isSuccess()) throw IllegalStateException("No se pudo guardar traducción")
@@ -633,19 +633,26 @@ class AdvancedMessagingRepository @Inject constructor(
 
     private suspend fun upsertSummaryRemote(summary: ChatSummary) {
         val token = authService.getAccessToken() ?: return
-        supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
-            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
-            header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
-            parameter("on_conflict", "chat_id")
-            setBody(buildJsonObject { put("chat_id", summary.chat_id); put("summary", summary.summary.take(1200)); put("source_message_count", summary.source_message_count); put("generated_at", summary.generated_at ?: Instant.now().toString()) })
+        runCatching {
+            supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_summary_cache") {
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
+                parameter("on_conflict", "chat_id")
+                setBody(buildJsonObject {
+                    put("chat_id", summary.chat_id)
+                    put("summary", summary.summary.take(1200))
+                    put("source_message_count", summary.source_message_count)
+                    put("generated_at", summary.generated_at ?: Instant.now().toString())
+                })
+            }
         }
     }
 
     private suspend fun loadRemoteDueScheduled(maxBatch: Int): List<ScheduledMessageJob> {
-        val token = authService.getAccessToken() ?: return emptyList()
+        var token = authService.getAccessToken() ?: return emptyList()
         return runCatching {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
+                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,scope_type,target_id,content,content_type,media_url,translate_to,self_destruct_seconds,scheduled_for,status,error_message,created_at,updated_at")
                 parameter("status", "eq.pending")
                 parameter("scheduled_for", "lte.${Instant.now()}")

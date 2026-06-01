@@ -1,7 +1,5 @@
 package conectate.com.data.repository.collection
 
-import androidx.compose.runtime.Composable
-
 import conectate.com.data.model.MessagePollOptionState
 import conectate.com.data.model.PollVoteUser
 import conectate.com.data.supabase.AuthService

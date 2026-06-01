@@ -18,6 +18,9 @@ class MessagesPreferences @Inject constructor(
         private const val KEY_TYPING_INDICATORS = "typing_indicators_enabled"
         private const val KEY_CROSS_ACCOUNT_SUGGESTIONS = "cross_account_suggestions_enabled"
         private const val KEY_CONNECTIVITY_HINTS = "connectivity_hints_enabled"
+        private const val KEY_ENTER_TO_SEND = "enter_to_send_enabled"
+        private const val KEY_MEDIA_AUTO_DOWNLOAD = "media_auto_download_enabled"
+        private const val KEY_READ_RECEIPTS = "read_receipts_enabled"
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -43,6 +46,21 @@ class MessagesPreferences @Inject constructor(
     )
     val connectivityHintsEnabled: StateFlow<Boolean> = _connectivityHintsEnabled
 
+    private val _enterToSendEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_ENTER_TO_SEND, false)
+    )
+    val enterToSendEnabled: StateFlow<Boolean> = _enterToSendEnabled
+
+    private val _mediaAutoDownloadEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_MEDIA_AUTO_DOWNLOAD, true)
+    )
+    val mediaAutoDownloadEnabled: StateFlow<Boolean> = _mediaAutoDownloadEnabled
+
+    private val _readReceiptsEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_READ_RECEIPTS, true)
+    )
+    val readReceiptsEnabled: StateFlow<Boolean> = _readReceiptsEnabled
+
     fun setCompactMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_COMPACT_MODE, enabled).apply()
         _compactMode.value = enabled
@@ -66,6 +84,21 @@ class MessagesPreferences @Inject constructor(
     fun setConnectivityHintsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_CONNECTIVITY_HINTS, enabled).apply()
         _connectivityHintsEnabled.value = enabled
+    }
+
+    fun setEnterToSendEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENTER_TO_SEND, enabled).apply()
+        _enterToSendEnabled.value = enabled
+    }
+
+    fun setMediaAutoDownloadEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MEDIA_AUTO_DOWNLOAD, enabled).apply()
+        _mediaAutoDownloadEnabled.value = enabled
+    }
+
+    fun setReadReceiptsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_READ_RECEIPTS, enabled).apply()
+        _readReceiptsEnabled.value = enabled
     }
 }
 

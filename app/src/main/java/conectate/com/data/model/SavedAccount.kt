@@ -1,6 +1,6 @@
 package conectate.com.data.model
 
-import java.time.Instant
+import conectate.com.util.TimeUtils
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -37,16 +37,7 @@ data class SavedAccount(
     }
     
     val lastUsedRelative: String
-        get() = runCatching {
-            val now = System.currentTimeMillis()
-            val elapsedMs = (now - lastUsedAt).coerceAtLeast(0L)
-            when {
-                elapsedMs < 60_000L -> "Usada hace un momento"
-                elapsedMs < 3_600_000L -> "Usada hace ${elapsedMs / 60_000L} min"
-                elapsedMs < 86_400_000L -> "Usada hace ${elapsedMs / 3_600_000L} h"
-                else -> "Usada el ${Instant.ofEpochMilli(lastUsedAt)}"
-            }
-        }.getOrDefault("Cuenta guardada")
+        get() = TimeUtils.getRelativeTime(lastUsedAt)
 }
 
 // Extension for list operations

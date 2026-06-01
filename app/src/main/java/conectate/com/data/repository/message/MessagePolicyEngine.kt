@@ -3,6 +3,7 @@ package conectate.com.data.repository.message
 import conectate.com.core.security.GuardOutcome
 import conectate.com.data.model.Message
 import conectate.com.data.model.Chat
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,7 +12,17 @@ class MessagePolicyEngine @Inject constructor() {
     companion object {
         private const val MAX_MESSAGE_LENGTH = 5000
         private const val MIN_SEND_INTERVAL_MS = 500 // Anti-spam
+        private const val DUPLICATE_WINDOW_MS = 10_000L
     }
+
+    private data class SendFingerprint(
+        val contentHash: Int,
+        val createdAtMs: Long,
+        val messageId: String
+    )
+
+    private val lastSendTimestamps = ConcurrentHashMap<String, Long>()
+    private val recentMessageFingerprints = ConcurrentHashMap<String, MutableList<SendFingerprint>>()
 
     /**
      * Valida si un mensaje puede ser enviado según políticas de negocio.
@@ -52,6 +63,8 @@ class MessagePolicyEngine @Inject constructor() {
             return GuardOutcome.QUEUED
         }
 
+        lastSendTimestamps[sendKey(cleanUserId, chat.id)] = now
+        rememberFingerprint(chat.id, message.content, message.id, now)
         return GuardOutcome.SUCCESS
     }
 
@@ -64,10 +77,29 @@ class MessagePolicyEngine @Inject constructor() {
         content: String,
         maxResults: Int = 5
     ): List<Message> {
-        if (content.isBlank()) return emptyList()
-        // Esta lógica debería delegar a un DeduplicationService especializado
-        // Por simplicidad, retornamos vacío por ahora
-        return emptyList()
+        val cleanChatId = chatId.trim().lowercase()
+        val normalizedContent = normalizeContent(content)
+        if (cleanChatId.isBlank() || normalizedContent.isBlank()) return emptyList()
+
+        val contentHash = normalizedContent.hashCode()
+        val now = System.currentTimeMillis()
+        val candidates = recentMessageFingerprints[cleanChatId]
+            ?.synchronizedSnapshot()
+            ?.filter { fingerprint ->
+                fingerprint.contentHash == contentHash &&
+                    now - fingerprint.createdAtMs <= DUPLICATE_WINDOW_MS
+            }
+            ?.take(maxResults.coerceAtLeast(1))
+            .orEmpty()
+
+        return candidates.map { fingerprint ->
+            Message(
+                id = fingerprint.messageId,
+                chat_id = cleanChatId,
+                content = content,
+                created_at = fingerprint.createdAtMs.toString()
+            )
+        }
     }
 
     /**
@@ -110,8 +142,37 @@ class MessagePolicyEngine @Inject constructor() {
      * Esto debería almacenarse en cache (Redis/SharedPrefs).
      */
     private fun getLastSendTimestamp(userId: String, chatId: String): Long? {
-        // Placeholder: en producción, leer de cache
-        return null
+        return lastSendTimestamps[sendKey(userId, chatId)]
+    }
+
+    private fun sendKey(userId: String, chatId: String): String {
+        return "${userId.trim().lowercase()}::${chatId.trim().lowercase()}"
+    }
+
+    private fun rememberFingerprint(chatId: String, content: String, messageId: String, now: Long) {
+        val cleanChatId = chatId.trim().lowercase()
+        val normalizedContent = normalizeContent(content)
+        if (cleanChatId.isBlank() || normalizedContent.isBlank()) return
+
+        val fingerprints = recentMessageFingerprints.getOrPut(cleanChatId) { mutableListOf() }
+        synchronized(fingerprints) {
+            fingerprints.removeAll { now - it.createdAtMs > DUPLICATE_WINDOW_MS }
+            fingerprints.add(
+                SendFingerprint(
+                    contentHash = normalizedContent.hashCode(),
+                    createdAtMs = now,
+                    messageId = messageId
+                )
+            )
+        }
+    }
+
+    private fun MutableList<SendFingerprint>.synchronizedSnapshot(): List<SendFingerprint> {
+        return synchronized(this) { toList() }
+    }
+
+    private fun normalizeContent(content: String): String {
+        return content.trim().replace(Regex("\\s+"), " ").lowercase()
     }
 }
 

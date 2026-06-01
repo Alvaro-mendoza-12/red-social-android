@@ -1,16 +1,19 @@
 package conectate.com.data.signaling
 
+import conectate.com.BuildConfig
+
 object SignalingConfig {
-    const val BASE_URL = "https://voice.srv1495648.hstgr.cloud"
-    const val TURN_CREDENTIALS_URL = "$BASE_URL/turn-credentials"
-    const val CINEMA_RESOLVE_URL = "$BASE_URL/resolve-cinema"
+    val BASE_URL: String = BuildConfig.FALLBACK_API_URL.trim().ifBlank {
+        "https://voice.srv1495648.hstgr.cloud"
+    }.trimEnd('/')
+    val TURN_CREDENTIALS_URL = "$BASE_URL/turn-credentials"
+    val CINEMA_RESOLVE_URL = "$BASE_URL/resolve-cinema"
 
     // Default namespace (Voice Rooms)
-    const val VOICE_URL = BASE_URL
+    val VOICE_URL = BASE_URL
 
     // Independent namespaces
-    const val CALL_URL = "$BASE_URL/call"
-    const val LIVE_URL = "$BASE_URL/live"
+    val CALL_URL = "$BASE_URL/call"
+    val LIVE_URL = "$BASE_URL/live"
 }
-
 

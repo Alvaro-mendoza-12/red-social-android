@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import android.content.Context
 import android.content.Intent
 import android.app.PendingIntent
@@ -41,6 +39,8 @@ import conectate.com.data.local.dao.GroupDao
 import conectate.com.data.local.entity.GroupEntity
 import conectate.com.data.local.entity.GroupMemberEntity
 import conectate.com.data.local.entity.GroupMessageEntity
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Group
 import conectate.com.data.model.GroupMember
 import conectate.com.data.model.GroupMessage
@@ -113,6 +113,7 @@ class GroupRepository @Inject constructor(
     private val authService: AuthService,
     private val groupDao: GroupDao,
     private val userRepository: UserRepository,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val storageService: conectate.com.data.supabase.StorageService,
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
@@ -173,6 +174,10 @@ class GroupRepository @Inject constructor(
     private val activeGroupMessageJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     private fun startRealtimeSubscriptions(userId: String) {
+        if (authService.isLocalFallbackModeEnabled()) {
+            android.util.Log.d("GroupRepository", "Skipping Supabase realtime in local fallback mode")
+            return
+        }
         if (userId.isBlank()) return
         
         realtimeJob?.cancel()
@@ -703,6 +708,8 @@ class GroupRepository @Inject constructor(
     // --- NOTIFICATIONS (SYSTEM) ---
     
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+
     private suspend fun showNotification(msg: GroupMessage, groupName: String) {
         withContext(Dispatchers.Main) {
             try {
@@ -782,6 +789,8 @@ class GroupRepository @Inject constructor(
     /**
      * Obtiene un grupo por su ID (Optimizado).
      */
+
+
     suspend fun getGroupById(id: String): Group? = withContext(Dispatchers.IO) {
         var cleanId = id.trim().lowercase()
         var group = groupDao.getGroupById(cleanId)?.toDomain() ?: try {
@@ -820,6 +829,8 @@ class GroupRepository @Inject constructor(
 
     // --- MESSAGES FLOW ---
     
+
+
     suspend fun getCachedMessages(groupId: String): List<GroupMessage> = withContext(Dispatchers.IO) {
         var cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
@@ -1030,6 +1041,8 @@ class GroupRepository @Inject constructor(
 
     // --- ACTIONS ---
 
+
+
     suspend fun markAsRead(groupId: String, messageIds: Collection<String>) {
         var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1075,6 +1088,8 @@ class GroupRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun markAsRead(groupId: String) {
         var cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
@@ -1105,6 +1120,8 @@ class GroupRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun markMessageAsDelivered(groupId: String, messageId: String) {
         var cleanId = groupId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
@@ -1129,6 +1146,8 @@ class GroupRepository @Inject constructor(
             }
         }
     }
+
+
 
     suspend fun markMessagesAsDelivered(groupId: String) {
         var cleanId = groupId.trim().lowercase()
@@ -1370,7 +1389,43 @@ class GroupRepository @Inject constructor(
                 put("forwarded_from_user_id", forwardedFromUserId)
             }
 
-            val syncResult = insertGroupMessageWithRetry(msgId, msgJson)
+            val syncResult = if (authService.isLocalFallbackSession()) {
+                val token = authService.getAccessTokenAwait()
+                if (token.isNullOrBlank()) {
+                    Result.failure(Exception("Sesion Ubuntu no disponible"))
+                } else {
+                    localFallbackApiClient.sendGroupMessage(
+                        accessToken = token,
+                        groupId = cleanId,
+                        content = finalContent,
+                        contentType = contentType,
+                        mediaUrl = mediaUrl,
+                        mediaSize = 0L,
+                        replyToId = replyToId,
+                        messageId = msgId
+                    ).map { serverMessage ->
+                        val synced = serverMessage.copy(group_id = cleanId, status = "sent")
+                        groupDao.insertMessages(
+                            listOf(
+                                GroupMessageEntity.fromDomain(
+                                    msg = synced,
+                                    isSynced = true,
+                                    pendingAction = null
+                                )
+                            )
+                        )
+                        groupDao.updateMetadata(
+                            cleanId,
+                            CollectionMessageSyncSupport.buildMetadataPreview(synced.content_type, synced.content),
+                            synced.created_at
+                        )
+                        updateGroupMessageInFlow(cleanId, synced)
+                        Unit
+                    }
+                }
+            } else {
+                insertGroupMessageWithRetry(msgId, msgJson)
+            }
             if (syncResult.isSuccess) {
                 android.util.Log.d("GroupRepository", "✅ [SERVER-ACK] Mensaje $msgId sincronizado")
                 try {
@@ -1494,9 +1549,30 @@ class GroupRepository @Inject constructor(
                 put("forwarded_from_user_id", pendingEntity.forwarded_from_user_id)
             }
 
-            insertGroupMessageWithRetry(msgId = pendingEntity.id, payload = payload)
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                if (!token.isNullOrBlank()) {
+                    localFallbackApiClient.sendGroupMessage(
+                        accessToken = token,
+                        groupId = pendingEntity.group_id,
+                        content = pendingEntity.content,
+                        contentType = pendingEntity.content_type,
+                        mediaUrl = pendingEntity.media_url,
+                        mediaSize = 0L,
+                        replyToId = pendingEntity.reply_to_id,
+                        messageId = pendingEntity.id
+                    ).onSuccess { serverMessage ->
+                        groupDao.updateMessageSyncStatus(pendingEntity.id, status = "sent", isSynced = true, pendingAction = null)
+                        updateGroupMessageInFlow(pendingEntity.group_id, serverMessage.copy(group_id = pendingEntity.group_id, status = "sent"))
+                    }
+                }
+            } else {
+                insertGroupMessageWithRetry(msgId = pendingEntity.id, payload = payload)
+            }
         }
     }
+
+
 
     suspend fun editGroupMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -1525,6 +1601,8 @@ class GroupRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun deleteGroupMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -1605,6 +1683,8 @@ class GroupRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun getGroupMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
         var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         collectionMessageEngagementStore.getMessageReadReceipts(
@@ -1634,6 +1714,8 @@ class GroupRepository @Inject constructor(
         val messageId: String,
         val reactions: Map<String, List<String>>
     )
+
+
 
     suspend fun toggleGroupMessageReaction(messageId: String, emoji: String): Result<GroupMessageReactionToggleResult> = withContext(Dispatchers.IO) {
         try {
@@ -1693,6 +1775,8 @@ class GroupRepository @Inject constructor(
         syncGroupMessages(groupId, currentSessionUserId())
     }
 
+
+
     private suspend fun syncGroupMessages(groupId: String, sessionUserId: String?) {
         var cleanId = groupId.trim().lowercase()
         val normalizedSessionUserId = SessionWriteGuard.normalizeAccountId(sessionUserId) ?: return
@@ -1701,6 +1785,48 @@ class GroupRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-start:$cleanId")) return@withContext
             try {
+                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                    val token = authService.getAccessTokenAwait()
+                    if (token.isNullOrBlank()) return@withContext
+                    val payload = localFallbackApiClient.loadGroupRoom(token, cleanId).getOrElse { error ->
+                        android.util.Log.e("GroupRepository", "Error syncing Ubuntu group messages for $groupId", error)
+                        return@withContext
+                    }
+                    val localMessagesById = groupDao.getMessagesSync(cleanId)
+                        .associateBy { it.id.trim().lowercase() }
+                        .mapValues { (_, entity) -> entity.toDomain() }
+                    val mergedResponse = payload.messages.mapNotNull { row ->
+                        runCatching {
+                            json.decodeFromJsonElement<GroupMessage>(row).copy(group_id = cleanId, status = "sent")
+                        }.getOrNull()
+                    }.map { incoming ->
+                        mergeSyncedGroupMessageWithLocalState(
+                            incoming = incoming,
+                            local = localMessagesById[incoming.id.trim().lowercase()]
+                        )
+                    }
+                    if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-after-ubuntu:$cleanId")) return@withContext
+                    if (_activeGroupMessages.containsKey(cleanId)) {
+                        val current = _activeGroupMessages[cleanId]?.value ?: emptyList()
+                        _activeGroupMessages[cleanId]?.value = CollectionMessageSyncSupport.mergeActiveMessages(
+                            current = current,
+                            incoming = mergedResponse,
+                            idSelector = { it.id },
+                            createdAtSelector = { it.created_at }
+                        )
+                    }
+                    if (mergedResponse.isNotEmpty()) {
+                        groupDao.insertMessages(mergedResponse.map { GroupMessageEntity.fromDomain(it) })
+                        mergedResponse.maxByOrNull { it.created_at }?.let { lastMsg ->
+                            groupDao.updateMetadata(
+                                cleanId,
+                                CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
+                                lastMsg.created_at
+                            )
+                        }
+                    }
+                    return@withContext
+                }
                 // 1. Fetch Remote Messages
                 var response = supabaseConfig.client.postgrest["group_messages"].select {
                     filter { eq("group_id", cleanId) }
@@ -1782,8 +1908,75 @@ class GroupRepository @Inject constructor(
             contentType = "audio/mpeg"
         )
 
+
+
+    private fun groupFromFallbackInbox(item: LocalFallbackInboxItem, currentUserId: String): Group {
+        val cleanId = item.id.trim().lowercase()
+        val now = java.time.Instant.now().toString()
+        val updatedAt = item.updatedAt.ifBlank { now }
+        val preview = item.subtitle.takeIf { it.isNotBlank() && it != "Sin actividad reciente" }
+        return Group(
+            id = cleanId,
+            name = item.title.ifBlank { "Grupo" },
+            image = item.avatarUrl.ifBlank { null },
+            description = item.subtitle.takeIf { it.isNotBlank() },
+            created_at = updatedAt,
+            creator_id = currentUserId,
+            last_message = preview,
+            last_message_at = updatedAt,
+            is_member = true,
+            is_deleted = false
+        )
+    }
+
+    private suspend fun syncGroupsFromLocalFallback(): Result<Unit> {
+        return try {
+            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: return Result.failure(Exception("Not authenticated"))
+            val token = authService.getAccessTokenAwait()
+                ?: return Result.failure(Exception("Sesion Ubuntu no disponible"))
+            val sessionSnapshot = captureSessionSnapshot(userId)
+            val inbox = localFallbackApiClient.loadMessagesInbox(token, "groups").getOrThrow()
+            val activeItems = inbox.items.filter { it.id.isNotBlank() }
+            val activeIds = activeItems.map { it.id.trim().lowercase() }.distinct()
+            val localUnreadCounts = groupDao.getUnreadCountRows(userId)
+                .associate { row -> row.groupId.trim().lowercase() to row.unreadCount.coerceAtLeast(0) }
+
+            if (!isSessionSnapshotValid(sessionSnapshot, "group-ubuntu-sync-before-upsert:$userId")) {
+                return Result.success(Unit)
+            }
+            groupDao.upsertGroups(
+                activeItems.map { item ->
+                    val cleanId = item.id.trim().lowercase()
+                    GroupEntity.fromDomain(
+                        group = groupFromFallbackInbox(item, userId),
+                        unreadCount = CollectionMessageSyncSupport.resolveDisplayedUnreadCount(
+                            isConversationOpen = cleanId == currentOpenedGroupId,
+                            exactUnread = localUnreadCounts[cleanId] ?: item.unreadCount
+                        )
+                    )
+                }
+            )
+            groupDao.insertMembers(
+                activeIds.map { groupId ->
+                    GroupMemberEntity(groupId, userId, "member", java.time.Instant.now().toString())
+                }
+            )
+            groupDao.markOthersAsNotMembers(activeIds)
+            activeIds.forEach { cleanId -> syncGroupMessages(cleanId, userId) }
+            android.util.Log.d("GroupRepository", "✅ [UBUNTU-SYNC] ${activeIds.size} grupos sincronizados desde Ubuntu")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            android.util.Log.e("GroupRepository", "Error syncing Ubuntu groups", e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun syncGroups(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            if (authService.isLocalFallbackModeEnabled()) {
+                return@withContext syncGroupsFromLocalFallback()
+            }
             var userId = (authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))).trim().lowercase()
             var sessionSnapshot = captureSessionSnapshot(userId)
             
@@ -1910,6 +2103,8 @@ class GroupRepository @Inject constructor(
     /**
      * Crea un nuevo grupo en Supabase e inserta al creador como admin.
      */
+
+
     suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>): Result<String> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("GroupRepository", "[GOD] Creando grupo: $name para integrantes: $members")
@@ -1950,6 +2145,40 @@ class GroupRepository @Inject constructor(
                     put("role", if (uid == creatorId.trim().lowercase()) "admin" else "member")
                     put("joined_at", now)
                 }
+            }
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                localFallbackApiClient.createGroup(
+                    accessToken = token,
+                    id = groupId,
+                    name = name,
+                    description = description,
+                    imageUrl = imageUrl,
+                    memberIds = allMembers
+                ).getOrThrow()
+                val optimisticGroup = GroupEntity(
+                    id = groupId,
+                    name = name,
+                    image = imageUrl,
+                    description = description,
+                    created_at = now,
+                    creator_id = creatorId,
+                    last_message = null,
+                    last_message_at = null,
+                    is_member = true,
+                    is_deleted = false
+                )
+                groupDao.upsertGroup(optimisticGroup)
+                groupDao.insertMembers(allMembers.map { uid ->
+                    GroupMemberEntity(
+                        group_id = groupId,
+                        user_id = uid,
+                        role = if (uid == creatorId.trim().lowercase()) "admin" else "member",
+                        joined_at = now
+                    )
+                })
+                return@withContext Result.success(groupId)
             }
             collectionCreationRemoteStore.createCollectionWithMemberships(
                 collectionTable = "groups",
@@ -1993,6 +2222,8 @@ class GroupRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         try {
@@ -2046,8 +2277,20 @@ class GroupRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun leaveGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+            val cleanId = groupId.trim().lowercase()
+            val cleanUserId = userId.trim().lowercase()
+            localFallbackApiClient.leaveCollection(token, "groups", cleanId).getOrThrow()
+            groupDao.removeMember(cleanId, cleanUserId)
+            groupDao.updateMembership(cleanId, false)
+            return@withContext Result.success(Unit)
+        }
         CollectionMembershipMutationSupport.leaveCurrentUserCollection(
             scopeId = groupId,
             currentUserId = userId,
@@ -2069,6 +2312,8 @@ class GroupRepository @Inject constructor(
         )
     }
 
+
+
     suspend fun addMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2079,6 +2324,23 @@ class GroupRepository @Inject constructor(
                 privileges = privileges,
                 errorMessage = "No tienes permisos para agregar miembros."
             )
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val cleanUserId = userId.trim().lowercase()
+                localFallbackApiClient.joinCollection(
+                    accessToken = token,
+                    collection = "groups",
+                    roomId = cleanId,
+                    userId = cleanUserId,
+                    role = "member"
+                ).getOrThrow()
+                groupDao.insertMembers(
+                    listOf(GroupMemberEntity(cleanId, cleanUserId, "member", java.time.Instant.now().toString()))
+                )
+                return@withContext Result.success(Unit)
+            }
 
             collectionAdminRemoteStore.insertMember(
                 membershipTable = "group_members",
@@ -2096,6 +2358,8 @@ class GroupRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun removeMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -2131,6 +2395,8 @@ class GroupRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun deleteGroup(groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -2175,6 +2441,8 @@ class GroupRepository @Inject constructor(
         var cleanId = groupId.trim().lowercase()
         groupDao.deleteGroup(cleanId)
     }
+
+
 
     suspend fun updateMemberRole(groupId: String, userId: String, newRole: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {

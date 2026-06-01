@@ -56,6 +56,11 @@ supabase/*firebase-adminsdk*.json
 # Node
 **/node_modules/
 
+# Local Ubuntu fallback runtime data
+infrastructure/local-fallback/api/storage-data/
+infrastructure/local-fallback/storage-data/
+storage-data/
+
 # Runtime binaries and tools
 ngrok.exe
 ChromeSetup.exe

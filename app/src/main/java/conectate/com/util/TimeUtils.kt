@@ -9,6 +9,21 @@ import java.util.Locale
 import java.time.temporal.ChronoUnit
 
 object TimeUtils {
+    fun getRelativeTime(timestampMillis: Long): String {
+        val elapsedMillis = (System.currentTimeMillis() - timestampMillis).coerceAtLeast(0L)
+        val minutes = elapsedMillis / 60_000L
+        val hours = minutes / 60L
+        val days = hours / 24L
+
+        return when {
+            minutes < 1 -> "Ahora"
+            minutes < 60 -> "Hace $minutes min"
+            hours < 24 -> "Hace $hours h"
+            days < 7 -> "Hace $days d"
+            else -> formatTimestamp(Instant.ofEpochMilli(timestampMillis).toString())
+        }
+    }
+
     /**
      * Convierte un timestamp a formato de última vez en español
      * Ejemplos:

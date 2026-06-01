@@ -89,7 +89,7 @@ object IncomingCallNotificationFactory {
         return NotificationCompat.Builder(context, context.getString(R.string.call_notification_channel_id))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(invite.callerName.ifBlank { "Conéctate" })
-            .setContentText("Llamada entrante")
+            .setContentText(if (invite.isVideo) "Videollamada entrante" else "Llamada entrante")
             .setSubText("Conéctate")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
@@ -128,6 +128,7 @@ private fun Intent.copyInviteExtras(invite: CallInvite, avatarBytes: ByteArray?)
     putExtra("call_title", invite.title)
     putExtra("call_context_type", invite.contextType)
     putExtra("call_context_id", invite.contextId ?: "")
+    putExtra("call_is_video", invite.isVideo)
     avatarBytes?.let {
         putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
     }

@@ -1,17 +1,20 @@
 package conectate.com.data.repository.message
 
+import android.Manifest
 import android.content.Context
-import android.media.RingtoneManager
-import android.net.Uri
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
-import com.google.firebase.messaging.FirebaseMessaging
-import com.google.firebase.messaging.RemoteMessage
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import conectate.com.R
 import conectate.com.data.local.dao.ChatDao
-import conectate.com.data.local.dao.MessageDao
 import conectate.com.data.model.Chat
 import conectate.com.data.model.Message
 import conectate.com.util.ChatSoundPlayer
+import conectate.com.util.ConversationNotificationPrefs
+import conectate.com.util.MessageNotificationFactory
+import conectate.com.util.MessageNotificationPayload
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import javax.inject.Inject
@@ -22,7 +25,7 @@ class MessageNotificationService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val chatSoundPlayer: ChatSoundPlayer,
     private val chatDao: ChatDao,
-    private val messageDao: MessageDao
+    private val sessionStateStore: MessageSessionStateStore
 ) {
     companion object {
         private const val TAG = "MessageNotificationService"
@@ -43,9 +46,11 @@ class MessageNotificationService @Inject constructor(
     ) {
         scope.launch {
             try {
+                val conversationId = chat?.id?.trim()?.lowercase().orEmpty()
+                    .ifBlank { message.chat_id.trim().lowercase() }
+
                 // 1. Verificar si el chat está activo (visible) → no notificar
-                val activeChatId = getActiveChatId()
-                if (chat?.id == activeChatId) {
+                if (conversationId.isNotBlank() && sessionStateStore.isActiveChatVisible(conversationId)) {
                     Log.d(TAG, "Chat activo, no se muestra notificación para ${message.id}")
                     // Reproducir sonido suave
                     chatSoundPlayer.playReceive()
@@ -58,6 +63,14 @@ class MessageNotificationService @Inject constructor(
                     Log.d(TAG, "Chat muteado, no se notifica: ${chat?.id}")
                     return@launch
                 }
+                if (conversationId.isNotBlank()) {
+                    val isMutedFromNotificationAction = ConversationNotificationPrefs(context)
+                        .isMuted(targetType = "chat", conversationId = conversationId)
+                    if (isMutedFromNotificationAction) {
+                        Log.d(TAG, "Chat silenciado desde acciones de notificación: $conversationId")
+                        return@launch
+                    }
+                }
 
                 // 3. Construir notificación
                 val notificationTitle = senderName
@@ -65,7 +78,7 @@ class MessageNotificationService @Inject constructor(
 
                 // 4. Mostrar notificación
                 sendNotification(
-                    chatId = chat?.id ?: "",
+                    chatId = conversationId,
                     title = notificationTitle,
                     text = notificationText,
                     messageId = message.id
@@ -88,11 +101,40 @@ class MessageNotificationService @Inject constructor(
         text: String,
         messageId: String
     ) {
-        // Implementar con NotificationCompat.Builder
-        // Incluye: channel, small icon, content intent (abre chat),
-        // deleteIntent (marcar como leído), actions (reply, mark read)
-        // Usar NotificationManagerCompat
-        TODO("Implement NotificationCompat Builder con canal para Android 8+")
+        val conversationId = chatId.trim().lowercase().ifBlank { messageId.trim().lowercase() }
+        if (conversationId.isBlank()) {
+            Log.w(TAG, "Notificación omitida: chatId y messageId vacíos")
+            return
+        }
+
+        val notificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!notificationsGranted) {
+            Log.w(TAG, "Notificación omitida: POST_NOTIFICATIONS no concedido")
+            return
+        }
+
+        val notificationId = notificationIdForChat(conversationId)
+        val notification = MessageNotificationFactory.build(
+            context = context,
+            payload = MessageNotificationPayload(
+                channelId = context.getString(R.string.chat_notification_channel_id),
+                channelName = NOTIFICATION_CHANNEL_NAME,
+                channelDescription = "Notificaciones de chats privados",
+                conversationId = conversationId,
+                targetType = "chat",
+                conversationTitle = title.ifBlank { "Chat" },
+                senderName = title.ifBlank { "Usuario" },
+                messageBody = text.ifBlank { "Nuevo mensaje" },
+                notificationId = notificationId,
+                messageId = messageId,
+                isGroupConversation = false,
+                allowInlineActions = true
+            )
+        )
+
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
     /**
@@ -101,7 +143,8 @@ class MessageNotificationService @Inject constructor(
     fun cancelNotificationForChat(chatId: String) {
         scope.launch {
             try {
-                // NotificationManagerCompat.cancel(chatId.hashCode())
+                NotificationManagerCompat.from(context)
+                    .cancel(notificationIdForChat(chatId.trim().lowercase()))
                 Log.d(TAG, "Notificación cancelada para chat $chatId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error cancelando notificación", e)
@@ -109,12 +152,8 @@ class MessageNotificationService @Inject constructor(
         }
     }
 
-    /**
-     * Obtiene ID del chat actualmente visible (si está en foreground).
-     */
-    private suspend fun getActiveChatId(): String? {
-        // Esto debería venir de un state holder compartido (SessionStateStore)
-        return null // Placeholder
+    private fun notificationIdForChat(chatId: String): Int {
+        return chatId.trim().lowercase().ifBlank { "messages" }.hashCode()
     }
 
     /**

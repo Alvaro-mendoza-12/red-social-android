@@ -92,7 +92,7 @@ export async function createWebLoginPairing(
   client: SupabaseClient | null | undefined,
   deviceLabel = describeCurrentDevice(),
 ) {
-  if (!client) {
+  if (isFallbackAuthConfigured) {
     return invokeFallbackPairing(
       {
         action: 'create',
@@ -100,6 +100,10 @@ export async function createWebLoginPairing(
       },
       'No se pudo crear el QR de Conectate Web en el servidor Ubuntu.',
     )
+  }
+
+  if (!client) {
+    throw new Error('No hay backend configurado para crear el QR de Conectate Web.')
   }
 
   return invokePairing(
@@ -117,7 +121,7 @@ export async function readWebLoginPairingStatus(
   pairId: string,
   nonce: string,
 ) {
-  if (!client) {
+  if (isFallbackAuthConfigured) {
     return invokeFallbackPairing(
       {
         action: 'status',
@@ -126,6 +130,10 @@ export async function readWebLoginPairingStatus(
       },
       'No se pudo verificar el estado del QR en el servidor Ubuntu.',
     )
+  }
+
+  if (!client) {
+    throw new Error('No hay backend configurado para revisar el QR de Conectate Web.')
   }
 
   return invokePairing(
@@ -144,7 +152,7 @@ export async function consumeApprovedWebLoginPairing(
   pairId: string,
   nonce: string,
 ) {
-  if (!client) {
+  if (isFallbackAuthConfigured) {
     return invokeFallbackPairing(
       {
         action: 'consume',
@@ -153,6 +161,10 @@ export async function consumeApprovedWebLoginPairing(
       },
       'No se pudo completar el inicio por QR en el servidor Ubuntu.',
     )
+  }
+
+  if (!client) {
+    throw new Error('No hay backend configurado para completar el QR de Conectate Web.')
   }
 
   return invokePairing(

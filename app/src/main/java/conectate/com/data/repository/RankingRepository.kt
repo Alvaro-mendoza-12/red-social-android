@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import conectate.com.data.model.Post
 import conectate.com.data.model.User
 import conectate.com.data.model.Video
@@ -22,6 +20,8 @@ class RankingRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService
 ) {
+
+
 
     suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
@@ -50,6 +50,8 @@ class RankingRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun getTopVideos(filter: String = "views"): Result<List<Video>> = withContext(Dispatchers.IO) {
          try {
@@ -87,6 +89,8 @@ class RankingRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun getTopPosts(filter: String = "likes"): Result<List<Post>> = withContext(Dispatchers.IO) {
         try {

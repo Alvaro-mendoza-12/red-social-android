@@ -6,6 +6,7 @@ enum class CallConnectionState {
     RINGING_INCOMING,
     CONNECTING,
     CONNECTED,
+    RECONNECTING,
     ENDED
 }
 
@@ -19,7 +20,8 @@ data class ActiveCall(
     val contextId: String? = null,
     val peerUserId: String? = null,
     val peerName: String? = null,
-    val peerAvatarUrl: String? = null
+    val peerAvatarUrl: String? = null,
+    val isVideo: Boolean = false
 )
 
 data class CallEndedSummary(
@@ -47,7 +49,8 @@ data class CallInvite(
     val callerName: String,
     val callerAvatarUrl: String? = null,
     val contextType: String,
-    val contextId: String? = null
+    val contextId: String? = null,
+    val isVideo: Boolean = false
 )
 
 data class CallReactionEvent(

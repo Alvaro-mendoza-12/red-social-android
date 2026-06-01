@@ -6,6 +6,7 @@ import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
@@ -16,7 +17,10 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import conectate.com.data.webrtc.WebRTCManager
+import conectate.com.services.VoiceForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -56,6 +60,7 @@ class VoiceRoomRepository @Inject constructor(
     @ApplicationContext val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val appMetrics: AppMetrics,
     private val crashReporter: CrashReporter
 ) {
@@ -203,6 +208,60 @@ class VoiceRoomRepository @Inject constructor(
         if (currentUserId.isBlank()) return false
         return participants.any { participant ->
             participant.id.trim().lowercase() == currentUserId && participant.isMuted
+        }
+    }
+
+    private fun startVoiceForegroundService(room: VoiceRoom?, fallbackRoomId: String) {
+        val session = sessionState.value
+        val roomId = room?.id?.takeIf { it.isNotBlank() }
+            ?: session.roomId
+            ?: fallbackRoomId
+        if (roomId.isBlank()) return
+
+        val intent = Intent(context, VoiceForegroundService::class.java).apply {
+            action = VoiceForegroundService.ACTION_START
+            putExtra(VoiceForegroundService.EXTRA_ROOM_ID, roomId)
+            putExtra(
+                VoiceForegroundService.EXTRA_ROOM_NAME,
+                room?.name?.takeIf { it.isNotBlank() } ?: session.roomName
+            )
+            putExtra(VoiceForegroundService.EXTRA_READABLE_ID, room?.readableId ?: session.readableId)
+            putExtra(
+                VoiceForegroundService.EXTRA_PARTICIPANT_COUNT,
+                maxOf(room?.participantCount ?: 0, session.participantCount, _currentParticipants.value.size)
+            )
+            putExtra(VoiceForegroundService.EXTRA_IS_MUTED, isSelfMuted())
+        }
+        runCatching {
+            ContextCompat.startForegroundService(context, intent)
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo iniciar VoiceForegroundService", error)
+        }
+    }
+
+    private fun updateVoiceForegroundService() {
+        val session = sessionState.value
+        val roomId = session.roomId ?: activeRoomId ?: return
+        val intent = Intent(context, VoiceForegroundService::class.java).apply {
+            action = VoiceForegroundService.ACTION_UPDATE
+            putExtra(VoiceForegroundService.EXTRA_ROOM_ID, roomId)
+            putExtra(VoiceForegroundService.EXTRA_ROOM_NAME, session.roomName)
+            putExtra(VoiceForegroundService.EXTRA_READABLE_ID, session.readableId)
+            putExtra(VoiceForegroundService.EXTRA_PARTICIPANT_COUNT, session.participantCount)
+            putExtra(VoiceForegroundService.EXTRA_IS_MUTED, session.isMuted)
+        }
+        runCatching {
+            ContextCompat.startForegroundService(context, intent)
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo actualizar VoiceForegroundService", error)
+        }
+    }
+
+    private fun stopVoiceForegroundService() {
+        runCatching {
+            context.stopService(Intent(context, VoiceForegroundService::class.java))
+        }.onFailure { error ->
+            android.util.Log.w("VoiceRoomRepository", "No se pudo detener VoiceForegroundService", error)
         }
     }
 
@@ -730,6 +789,21 @@ class VoiceRoomRepository @Inject constructor(
     suspend fun refreshRooms(): Result<List<VoiceRoom>> {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val rooms = localFallbackApiClient.loadVoiceRooms(token)
+                    .getOrThrow()
+                    .map(::normalizeRoomForUi)
+                val visibleRooms = rooms.filter { shouldShowRoomInLobby(it, currentUserId) }
+                _activeRooms.value = visibleRooms
+                val normalizedActiveRoomId = activeRoomId?.trim()?.lowercase()
+                if (!normalizedActiveRoomId.isNullOrBlank()) {
+                    _currentRoom.value = rooms.firstOrNull { it.id.trim().lowercase() == normalizedActiveRoomId }
+                        ?: _currentRoom.value
+                }
+                return Result.success(visibleRooms)
+            }
             var rooms = supabaseConfig.client.postgrest["voice_rooms"].select {
                 filter {
                     eq("is_active", true)
@@ -754,7 +828,11 @@ class VoiceRoomRepository @Inject constructor(
             }
             return Result.success(visibleRooms)
         } catch (e: Exception) {
-            android.util.Log.e("VoiceRoomRepository", "Error refreshing rooms", e)
+            if (supabaseConfig.reportServiceRestrictionIfPresent("voice-rooms-refresh", e)) {
+                android.util.Log.w("VoiceRoomRepository", "Voice rooms unavailable because the Supabase project is restricted.")
+            } else {
+                android.util.Log.e("VoiceRoomRepository", "Error refreshing rooms", e)
+            }
             return Result.failure(e)
         }
     }
@@ -763,6 +841,11 @@ class VoiceRoomRepository @Inject constructor(
 
     suspend fun getRoomById(id: String): Result<VoiceRoom> = withContext(Dispatchers.IO) {
         try {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                return@withContext localFallbackApiClient.loadVoiceRoom(token, id).map { it.room }
+            }
             var room = supabaseConfig.client.postgrest["voice_rooms"].select {
                 filter { eq("readable_id", id) } // Try to find by readable_id first
             }.decodeSingleOrNull<VoiceRoom>() 
@@ -798,6 +881,28 @@ class VoiceRoomRepository @Inject constructor(
                 password = password,
                 agoraChannelName = "room_$roomId"
             )
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val createdRoom = localFallbackApiClient.createVoiceRoom(
+                    accessToken = token,
+                    id = roomId,
+                    name = name,
+                    description = description,
+                    isPublic = isPublic,
+                    maxParticipants = DEFAULT_ROOM_CAPACITY,
+                    agoraChannelName = "room_$roomId"
+                ).getOrThrow().let(::normalizeRoomForUi)
+                if (shouldShowRoomInLobby(createdRoom, userId.trim().lowercase())) {
+                    _activeRooms.update { current ->
+                        listOf(createdRoom) + current.filterNot { existing ->
+                            existing.id.trim().lowercase() == createdRoom.id.trim().lowercase()
+                        }
+                    }
+                }
+                return@withContext Result.success(createdRoom)
+            }
 
             // Insert without readable_id/created_at to let DB handle defaults
             supabaseConfig.client.postgrest["voice_rooms"].insert(room)
@@ -867,6 +972,18 @@ class VoiceRoomRepository @Inject constructor(
             if (_currentParticipants.value.none { it.id == userId }) {
                 _currentParticipants.value = _currentParticipants.value + self
             }
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.joinVoiceRoom(
+                        accessToken = token,
+                        roomId = roomLookupId,
+                        userName = displayName,
+                        userAvatarUrl = avatarUrl,
+                        socketId = socket?.id() ?: userId,
+                        isMuted = false
+                    )
+                }
+            }
             
             prepareVoiceAudioSession(forceMicUnmute = true)
             webRTCManager?.ensureLocalTracks()
@@ -876,6 +993,7 @@ class VoiceRoomRepository @Inject constructor(
                 metric = "voice_room_rejoin_preserved",
                 attributes = currentMetricAttributes(roomId = roomId)
             )
+            startVoiceForegroundService(_currentRoom.value, signalRoom)
             android.util.Log.w("VoiceRoomRepository", "📍 RE-ENTRY completed: Session preserved")
             return@withContext
         } else if (socket?.connected() == true) {
@@ -957,18 +1075,33 @@ class VoiceRoomRepository @Inject constructor(
             android.util.Log.i("VoiceRoomRepository", "📡 Connecting to Signaling: $SIGNALING_URL")
             setupSocketSignaling(signalRoom, userId, displayName, avatarUrl)
 
-            // 2. Setup Realtime Channel
-            try {
-                android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
-                roomChannel = supabaseConfig.client.channel("room:$roomId")
-                roomChannel?.let {
-                    supabaseConfig.subscribeRealtimeChannel(
-                        channel = it,
-                        reason = "voice-room-$roomId"
-                    )
+            // 2. Setup participants persistence. Ubuntu mode uses local API + Socket.IO; Supabase mode keeps realtime channel.
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.joinVoiceRoom(
+                        accessToken = token,
+                        roomId = roomLookupId,
+                        userName = displayName,
+                        userAvatarUrl = avatarUrl,
+                        socketId = socket?.id() ?: userId,
+                        isMuted = false
+                    ).onSuccess { participants ->
+                        _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                    }
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("VoiceRoomRepository", "⚠️ Supabase Realtime Subscription Error (Proceeding anyway): ${e.message}")
+            } else {
+                try {
+                    android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
+                    roomChannel = supabaseConfig.client.channel("room:$roomId")
+                    roomChannel?.let {
+                        supabaseConfig.subscribeRealtimeChannel(
+                            channel = it,
+                            reason = "voice-room-$roomId"
+                        )
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("VoiceRoomRepository", "⚠️ Supabase Realtime Subscription Error (Proceeding anyway): ${e.message}")
+                }
             }
             
             // Late sync cinema state
@@ -983,6 +1116,7 @@ class VoiceRoomRepository @Inject constructor(
                     )
                 }
             }
+            startVoiceForegroundService(_currentRoom.value, signalRoom)
             android.util.Log.w("VoiceRoomRepository", "📍 joinRoom END: Setup complete")
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error joining room", e)
@@ -1019,6 +1153,7 @@ class VoiceRoomRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10000
+                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
             android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $SIGNALING_URL")
@@ -1051,6 +1186,22 @@ class VoiceRoomRepository @Inject constructor(
                     (current.filterNot { it.id == userId } + self.copy(socketId = sid)).distinctBy { it.socketId }
                 }
                 refreshParticipantAliases()
+                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                    scope.launch {
+                        authService.getAccessTokenAwait()?.let { token ->
+                            localFallbackApiClient.joinVoiceRoom(
+                                accessToken = token,
+                                roomId = roomId,
+                                userName = name,
+                                userAvatarUrl = avatarUrl,
+                                socketId = sid.ifBlank { userId },
+                                isMuted = false
+                            ).onSuccess { participants ->
+                                _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                            }
+                        }
+                    }
+                }
                 
                 socket?.emit("join-room", org.json.JSONObject().apply {
                     put("roomId", roomId.trim())
@@ -1283,11 +1434,11 @@ class VoiceRoomRepository @Inject constructor(
                  val textPayload = data.optString("text").trim()
                  if (userIdPayload.isBlank() || textPayload.isBlank()) return@on
                  val msg = conectate.com.presentation.voicerooms.ChatMessage(
-                    id = data.optString("messageId").ifBlank { data.optString("id").ifBlank { UUID.randomUUID().toString() } },
+                    id = data.optString("id").ifBlank { System.currentTimeMillis().toString() },
                     userId = userIdPayload,
+                    userName = userNamePayload.ifBlank { "Usuario" },
                     text = textPayload,
-                    timestamp = data.optLong("timestamp", System.currentTimeMillis()),
-                    userName = userNamePayload.ifBlank { "Usuario" }
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingMessages.emit(msg) }
             }
@@ -1298,10 +1449,9 @@ class VoiceRoomRepository @Inject constructor(
                 val emojiPayload = data.optString("emoji").trim()
                 if (userIdPayload.isBlank() || emojiPayload.isBlank()) return@on
                 val reaction = conectate.com.presentation.voicerooms.ReactionEvent(
-                    id = data.optString("reactionId").ifBlank { data.optString("id") },
+                    userId = userIdPayload,
                     emoji = emojiPayload,
-                    timestamp = System.currentTimeMillis(),
-                    userId = userIdPayload
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
             }
@@ -1579,6 +1729,12 @@ class VoiceRoomRepository @Inject constructor(
             pendingConnectStartedAtMs = null
             reconnectFailureCount = 0
 
+            if (!actualRoomId.isNullOrBlank() && authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                authService.getAccessTokenAwait()?.let { token ->
+                    localFallbackApiClient.leaveVoiceRoom(token, actualRoomId)
+                }
+            }
+
             // 1. Disconnect Signaling FIRST to prevent new negotiation during teardown
             socket?.let {
                 it.off()
@@ -1615,6 +1771,7 @@ class VoiceRoomRepository @Inject constructor(
 
             activeRoomId = null
             updateConnectionState(VoiceConnectionState.IDLE)
+            stopVoiceForegroundService()
             
             // 4. Release Audio with Safety Delay
             releaseVoiceAudioSession()
@@ -1644,6 +1801,7 @@ class VoiceRoomRepository @Inject constructor(
 
         // 2. WebRTC Track Disable (without muting the whole device mic)
         webRTCManager?.setAudioEnabled(!isMuted)
+        updateVoiceForegroundService()
         
         // 3. Broadcast mute state
         scope.launch {
@@ -1709,6 +1867,10 @@ class VoiceRoomRepository @Inject constructor(
 
 
     private suspend fun subscribeToVoiceRooms() {
+        if (authService.isLocalFallbackModeEnabled()) {
+            android.util.Log.d("VoiceRoomRepository", "Ubuntu mode: Supabase voice realtime disabled; lobby refresh uses local API.")
+            return
+        }
         var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS
         while (currentCoroutineContext().isActive) {
             var channel: RealtimeChannel? = null
@@ -1854,23 +2016,26 @@ class VoiceRoomRepository @Inject constructor(
 
 
     suspend fun sendMessage(message: conectate.com.presentation.voicerooms.ChatMessage) = withContext(Dispatchers.IO) {
-        emitOrQueueRoomSocketEvent(activeRoomId, "chat-message") {
-            put("roomId", activeRoomId ?: "")
-            put("userId", message.userId)
-            put("userName", message.userName)
-            put("text", message.text)
+        val roomId = getCurrentRoomId()
+        emitOrQueueRoomSocketEvent(roomId, "chat-message") {
+            put("roomId", (roomId ?: "") as String)
+            put("userId", message.userId as String)
+            put("userName", message.userName as String)
+            put("text", message.text as String)
+            put("timestamp", message.timestamp)
         }
     }
 
 
 
     suspend fun sendReaction(reaction: conectate.com.presentation.voicerooms.ReactionEvent) = withContext(Dispatchers.IO) {
-        val reactionId = reaction.id.ifBlank { UUID.randomUUID().toString() }
-        emitOrQueueRoomSocketEvent(activeRoomId, "reaction") {
-            put("roomId", activeRoomId ?: "")
-            put("userId", reaction.userId)
-            put("emoji", reaction.emoji)
-            put("reactionId", reactionId)
+        val roomId = getCurrentRoomId()
+        val reactionId = java.util.UUID.randomUUID().toString()
+        emitOrQueueRoomSocketEvent(roomId, "reaction") {
+            put("roomId", (roomId ?: "") as String)
+            put("userId", reaction.userId as String)
+            put("emoji", reaction.emoji as String)
+            put("reactionId", reactionId as String)
             put("timestamp", reaction.timestamp)
         }
     }
@@ -1903,7 +2068,7 @@ class VoiceRoomRepository @Inject constructor(
         scope.launch {
             // we trust the ViewModel to have checked hostId for the UI part, 
             // but we'll do a quick check here against current roomId if we have it
-            if (activeRoomId != roomId) return@launch
+            if (getCurrentRoomId() != roomId) return@launch
 
             // 1. Alert others via Socket (Instant)
             try {

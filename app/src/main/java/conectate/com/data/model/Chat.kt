@@ -20,6 +20,8 @@ data class Chat(
     val nickname: String? = null, // Private nickname for the other user
     val is_muted: Boolean = false,
     val is_pinned: Boolean = false,
+    val is_archived: Boolean = false,
+    val is_favorite: Boolean = false,
     val cleared_at: String? = null
 ) {
     val safeLastMessageAt: String
@@ -35,6 +37,8 @@ data class ChatParticipant(
     val last_read_at: String? = null, // Added for unread count
     val is_muted: Boolean = false,
     val is_pinned: Boolean = false,
+    val is_archived: Boolean = false,
+    val is_favorite: Boolean = false,
     val cleared_at: String? = null // Timestamp when the user cleared the chat
 )
 

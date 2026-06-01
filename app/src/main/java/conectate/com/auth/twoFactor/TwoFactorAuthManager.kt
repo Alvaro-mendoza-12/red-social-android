@@ -238,6 +238,8 @@ class TwoFactorAuthManager @Inject constructor(
         return securePrefs.getString(SECRET_KEY, null)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
+    fun getStoredSecret(): String? = getStoredTOTPSecret()
+
     fun getRemainingLockoutTime(): Long {
         if (!isLockedOutNow()) return 0L
         val lastAttemptAt = securePrefs.getLong(LAST_ATTEMPT_TIME_KEY, 0L)

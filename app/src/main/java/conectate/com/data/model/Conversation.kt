@@ -9,5 +9,6 @@ data class Conversation(
     val unreadCount: Map<String, Int> = emptyMap(),
     val createdAt: String? = null,
     val isArchived: Boolean = false,
+    val isFavorite: Boolean = false,
     val name: String? = null
 )

@@ -1,7 +1,5 @@
 package conectate.com.data.repository
 
-import androidx.compose.runtime.Composable
-
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.PostgrestFilterBuilder
@@ -32,6 +30,8 @@ class ShareRepository @Inject constructor(
     private val supabase: SupabaseConfig,
     private val authService: AuthService
 ) {
+
+
     suspend fun shareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
@@ -69,6 +69,8 @@ class ShareRepository @Inject constructor(
         }
     }
 
+
+
     suspend fun unshareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
@@ -94,6 +96,8 @@ class ShareRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+
 
     suspend fun isShared(userId: String, contentType: String, targetId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {

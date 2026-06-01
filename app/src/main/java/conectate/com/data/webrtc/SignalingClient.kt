@@ -27,6 +27,7 @@ class SignalingClient(
             val opts = IO.Options()
             opts.forceNew = true
             opts.reconnection = true
+            opts.transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
             socket = IO.socket(serverUrl, opts)
 
             socket?.on(Socket.EVENT_CONNECT) {
