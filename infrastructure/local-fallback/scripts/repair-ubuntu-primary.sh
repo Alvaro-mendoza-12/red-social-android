@@ -42,6 +42,11 @@ require_file "api/src/server.js"
 require_file "api/src/data-routes.js"
 require_file "api/src/postgrest-compat-routes.js"
 require_file "api/src/storage-routes.js"
+require_file "nginx/default.conf"
+
+if ! grep -q "resolver 127.0.0.11" nginx/default.conf || ! grep -q '\$api_upstream' nginx/default.conf; then
+  fail_with_logs "nginx/default.conf esta desactualizado. Copia infrastructure/local-fallback/nginx/default.conf desde el repo a Ubuntu antes de levantar."
+fi
 
 if grep -RInE ":[A-Za-z0-9_]+\\([^)]*\\)" api/src; then
   fail_with_logs "hay rutas Express 5 incompatibles en api/src. Copia la version actual del repo antes de levantar."
@@ -145,8 +150,19 @@ wait_http() {
 }
 
 wait_http "api" "http://127.0.0.1:3001/ready"
-echo "==> Reiniciando edge para refrescar DNS interno hacia api"
-docker compose restart edge
+
+echo "==> Verificando conexion Docker interna edge -> api"
+docker compose exec -T api node -e "fetch('http://127.0.0.1:3001/ready').then(async r=>{console.log(r.status, await r.text()); process.exit(r.ok?0:1)}).catch(e=>{console.error(e); process.exit(1)})" \
+  || fail_with_logs "api responde por el host, pero no dentro de su propio contenedor"
+
+echo "==> Recreando edge para borrar cualquier IP vieja de api guardada por Nginx"
+docker compose rm -sf edge >/dev/null 2>&1 || true
+docker compose up -d --force-recreate --no-deps edge
+sleep 5
+
+docker compose exec -T edge wget -qO- "http://api:3001/ready" >/dev/null \
+  || fail_with_logs "edge no puede alcanzar api por la red Docker en http://api:3001/ready"
+
 wait_http "edge" "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/ready"
 wait_http "realtime" "http://127.0.0.1:3002/health"
 

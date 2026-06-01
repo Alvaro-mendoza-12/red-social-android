@@ -51,6 +51,7 @@ Si solo quieres actualizar rapido el backend despues de un cambio:
 scp -P 2222 infrastructure/local-fallback/api/src/data-routes.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/data-routes.js
 scp -P 2222 infrastructure/local-fallback/api/src/storage-routes.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/storage-routes.js
 scp -P 2222 infrastructure/local-fallback/api/src/server.js alvaro@127.0.0.1:~/conectate-local-fallback/api/src/server.js
+scp -P 2222 infrastructure/local-fallback/nginx/default.conf alvaro@127.0.0.1:~/conectate-local-fallback/nginx/default.conf
 scp -P 2222 -r infrastructure/local-fallback/scripts alvaro@127.0.0.1:~/conectate-local-fallback/
 ```
 

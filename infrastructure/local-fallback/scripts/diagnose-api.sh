@@ -22,6 +22,7 @@ for file in \
   api/src/data-routes.js \
   api/src/postgrest-compat-routes.js \
   api/src/storage-routes.js \
+  nginx/default.conf \
   scripts/repair-ubuntu-primary.sh
 do
   if [ -e "$file" ]; then
@@ -30,6 +31,19 @@ do
     echo "FALTA: $file"
   fi
 done
+
+echo
+echo "==> Configuracion edge/nginx"
+if [ -f nginx/default.conf ]; then
+  if grep -q "resolver 127.0.0.11" nginx/default.conf && grep -q '\$api_upstream' nginx/default.conf; then
+    echo "OK: nginx/default.conf usa DNS dinamico de Docker para api"
+  else
+    echo "ERROR: nginx/default.conf esta viejo. Copia infrastructure/local-fallback/nginx/default.conf desde el repo." >&2
+  fi
+  grep -nE "resolver|api_upstream|proxy_pass" nginx/default.conf || true
+else
+  echo "ERROR: falta nginx/default.conf" >&2
+fi
 
 echo
 echo "==> Buscando rutas incompatibles con Express 5"
@@ -98,6 +112,14 @@ docker compose logs --tail=240 api || true
 echo
 echo "==> Ready local"
 curl -i http://127.0.0.1:3001/ready || true
+
+echo
+echo "==> Ready interno dentro del contenedor api"
+docker compose exec -T api node -e "fetch('http://127.0.0.1:3001/ready').then(async r=>{console.log(r.status, await r.text()); process.exit(r.ok?0:1)}).catch(e=>{console.error(e); process.exit(1)})" || true
+
+echo
+echo "==> Ready interno edge -> api por red Docker"
+docker compose exec -T edge wget -S -O- http://api:3001/ready || true
 
 echo
 echo "==> Ready edge/ngrok upstream local"
