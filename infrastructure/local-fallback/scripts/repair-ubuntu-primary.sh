@@ -145,6 +145,8 @@ wait_http() {
 }
 
 wait_http "api" "http://127.0.0.1:3001/ready"
+echo "==> Reiniciando edge para refrescar DNS interno hacia api"
+docker compose restart edge
 wait_http "edge" "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/ready"
 wait_http "realtime" "http://127.0.0.1:3002/health"
 
@@ -157,6 +159,10 @@ curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/v1/auth/web-l
   -H "Origin: https://red-social-android.vercel.app" \
   -H "Access-Control-Request-Method: POST" >/dev/null \
   || fail_with_logs "edge no responde OPTIONS /v1/auth/web-login-pairing"
+curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/functions/v1/web-login-pairing" \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" >/dev/null \
+  || fail_with_logs "edge no responde OPTIONS /functions/v1/web-login-pairing"
 
 echo "==> Estado Docker"
 docker compose ps

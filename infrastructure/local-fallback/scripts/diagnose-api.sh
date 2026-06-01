@@ -3,6 +3,11 @@ set -Eeuo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$HOME/conectate-local-fallback}"
 cd "$ROOT_DIR"
+PUBLIC_BASE_URL_INPUT="${PUBLIC_BASE_URL:-}"
+if [ -z "$PUBLIC_BASE_URL_INPUT" ] && [ -f ".env" ]; then
+  PUBLIC_BASE_URL_INPUT="$(grep -E '^PUBLIC_BASE_URL=' .env | tail -1 | cut -d= -f2- || true)"
+fi
+PUBLIC_BASE_URL_INPUT="${PUBLIC_BASE_URL_INPUT%/}"
 
 echo "==> Directorio"
 pwd
@@ -106,3 +111,24 @@ curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/login \
 curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/web-login-pairing \
   -H "Origin: https://red-social-android.vercel.app" \
   -H "Access-Control-Request-Method: POST" || true
+curl -i -X OPTIONS http://127.0.0.1:3080/functions/v1/web-login-pairing \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" || true
+
+echo
+echo "==> Ngrok/publico"
+if [ -n "$PUBLIC_BASE_URL_INPUT" ]; then
+  echo "PUBLIC_BASE_URL=$PUBLIC_BASE_URL_INPUT"
+  curl -i -H "ngrok-skip-browser-warning: true" "$PUBLIC_BASE_URL_INPUT/ready" || true
+  curl -i -X OPTIONS "$PUBLIC_BASE_URL_INPUT/v1/auth/login" \
+    -H "Origin: https://red-social-android.vercel.app" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "ngrok-skip-browser-warning: true" || true
+  curl -i -X OPTIONS "$PUBLIC_BASE_URL_INPUT/v1/auth/web-login-pairing" \
+    -H "Origin: https://red-social-android.vercel.app" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "ngrok-skip-browser-warning: true" || true
+else
+  echo "PUBLIC_BASE_URL no esta definido. Ejecuta asi para probar ngrok:"
+  echo "PUBLIC_BASE_URL=https://TU-DOMINIO.ngrok-free.dev bash scripts/diagnose-api.sh"
+fi

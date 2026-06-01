@@ -1273,7 +1273,7 @@ app.get('/v1/auth/me', authRequired, async (req, res, next) => {
   }
 })
 
-app.post('/v1/auth/web-login-pairing', async (req, res, next) => {
+async function handleWebLoginPairing(req, res, next) {
   try {
     const action = String(req.body?.action || '').trim().toLowerCase()
 
@@ -1411,7 +1411,10 @@ app.post('/v1/auth/web-login-pairing', async (req, res, next) => {
     }
     return next(error)
   }
-})
+}
+
+app.post('/v1/auth/web-login-pairing', handleWebLoginPairing)
+app.post('/functions/v1/web-login-pairing', handleWebLoginPairing)
 
 app.post('/v1/auth/activate-local-password', async (req, res, next) => {
   try {
