@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const express = require('express')
 const multer = require('multer')
 
 const defaultBuckets = [
@@ -28,6 +29,11 @@ const upload = multer({
     fileSize: maxUploadBytes,
     files: 1,
   },
+})
+
+const rawObjectUpload = express.raw({
+  type: '*/*',
+  limit: maxUploadBytes,
 })
 
 function cleanBucketName(value) {
@@ -141,6 +147,97 @@ function mapObjectRow(row) {
   }
 }
 
+async function upsertStoredObject(pool, req, options) {
+  const bucket = cleanBucketName(options.bucket)
+  const objectPath = normalizeObjectPath(options.objectPath, options.fallbackName)
+  if (!bucket || !objectPath) {
+    const error = new Error('INVALID_STORAGE_PATH')
+    error.status = 400
+    throw error
+  }
+
+  await pool.query(
+    `INSERT INTO fallback_storage_buckets(id, public)
+     VALUES ($1, TRUE)
+     ON CONFLICT (id) DO NOTHING`,
+    [bucket],
+  )
+
+  const destination = objectFilePath(bucket, objectPath)
+  await fs.promises.mkdir(path.dirname(destination), { recursive: true })
+
+  if (options.sourcePath) {
+    await fs.promises.rename(options.sourcePath, destination)
+  } else {
+    await fs.promises.writeFile(destination, options.buffer || Buffer.alloc(0))
+  }
+
+  const publicUrl = publicObjectUrl(req, bucket, objectPath)
+  const sizeBytes =
+    typeof options.sizeBytes === 'number'
+      ? options.sizeBytes
+      : Buffer.isBuffer(options.buffer)
+        ? options.buffer.length
+        : 0
+
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_storage_objects(
+        bucket_id,
+        name,
+        owner_id,
+        content_type,
+        size_bytes,
+        public_url,
+        local_path,
+        metadata
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (bucket_id, name)
+     DO UPDATE SET
+        owner_id = EXCLUDED.owner_id,
+        content_type = EXCLUDED.content_type,
+        size_bytes = EXCLUDED.size_bytes,
+        public_url = EXCLUDED.public_url,
+        local_path = EXCLUDED.local_path,
+        metadata = EXCLUDED.metadata,
+        updated_at = NOW()
+     RETURNING *`,
+    [
+      bucket,
+      objectPath,
+      options.ownerId || null,
+      options.contentType || 'application/octet-stream',
+      sizeBytes,
+      publicUrl,
+      destination,
+      options.metadata || {},
+    ],
+  )
+
+  return rows[0]
+}
+
+async function serveStoredObject(pool, req, res, bucketParam, pathParam) {
+  const bucket = cleanBucketName(bucketParam)
+  const objectPath = normalizeObjectPath(decodeURIComponent(pathParam || ''), '')
+  if (!bucket || !objectPath) return res.status(404).json({ error: 'NOT_FOUND' })
+
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM fallback_storage_objects
+     WHERE bucket_id = $1 AND name = $2
+     LIMIT 1`,
+    [bucket, objectPath],
+  )
+  const row = rows[0]
+  const filePath = row?.local_path || objectFilePath(bucket, objectPath)
+  await fs.promises.access(filePath, fs.constants.R_OK)
+  res.setHeader('Content-Type', row?.content_type || 'application/octet-stream')
+  res.setHeader('Cache-Control', 'public, max-age=3600')
+  res.setHeader('Content-Disposition', `inline; filename="${contentDispositionName(objectPath)}"`)
+  return res.sendFile(filePath)
+}
+
 function registerStorageRoutes(app, { pool, authRequired }) {
   app.get('/v1/storage/buckets', authRequired, async (_req, res, next) => {
     try {
@@ -166,60 +263,23 @@ function registerStorageRoutes(app, { pool, authRequired }) {
         return res.status(400).json({ error: 'FILE_REQUIRED' })
       }
 
-      await pool.query(
-        `INSERT INTO fallback_storage_buckets(id, public)
-         VALUES ($1, TRUE)
-         ON CONFLICT (id) DO NOTHING`,
-        [bucket],
-      )
-
       const requestedPath = String(req.body?.path || '').trim()
       const defaultPath = `${req.auth.sub}/${Date.now()}-${req.file.originalname || 'file'}`
-      const objectPath = normalizeObjectPath(requestedPath, defaultPath)
-      const destination = objectFilePath(bucket, objectPath)
+      const row = await upsertStoredObject(pool, req, {
+        bucket,
+        objectPath: requestedPath,
+        fallbackName: defaultPath,
+        ownerId: req.auth.sub,
+        sourcePath: req.file.path,
+        contentType: req.file.mimetype || 'application/octet-stream',
+        sizeBytes: req.file.size || 0,
+        metadata: {
+          originalName: req.file.originalname || '',
+          encoding: req.file.encoding || '',
+        },
+      })
 
-      await fs.promises.mkdir(path.dirname(destination), { recursive: true })
-      await fs.promises.rename(req.file.path, destination)
-
-      const publicUrl = publicObjectUrl(req, bucket, objectPath)
-      const { rows } = await pool.query(
-        `INSERT INTO fallback_storage_objects(
-            bucket_id,
-            name,
-            owner_id,
-            content_type,
-            size_bytes,
-            public_url,
-            local_path,
-            metadata
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (bucket_id, name)
-         DO UPDATE SET
-            owner_id = EXCLUDED.owner_id,
-            content_type = EXCLUDED.content_type,
-            size_bytes = EXCLUDED.size_bytes,
-            public_url = EXCLUDED.public_url,
-            local_path = EXCLUDED.local_path,
-            metadata = EXCLUDED.metadata,
-            updated_at = NOW()
-         RETURNING *`,
-        [
-          bucket,
-          objectPath,
-          req.auth.sub,
-          req.file.mimetype || 'application/octet-stream',
-          req.file.size || 0,
-          publicUrl,
-          destination,
-          {
-            originalName: req.file.originalname || '',
-            encoding: req.file.encoding || '',
-          },
-        ],
-      )
-
-      res.status(201).json({ object: mapObjectRow(rows[0]) })
+      res.status(201).json({ object: mapObjectRow(row) })
     } catch (error) {
       if (uploadedPath) {
         try {
@@ -289,26 +349,92 @@ function registerStorageRoutes(app, { pool, authRequired }) {
     }
   })
 
-  app.get(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/, async (req, res, next) => {
+  const objectWriteRoute = /^\/storage\/v1\/object\/([^/]+)\/(.+)$/
+
+  app.post(/^\/storage\/v1\/object\/sign\/([^/]+)\/(.+)$/, authRequired, async (req, res, next) => {
     try {
       const bucket = cleanBucketName(req.params[0])
       const objectPath = normalizeObjectPath(decodeURIComponent(req.params[1] || ''), '')
-      if (!bucket || !objectPath) return res.status(404).json({ error: 'NOT_FOUND' })
+      if (!bucket || !objectPath) return res.status(400).json({ error: 'INVALID_STORAGE_PATH' })
+      const signedURL = publicObjectUrl(req, bucket, objectPath)
+      res.json({ signedURL, signedUrl: signedURL })
+    } catch (error) {
+      next(error)
+    }
+  })
 
-      const { rows } = await pool.query(
-        `SELECT *
-         FROM fallback_storage_objects
-         WHERE bucket_id = $1 AND name = $2
-         LIMIT 1`,
-        [bucket, objectPath],
-      )
-      const row = rows[0]
-      const filePath = row?.local_path || objectFilePath(bucket, objectPath)
-      await fs.promises.access(filePath, fs.constants.R_OK)
-      res.setHeader('Content-Type', row?.content_type || 'application/octet-stream')
-      res.setHeader('Cache-Control', 'public, max-age=3600')
-      res.setHeader('Content-Disposition', `inline; filename="${contentDispositionName(objectPath)}"`)
-      res.sendFile(filePath)
+  app.post(objectWriteRoute, authRequired, rawObjectUpload, async (req, res, next) => {
+    try {
+      const bucket = cleanBucketName(req.params[0])
+      const objectPath = normalizeObjectPath(decodeURIComponent(req.params[1] || ''), '')
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)
+      if (!bucket || !objectPath) return res.status(400).json({ error: 'INVALID_STORAGE_PATH' })
+      if (!body.length) return res.status(400).json({ error: 'FILE_REQUIRED' })
+
+      const row = await upsertStoredObject(pool, req, {
+        bucket,
+        objectPath,
+        fallbackName: `${req.auth.sub}/${Date.now()}-file`,
+        ownerId: req.auth.sub,
+        buffer: body,
+        contentType: req.headers['content-type'] || 'application/octet-stream',
+        metadata: {
+          source: 'supabase-compatible-object-api',
+        },
+      })
+
+      res.status(200).json({
+        Key: `${row.bucket_id}/${row.name}`,
+        path: row.name,
+        publicUrl: row.public_url,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put(objectWriteRoute, authRequired, rawObjectUpload, async (req, res, next) => {
+    try {
+      const bucket = cleanBucketName(req.params[0])
+      const objectPath = normalizeObjectPath(decodeURIComponent(req.params[1] || ''), '')
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)
+      if (!bucket || !objectPath) return res.status(400).json({ error: 'INVALID_STORAGE_PATH' })
+      if (!body.length) return res.status(400).json({ error: 'FILE_REQUIRED' })
+
+      const row = await upsertStoredObject(pool, req, {
+        bucket,
+        objectPath,
+        fallbackName: `${req.auth.sub}/${Date.now()}-file`,
+        ownerId: req.auth.sub,
+        buffer: body,
+        contentType: req.headers['content-type'] || 'application/octet-stream',
+        metadata: {
+          source: 'supabase-compatible-object-api',
+        },
+      })
+
+      res.status(200).json({
+        Key: `${row.bucket_id}/${row.name}`,
+        path: row.name,
+        publicUrl: row.public_url,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/, async (req, res, next) => {
+    try {
+      await serveStoredObject(pool, req, res, req.params[0], req.params[1])
+    } catch (error) {
+      if (error?.code === 'ENOENT') return res.status(404).json({ error: 'NOT_FOUND' })
+      next(error)
+    }
+  })
+
+  app.get(/^\/storage\/v1\/object\/([^/]+)\/(.+)$/, async (req, res, next) => {
+    try {
+      await serveStoredObject(pool, req, res, req.params[0], req.params[1])
     } catch (error) {
       if (error?.code === 'ENOENT') return res.status(404).json({ error: 'NOT_FOUND' })
       next(error)

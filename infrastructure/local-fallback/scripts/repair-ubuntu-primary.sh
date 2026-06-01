@@ -40,6 +40,7 @@ require_file "docker-compose.yml"
 require_file "api/package.json"
 require_file "api/src/server.js"
 require_file "api/src/data-routes.js"
+require_file "api/src/postgrest-compat-routes.js"
 require_file "api/src/storage-routes.js"
 
 if grep -RInE ":[A-Za-z0-9_]+\\([^)]*\\)" api/src; then
@@ -94,6 +95,7 @@ echo "==> Validando JavaScript del backend"
 docker compose build --no-cache api
 docker compose run --rm --no-deps api node --check src/server.js
 docker compose run --rm --no-deps api node --check src/data-routes.js
+docker compose run --rm --no-deps api node --check src/postgrest-compat-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
 docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
 
@@ -145,6 +147,16 @@ wait_http() {
 wait_http "api" "http://127.0.0.1:3001/ready"
 wait_http "edge" "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/ready"
 wait_http "realtime" "http://127.0.0.1:3002/health"
+
+echo "==> Verificando CORS/OPTIONS por el edge, igual que navegador y Vercel"
+curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/v1/auth/login" \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" >/dev/null \
+  || fail_with_logs "edge no responde OPTIONS /v1/auth/login"
+curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/v1/auth/web-login-pairing" \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" >/dev/null \
+  || fail_with_logs "edge no responde OPTIONS /v1/auth/web-login-pairing"
 
 echo "==> Estado Docker"
 docker compose ps

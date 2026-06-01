@@ -6,6 +6,7 @@ const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
 const { ensureLocalDataTables, registerDataRoutes } = require('./data-routes')
+const { ensurePostgrestCompatTables, registerPostgrestCompatRoutes } = require('./postgrest-compat-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
 
 const serviceName = 'conectate-local-fallback'
@@ -317,6 +318,26 @@ function authRequired(req, res, next) {
   } catch {
     return res.status(401).json({ error: 'INVALID_TOKEN' })
   }
+}
+
+function authOptional(req, _res, next) {
+  const authorization = String(req.headers.authorization || '')
+  const token = authorization.replace(/^Bearer\s+/i, '').trim()
+
+  if (!token) {
+    return next()
+  }
+
+  try {
+    req.auth = jwt.verify(token, jwtSecret, {
+      issuer: serviceName,
+      audience: 'conectate-clients',
+    })
+  } catch {
+    // Compatibility routes still need to answer legacy read/RPC calls gracefully.
+  }
+
+  return next()
 }
 
 function authPayloadFromRequest(req) {
@@ -1509,6 +1530,7 @@ app.post('/v1/auth/sync-to-supabase', authRequired, async (req, res, next) => {
 
 registerStorageRoutes(app, { pool, authRequired })
 registerDataRoutes(app, { pool, authRequired })
+registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 
 app.use((req, res) => {
   res.status(404).json({ error: 'NOT_FOUND', path: req.path })
@@ -1529,6 +1551,7 @@ let server
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
   .then(() => ensureLocalDataTables(pool))
+  .then(() => ensurePostgrestCompatTables(pool))
   .then(() => {
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)

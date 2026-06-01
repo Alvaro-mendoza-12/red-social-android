@@ -49,9 +49,10 @@ class SupabaseConfig @Inject constructor(
 
     private val rawSupabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
     private val rawSupabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
+    private val rawFallbackApiUrl: String = BuildConfig.FALLBACK_API_URL.trim().replace(Regex("/+$"), "")
     val isLocalFallbackPrimary: Boolean = BuildConfig.FALLBACK_API_URL.trim().startsWith("http")
-    val supabaseUrl: String = if (isLocalFallbackPrimary) DISABLED_SUPABASE_URL else rawSupabaseUrl
-    val supabaseAnonKey: String = if (isLocalFallbackPrimary) DISABLED_SUPABASE_KEY else rawSupabaseAnonKey
+    val supabaseUrl: String = if (isLocalFallbackPrimary) rawFallbackApiUrl else rawSupabaseUrl
+    val supabaseAnonKey: String = if (isLocalFallbackPrimary) LOCAL_FALLBACK_ANON_KEY else rawSupabaseAnonKey
     val isConfigured: Boolean = !isLocalFallbackPrimary && rawSupabaseUrl.startsWith("http") && rawSupabaseAnonKey.isNotBlank()
 
     // URLs específicas para diferentes servicios
@@ -323,6 +324,7 @@ class SupabaseConfig @Inject constructor(
     private companion object {
         private const val DISABLED_SUPABASE_URL = "https://disabled.supabase.invalid"
         private const val DISABLED_SUPABASE_KEY = "disabled-anon-key"
+        private const val LOCAL_FALLBACK_ANON_KEY = "local-fallback-anon-key"
         private const val REALTIME_RESTRICTION_PAUSE_MS = 5 * 60 * 1_000L
         private const val REALTIME_RESTRICTION_PROBE_INTERVAL_MS = 60 * 1_000L
         private const val REALTIME_RESTRICTION_LOG_INTERVAL_MS = 30 * 1_000L

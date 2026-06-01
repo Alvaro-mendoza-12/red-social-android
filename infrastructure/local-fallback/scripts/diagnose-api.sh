@@ -15,6 +15,7 @@ for file in \
   api/package.json \
   api/src/server.js \
   api/src/data-routes.js \
+  api/src/postgrest-compat-routes.js \
   api/src/storage-routes.js \
   scripts/repair-ubuntu-primary.sh
 do
@@ -51,6 +52,7 @@ echo "==> Validacion de sintaxis dentro de la imagen api"
 docker compose build api
 docker compose run --rm --no-deps api node --check src/server.js
 docker compose run --rm --no-deps api node --check src/data-routes.js
+docker compose run --rm --no-deps api node --check src/postgrest-compat-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
 
 echo
@@ -91,3 +93,16 @@ docker compose logs --tail=240 api || true
 echo
 echo "==> Ready local"
 curl -i http://127.0.0.1:3001/ready || true
+
+echo
+echo "==> Ready edge/ngrok upstream local"
+curl -i http://127.0.0.1:3080/ready || true
+
+echo
+echo "==> CORS preflight por edge local"
+curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/login \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" || true
+curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/web-login-pairing \
+  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Access-Control-Request-Method: POST" || true
