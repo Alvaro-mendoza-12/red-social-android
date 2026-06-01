@@ -966,10 +966,10 @@ export function ReelsPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack reels-page">
       <header className="section-header">
         <h2>Reels / Videos</h2>
-        <p>Feed de videos y publicación web conectada al mismo backend de la APK.</p>
+        <p>Videos cortos para descubrir, publicar y revisar antes de compartir.</p>
       </header>
       {syncing ? <small>Sincronizando videos...</small> : null}
 

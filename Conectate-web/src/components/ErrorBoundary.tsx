@@ -1,6 +1,11 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react'
-import { friendlyError } from '../core/utils'
-import { StatusView } from './StatusView'
+import { Heart, RefreshCw, AlertTriangle } from 'lucide-react'
+
+/**
+ * 🔥 ERROR BOUNDARY - PREVENCIÓN DE CRASHES EN WEB
+ * Componente para manejar errores y prevenir crashes en la UI
+ * Basado en best practices oficiales de React
+ */
 
 interface ErrorBoundaryState {
   hasError: boolean
@@ -14,72 +19,33 @@ interface ErrorBoundaryProps {
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
 
-const FALLBACK_DESCRIPTION =
-  'La vista actual tuvo un problema y Conectate no pudo completarla en este momento.'
-
-function ErrorDetails({ error, errorInfo }: { error: Error; errorInfo: ErrorInfo }) {
-  if (!import.meta.env.DEV) return null
-
-  return (
-    <details className="status-card" style={{ whiteSpace: 'pre-wrap' }}>
-      <summary>Detalles técnicos</summary>
-      <pre style={{ marginTop: '0.85rem', overflowX: 'auto' }}>
-        {error.stack}
-        {'\n\n'}
-        Component Stack:
-        {errorInfo.componentStack}
-      </pre>
-    </details>
-  )
-}
-
-const DefaultErrorFallback: React.FC<{
-  error: Error
-  errorInfo: ErrorInfo
-  onRetry: () => void
-}> = ({ error, errorInfo, onRetry }) => {
-  const description = friendlyError(error, FALLBACK_DESCRIPTION)
-
-  return (
-    <section className="section-stack">
-      <StatusView
-        title="Conectate tuvo una interrupción"
-        description={description}
-        action={
-          <button className="ghost-btn" type="button" onClick={onRetry}>
-            Reintentar
-          </button>
-        }
-      />
-      <ErrorDetails error={error} errorInfo={errorInfo} />
-    </section>
-  )
-}
-
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null,
+      errorInfo: null
     }
   }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return {
       hasError: true,
-      error,
+      error
     }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({
       error,
-      errorInfo,
+      errorInfo
     })
 
+    // 🔥 BEST PRACTICE: Reportar errores a servicios de monitoreo
     this.props.onError?.(error, errorInfo)
+    
+    // 🔥 BEST PRACTICE: Loguear errores para debugging
     console.error('Error caught by ErrorBoundary:', error, errorInfo)
   }
 
@@ -87,7 +53,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     this.setState({
       hasError: false,
       error: null,
-      errorInfo: null,
+      errorInfo: null
     })
   }
 
@@ -107,22 +73,93 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+/**
+ * 🔥 DEFAULT ERROR FALLBACK - UI AMIGABLE PARA ERRORES
+ */
+const DefaultErrorFallback: React.FC<{
+  error: Error
+  errorInfo: ErrorInfo
+  onRetry: () => void
+}> = ({ error, errorInfo, onRetry }) => {
+  return (
+    <Box
+      display="flex"
+      flexDirection="column"
+      alignItems="center"
+      justifyContent="center"
+      minHeight="100vh"
+      p={3}
+    >
+      <Card sx={{ maxWidth: 600, width: '100%' }}>
+        <CardContent sx={{ textAlign: 'center', p: 4 }}>
+          {/* Icono de error */}
+          <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2 }}>
+            ⚠️
+          </Typography>
+          
+          {/* Título de error */}
+          <Typography variant="h4" gutterBottom fontWeight="bold">
+            Oops! Algo salió mal
+          </Typography>
+          
+          {/* Mensaje de error */}
+          <Typography variant="body1" color="error" sx={{ mb: 3 }}>
+            {error.message || 'Error desconocido'}
+          </Typography>
+          
+          {/* Botón de retry */}
+          <Button
+            variant="contained"
+            startIcon={<Refresh />}
+            onClick={onRetry}
+            sx={{ mb: 3 }}
+          >
+            Reintentar
+          </Button>
+          
+          {/* Detalles del error (solo en desarrollo) */}
+          {process.env.NODE_ENV === 'development' && (
+            <Card sx={{ mt: 2, bgcolor: 'error.light' }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom fontWeight="bold">
+                  Detalles del error:
+                </Typography>
+                <Typography variant="body2" component="pre" sx={{ 
+                  textAlign: 'left',
+                  fontSize: '0.75rem',
+                  overflow: 'auto',
+                  maxHeight: '200px',
+                  bgcolor: 'background.paper',
+                  p: 1,
+                  borderRadius: 1
+                }}>
+                  {error.stack}
+                  {'\n\n'}
+                  Component Stack:
+                  {errorInfo.componentStack}
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </CardContent>
+      </Card>
+    </Box>
+  )
+}
+
+/**
+ * 🔥 SAFE COMPONENT WRAPPER - WRAPPER SEGURO
+ */
 interface SafeComponentProps {
   children: ReactNode
   fallback?: ReactNode
   onError?: (error: Error) => void
 }
 
-export const SafeComponent: React.FC<SafeComponentProps> = ({
-  children,
-  fallback = (
-    <DefaultErrorFallback
-      error={new Error(FALLBACK_DESCRIPTION)}
-      errorInfo={{ componentStack: '' }}
-      onRetry={() => {}}
-    />
-  ),
-  onError,
+export const SafeComponent: React.FC<SafeComponentProps> = ({ 
+  children, 
+  fallback = <DefaultErrorFallback error={new Error('Component error')} errorInfo={{ componentStack: '' }} onRetry={() => {}} />, 
+  onError 
 }) => {
   return (
     <ErrorBoundary fallback={() => fallback} onError={onError}>
@@ -131,6 +168,9 @@ export const SafeComponent: React.FC<SafeComponentProps> = ({
   )
 }
 
+/**
+ * 🔥 LOADING WITH ERROR HANDLING - MANEJO DE CARGA Y ERRORES
+ */
 interface LoadingWithErrorHandlingProps {
   isLoading: boolean
   error: Error | null
@@ -144,16 +184,18 @@ export const LoadingWithErrorHandling: React.FC<LoadingWithErrorHandlingProps> =
   error,
   onRetry,
   children,
-  fallback,
+  fallback
 }) => {
   if (isLoading) {
     return (
-      <div className="status-shell">
-        <article className="status-card">
-          <h2>Cargando</h2>
-          <p>Conectate está preparando esta vista.</p>
-        </article>
-      </div>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+      >
+        <CircularProgress size={60} />
+      </Box>
     )
   }
 
@@ -172,6 +214,9 @@ export const LoadingWithErrorHandling: React.FC<LoadingWithErrorHandlingProps> =
   return <>{children}</>
 }
 
+/**
+ * 🔥 ASYNC ERROR BOUNDARY - PARA OPERACIONES ASÍNCRONAS
+ */
 interface AsyncErrorBoundaryState {
   isLoading: boolean
   error: Error | null
@@ -185,14 +230,14 @@ export class AsyncErrorBoundary extends Component<
     super(props)
     this.state = {
       isLoading: false,
-      error: null,
+      error: null
     }
   }
 
   static getDerivedStateFromError(error: Error): AsyncErrorBoundaryState {
     return {
       isLoading: false,
-      error,
+      error
     }
   }
 
@@ -208,12 +253,14 @@ export class AsyncErrorBoundary extends Component<
   render() {
     if (this.state.isLoading) {
       return (
-        <div className="status-shell">
-          <article className="status-card">
-            <h2>Cargando</h2>
-            <p>Conectate está preparando esta vista.</p>
-          </article>
-        </div>
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          minHeight="100vh"
+        >
+          <CircularProgress size={60} />
+        </Box>
       )
     }
 

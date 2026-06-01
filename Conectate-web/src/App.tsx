@@ -42,6 +42,9 @@ const CommunityChatDetailPage = lazy(() =>
 const VoiceRoomsPage = lazy(() =>
   import('./features/voice/VoiceRoomsPage').then((module) => ({ default: module.VoiceRoomsPage })),
 )
+const VoiceRoomPage = lazy(() =>
+  import('./features/voice/VoiceRoomPage').then((module) => ({ default: module.VoiceRoomPage })),
+)
 const CallsPage = lazy(() =>
   import('./features/calls/CallsPage').then((module) => ({ default: module.CallsPage })),
 )
@@ -69,6 +72,11 @@ const ProfilePage = lazy(() =>
 )
 const PublicProfilePage = lazy(() =>
   import('./features/profile/PublicProfilePage').then((module) => ({ default: module.PublicProfilePage })),
+)
+const ProfileChatRedirectPage = lazy(() =>
+  import('./features/profile/ProfileChatRedirectPage').then((module) => ({
+    default: module.ProfileChatRedirectPage,
+  })),
 )
 const AccountSettingsPage = lazy(() =>
   import('./features/profile/AccountSettingsPage').then((module) => ({
@@ -101,8 +109,8 @@ function RootRoute() {
   if (!configured) {
     return (
       <StatusView
-        title="Configura Supabase"
-        description="Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env para conectar Conectate-web."
+        title="Configura el backend"
+        description="Agrega VITE_FALLBACK_API_URL en .env para usar tu servidor Ubuntu."
       />
     )
   }
@@ -131,6 +139,30 @@ function AppRouter() {
             <GuestOnlyRoute>
               <RegisterPage />
             </GuestOnlyRoute>
+          }
+        />
+        <Route
+          path="/u/:profileId"
+          element={
+            <RouteSuspense>
+              <PublicProfilePage />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="/profile/:profileId"
+          element={
+            <RouteSuspense>
+              <PublicProfilePage />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="/chat/:profileId"
+          element={
+            <RouteSuspense>
+              <ProfileChatRedirectPage />
+            </RouteSuspense>
           }
         />
         <Route
@@ -243,6 +275,14 @@ function AppRouter() {
             element={
               <RouteSuspense>
                 <VoiceRoomsPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="voice/:roomId"
+            element={
+              <RouteSuspense>
+                <VoiceRoomPage />
               </RouteSuspense>
             }
           />

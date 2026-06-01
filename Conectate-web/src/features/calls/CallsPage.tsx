@@ -1,24 +1,27 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Headphones, MessageCircle, PhoneCall } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { CallInterface } from './CallInterface'
 
+type CallEntryIcon = 'call' | 'messages' | 'voice'
+
 const callEntryCards = [
   {
-    icon: '📞',
+    icon: 'call' as CallEntryIcon,
     title: 'Llamada 1:1',
     description: 'Abre una llamada directa y prepara audio o video desde este navegador.',
     action: 'Iniciar ahora',
   },
   {
-    icon: '🧭',
+    icon: 'messages' as CallEntryIcon,
     title: 'Volver a mensajes',
     description: 'Arranca la llamada desde tu conversación activa si ya tienes el contexto listo.',
     action: 'Ir a mensajes',
   },
   {
-    icon: '🎙️',
+    icon: 'voice' as CallEntryIcon,
     title: 'Salas de voz',
     description: 'Explora salas persistentes estilo comunidad y súmate al canal correcto.',
     action: 'Abrir salas',
@@ -32,10 +35,23 @@ const readinessChecklist = [
   'El flujo más estable sigue siendo iniciar desde una conversación real, igual que en Android.',
 ]
 
+function CallEntryIconView({ name }: { name: CallEntryIcon }) {
+  if (name === 'messages') return <MessageCircle aria-hidden="true" size={26} />
+  if (name === 'voice') return <Headphones aria-hidden="true" size={26} />
+  return <PhoneCall aria-hidden="true" size={26} />
+}
+
 export function CallsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [activeCall, setActiveCall] = useState(false)
+  const [searchParams] = useSearchParams()
+  const initialCallId = searchParams.get('callId')?.trim() ?? ''
+  const initialTargetId = searchParams.get('target')?.trim() ?? ''
+  const initialTargetName = searchParams.get('name')?.trim() ?? ''
+  const initialKind = searchParams.get('kind')?.trim().toLowerCase()
+  const initialVideoEnabled = initialKind === 'video'
+  const shouldJoinExistingCall = searchParams.get('join') === '1'
+  const [activeCall, setActiveCall] = useState(Boolean(initialTargetId || initialCallId))
 
   const displayName = useMemo(() => {
     const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
@@ -64,7 +80,7 @@ export function CallsPage() {
             <div>
               <span className="brand-tag">WebRTC web</span>
               <h2>Llamada activa</h2>
-              <p>Estás usando el módulo web experimental de llamadas para {displayName}.</p>
+              <p>Sesión en curso para {displayName}. Mantén mensajes y voz a un toque de distancia.</p>
             </div>
             <div className="row-actions">
               <button className="ghost-btn" type="button" onClick={() => setActiveCall(false)}>
@@ -78,7 +94,13 @@ export function CallsPage() {
         </article>
 
         <section className="calls-live-shell">
-          <CallInterface />
+          <CallInterface
+            initialCallId={initialCallId}
+            initialRemoteUserId={initialTargetId}
+            initialRemoteName={initialTargetName}
+            initialVideoEnabled={initialVideoEnabled}
+            joinExisting={shouldJoinExistingCall}
+          />
         </section>
       </section>
     )
@@ -90,10 +112,10 @@ export function CallsPage() {
         <div className="calls-hero-copy">
           <div>
             <span className="brand-tag">Llamadas</span>
-            <h2>Audio y video conectados al resto del producto</h2>
+            <h2>Habla ahora, vuelve al chat después</h2>
             <p>
-              Esta entrada deja de vivir aislada: ahora se integra a la shell web y mantiene el
-              mismo lenguaje que mensajes, salas de voz y perfil.
+              Inicia llamadas 1:1, salta a salas de voz o vuelve a mensajes cuando necesites
+              contexto.
             </p>
           </div>
           <div className="calls-hero-stats">
@@ -106,8 +128,8 @@ export function CallsPage() {
               <span>base actual</span>
             </div>
             <div className="calls-hero-stat">
-              <strong>App + Web</strong>
-              <span>mismo backend</span>
+              <strong>Móvil + web</strong>
+              <span>misma cuenta</span>
             </div>
           </div>
         </div>
@@ -117,7 +139,9 @@ export function CallsPage() {
         <section className="calls-action-grid">
           {callEntryCards.map((card) => (
             <article key={card.title} className="surface-card calls-action-card">
-              <div className="calls-action-icon">{card.icon}</div>
+              <div className="calls-action-icon">
+                <CallEntryIconView name={card.icon} />
+              </div>
               <div className="section-stack calls-action-copy">
                 <div>
                   <h3>{card.title}</h3>

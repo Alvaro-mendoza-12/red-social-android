@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { friendlyError } from '../utils'
 
 export type WebLoginPairingStatus = 'pending' | 'approved' | 'rejected' | 'consumed' | 'expired'
 
@@ -25,7 +24,8 @@ type PairingResponse = {
 } & WebLoginPairing
 
 function extractErrorMessage(caught: unknown, fallback: string): string {
-  return friendlyError(caught, fallback)
+  if (caught instanceof Error && caught.message.trim()) return caught.message
+  return fallback
 }
 
 async function invokePairing(

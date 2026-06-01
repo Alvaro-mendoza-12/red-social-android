@@ -49,7 +49,8 @@ export default defineConfig({
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
           ui: ['framer-motion', 'lucide-react'],
-          api: ['@tanstack/react-query', '@supabase/supabase-js']
+          api: ['@tanstack/react-query', '@supabase/supabase-js'],
+          realtime: ['socket.io-client']
         },
         
         // 🔥 BEST PRACTICE: Nombres de chunks optimizados
@@ -112,6 +113,7 @@ export default defineConfig({
       'react-router-dom',
       'framer-motion',
       'lucide-react',
+      'socket.io-client',
       '@tanstack/react-query',
       '@supabase/supabase-js'
     ],

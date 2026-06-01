@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm run vercel:install",
+  "installCommand": "npm --prefix Conectate-web ci --legacy-peer-deps",
   "buildCommand": "npm run vercel:build",
   "outputDirectory": "Conectate-web/dist",
   "headers": [
@@ -65,13 +65,10 @@
       ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

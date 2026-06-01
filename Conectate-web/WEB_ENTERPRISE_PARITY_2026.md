@@ -17,11 +17,6 @@ Fecha: 2026-05-07
 - Ajustes: cuenta, privacidad, seguridad, QR, preferencias web, apariencia, escala de texto, idioma y ahorro de datos.
 - Ajustes web: resumen superior, navegación por anclas y separación más clara entre bloques largos para reducir saturación visual.
 - Monetización: centro web de creator program, payout, earnings, wallet, gifts, premium y ads.
-- Login web: foco exclusivo en el panel de acceso y humanización de errores de cuota/restricción para no exponer mensajes técnicos al usuario final.
-- Identidad visual de acceso: login y registro ya usan el logo de Conectate y copy de marca propio en vez de un encabezado genérico.
-- Ajuste de viewport: el acceso ahora se compacta en alturas medias para que el login se vea completo con mayor frecuencia a zoom 100%.
-- Hardening de errores: el acceso, el QR y el bridge web↔APK ya filtran mejor mensajes técnicos del backend para mostrar solo feedback entendible.
-- Error boundaries web: el fallback global y los secundarios ya no muestran `error.message` crudo en producción; dejan copy entendible y reservan stack/component stack para desarrollo.
 
 ## Dependencias de backend
 
@@ -38,7 +33,6 @@ Fecha: 2026-05-07
 - La pasada visual del `2026-05-07 22:34` sí ordena mejor `messages` y `profile`, pero la verificación visual browser de esas rutas sigue incompleta mientras no haya una sesión autenticada disponible en este entorno.
 - El repo raíz ya quedó preparado para desplegar `Conectate-web` en Vercel, pero si el despliegue remoto falla todavía, el siguiente sospechoso real serán variables de entorno faltantes o una mala configuración del proyecto en el panel de Vercel.
 - El build web ahora incluye un preflight de entorno que corta la compilación si `VITE_SUPABASE_URL` o `VITE_SUPABASE_ANON_KEY` no están definidos con valores reales.
-- La auditoría cruzada del `2026-05-08` confirmó que la web sigue compilando en limpio, pero también dejó claro que el APK actual en `main` todavía tiene deuda de compilación heredada que debe resolverse antes del cierre final de producción.
 
 ## Verificación
 

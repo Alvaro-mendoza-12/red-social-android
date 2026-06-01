@@ -7,6 +7,8 @@ import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
+import { loadFallbackProfileMe, updateFallbackProfileMe, uploadFallbackFile } from '../../core/fallbackData'
 
 type SettingsModel = {
   displayName: string
@@ -76,7 +78,7 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
-  const { user, session } = useAuth()
+  const { user, session, isFallbackSession } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
   const [model, setModel] = useState<SettingsModel>({
     displayName: '',
@@ -107,7 +109,9 @@ export function AccountSettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPrivacy, setSavingPrivacy] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [uploadingAsset, setUploadingAsset] = useState<'avatar' | 'cover' | null>(null)
   const [sendingAccessLink, setSendingAccessLink] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
@@ -118,8 +122,9 @@ export function AccountSettingsPage() {
   )
   const sessionFingerprint = useMemo(() => {
     const token = session?.access_token?.trim() ?? ''
+    if (isFallbackSession) return 'Servidor local'
     return token ? maskSensitiveToken(token) : 'Sin token activo'
-  }, [session?.access_token])
+  }, [isFallbackSession, session?.access_token])
   const profileCompletion = useMemo(() => {
     const checks = [
       model.displayName,
@@ -195,6 +200,35 @@ export function AccountSettingsPage() {
   )
 
   const loadSettings = useCallback(async () => {
+    if (isFallbackSession) {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await loadFallbackProfileMe()
+        const profile = response.profile ?? {}
+        const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
+        setModel((current) => ({
+          ...current,
+          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], textOf(metadata, ['display_name', 'full_name'], user?.email ?? '')),
+          username: textOf(profile, ['username'], ''),
+          bio: textOf(profile, ['bio'], ''),
+          avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'], textOf(metadata, ['avatar_url'], '')),
+          coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
+          lastSeenVisibility: textOf(profile, ['last_seen_visibility', 'lastSeenVisibility'], current.lastSeenVisibility),
+          onlineStatusVisibility: textOf(profile, ['online_status_visibility', 'onlineStatusVisibility'], current.onlineStatusVisibility),
+          isPrivate: toBoolean(profile.is_private ?? profile.isPrivate),
+          profileVisibility: textOf(profile, ['profile_visibility', 'profileVisibility'], current.profileVisibility),
+        }))
+        setHasIsPrivate(true)
+        setHasProfileVisibility(true)
+        setHasPrivacyAcceptance(false)
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo cargar ajustes locales'))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
     if (!supabase || !user) {
       setLoading(false)
       return
@@ -238,13 +272,45 @@ export function AccountSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [isFallbackSession, user])
 
   useEffect(() => {
     void loadSettings()
   }, [loadSettings])
 
   async function saveProfileBasics() {
+    if (isFallbackSession) {
+      if (savingProfile) return
+      setSavingProfile(true)
+      setError(null)
+      setInfo(null)
+      try {
+        const response = await updateFallbackProfileMe({
+          displayName: model.displayName.trim() || user?.email || 'Usuario',
+          bio: model.bio.trim() || null,
+          avatarUrl: model.avatarUrl.trim() || null,
+          coverUrl: model.coverUrl.trim() || null,
+          isPrivate: model.isPrivate,
+          profileVisibility: model.profileVisibility,
+          lastSeenVisibility: model.lastSeenVisibility,
+          onlineStatusVisibility: model.onlineStatusVisibility,
+        })
+        const profile = response.profile ?? {}
+        setModel((current) => ({
+          ...current,
+          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], current.displayName),
+          bio: textOf(profile, ['bio'], current.bio),
+          avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl'], current.avatarUrl),
+          coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
+        }))
+        setInfo('Perfil actualizado en Ubuntu.')
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo guardar perfil local'))
+      } finally {
+        setSavingProfile(false)
+      }
+      return
+    }
     if (!supabase || !user || savingProfile) return
     setSavingProfile(true)
     setError(null)
@@ -291,6 +357,10 @@ export function AccountSettingsPage() {
   }
 
   async function savePrivacySettings() {
+    if (isFallbackSession) {
+      await saveProfileBasics()
+      return
+    }
     if (!supabase || !user || savingPrivacy) return
     setSavingPrivacy(true)
     setError(null)
@@ -329,7 +399,7 @@ export function AccountSettingsPage() {
   }
 
   async function updatePassword() {
-    if (!supabase || savingPassword) return
+    if (savingPassword) return
     const password = newPassword.trim()
     if (password.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
@@ -339,13 +409,23 @@ export function AccountSettingsPage() {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
+    if (isFallbackSession && !currentPassword.trim()) {
+      setError('Escribe tu contraseña actual para confirmar el cambio.')
+      return
+    }
 
     setSavingPassword(true)
     setError(null)
     setInfo(null)
     try {
-      const { error: passwordError } = await supabase.auth.updateUser({ password })
-      if (passwordError) throw passwordError
+      if (isFallbackSession) {
+        await changeFallbackPassword(currentPassword.trim(), password)
+      } else {
+        if (!supabase) return
+        const { error: passwordError } = await supabase.auth.updateUser({ password })
+        if (passwordError) throw passwordError
+      }
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
       setInfo('Contraseña actualizada.')
@@ -353,6 +433,29 @@ export function AccountSettingsPage() {
       setError(friendlyError(caught, 'No se pudo actualizar contraseña'))
     } finally {
       setSavingPassword(false)
+    }
+  }
+
+  async function uploadProfileAsset(kind: 'avatar' | 'cover', file: File | undefined) {
+    if (!file || !isFallbackSession || uploadingAsset) return
+    setUploadingAsset(kind)
+    setError(null)
+    setInfo(null)
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      const userId = user?.id?.trim() || 'me'
+      const path = `${userId}/${crypto.randomUUID()}_${kind}.${extension}`
+      const uploaded = await uploadFallbackFile('avatars', file, path)
+      setModel((current) =>
+        kind === 'avatar'
+          ? { ...current, avatarUrl: uploaded.publicUrl }
+          : { ...current, coverUrl: uploaded.publicUrl },
+      )
+      setInfo(kind === 'avatar' ? 'Avatar subido. Guarda el perfil para aplicarlo.' : 'Banner subido. Guarda el perfil para aplicarlo.')
+    } catch (caught) {
+      setError(friendlyError(caught, kind === 'avatar' ? 'No se pudo subir avatar' : 'No se pudo subir banner'))
+    } finally {
+      setUploadingAsset(null)
     }
   }
 
@@ -378,7 +481,7 @@ export function AccountSettingsPage() {
     }
   }
 
-  if (!supabase) {
+  if (!supabase && !isFallbackSession) {
     return <StatusView title="Supabase no configurado" description="Configura .env para usar ajustes." />
   }
 
@@ -470,12 +573,30 @@ export function AccountSettingsPage() {
               value={model.avatarUrl}
               onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
             />
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={uploadingAsset !== null}
+                onChange={(event) => void uploadProfileAsset('avatar', event.currentTarget.files?.[0])}
+              />
+            ) : null}
             <input
               className="text-input"
               placeholder="Banner / cover URL"
               value={model.coverUrl}
               onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
             />
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={uploadingAsset !== null}
+                onChange={(event) => void uploadProfileAsset('cover', event.currentTarget.files?.[0])}
+              />
+            ) : null}
             <input
               className="text-input"
               placeholder="Intereses separados por coma: anime, juegos, música"
@@ -607,9 +728,23 @@ export function AccountSettingsPage() {
         <article id="seguridad-ajustes" className="surface-card section-stack">
           <div>
             <h3>Seguridad</h3>
-            <p>Cambia tu contraseña y protege el acceso a la cuenta.</p>
+            <p>
+              {isFallbackSession
+                ? 'Actualiza la contraseña que usarás en el servidor local.'
+                : 'Cambia tu contraseña y protege el acceso a la cuenta.'}
+            </p>
           </div>
           <div className="composer settings-stack">
+            {isFallbackSession ? (
+              <input
+                className="text-input"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Contraseña actual"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            ) : null}
             <input
               className="text-input"
               type="password"
@@ -654,7 +789,7 @@ export function AccountSettingsPage() {
               <p>Genera un código temporal y apruébalo desde tu móvil como en WhatsApp Web.</p>
             </div>
             <div className="row-actions wrap">
-              <button className="ghost-btn" type="button" disabled={sendingAccessLink || !currentEmail} onClick={() => void sendAccessLinkToEmail()}>
+              <button className="ghost-btn" type="button" disabled={isFallbackSession || sendingAccessLink || !currentEmail} onClick={() => void sendAccessLinkToEmail()}>
                 {sendingAccessLink ? 'Enviando...' : 'Enviar acceso al correo'}
               </button>
               <Link className="ghost-btn" to={`/login?mode=code${currentEmail ? `&email=${encodeURIComponent(currentEmail)}` : ''}`}>

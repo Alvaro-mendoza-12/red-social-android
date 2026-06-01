@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { friendlyError } from '../core/utils'
 
 type QrCodeTileProps = {
   value: string
@@ -36,7 +35,7 @@ export function QrCodeTile({ value, title, description, compact = false }: QrCod
         }
       } catch (caught) {
         if (!cancelled) {
-          setError(friendlyError(caught, 'No se pudo preparar el código QR en este momento.'))
+          setError(caught instanceof Error ? caught.message : 'No se pudo dibujar el QR.')
         }
       }
     }

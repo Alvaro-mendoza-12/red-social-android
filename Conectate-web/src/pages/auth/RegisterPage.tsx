@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { signUpAndBootstrapProfile } from '../../core/auth/sessionBootstrap'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
@@ -14,18 +15,17 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  if (!client) {
+  if (!client && !isFallbackAuthConfigured) {
     return (
       <StatusView
-        title="Supabase no configurado"
-        description="Copia .env.example a .env y completa tus claves."
+        title="Backend no configurado"
+        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu, o VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY si mantienes el puente anterior."
       />
     )
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client) return
     setLoading(true)
     setError(null)
     try {
@@ -43,24 +43,11 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="auth-shell auth-shell-rich auth-shell-login">
-      <form className="auth-card auth-login-card" onSubmit={handleSubmit}>
-        <div className="section-stack auth-head-copy">
-          <div>
-            <div className="auth-brand-lockup">
-              <div className="auth-brand-mark">
-                <img src="/conectate-logo.svg" alt="Conectate" className="auth-brand-logo" />
-              </div>
-              <div className="auth-brand-copy">
-                <p className="brand-tag auth-panel-tag">Conectate Web</p>
-                <strong>Conectate</strong>
-                <span>Tu identidad social vive igual en web y móvil.</span>
-              </div>
-            </div>
-            <h1>Crea tu cuenta en Conectate</h1>
-            <p>Abre tu perfil, mensajes y comunidad con el mismo backend compartido.</p>
-          </div>
-        </div>
+    <section className="auth-shell">
+      <form className="auth-card" onSubmit={handleSubmit}>
+        <p className="brand-tag">Conectate-web</p>
+        <h1>Crear cuenta</h1>
+        <p>Usa tu servidor Ubuntu como backend principal.</p>
         <label>
           Nombre visible
           <input
@@ -85,20 +72,15 @@ export function RegisterPage() {
           <input
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={password}
             autoComplete="new-password"
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {error ? (
-          <div className="auth-banner auth-banner-error" role="alert">
-            <strong>No pudimos crear tu cuenta</strong>
-            <p>{error}</p>
-          </div>
-        ) : null}
+        {error ? <p className="error-text">{error}</p> : null}
         <button className="primary-btn" disabled={loading} type="submit">
-          {loading ? 'Creando tu acceso...' : 'Crear cuenta en Conectate'}
+          {loading ? 'Creando...' : 'Crear cuenta'}
         </button>
         <p className="auth-foot">
           ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>

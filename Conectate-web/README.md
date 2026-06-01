@@ -22,23 +22,23 @@ Frontend web independiente de tu app móvil Conectate.
 - El perfil web fue reordenado como dashboard: identidad, actividad social, QR, privacidad y monetización ya no compiten en la misma columna sin jerarquía.
 - Nuevo centro `/app/monetization` para creator program, wallet/gifts/premium/ads y earnings sobre el SQL final de Supabase.
 - Ajustes web ahora tienen resumen, anclas internas y mejor separación entre perfil, privacidad, seguridad, QR y preferencias para que no se sientan aglomerados.
-- Login web simplificado para producción: el usuario ahora ve solo el panel de acceso, sin columna editorial paralela ni mensajes técnicos crudos de Supabase.
-- Login y registro web ahora muestran el logo real de Conectate y un encabezado de marca consistente para que el acceso se identifique como parte del producto.
-- El acceso web también quedó compactado para alturas de viewport más comunes, para que el panel entre mejor al 100% sin depender de reducir el zoom.
-- La capa web de errores ahora oculta mejor respuestas técnicas del backend y del bridge QR, para que el usuario final no vea detalles crudos de infraestructura.
-- Los error boundaries globales y secundarios también quedaron humanizados: en producción muestran mensajes claros de Conectate y reservan el detalle técnico para desarrollo.
 
 ## Deploy en Vercel desde este repo
 
 - El repo raíz ya incluye `package.json` puente y `vercel.json`.
-- Vercel puede construir la web desde la raíz sin mover carpetas:
-  - `installCommand`: `npm run vercel:install`
-  - `buildCommand`: `npm run vercel:build`
-  - `outputDirectory`: `Conectate-web/dist`
+- El proyecto Vercel `red-social-android` usa `Conectate-web` como Root Directory:
+  - `installCommand`: `npm ci --legacy-peer-deps`
+  - `buildCommand`: `npm run build`
+  - `outputDirectory`: `dist`
+- `Conectate-web/vercel.json` es la configuración que Vercel consume cuando el Root Directory apunta a esta carpeta; el `vercel.json` raíz queda como respaldo si el proyecto se configura desde la raíz del repo.
 - También queda configurado el fallback SPA para rutas como `/app/messages` y `/login?mode=qr`, más headers de seguridad básicos.
 - Variables que debes cargar en Vercel:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+- Variables opcionales para WebRTC:
+  - `VITE_SIGNALING_URL`
+  - `VITE_CALL_SIGNALING_URL`
+- Si no se definen, web usa el mismo signaling activo que Android: `https://voice.srv1495648.hstgr.cloud`.
 - El build web ahora falla temprano si esas variables faltan o siguen con placeholders.
 
 ## Stack

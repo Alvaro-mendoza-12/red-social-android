@@ -5,6 +5,14 @@ import { Navigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { isSupabaseConfigured, supabase } from '../../core/supabase'
 import { textOf, type GenericRow } from '../../core/utils'
+import {
+  clearFallbackSession,
+  fallbackSessionToUser,
+  isFallbackAuthConfigured,
+  onFallbackAuthChanged,
+  readFallbackSession,
+  type FallbackSession,
+} from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
 
 type SuspensionState = {
@@ -18,6 +26,7 @@ type AuthContextValue = {
   loading: boolean
   user: User | null
   session: Session | null
+  isFallbackSession: boolean
   suspension: SuspensionState | null
   suspensionLoading: boolean
   signOut: () => Promise<void>
@@ -26,9 +35,11 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const initialFallbackSession = readFallbackSession()
+  const [loading, setLoading] = useState(isSupabaseConfigured && !initialFallbackSession)
   const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<User | null>(null)
+  const [fallbackSession, setFallbackSession] = useState<FallbackSession | null>(initialFallbackSession)
+  const [user, setUser] = useState<User | null>(() => fallbackSessionToUser(initialFallbackSession))
   const [suspension, setSuspension] = useState<SuspensionState | null>(null)
   const [suspensionLoading, setSuspensionLoading] = useState(false)
 
@@ -37,9 +48,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const client = supabase as NonNullable<typeof supabase>
 
     async function applySession(nextSession: Session | null) {
+      const storedFallbackSession = readFallbackSession()
+      if (storedFallbackSession) {
+        setSession(null)
+        setFallbackSession(storedFallbackSession)
+        setUser(fallbackSessionToUser(storedFallbackSession))
+        return
+      }
+
       setSession(nextSession ?? null)
-      setUser(nextSession?.user ?? null)
-      if (!nextSession) return
+      if (!nextSession) {
+        setFallbackSession(null)
+        setUser(null)
+        return
+      }
+      setFallbackSession(null)
+      setUser(nextSession.user ?? null)
       await bootstrapSessionProfile(client, nextSession)
     }
 
@@ -69,7 +93,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [])
 
   useEffect(() => {
-    if (!supabase || !user) {
+    return onFallbackAuthChanged(() => {
+      const storedFallbackSession = readFallbackSession()
+      setFallbackSession(storedFallbackSession)
+      if (storedFallbackSession) {
+        setSession(null)
+        setUser(fallbackSessionToUser(storedFallbackSession))
+        void supabase?.auth.signOut().catch((error) => {
+          console.warn('AuthProvider Supabase signOut after fallback session failed', error)
+        })
+        return
+      }
+      if (!session) setUser(null)
+    })
+  }, [session])
+
+  useEffect(() => {
+    if (!supabase || !user || fallbackSession) {
       setSuspension(null)
       setSuspensionLoading(false)
       return
@@ -138,22 +178,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     void loadSuspensionState()
-  }, [user])
+  }, [fallbackSession, user])
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      configured: isSupabaseConfigured,
+      configured: isSupabaseConfigured || isFallbackAuthConfigured,
       loading,
       session,
+      isFallbackSession: Boolean(fallbackSession),
       user,
       suspension,
       suspensionLoading,
       signOut: async () => {
+        clearFallbackSession()
+        setFallbackSession(null)
+        setSession(null)
+        setUser(null)
         if (!supabase) return
         await supabase.auth.signOut()
       },
     }),
-    [loading, session, suspension, suspensionLoading, user],
+    [fallbackSession, loading, session, suspension, suspensionLoading, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -172,8 +217,8 @@ export function RequireAuth({ children }: PropsWithChildren) {
   if (!configured) {
     return (
       <StatusView
-        title="Falta conectar Supabase"
-        description="Configura las variables VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en el archivo .env."
+        title="Falta conectar el backend"
+        description="Configura VITE_FALLBACK_API_URL en .env para usar tu servidor Ubuntu."
       />
     )
   }

@@ -1,5 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { friendlyError } from '../core/utils'
 import { StatusView } from './StatusView'
 
 type Props = {
@@ -18,10 +17,10 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: unknown): State {
-    const message = friendlyError(
-      error,
-      'La interfaz de Conectate tuvo un problema inesperado. Inténtalo nuevamente.',
-    )
+    const message =
+      error instanceof Error && error.message.trim().length > 0
+        ? error.message.trim()
+        : 'Se produjo un fallo inesperado en la interfaz.'
     return {
       hasError: true,
       message,
@@ -41,7 +40,7 @@ export class AppErrorBoundary extends Component<Props, State> {
       return (
         <section className="section-stack">
           <StatusView
-            title="Conectate tuvo una interrupción"
+            title="Se recuperó un fallo de interfaz"
             description={this.state.message}
           />
           <div className="status-action">

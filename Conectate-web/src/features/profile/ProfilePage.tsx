@@ -3,9 +3,11 @@ import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
+import { loadFallbackProfileMe } from '../../core/fallbackData'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 
 type ProfileStats = {
@@ -56,6 +58,25 @@ function initialsOf(name: string): string {
   return clean[0]?.toUpperCase() ?? 'U'
 }
 
+function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  if (url && failedUrl !== url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className={className}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailedUrl(url)}
+      />
+    )
+  }
+
+  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
+}
+
 function stringArrayFrom(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.map((entry) => String(entry).trim()).filter(Boolean)
@@ -89,8 +110,11 @@ function mapProfileData(row: GenericRow, fallbackName: string, fallbackAvatar: s
 }
 
 export function ProfilePage() {
-  const { user } = useAuth()
-  const profileQrValue = user?.id ? `conectate://profile/${user.id}` : ''
+  const { user, isFallbackSession } = useAuth()
+  const profileShareUrl = user?.id ? buildProfileShareUrl(user.id) : ''
+  const profileChatUrl = user?.id ? buildProfileChatUrl(user.id) : ''
+  const profileQrValue = user?.id ? buildProfileQrPayload(user.id) : ''
+  const chatQrValue = user?.id ? buildProfileChatQrPayload(user.id) : ''
   const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
   const metadataAvatar = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -106,6 +130,7 @@ export function ProfilePage() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const visibleInterests = useMemo(
     () => (profile?.interests.length ? profile.interests : ['anime', 'juegos', 'musica', 'libros', 'deportes']),
     [profile?.interests],
@@ -173,7 +198,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     async function loadProfile() {
-      if (!supabase || !user) {
+      if (!user) {
         setLoading(false)
         return
       }
@@ -181,6 +206,35 @@ export function ProfilePage() {
       setLoading(true)
       setError(null)
       try {
+        if (isFallbackSession) {
+          const response = await loadFallbackProfileMe()
+          setProfile(mapProfileData(response.profile, metadataName || user.email || 'Usuario', metadataAvatar))
+          setMyPosts(
+            response.posts.map((row) => ({
+              id: textOf(row, ['id'], crypto.randomUUID()),
+              content: textOf(row, ['content', 'caption', 'description', 'text'], 'Publicación'),
+              createdAt: textOf(row, ['created_at', 'updated_at'], ''),
+              media: extractMediaEntries(row),
+            })),
+          )
+          setMyReports(
+            response.reports.map((row) => ({
+              id: textOf(row, ['id'], crypto.randomUUID()),
+              reason: textOf(row, ['reason'], 'Sin motivo'),
+              status: textOf(row, ['status'], 'pendiente'),
+              reportedUserName: textOf(row, ['reported_user_name'], 'Usuario'),
+              createdAt: textOf(row, ['created_at'], ''),
+            })),
+          )
+          setStats(response.stats)
+          return
+        }
+
+        if (!supabase) {
+          setLoading(false)
+          return
+        }
+
         const { data: profileRows, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -291,7 +345,32 @@ export function ProfilePage() {
     }
 
     void loadProfile()
-  }, [metadataAvatar, metadataName, user])
+  }, [isFallbackSession, metadataAvatar, metadataName, user])
+
+  async function copyProfileLink(url: string, label: string) {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareStatus(`${label} copiado.`)
+    } catch {
+      setShareStatus('No se pudo copiar el enlace.')
+    }
+  }
+
+  async function shareProfileLink(url: string, title: string) {
+    if (!url) return
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url })
+        setShareStatus('Enlace compartido.')
+        return
+      }
+      await copyProfileLink(url, 'Enlace')
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      setShareStatus('No se pudo compartir el enlace.')
+    }
+  }
 
   if (loading) return <StatusView title="Cargando perfil" description="Espera un momento..." />
   if (error) return <StatusView title="Perfil no disponible" description={error} />
@@ -312,11 +391,11 @@ export function ProfilePage() {
               style={profile?.coverUrl ? { backgroundImage: `url(${profile.coverUrl})` } : undefined}
             />
             <div className="profile-hero-content">
-              {profile?.avatarUrl ? (
-                <img src={profile.avatarUrl} alt={profile?.name ?? 'Usuario'} className="profile-avatar" />
-              ) : (
-                <span className="profile-avatar avatar-fallback">{initialsOf(profile?.name ?? user?.email ?? 'Usuario')}</span>
-              )}
+              <FallbackAvatar
+                url={profile?.avatarUrl ?? ''}
+                name={profile?.name ?? user?.email ?? 'Usuario'}
+                className="profile-avatar"
+              />
               <div className="profile-hero-main">
                 <div className="profile-hero-heading">
                   <div>
@@ -469,24 +548,42 @@ export function ProfilePage() {
             <article className="surface-card profile-qr-card">
               <div className="section-stack">
                 <div>
-                  <h3>Mi codigo</h3>
-                  <p>Compartelo para abrir tu perfil o continuar el login por QR sin repetir pasos.</p>
+                  <h3>QR social</h3>
+                  <p>Perfil y chat directo listos para compartir desde web o APK.</p>
                 </div>
                 <div className="row-actions wrap">
-                  <Link className="ghost-btn" to="/app/settings">
-                    Ajustes y QR
-                  </Link>
+                  <button className="ghost-btn" type="button" onClick={() => void copyProfileLink(profileShareUrl, 'Perfil')}>
+                    Copiar perfil
+                  </button>
+                  <button className="ghost-btn" type="button" onClick={() => void shareProfileLink(profileShareUrl, 'Perfil Conectate')}>
+                    Compartir
+                  </button>
                   <Link className="ghost-btn" to="/login?mode=qr">
                     Login web por QR
                   </Link>
                 </div>
+                {shareStatus ? <small className="muted-line">{shareStatus}</small> : null}
+                <div className="profile-share-box">
+                  <span>{profileShareUrl}</span>
+                  <button className="mini-action-btn" type="button" onClick={() => void copyProfileLink(profileChatUrl, 'Chat')}>
+                    Copiar chat
+                  </button>
+                </div>
               </div>
-              <QrCodeTile
-                value={profileQrValue}
-                title={profile?.username ? `@${profile.username}` : 'Perfil Conectate'}
-                description="Este QR codifica tu perfil, no una sesion."
-                compact
-              />
+              <div className="profile-qr-grid">
+                <QrCodeTile
+                  value={profileQrValue}
+                  title={profile?.username ? `@${profile.username}` : 'Perfil Conectate'}
+                  description="Abrir perfil"
+                  compact
+                />
+                <QrCodeTile
+                  value={chatQrValue}
+                  title="Chat directo"
+                  description="Abrir conversación"
+                  compact
+                />
+              </div>
             </article>
           ) : null}
 

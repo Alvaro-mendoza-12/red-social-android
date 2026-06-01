@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import {
+  confirmFallbackPasswordReset,
+  completeMigratedPasswordReset,
+  isFallbackAuthConfigured,
+  isMigratedPasswordResetRequired,
+  requestFallbackPasswordReset,
+} from '../../core/auth/fallbackAuth'
 import { parseRecoverySessionPayload } from '../../core/auth/recoverySession'
 import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
 import {
@@ -16,6 +23,21 @@ import { friendlyError } from '../../core/utils'
 
 type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
 
+const loginHighlights = [
+  {
+    title: 'Mensajes y cuentas',
+    description: 'Retoma chats, favoritos, archivados y cambios rápidos desde el dispositivo que tengas a mano.',
+  },
+  {
+    title: 'Videos y comunidad',
+    description: 'Feed, reels, perfil, salas y monetización se sienten como partes de una misma red.',
+  },
+  {
+    title: 'Entrada flexible',
+    description: 'Usa contraseña, código al correo, QR aprobado desde tu teléfono o una sesión recuperada.',
+  },
+]
+
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -27,38 +49,10 @@ function normalizeMode(value: string | null): LoginMode {
   return 'password'
 }
 
-function getModeTitle(mode: LoginMode): string {
-  if (mode === 'password') return 'Acceso clásico'
-  if (mode === 'code') return 'Código temporal'
-  if (mode === 'recovery') return 'Vincular sesión'
-  return 'Aprobación desde la app'
-}
-
-function getModeDescription(mode: LoginMode): string {
-  if (mode === 'password') {
-    return 'Ideal si quieres entrar manualmente desde este navegador.'
-  }
-  if (mode === 'code') {
-    return 'Recibe un acceso temporal por correo sin depender de tu contraseña.'
-  }
-  if (mode === 'recovery') {
-    return 'Importa una sesión ya emitida desde un flujo de recuperación o desde otro dispositivo.'
-  }
-  return 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'
-}
-
-function getErrorBannerTitle(message: string): string {
-  const normalized = message.toLowerCase()
-  if (normalized.includes('temporalmente no disponible')) {
-    return 'Servicio temporalmente no disponible'
-  }
-  if (normalized.includes('no coinciden') || normalized.includes('no fue confirmado')) {
-    return 'No pudimos validar tu acceso'
-  }
-  if (normalized.includes('no pudimos conectarnos')) {
-    return 'Conexión no disponible'
-  }
-  return 'No pudimos completar el acceso'
+function normalizeNextPath(value: string | null): string {
+  const clean = value?.trim()
+  if (!clean || !clean.startsWith('/') || clean.startsWith('//')) return '/app/messages'
+  return clean
 }
 
 export function LoginPage() {
@@ -66,6 +60,7 @@ export function LoginPage() {
   const client = supabase
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = useMemo<LoginMode>(() => normalizeMode(searchParams.get('mode')), [searchParams])
+  const nextPath = useMemo(() => normalizeNextPath(searchParams.get('next')), [searchParams])
   const initialEmail = useMemo(() => searchParams.get('email')?.trim() ?? '', [searchParams])
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
@@ -74,6 +69,16 @@ export function LoginPage() {
   const [recoveryPayload, setRecoveryPayload] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
+    email: string
+    migrationToken: string
+    displayName: string
+  } | null>(null)
+  const [migratedNewPassword, setMigratedNewPassword] = useState('')
+  const [migratedConfirmPassword, setMigratedConfirmPassword] = useState('')
+  const [fallbackResetPassword, setFallbackResetPassword] = useState('')
+  const [fallbackResetConfirmPassword, setFallbackResetConfirmPassword] = useState('')
+  const [activatingMigratedPassword, setActivatingMigratedPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [sendingCode, setSendingCode] = useState(false)
   const [verifyingCode, setVerifyingCode] = useState(false)
@@ -95,6 +100,7 @@ export function LoginPage() {
     setSearchParams(nextParams, { replace: true })
     setError(null)
     setInfo(null)
+    setMigratedPasswordReset(null)
   }
 
   useEffect(() => {
@@ -146,7 +152,10 @@ export function LoginPage() {
             activePairing.nonce ?? '',
           )
           if (cancelled) return
-          setQrPairing(next)
+          setQrPairing((current) => ({
+            ...next,
+            nonce: next.nonce ?? current?.nonce ?? activePairing.nonce,
+          }))
           if (next.status === 'rejected') {
             setInfo('La aprobación fue rechazada desde el móvil.')
           }
@@ -198,7 +207,7 @@ export function LoginPage() {
         })
         if (sessionError) throw sessionError
         if (!cancelled) {
-          navigate('/app/messages', { replace: true })
+          navigate(nextPath, { replace: true })
         }
       } catch (caught) {
         if (!cancelled) {
@@ -215,26 +224,68 @@ export function LoginPage() {
     return () => {
       cancelled = true
     }
-  }, [client, consumingQr, mode, navigate, qrPairing])
+  }, [client, consumingQr, mode, navigate, nextPath, qrPairing])
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client) return
     setLoading(true)
     setError(null)
     setInfo(null)
     try {
       await signInWithResolvedEmail(client, email, password)
-      navigate('/app/messages', { replace: true })
+      setMigratedPasswordReset(null)
+      navigate(nextPath, { replace: true })
     } catch (caught) {
+      if (isMigratedPasswordResetRequired(caught)) {
+        setMigratedPasswordReset({
+          email: caught.email,
+          migrationToken: caught.migrationToken,
+          displayName: caught.displayName,
+        })
+        setMigratedNewPassword('')
+        setMigratedConfirmPassword('')
+        setError(null)
+        setInfo('Cuenta migrada desde Supabase. Crea tu contraseña local para continuar en el servidor Ubuntu.')
+        return
+      }
       setError(friendlyError(caught, 'No se pudo iniciar sesión'))
     } finally {
       setLoading(false)
     }
   }
 
+  async function handleMigratedPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!migratedPasswordReset || activatingMigratedPassword) return
+
+    const nextPassword = migratedNewPassword.trim()
+    if (nextPassword.length < 8) {
+      setError('La nueva contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+    if (nextPassword !== migratedConfirmPassword.trim()) {
+      setError('La confirmación no coincide con la contraseña nueva.')
+      return
+    }
+
+    setActivatingMigratedPassword(true)
+    setError(null)
+    setInfo(null)
+    try {
+      await completeMigratedPasswordReset(migratedPasswordReset.migrationToken, nextPassword)
+      setMigratedPasswordReset(null)
+      setMigratedNewPassword('')
+      setMigratedConfirmPassword('')
+      navigate(nextPath, { replace: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo activar la contraseña local'))
+    } finally {
+      setActivatingMigratedPassword(false)
+    }
+  }
+
   async function sendAccessCode() {
-    if (!client || sendingCode) return
+    if (sendingCode) return
     const normalizedEmail = normalizeEmail(codeEmail)
     if (!normalizedEmail) {
       setError('Ingresa tu correo para recibir el acceso por código o enlace.')
@@ -245,11 +296,26 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
+      if (!client) {
+        const reset = await requestFallbackPasswordReset(normalizedEmail)
+        if (reset.resetToken) {
+          setAccessCode(reset.resetToken)
+          setInfo('Servidor Ubuntu generó un token de recuperación. Lo pegamos automáticamente; crea tu nueva contraseña.')
+          return
+        }
+        setInfo(
+          reset.delivery === 'console'
+            ? 'Servidor Ubuntu generó un token de recuperación. Revísalo con docker compose logs api y pégalo aquí.'
+            : 'Servidor Ubuntu recibió la solicitud de recuperación.',
+        )
+        return
+      }
+
       const { error: otpError } = await client.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`,
         },
       })
       if (otpError) throw otpError
@@ -263,7 +329,7 @@ export function LoginPage() {
 
   async function verifyAccessCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client || verifyingCode) return
+    if (verifyingCode) return
     const normalizedEmail = normalizeEmail(codeEmail)
     const normalizedCode = accessCode.trim()
     if (!normalizedEmail || !normalizedCode) {
@@ -275,13 +341,28 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
+      if (!client) {
+        const nextPassword = fallbackResetPassword.trim()
+        if (nextPassword.length < 8) {
+          setError('La nueva contraseña debe tener al menos 8 caracteres.')
+          return
+        }
+        if (nextPassword !== fallbackResetConfirmPassword.trim()) {
+          setError('La confirmación no coincide con la contraseña nueva.')
+          return
+        }
+        await confirmFallbackPasswordReset(normalizedCode, nextPassword)
+        navigate(nextPath, { replace: true })
+        return
+      }
+
       const { error: verifyError } = await client.auth.verifyOtp({
         email: normalizedEmail,
         token: normalizedCode,
         type: 'email',
       })
       if (verifyError) throw verifyError
-      navigate('/app/messages', { replace: true })
+      navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo validar el código'))
     } finally {
@@ -307,7 +388,7 @@ export function LoginPage() {
         refresh_token: payload.refreshToken,
       })
       if (sessionError) throw sessionError
-      navigate('/app/messages', { replace: true })
+      navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo importar la sesión'))
     } finally {
@@ -315,41 +396,63 @@ export function LoginPage() {
     }
   }
 
-  if (!client) {
+  if (!client && !isFallbackAuthConfigured) {
     return (
       <StatusView
-        title="Supabase no configurado"
-        description="Copia .env.example a .env y completa tus claves."
+        title="Backend no configurado"
+        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu, o VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY si mantienes el puente anterior."
       />
     )
   }
 
+  const fallbackOnlyMode = !client && isFallbackAuthConfigured
+
   return (
-    <section className="auth-shell auth-shell-rich auth-shell-login">
-      <div className="auth-login-stage">
-        <div className="auth-card auth-login-card">
+    <section className="auth-shell auth-shell-rich">
+      <div className="auth-layout-grid">
+        <aside className="auth-spotlight" aria-hidden="true">
+          <div className="section-stack auth-spotlight-copy">
+            <p className="brand-tag">Conectate</p>
+            <div>
+              <h1>Tu red social, lista para entrar</h1>
+              <p>
+                Continúa tus chats, videos, salas y perfil con una entrada clara, segura y rápida.
+              </p>
+            </div>
+          </div>
+
+          <div className="auth-highlight-grid">
+            {loginHighlights.map((entry) => (
+              <article key={entry.title} className="surface-subcard auth-highlight-card">
+                <strong>{entry.title}</strong>
+                <p>{entry.description}</p>
+              </article>
+            ))}
+          </div>
+
+          <article className="surface-subcard auth-spotlight-note">
+            <strong>Continúa desde tu teléfono</strong>
+            <p>
+              Si ya aprobaste una sesión o recibiste una recuperación, puedes entrar por QR o
+              vincular la sesión sin repetir pasos.
+            </p>
+          </article>
+        </aside>
+
+        <div className="auth-card auth-card-wide auth-panel-card">
           <div className="section-stack auth-head-copy">
             <div>
-              <div className="auth-brand-lockup">
-                <div className="auth-brand-mark">
-                  <img src="/conectate-logo.svg" alt="Conectate" className="auth-brand-logo" />
-                </div>
-                <div className="auth-brand-copy">
-                  <p className="brand-tag auth-panel-tag">Conectate Web</p>
-                  <strong>Conectate</strong>
-                  <span>Mensajes, perfil y comunidad sincronizados con tu app.</span>
-                </div>
-              </div>
-              <h1>Inicia sesión en Conectate</h1>
+              <p className="brand-tag auth-panel-tag">Acceso</p>
+              <h1>Entrar a tu red social</h1>
               <p>
-                Entra a tu cuenta desde la web con contraseña, código temporal, QR aprobado desde
-                la app o una sesión de recuperación.
+                Elige cómo quieres entrar hoy: contraseña, código al correo, QR o sesión recuperada.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid">
               <button
                 type="button"
                 className={mode === 'password' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'password'}
                 onClick={() => changeMode('password')}
               >
                 Contraseña
@@ -357,6 +460,7 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'code' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'code'}
                 onClick={() => changeMode('code')}
               >
                 Código
@@ -364,6 +468,7 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'recovery' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'recovery'}
                 onClick={() => changeMode('recovery')}
               >
                 Vincular sesión
@@ -371,16 +476,33 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'qr' ? 'chip-btn active' : 'chip-btn'}
+                aria-pressed={mode === 'qr'}
                 onClick={() => changeMode('qr')}
               >
-                QR
+                Iniciar sesión con QR
               </button>
             </div>
           </div>
 
           <div className="surface-subcard auth-mode-note">
-            <strong>{getModeTitle(mode)}</strong>
-            <p>{getModeDescription(mode)}</p>
+            <strong>
+              {mode === 'password'
+                ? 'Acceso clásico'
+                : mode === 'code'
+                  ? 'Código temporal'
+                  : mode === 'recovery'
+                    ? 'Importar sesión existente'
+                    : 'Aprobación desde el móvil'}
+            </strong>
+            <p>
+              {mode === 'password'
+                ? 'Ideal si quieres entrar manualmente desde este navegador.'
+                : mode === 'code'
+                  ? 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
+                  : mode === 'recovery'
+                    ? 'Pega un bloque válido con tokens si vienes de un flujo de recuperación o migración.'
+                    : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
+            </p>
           </div>
 
           {mode === 'password' ? (
@@ -392,7 +514,10 @@ export function LoginPage() {
                   required
                   value={email}
                   autoComplete="email"
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value)
+                    setMigratedPasswordReset(null)
+                  }}
                 />
               </label>
               <label>
@@ -406,7 +531,43 @@ export function LoginPage() {
                 />
               </label>
               <button className="primary-btn" disabled={loading} type="submit">
-                {loading ? 'Entrando en Conectate...' : 'Iniciar sesión en Conectate'}
+                {loading ? 'Entrando...' : 'Iniciar sesión'}
+              </button>
+            </form>
+          ) : null}
+
+          {mode === 'password' && migratedPasswordReset ? (
+            <form className="surface-subcard section-stack migrated-password-card" onSubmit={handleMigratedPasswordSubmit}>
+              <div>
+                <strong>Actualización por migración</strong>
+                <p>
+                  Verificamos tu contraseña anterior de Supabase. Ahora crea la contraseña que usará
+                  tu cuenta en el servidor Ubuntu.
+                </p>
+                <small>{migratedPasswordReset.email}</small>
+              </div>
+              <label>
+                Nueva contraseña local
+                <input
+                  type="password"
+                  required
+                  value={migratedNewPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setMigratedNewPassword(event.target.value)}
+                />
+              </label>
+              <label>
+                Confirmar contraseña local
+                <input
+                  type="password"
+                  required
+                  value={migratedConfirmPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setMigratedConfirmPassword(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={activatingMigratedPassword} type="submit">
+                {activatingMigratedPassword ? 'Activando...' : 'Crear contraseña y entrar'}
               </button>
             </form>
           ) : null}
@@ -444,13 +605,40 @@ export function LoginPage() {
                   onChange={(event) => setAccessCode(event.target.value)}
                 />
               </label>
-              <button className="primary-btn" disabled={verifyingCode} type="submit">
-                {verifyingCode ? 'Validando...' : 'Entrar con código'}
-              </button>
               <small className="auth-foot">
-                Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar
-                el enlace.
+                {fallbackOnlyMode
+                  ? 'En modo Ubuntu, este campo recibe el token de recuperación emitido por tu servidor.'
+                  : 'Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar el enlace.'}
               </small>
+              {fallbackOnlyMode ? (
+                <>
+                  <label>
+                    Nueva contraseña
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={fallbackResetPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setFallbackResetPassword(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Confirmar contraseña
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={fallbackResetConfirmPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setFallbackResetConfirmPassword(event.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
+              <button className="primary-btn" disabled={verifyingCode} type="submit">
+                {verifyingCode ? 'Validando...' : fallbackOnlyMode ? 'Cambiar contraseña y entrar' : 'Entrar con código'}
+              </button>
             </form>
           ) : null}
 
@@ -538,18 +726,8 @@ export function LoginPage() {
             </div>
           ) : null}
 
-          {error ? (
-            <div className="auth-banner auth-banner-error" role="alert">
-              <strong>{getErrorBannerTitle(error)}</strong>
-              <p>{error}</p>
-            </div>
-          ) : null}
-          {info ? (
-            <div className="auth-banner auth-banner-info">
-              <strong>Estado de acceso</strong>
-              <p>{info}</p>
-            </div>
-          ) : null}
+          {error ? <p className="error-text">{error}</p> : null}
+          {info ? <p>{info}</p> : null}
 
           <p className="auth-foot">
             ¿No tienes cuenta? <Link to="/register">Regístrate</Link>

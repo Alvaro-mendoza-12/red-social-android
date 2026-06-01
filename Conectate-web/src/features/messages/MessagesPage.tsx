@@ -8,6 +8,7 @@ import {
   runWithRetry,
 } from '../../core/reliability'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
+import { loadFallbackMessagesInbox } from '../../core/fallbackData'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
@@ -71,20 +72,20 @@ const tabOptions: Array<{ key: InboxTab; label: string }> = [
 
 const inboxTabCopy: Record<InboxTab, { title: string; description: string }> = {
   chats: {
-    title: 'Bandeja principal conectada con la APK',
-    description: 'Favoritos, archivados, busqueda y lectura viven sobre la misma base de mensajes.',
+    title: 'Tus conversaciones',
+    description: 'Favoritos, archivados, búsqueda y no leídos listos para seguir donde quedaste.',
   },
   groups: {
-    title: 'Grupos listos para coordinar equipos y amigos',
-    description: 'La vista web separa mejor conversaciones activas para que moderacion y participacion no compitan.',
+    title: 'Grupos para coordinar y compartir',
+    description: 'Conversaciones activas con espacio suficiente para leer, responder y volver al hilo.',
   },
   communities: {
-    title: 'Comunidades con menos ruido visual',
-    description: 'Jerarquia clara para navegar actividad, abrir salas y entrar a conversaciones compartidas.',
+    title: 'Comunidades con contexto',
+    description: 'Actividad compartida, perfiles y salas cerca de la conversación principal.',
   },
   voice: {
-    title: 'Puerta de entrada a voz y llamadas',
-    description: 'Desde aqui puedes saltar a rooms persistentes, historial y modulos de llamada sin perder contexto.',
+    title: 'Voz y llamadas cerca de tus chats',
+    description: 'Salta a salas, llamadas y conversaciones sin perder el hilo.',
   },
 }
 
@@ -101,6 +102,25 @@ function initialsOf(name: string): string {
   const clean = name.trim()
   if (!clean) return 'U'
   return clean[0]?.toUpperCase() ?? 'U'
+}
+
+function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+
+  if (url && failedUrl !== url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className={className}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailedUrl(url)}
+      />
+    )
+  }
+
+  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
 }
 
 function toMillis(value: string): number {
@@ -473,7 +493,7 @@ async function loadRoomCollectionByMembership(options: {
 }
 
 export function MessagesPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [webPreferences] = useWebPreferences()
   const navigate = useNavigate()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -553,7 +573,7 @@ export function MessagesPage() {
   }, [activeTab])
 
   useEffect(() => {
-    if (!user || activeTab !== 'chats') {
+    if (!user || activeTab !== 'chats' || isFallbackSession) {
       setDiscoverUsers([])
       setDiscoverLoading(false)
       setDiscoverError(null)
@@ -588,7 +608,7 @@ export function MessagesPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [activeTab, knownChatProfileIds, normalizedSearch, user])
+  }, [activeTab, isFallbackSession, knownChatProfileIds, normalizedSearch, user])
 
   const totalUnreadChats = useMemo(
     () => items.filter((item) => item.unreadCount > 0).length,
@@ -630,7 +650,7 @@ export function MessagesPage() {
   }, [activeTab, filteredItems.length, items.length, showArchived, totalArchivedChats, totalFavoriteChats, totalUnreadChats])
   const inboxContextPills = useMemo(() => {
     const pills = [
-      webPreferences.compactInbox ? 'Inbox compacta' : 'Inbox amplia',
+      webPreferences.compactInbox ? 'Vista compacta' : 'Vista amplia',
       webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Tiempo real activo',
     ]
 
@@ -638,9 +658,9 @@ export function MessagesPage() {
       pills.push(showUnreadOnly ? 'Filtrando no leidos' : `${totalUnreadChats} chats con pendiente`)
       pills.push(showFavoritesOnly ? 'Solo favoritos' : showArchived ? 'Vista archivados' : 'Vista activa')
     } else if (activeTab === 'voice') {
-      pills.push('Preparado para rooms persistentes')
+      pills.push('Salas listas para entrar')
     } else {
-      pills.push(`Modulo ${title.toLowerCase()}`)
+      pills.push(`Vista ${title.toLowerCase()}`)
     }
 
     return pills
@@ -688,7 +708,7 @@ export function MessagesPage() {
   }, [filteredItems, selectedConversation, selectedConversationItem, supportsSplitLayout])
 
   const loadCurrentTab = useCallback(async (options?: { silent?: boolean }) => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
@@ -699,6 +719,18 @@ export function MessagesPage() {
       setError(null)
     }
     try {
+      if (isFallbackSession) {
+        const response = await loadFallbackMessagesInbox(activeTab)
+        setItems(response.items)
+        writeCachedValue(inboxCacheKey, response.items)
+        return
+      }
+
+      if (!supabase) {
+        setLoading(false)
+        return
+      }
+
       if (activeTab === 'chats') {
         const { data: chatData, error: chatError } = await supabase
           .from('chats')
@@ -888,7 +920,7 @@ export function MessagesPage() {
       setLoading(false)
       setSyncing(false)
     }
-  }, [activeTab, inboxCacheKey, localReadByChat, title, user])
+  }, [activeTab, inboxCacheKey, isFallbackSession, localReadByChat, title, user])
 
   useEffect(() => {
     const cached = readCachedValue<ConversationItem[]>(inboxCacheKey, 1000 * 60 * 60 * 8)
@@ -905,12 +937,28 @@ export function MessagesPage() {
     chatId: string,
     patch: Partial<Pick<ConversationItem, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>,
   ) => {
-    if (!supabase || !user) return
+    if (!user) return
     const current = items.find((item) => item.id === chatId)
     const nextMuted = patch.isMuted ?? current?.isMuted ?? false
     const nextPinned = patch.isPinned ?? current?.isPinned ?? false
     const nextArchived = patch.isArchived ?? current?.isArchived ?? false
     const nextFavorite = patch.isFavorite ?? current?.isFavorite ?? false
+    if (isFallbackSession || !supabase) {
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === chatId
+            ? {
+                ...item,
+                isMuted: nextMuted,
+                isPinned: nextPinned,
+                isArchived: nextArchived,
+                isFavorite: nextFavorite,
+              }
+            : item,
+        ),
+      )
+      return
+    }
     try {
       const { error: rpcError } = await supabase.rpc('secure_set_chat_preferences', {
         p_chat_id: chatId,
@@ -974,8 +1022,7 @@ export function MessagesPage() {
   }
 
   async function markChatAsReadBestEffort(chatId: string) {
-    if (!supabase || !user || !chatId) return
-    const client = supabase
+    if (!user || !chatId) return
     const nowIso = new Date().toISOString()
     const cleanChatId = chatId.trim().toLowerCase()
     setLocalReadByChat((current) => {
@@ -986,6 +1033,10 @@ export function MessagesPage() {
     setItems((current) =>
       current.map((entry) => (entry.id === cleanChatId ? { ...entry, unreadCount: 0 } : entry)),
     )
+
+    if (isFallbackSession || !supabase) return
+
+    const client = supabase
 
     if (!isBrowserOnline()) {
       enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId })
@@ -1050,6 +1101,10 @@ export function MessagesPage() {
 
   async function openDiscoveredUser(item: DiscoverUserItem) {
     if (!user || openingChatId) return
+    if (isFallbackSession) {
+      setError('En modo respaldo, por ahora solo puedes abrir chats ya importados.')
+      return
+    }
     const cleanProfileId = normalizeId(item.profileId)
     if (!cleanProfileId) return
 
@@ -1079,7 +1134,7 @@ export function MessagesPage() {
   }
 
   useEffect(() => {
-    if (!supabase || !user) return
+    if (!supabase || !user || isFallbackSession) return
     const client = supabase
     const scheduleRefresh = () => {
       const timer = setTimeout(() => void loadCurrentTab({ silent: true }), 2000)
@@ -1097,7 +1152,7 @@ export function MessagesPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadCurrentTab, user])
+  }, [isFallbackSession, loadCurrentTab, user])
 
   useEffect(() => {
     const closeMenuOnOutsideClick = (event: MouseEvent) => {
@@ -1112,7 +1167,7 @@ export function MessagesPage() {
     }
   }, [])
 
-  if (!supabase) {
+  if (!supabase && !isFallbackSession) {
     return (
       <StatusView
         title="Supabase no configurado"
@@ -1135,11 +1190,7 @@ export function MessagesPage() {
       }
       onClick={() => void openConversation(item)}
     >
-      {item.avatarUrl ? (
-        <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
-      ) : (
-        <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
-      )}
+      <FallbackAvatar url={item.avatarUrl} name={item.title} className="conversation-avatar" />
       <div className="conversation-copy">
         <div className="row-between">
           {item.profileId && item.kind === 'chat' ? (
@@ -1243,11 +1294,7 @@ export function MessagesPage() {
       onClick={() => void openDiscoveredUser(item)}
       disabled={openingChatId === `discover:${item.profileId}`}
     >
-      {item.avatarUrl ? (
-        <img src={item.avatarUrl} alt={item.title} className="conversation-avatar" />
-      ) : (
-        <span className="conversation-avatar avatar-fallback">{initialsOf(item.title)}</span>
-      )}
+      <FallbackAvatar url={item.avatarUrl} name={item.title} className="conversation-avatar" />
       <div className="conversation-copy">
         <div className="row-between">
           <h3>{item.title}</h3>
@@ -1269,7 +1316,7 @@ export function MessagesPage() {
         <div className="messages-overview-copy">
           <div className="section-stack">
             <div>
-              <span className="brand-tag">Mensajeria web</span>
+              <span className="brand-tag">Mensajes</span>
               <h3>{copy.title}</h3>
               <p>{copy.description}</p>
             </div>
@@ -1374,15 +1421,12 @@ export function MessagesPage() {
               </div>
             </header>
 
-            <div className="messages-overview-shell">
-              {renderInboxOverview()}
-            </div>
-
             <div className="tab-pill-row messages-tab-row">
               {tabOptions.map((tab) => (
                 <button
                   key={tab.key}
                   className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
+                  aria-pressed={tab.key === activeTab}
                   onClick={() => setActiveTab(tab.key)}
                   type="button"
                 >
@@ -1405,6 +1449,7 @@ export function MessagesPage() {
                   <button
                     type="button"
                     className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
+                    aria-pressed={showFavoritesOnly}
                     onClick={() => setShowFavoritesOnly((current) => !current)}
                   >
                     Favoritos
@@ -1412,6 +1457,7 @@ export function MessagesPage() {
                   <button
                     type="button"
                     className={showArchived ? 'chip-btn active' : 'chip-btn'}
+                    aria-pressed={showArchived}
                     onClick={() => setShowArchived((current) => !current)}
                   >
                     {showArchived ? 'Archivados' : 'Activos'}
@@ -1462,7 +1508,7 @@ export function MessagesPage() {
                 <div className="messages-empty-icon">💬</div>
                 <span className="brand-tag">Bandeja lista</span>
                 <h3>Tus mensajes</h3>
-                <p>Selecciona una conversación o entra por un atajo rapido para seguir desde la web.</p>
+                <p>Selecciona una conversación o entra por un atajo rápido para seguir hablando.</p>
                 <div className="messages-empty-actions">
                   <button
                     className="ghost-btn"
@@ -1525,6 +1571,7 @@ export function MessagesPage() {
               <button
                 key={tab.key}
                 className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
+                aria-pressed={tab.key === activeTab}
                 onClick={() => setActiveTab(tab.key)}
                 type="button"
               >
@@ -1546,6 +1593,7 @@ export function MessagesPage() {
                 <button
                   type="button"
                   className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
+                  aria-pressed={showFavoritesOnly}
                   onClick={() => setShowFavoritesOnly((current) => !current)}
                 >
                   Favoritos
@@ -1553,6 +1601,7 @@ export function MessagesPage() {
                 <button
                   type="button"
                   className={showArchived ? 'chip-btn active' : 'chip-btn'}
+                  aria-pressed={showArchived}
                   onClick={() => setShowArchived((current) => !current)}
                 >
                   {showArchived ? 'Archivados' : 'Activos'}
