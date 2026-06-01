@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 
-type FallbackUser = {
+export type FallbackUser = {
   id: string
   email: string
   displayName?: string
@@ -103,11 +103,11 @@ function notifyFallbackAuthChanged() {
   window.dispatchEvent(new Event(eventName))
 }
 
-function persistFallbackSession(payload: {
-  accessToken?: string
-  tokenType?: string
-  expiresIn?: string | number
-  user?: FallbackUser
+export function persistFallbackSession(payload: {
+  accessToken?: string | null
+  tokenType?: string | null
+  expiresIn?: string | number | null
+  user?: FallbackUser | null
 }): User {
   const accessToken = String(payload.accessToken || '').trim()
   const user = payload.user

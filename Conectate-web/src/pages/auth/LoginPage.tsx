@@ -7,6 +7,7 @@ import {
   completeMigratedPasswordReset,
   isFallbackAuthConfigured,
   isMigratedPasswordResetRequired,
+  persistFallbackSession,
   requestFallbackPasswordReset,
 } from '../../core/auth/fallbackAuth'
 import { parseRecoverySessionPayload } from '../../core/auth/recoverySession'
@@ -22,21 +23,6 @@ import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
 
 type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
-
-const loginHighlights = [
-  {
-    title: 'Mensajes y cuentas',
-    description: 'Retoma chats, favoritos, archivados y cambios rápidos desde el dispositivo que tengas a mano.',
-  },
-  {
-    title: 'Videos y comunidad',
-    description: 'Feed, reels, perfil, salas y monetización se sienten como partes de una misma red.',
-  },
-  {
-    title: 'Entrada flexible',
-    description: 'Usa contraseña, código al correo, QR aprobado desde tu teléfono o una sesión recuperada.',
-  },
-]
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -104,7 +90,7 @@ export function LoginPage() {
   }
 
   useEffect(() => {
-    if (!client || mode !== 'qr') return
+    if (mode !== 'qr' || (!client && !isFallbackAuthConfigured)) return
     const supabaseClient = client
     let cancelled = false
 
@@ -137,7 +123,7 @@ export function LoginPage() {
 
   useEffect(() => {
     const activePairing = qrPairing
-    if (!client || mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'pending') {
+    if (mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'pending') {
       return
     }
     const supabaseClient = client
@@ -178,7 +164,7 @@ export function LoginPage() {
 
   useEffect(() => {
     const activePairing = qrPairing
-    if (!client || mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'approved' || consumingQr) {
+    if (mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'approved' || consumingQr) {
       return
     }
     const supabaseClient = client
@@ -196,6 +182,13 @@ export function LoginPage() {
           pairing.pairId,
           pairing.nonce ?? '',
         )
+        if (!supabaseClient) {
+          persistFallbackSession(consumed)
+          if (!cancelled) {
+            navigate(nextPath, { replace: true })
+          }
+          return
+        }
         const accessToken = consumed.accessToken?.trim()
         const refreshToken = consumed.refreshToken?.trim()
         if (!accessToken || !refreshToken) {
@@ -408,44 +401,29 @@ export function LoginPage() {
   const fallbackOnlyMode = !client && isFallbackAuthConfigured
 
   return (
-    <section className="auth-shell auth-shell-rich">
-      <div className="auth-layout-grid">
-        <aside className="auth-spotlight" aria-hidden="true">
-          <div className="section-stack auth-spotlight-copy">
-            <p className="brand-tag">Conectate</p>
-            <div>
-              <h1>Tu red social, lista para entrar</h1>
-              <p>
-                Continúa tus chats, videos, salas y perfil con una entrada clara, segura y rápida.
-              </p>
-            </div>
-          </div>
+    <section className="auth-shell auth-shell-rich auth-shell-centered">
+      <div className="auth-bg-scene" aria-hidden="true">
+        <span className="auth-bg-card card-one">Chats</span>
+        <span className="auth-bg-card card-two">Perfil</span>
+        <span className="auth-bg-card card-three">QR</span>
+        <span className="auth-bg-line line-one" />
+        <span className="auth-bg-line line-two" />
+      </div>
 
-          <div className="auth-highlight-grid">
-            {loginHighlights.map((entry) => (
-              <article key={entry.title} className="surface-subcard auth-highlight-card">
-                <strong>{entry.title}</strong>
-                <p>{entry.description}</p>
-              </article>
-            ))}
-          </div>
-
-          <article className="surface-subcard auth-spotlight-note">
-            <strong>Continúa desde tu teléfono</strong>
-            <p>
-              Si ya aprobaste una sesión o recibiste una recuperación, puedes entrar por QR o
-              vincular la sesión sin repetir pasos.
-            </p>
-          </article>
-        </aside>
-
-        <div className="auth-card auth-card-wide auth-panel-card">
+      <div className="auth-layout-grid auth-layout-single">
+        <div className="auth-card auth-card-wide auth-panel-card auth-login-card">
           <div className="section-stack auth-head-copy">
             <div>
-              <p className="brand-tag auth-panel-tag">Acceso</p>
-              <h1>Entrar a tu red social</h1>
+              <div className="auth-brand-lockup">
+                <img src="/conectate-logo.svg" alt="Conectate" className="auth-logo-img" />
+                <div>
+                  <p className="brand-tag auth-panel-tag">Conectate</p>
+                  <span>Red social privada</span>
+                </div>
+              </div>
+              <h1>Entrar a Conectate</h1>
               <p>
-                Elige cómo quieres entrar hoy: contraseña, código al correo, QR o sesión recuperada.
+                Accede con contraseña, código, sesión vinculada o QR aprobado desde tu móvil.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid">
@@ -676,12 +654,12 @@ export function LoginPage() {
                   <QrCodeTile
                     value={qrPairing.qrUrl}
                     title="Escanéalo desde el móvil"
-                    description="Abre Conectate en tu teléfono, toca Escanear código y aprueba esta sesión."
+                    description="Abre Conectate en tu teléfono, entra a Perfil y aprueba el acceso web."
                   />
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description="Todavía no pudimos preparar el código. Vuelve a intentarlo."
+                    description="El servidor Ubuntu no pudo preparar el código todavía. Revisa que Ngrok y la API estén encendidos."
                   />
                 )}
               </div>
@@ -689,7 +667,7 @@ export function LoginPage() {
               <div className="surface-subcard auth-qr-copy">
                 <strong>Cómo funciona</strong>
                 <p>1. La web genera un QR temporal.</p>
-                <p>2. Lo escaneas desde Conectate móvil.</p>
+                <p>2. Lo escaneas desde Perfil en Conectate móvil.</p>
                 <p>3. El móvil aprueba o rechaza la sesión.</p>
                 <p>4. Si apruebas, esta ventana entra automáticamente.</p>
               </div>
