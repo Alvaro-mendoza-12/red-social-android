@@ -308,19 +308,23 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     try {
-      if (!client) {
+      if (isFallbackAuthConfigured) {
         const reset = await requestFallbackPasswordReset(normalizedEmail)
         if (reset.resetToken) {
           setAccessCode(reset.resetToken)
-          setInfo('Servidor Ubuntu generó un token de recuperación. Lo pegamos automáticamente; crea tu nueva contraseña.')
+          setInfo('Ubuntu genero un codigo de recuperacion. Lo pegamos automaticamente; crea tu nueva contrasena.')
           return
         }
         setInfo(
           reset.delivery === 'console'
-            ? 'Servidor Ubuntu generó un token de recuperación. Revísalo con docker compose logs api y pégalo aquí.'
-            : 'Servidor Ubuntu recibió la solicitud de recuperación.',
+            ? 'Ubuntu genero el codigo, pero esta configurado para mostrarlo en logs. En el servidor ejecuta docker compose logs --tail=80 api y pega aqui el token.'
+            : 'Ubuntu recibio la solicitud de recuperacion. Si no llega correo, cambia PASSWORD_RESET_DELIVERY=response en el .env del servidor.',
         )
         return
+      }
+
+      if (!client) {
+        throw new Error('El acceso por codigo necesita Ubuntu o Supabase configurado.')
       }
 
       const { error: otpError } = await client.auth.signInWithOtp({

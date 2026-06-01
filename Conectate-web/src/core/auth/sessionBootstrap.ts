@@ -133,9 +133,14 @@ export async function signInWithResolvedEmail(
   password: string,
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(email)
-  if (!client) {
+
+  if (isFallbackAuthConfigured) {
     await signInWithFallbackAuth(normalizedEmail, password)
     return
+  }
+
+  if (!client) {
+    throw new Error('El servidor Ubuntu no esta configurado para iniciar sesion.')
   }
 
   let response = await client.auth.signInWithPassword({
@@ -174,13 +179,18 @@ export async function signUpAndBootstrapProfile(
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(params.email)
   const cleanDisplayName = params.displayName.trim()
-  if (!client) {
+
+  if (isFallbackAuthConfigured) {
     await signUpWithFallbackAuth({
       email: normalizedEmail,
       password: params.password,
       displayName: cleanDisplayName,
     })
     return
+  }
+
+  if (!client) {
+    throw new Error('El servidor Ubuntu no esta configurado para crear cuentas.')
   }
 
   const response = await client.auth.signUp({
