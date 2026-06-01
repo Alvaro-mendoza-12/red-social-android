@@ -6,6 +6,7 @@ import {
   confirmFallbackPasswordReset,
   completeMigratedPasswordReset,
   isFallbackAuthConfigured,
+  isMigratedAccountPasswordSetupRequired,
   isMigratedPasswordResetRequired,
   persistFallbackSession,
   requestFallbackPasswordReset,
@@ -229,6 +230,24 @@ export function LoginPage() {
       setMigratedPasswordReset(null)
       navigate(nextPath, { replace: true })
     } catch (caught) {
+      if (isMigratedAccountPasswordSetupRequired(caught)) {
+        const migratedEmail = normalizeEmail(caught.email || email)
+        setCodeEmail(migratedEmail)
+        setAccessCode('')
+        setFallbackResetPassword('')
+        setFallbackResetConfirmPassword('')
+        setMigratedPasswordReset(null)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.set('mode', 'code')
+        if (migratedEmail) {
+          nextParams.set('email', migratedEmail)
+        }
+        setSearchParams(nextParams, { replace: true })
+        setError(
+          'Hubo una migración en la base de datos. Por seguridad, esta cuenta necesita crear una nueva contraseña en Ubuntu. Presiona Enviar código o enlace y luego cambia tu contraseña.',
+        )
+        return
+      }
       if (isMigratedPasswordResetRequired(caught)) {
         setMigratedPasswordReset({
           email: caught.email,
@@ -476,7 +495,9 @@ export function LoginPage() {
               {mode === 'password'
                 ? 'Ideal si quieres entrar manualmente desde este navegador.'
                 : mode === 'code'
-                  ? 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
+                  ? fallbackOnlyMode
+                    ? 'Crea una nueva contraseña para una cuenta migrada desde Supabase hacia Ubuntu.'
+                    : 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
                   : mode === 'recovery'
                     ? 'Pega un bloque válido con tokens si vienes de un flujo de recuperación o migración.'
                     : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
@@ -585,7 +606,7 @@ export function LoginPage() {
               </label>
               <small className="auth-foot">
                 {fallbackOnlyMode
-                  ? 'En modo Ubuntu, este campo recibe el token de recuperación emitido por tu servidor.'
+                  ? 'Si tu cuenta venía de Supabase, este paso te permite crear tu nueva contraseña en Ubuntu.'
                   : 'Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar el enlace.'}
               </small>
               {fallbackOnlyMode ? (

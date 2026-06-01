@@ -39,6 +39,18 @@ export class MigratedPasswordResetRequiredError extends Error {
   }
 }
 
+export class MigratedAccountPasswordSetupRequiredError extends Error {
+  email: string
+
+  constructor(email: string) {
+    super(
+      'Por la migración de Supabase a Ubuntu, esta cuenta necesita crear una nueva contraseña. Usa Código para cambiarla y entrar.',
+    )
+    this.name = 'MigratedAccountPasswordSetupRequiredError'
+    this.email = email
+  }
+}
+
 const fallbackApiUrl = import.meta.env.VITE_FALLBACK_API_URL?.trim().replace(/\/+$/, '') ?? ''
 const storageKey = 'conectate:fallback-session'
 const eventName = 'conectate:fallback-auth-changed'
@@ -233,7 +245,7 @@ export async function signInWithFallbackAuth(email: string, password: string): P
       })
     }
     if (code === 'INVALID_CREDENTIALS') {
-      throw new Error('Correo o contraseña inválidos en el servidor de respaldo.')
+      throw new MigratedAccountPasswordSetupRequiredError(normalizeEmail(email))
     }
     if (code === 'EMAIL_AND_PASSWORD_REQUIRED') {
       throw new Error('Escribe el correo y la contraseña para entrar con respaldo.')
@@ -293,6 +305,12 @@ export async function signUpWithFallbackAuth(params: {
 
 export function isMigratedPasswordResetRequired(error: unknown): error is MigratedPasswordResetRequiredError {
   return error instanceof MigratedPasswordResetRequiredError
+}
+
+export function isMigratedAccountPasswordSetupRequired(
+  error: unknown,
+): error is MigratedAccountPasswordSetupRequiredError {
+  return error instanceof MigratedAccountPasswordSetupRequiredError
 }
 
 export async function completeMigratedPasswordReset(
