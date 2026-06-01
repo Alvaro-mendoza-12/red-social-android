@@ -40,15 +40,25 @@ function isPlaceholder(value) {
 }
 
 const envFileValues = readEnvFile(envPath)
-const requiredKeys = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']
-const missingKeys = requiredKeys.filter((key) => isPlaceholder(resolveValue(key, envFileValues)))
+const fallbackApiUrl = resolveValue('VITE_FALLBACK_API_URL', envFileValues)
+const hasFallbackBackend =
+  !isPlaceholder(fallbackApiUrl) && /^https?:\/\//i.test(fallbackApiUrl)
+const supabaseKeys = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']
+const missingSupabaseKeys = supabaseKeys.filter((key) =>
+  isPlaceholder(resolveValue(key, envFileValues)),
+)
+const hasSupabaseBackend = missingSupabaseKeys.length === 0
 
-if (missingKeys.length > 0) {
+if (!hasFallbackBackend && !hasSupabaseBackend) {
   console.error('[ensure-web-build-env] Faltan variables reales para compilar Conectate-web.')
   console.error(
-    `[ensure-web-build-env] Define estas variables en el entorno o en ${path.relative(process.cwd(), envPath)}: ${missingKeys.join(', ')}`,
+    `[ensure-web-build-env] Define VITE_FALLBACK_API_URL para usar Ubuntu como backend principal, o define estas variables legacy de Supabase en el entorno o en ${path.relative(process.cwd(), envPath)}: ${missingSupabaseKeys.join(', ')}`,
   )
   process.exit(1)
 }
 
-console.log('[ensure-web-build-env] Entorno web valido para build.')
+if (hasFallbackBackend) {
+  console.log('[ensure-web-build-env] Entorno web valido para build con Ubuntu/Fallback API.')
+} else {
+  console.log('[ensure-web-build-env] Entorno web valido para build con Supabase legacy.')
+}
