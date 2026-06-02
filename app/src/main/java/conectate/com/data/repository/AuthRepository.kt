@@ -1,6 +1,7 @@
 package conectate.com.data.repository
 
 import conectate.com.data.auth.AccountSuspendedException
+import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.User
 import conectate.com.data.supabase.AuthService
@@ -653,6 +654,48 @@ class AuthRepository @Inject constructor(
 
     suspend fun resetPassword(email: String): Result<Unit> {
         return authService.resetPassword(email)
+    }
+
+    suspend fun requestLocalFallbackPasswordReset(email: String): Result<LocalFallbackPasswordResetResponse> {
+        return authService.requestLocalFallbackPasswordReset(email)
+    }
+
+    suspend fun confirmLocalFallbackPasswordReset(
+        resetToken: String,
+        newPassword: String
+    ): Result<User> {
+        val result = authService.confirmLocalFallbackPasswordReset(resetToken, newPassword)
+        if (result.isFailure) {
+            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo cambiar la contraseña migrada."))
+        }
+
+        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
+        accountSessionRepository.captureCurrentAccount(
+            displayName = user.displayName,
+            avatarUrl = user.avatar_url
+        ).onFailure {
+            android.util.Log.w("AuthRepository", "Failed to save local fallback account after password reset", it)
+        }
+        return Result.success(user)
+    }
+
+    suspend fun completeMigratedLocalPasswordReset(
+        migrationToken: String,
+        newPassword: String
+    ): Result<User> {
+        val result = authService.completeMigratedLocalPasswordReset(migrationToken, newPassword)
+        if (result.isFailure) {
+            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo activar la contraseña local."))
+        }
+
+        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
+        accountSessionRepository.captureCurrentAccount(
+            displayName = user.displayName,
+            avatarUrl = user.avatar_url
+        ).onFailure {
+            android.util.Log.w("AuthRepository", "Failed to save local fallback account after migration reset", it)
+        }
+        return Result.success(user)
     }
 
     suspend fun updatePassword(newPassword: String): Result<Unit> {

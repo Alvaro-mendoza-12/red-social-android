@@ -573,30 +573,44 @@ export function AccountSettingsPage() {
               value={model.avatarUrl}
               onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
             />
-            {isFallbackSession ? (
-              <input
-                className="text-input"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={uploadingAsset !== null}
-                onChange={(event) => void uploadProfileAsset('avatar', event.currentTarget.files?.[0])}
-              />
-            ) : null}
+            <div className="asset-upload-row">
+              <label className={isFallbackSession ? 'asset-upload-button' : 'asset-upload-button disabled'}>
+                <span>{uploadingAsset === 'avatar' ? 'Subiendo foto...' : 'Subir foto de perfil'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={!isFallbackSession || uploadingAsset !== null}
+                  onChange={(event) => void uploadProfileAsset('avatar', event.currentTarget.files?.[0])}
+                />
+              </label>
+              <small>
+                {isFallbackSession
+                  ? 'JPG, PNG o WEBP. Después de subirla, guarda el perfil.'
+                  : 'Inicia con Ubuntu para subir archivos al storage propio.'}
+              </small>
+            </div>
             <input
               className="text-input"
               placeholder="Banner / cover URL"
               value={model.coverUrl}
               onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
             />
-            {isFallbackSession ? (
-              <input
-                className="text-input"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={uploadingAsset !== null}
-                onChange={(event) => void uploadProfileAsset('cover', event.currentTarget.files?.[0])}
-              />
-            ) : null}
+            <div className="asset-upload-row">
+              <label className={isFallbackSession ? 'asset-upload-button secondary' : 'asset-upload-button secondary disabled'}>
+                <span>{uploadingAsset === 'cover' ? 'Subiendo portada...' : 'Subir portada'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={!isFallbackSession || uploadingAsset !== null}
+                  onChange={(event) => void uploadProfileAsset('cover', event.currentTarget.files?.[0])}
+                />
+              </label>
+              <small>
+                {isFallbackSession
+                  ? 'La portada también queda guardada en tu storage Ubuntu.'
+                  : 'El storage propio se activa con sesión Ubuntu.'}
+              </small>
+            </div>
             <input
               className="text-input"
               placeholder="Intereses separados por coma: anime, juegos, música"

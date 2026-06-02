@@ -59,6 +59,13 @@ fun LoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var migrationEmail by rememberSaveable { mutableStateOf("") }
+    var migrationDisplayName by rememberSaveable { mutableStateOf("") }
+    var migrationToken by rememberSaveable { mutableStateOf("") }
+    var migrationResetToken by rememberSaveable { mutableStateOf("") }
+    var migrationNewPassword by rememberSaveable { mutableStateOf("") }
+    var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
+    var migrationInfo by rememberSaveable { mutableStateOf("") }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
     var switchingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     
@@ -83,6 +90,49 @@ fun LoginScreen(
     LaunchedEffect(authState) {
         if (authState !is AuthState.Loading) {
             switchingAccountId = null
+        }
+
+        when (val state = authState) {
+            is AuthState.MigratedPasswordSetupRequired -> {
+                val resolvedEmail = state.email.ifBlank { email.trim().lowercase() }
+                loginType = "email"
+                migrationEmail = resolvedEmail
+                migrationDisplayName = state.displayName.orEmpty()
+                migrationToken = state.migrationToken.orEmpty()
+                migrationResetToken = ""
+                migrationNewPassword = ""
+                migrationConfirmPassword = ""
+                migrationInfo = if (migrationToken.isNotBlank()) {
+                    "Cuenta migrada desde Supabase. Crea tu nueva contraseña para activar Ubuntu."
+                } else {
+                    "Esta cuenta viene de Supabase y necesita crear una contraseña nueva en Ubuntu."
+                }
+                if (resolvedEmail.isNotBlank()) email = resolvedEmail
+                password = ""
+            }
+            is AuthState.MigrationPasswordCodeSent -> {
+                loginType = "email"
+                migrationEmail = state.email
+                migrationToken = ""
+                migrationResetToken = state.resetToken.orEmpty()
+                migrationInfo = if (!state.resetToken.isNullOrBlank()) {
+                    "Ubuntu generó el código de migración y lo pegamos automáticamente."
+                } else if (state.delivery == "console") {
+                    "Ubuntu generó el código en los logs del servidor. Pégalo aquí para continuar."
+                } else {
+                    "Ubuntu recibió la solicitud. Si no ves el código, revisa la configuración de recuperación del servidor."
+                }
+            }
+            is AuthState.Success -> {
+                migrationEmail = ""
+                migrationDisplayName = ""
+                migrationToken = ""
+                migrationResetToken = ""
+                migrationNewPassword = ""
+                migrationConfirmPassword = ""
+                migrationInfo = ""
+            }
+            else -> Unit
         }
     }
 
@@ -345,6 +395,13 @@ fun LoginScreen(
             Button(
                 onClick = {
                     if (email.isNotBlank() && password.isNotBlank()) {
+                        migrationEmail = ""
+                        migrationDisplayName = ""
+                        migrationToken = ""
+                        migrationResetToken = ""
+                        migrationNewPassword = ""
+                        migrationConfirmPassword = ""
+                        migrationInfo = ""
                         viewModel.signInWithEmail(email, password)
                     }
                 },
@@ -390,6 +447,48 @@ fun LoginScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            if (migrationEmail.isNotBlank()) {
+                MigratedPasswordSetupCard(
+                    email = migrationEmail,
+                    displayName = migrationDisplayName,
+                    migrationToken = migrationToken,
+                    resetToken = migrationResetToken,
+                    newPassword = migrationNewPassword,
+                    confirmPassword = migrationConfirmPassword,
+                    info = migrationInfo,
+                    isLoading = authState is AuthState.Loading,
+                    onResetTokenChange = { migrationResetToken = it },
+                    onNewPasswordChange = { migrationNewPassword = it },
+                    onConfirmPasswordChange = { migrationConfirmPassword = it },
+                    onRequestCode = {
+                        viewModel.requestMigratedPasswordCode(migrationEmail)
+                    },
+                    onSubmit = {
+                        val nextPassword = migrationNewPassword.trim()
+                        if (nextPassword.length < 8) {
+                            viewModel.setAuthError("La nueva contraseña debe tener al menos 8 caracteres.")
+                            return@MigratedPasswordSetupCard
+                        }
+                        if (nextPassword != migrationConfirmPassword.trim()) {
+                            viewModel.setAuthError("La confirmación no coincide con la contraseña nueva.")
+                            return@MigratedPasswordSetupCard
+                        }
+                        if (migrationToken.isNotBlank()) {
+                            viewModel.completeMigratedPasswordReset(migrationToken, nextPassword)
+                        } else {
+                            val code = migrationResetToken.trim()
+                            if (code.isBlank()) {
+                                viewModel.setAuthError("Pega el código de migración antes de continuar.")
+                                return@MigratedPasswordSetupCard
+                            }
+                            viewModel.confirmMigratedPasswordCode(code, nextPassword)
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // Register Button
             if (!isAddAccountMode) {
@@ -465,6 +564,107 @@ fun LoginScreen(
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MigratedPasswordSetupCard(
+    email: String,
+    displayName: String,
+    migrationToken: String,
+    resetToken: String,
+    newPassword: String,
+    confirmPassword: String,
+    info: String,
+    isLoading: Boolean,
+    onResetTokenChange: (String) -> Unit,
+    onNewPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onRequestCode: () -> Unit,
+    onSubmit: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Cambia tu contraseña para Ubuntu",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = buildString {
+                    if (displayName.isNotBlank()) append("$displayName, ")
+                    append(info.ifBlank { "Tu cuenta migrada necesita una contraseña local nueva." })
+                    append("\nCuenta: $email")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+
+            if (migrationToken.isBlank()) {
+                Button(
+                    onClick = onRequestCode,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isLoading) "Generando..." else "Cambiar contraseña")
+                }
+
+                OutlinedTextField(
+                    value = resetToken,
+                    onValueChange = onResetTokenChange,
+                    label = { Text("Código de migración") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+            }
+
+            OutlinedTextField(
+                value = newPassword,
+                onValueChange = onNewPasswordChange,
+                label = { Text("Nueva contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !isLoading
+            )
+
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = onConfirmPasswordChange,
+                label = { Text("Repetir nueva contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !isLoading
+            )
+
+            Button(
+                onClick = onSubmit,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Guardar contraseña y entrar")
                 }
             }
         }

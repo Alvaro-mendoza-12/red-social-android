@@ -44,7 +44,7 @@ export class MigratedAccountPasswordSetupRequiredError extends Error {
 
   constructor(email: string) {
     super(
-      'Por la migración de Supabase a Ubuntu, esta cuenta necesita crear una nueva contraseña. Usa Código para cambiarla y entrar.',
+      'Por la migración de Supabase a Ubuntu, esta cuenta necesita crear una nueva contraseña antes de entrar.',
     )
     this.name = 'MigratedAccountPasswordSetupRequiredError'
     this.email = email
@@ -264,8 +264,11 @@ export async function signInWithFallbackAuth(email: string, password: string): P
         displayName: String(payload.displayName || ''),
       })
     }
+    if (code === 'MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED') {
+      throw new MigratedAccountPasswordSetupRequiredError(String(payload.email || email))
+    }
     if (code === 'INVALID_CREDENTIALS') {
-      throw new MigratedAccountPasswordSetupRequiredError(normalizeEmail(email))
+      throw new Error('Correo o contraseña inválidos en el servidor Ubuntu.')
     }
     if (code === 'EMAIL_AND_PASSWORD_REQUIRED') {
       throw new Error('Escribe el correo y la contraseña para entrar con respaldo.')

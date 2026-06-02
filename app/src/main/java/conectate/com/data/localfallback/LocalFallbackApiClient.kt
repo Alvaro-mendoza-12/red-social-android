@@ -186,6 +186,17 @@ private data class LocalFallbackChangePasswordRequest(
 )
 
 @Serializable
+private data class LocalFallbackPasswordResetRequest(
+    val email: String
+)
+
+@Serializable
+private data class LocalFallbackPasswordResetConfirmRequest(
+    val resetToken: String,
+    val newPassword: String
+)
+
+@Serializable
 private data class LocalFallbackCompleteMigrationRequest(
     val migrationToken: String,
     val newPassword: String
@@ -360,6 +371,19 @@ class LocalFallbackMigratedPasswordResetRequiredException(
     val displayName: String
 ) : Exception("Tu cuenta fue migrada al servidor local. Cambia tu contraseña para continuar.")
 
+class LocalFallbackMigratedPasswordSetupRequiredException(
+    val email: String,
+    val displayName: String
+) : Exception("Tu cuenta viene de Supabase y necesita crear una contraseña en Ubuntu para continuar.")
+
+@Serializable
+data class LocalFallbackPasswordResetResponse(
+    val ok: Boolean = true,
+    val delivery: String? = null,
+    val resetToken: String? = null,
+    val expiresInMinutes: Int? = null
+)
+
 @Singleton
 class LocalFallbackApiClient @Inject constructor(
     private val supabaseConfig: SupabaseConfig
@@ -382,15 +406,7 @@ class LocalFallbackApiClient @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString(body))
             } else {
-                val error = decodeError(body)
-                if (
-                    error.error == "MIGRATED_ACCOUNT_PASSWORD_RESET_REQUIRED" &&
-                    !error.migrationToken.isNullOrBlank() &&
-                    password.length >= 8
-                ) {
-                    return completeMigratedPasswordReset(error.migrationToken, password)
-                }
-                Result.failure(toException(response, error))
+                Result.failure(toException(response, decodeError(body)))
             }
         } catch (error: Exception) {
             Result.failure(error)
@@ -437,6 +453,47 @@ class LocalFallbackApiClient @Inject constructor(
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackChangePasswordRequest(currentPassword, newPassword))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun requestPasswordReset(email: String): Result<LocalFallbackPasswordResetResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/request") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackPasswordResetRequest(email.trim().lowercase()))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun confirmPasswordReset(
+        resetToken: String,
+        newPassword: String
+    ): Result<LocalFallbackAuthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/confirm") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackPasswordResetConfirmRequest(resetToken.trim(), newPassword))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -1136,7 +1193,7 @@ class LocalFallbackApiClient @Inject constructor(
         return "$baseUrl/storage/v1/object/public/${urlEncode(bucketName)}/$encodedPath"
     }
 
-    private suspend fun completeMigratedPasswordReset(
+    suspend fun completeMigratedPasswordReset(
         migrationToken: String,
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
@@ -1197,6 +1254,12 @@ class LocalFallbackApiClient @Inject constructor(
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
+            "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Escribe el código de migración y una contraseña de al menos 8 caracteres.")
+            "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El código de migración venció o no es válido.")
+            "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
+                email = error.email.orEmpty(),
+                displayName = error.displayName.orEmpty()
+            )
             "MIGRATED_ACCOUNT_PASSWORD_RESET_REQUIRED" -> LocalFallbackMigratedPasswordResetRequiredException(
                 migrationToken = error.migrationToken.orEmpty(),
                 email = error.email.orEmpty(),

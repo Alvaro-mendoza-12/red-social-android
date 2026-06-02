@@ -3,15 +3,14 @@ import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import {
-  confirmFallbackPasswordReset,
   completeMigratedPasswordReset,
+  confirmFallbackPasswordReset,
   isFallbackAuthConfigured,
   isMigratedAccountPasswordSetupRequired,
   isMigratedPasswordResetRequired,
   persistFallbackSession,
   requestFallbackPasswordReset,
 } from '../../core/auth/fallbackAuth'
-import { parseRecoverySessionPayload } from '../../core/auth/recoverySession'
 import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
 import {
   consumeApprovedWebLoginPairing,
@@ -23,15 +22,13 @@ import {
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
 
-type LoginMode = 'password' | 'code' | 'recovery' | 'qr'
+type LoginMode = 'password' | 'qr'
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
 }
 
 function normalizeMode(value: string | null): LoginMode {
-  if (value === 'code') return 'code'
-  if (value === 'recovery') return 'recovery'
   if (value === 'qr') return 'qr'
   return 'password'
 }
@@ -51,9 +48,8 @@ export function LoginPage() {
   const initialEmail = useMemo(() => searchParams.get('email')?.trim() ?? '', [searchParams])
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
-  const [codeEmail, setCodeEmail] = useState(initialEmail)
-  const [accessCode, setAccessCode] = useState('')
-  const [recoveryPayload, setRecoveryPayload] = useState('')
+  const [migrationSetupEmail, setMigrationSetupEmail] = useState('')
+  const [migrationSetupToken, setMigrationSetupToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
@@ -67,9 +63,8 @@ export function LoginPage() {
   const [fallbackResetConfirmPassword, setFallbackResetConfirmPassword] = useState('')
   const [activatingMigratedPassword, setActivatingMigratedPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [sendingCode, setSendingCode] = useState(false)
-  const [verifyingCode, setVerifyingCode] = useState(false)
-  const [importingRecovery, setImportingRecovery] = useState(false)
+  const [requestingMigrationReset, setRequestingMigrationReset] = useState(false)
+  const [confirmingMigrationReset, setConfirmingMigrationReset] = useState(false)
   const [qrPairing, setQrPairing] = useState<WebLoginPairing | null>(null)
   const [creatingQr, setCreatingQr] = useState(false)
   const [consumingQr, setConsumingQr] = useState(false)
@@ -78,7 +73,7 @@ export function LoginPage() {
   function changeMode(nextMode: LoginMode) {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('mode', nextMode)
-    const preferredEmail = normalizeEmail(nextMode === 'password' ? email : codeEmail)
+    const preferredEmail = normalizeEmail(email)
     if (preferredEmail) {
       nextParams.set('email', preferredEmail)
     } else {
@@ -88,6 +83,7 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     setMigratedPasswordReset(null)
+    setMigrationSetupEmail('')
   }
 
   useEffect(() => {
@@ -235,19 +231,19 @@ export function LoginPage() {
     } catch (caught) {
       if (isMigratedAccountPasswordSetupRequired(caught)) {
         const migratedEmail = normalizeEmail(caught.email || email)
-        setCodeEmail(migratedEmail)
-        setAccessCode('')
+        setMigrationSetupEmail(migratedEmail)
+        setMigrationSetupToken('')
         setFallbackResetPassword('')
         setFallbackResetConfirmPassword('')
         setMigratedPasswordReset(null)
         const nextParams = new URLSearchParams(searchParams)
-        nextParams.set('mode', 'code')
+        nextParams.set('mode', 'password')
         if (migratedEmail) {
           nextParams.set('email', migratedEmail)
         }
         setSearchParams(nextParams, { replace: true })
-        setError(
-          'Hubo una migración en la base de datos. Por seguridad, esta cuenta necesita crear una nueva contraseña en Ubuntu. Presiona Enviar código o enlace y luego cambia tu contraseña.',
+        setInfo(
+          'Esta cuenta viene de Supabase y necesita crear una nueva contraseña en Ubuntu para continuar.',
         )
         return
       }
@@ -299,64 +295,51 @@ export function LoginPage() {
     }
   }
 
-  async function sendAccessCode() {
-    if (sendingCode) return
-    const normalizedEmail = normalizeEmail(codeEmail)
+  async function requestMigrationPasswordReset() {
+    if (requestingMigrationReset) return
+    const normalizedEmail = normalizeEmail(migrationSetupEmail || email)
     if (!normalizedEmail) {
-      setError('Ingresa tu correo para recibir el acceso por código o enlace.')
+      setError('Ingresa el correo de la cuenta migrada.')
       return
     }
 
-    setSendingCode(true)
+    setRequestingMigrationReset(true)
     setError(null)
     setInfo(null)
     try {
       if (isFallbackAuthConfigured) {
         const reset = await requestFallbackPasswordReset(normalizedEmail)
         if (reset.resetToken) {
-          setAccessCode(reset.resetToken)
-          setInfo('Ubuntu genero un codigo de recuperacion. Lo pegamos automaticamente; crea tu nueva contrasena.')
+          setMigrationSetupToken(reset.resetToken)
+          setInfo('Ubuntu generó el código de migración. Lo pegamos automáticamente; crea tu nueva contraseña.')
           return
         }
         setInfo(
           reset.delivery === 'console'
-            ? 'Ubuntu genero el codigo, pero esta configurado para mostrarlo en logs. En el servidor ejecuta docker compose logs --tail=80 api y pega aqui el token.'
-            : 'Ubuntu recibio la solicitud de recuperacion. Si no llega correo, cambia PASSWORD_RESET_DELIVERY=response en el .env del servidor.',
+            ? 'Ubuntu generó el código, pero está configurado para mostrarlo en logs. En el servidor ejecuta docker compose logs --tail=80 api y pega aquí el token.'
+            : 'Ubuntu recibió la solicitud de recuperación. Si no llega correo, cambia PASSWORD_RESET_DELIVERY=response en el .env del servidor.',
         )
         return
       }
 
-      if (!client) {
-        throw new Error('El acceso por codigo necesita Ubuntu o Supabase configurado.')
-      }
-
-      const { error: otpError } = await client.auth.signInWithOtp({
-        email: normalizedEmail,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`,
-        },
-      })
-      if (otpError) throw otpError
-      setInfo('Revisa tu correo. Si tu proyecto envía OTP, escribe el código aquí; si envía enlace mágico, ábrelo desde el correo.')
+      throw new Error('La migración de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo enviar el acceso por código'))
+      setError(friendlyError(caught, 'No se pudo iniciar el cambio de contraseña migrada'))
     } finally {
-      setSendingCode(false)
+      setRequestingMigrationReset(false)
     }
   }
 
-  async function verifyAccessCode(event: FormEvent<HTMLFormElement>) {
+  async function confirmMigrationPasswordReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (verifyingCode) return
-    const normalizedEmail = normalizeEmail(codeEmail)
-    const normalizedCode = accessCode.trim()
-    if (!normalizedEmail || !normalizedCode) {
-      setError('Escribe el correo y el código antes de continuar.')
+    if (confirmingMigrationReset) return
+    const normalizedCode = migrationSetupToken.trim()
+    if (!normalizedCode) {
+      setError('Pega el código de migración antes de continuar.')
       return
     }
 
-    setVerifyingCode(true)
+    setConfirmingMigrationReset(true)
     setError(null)
     setInfo(null)
     try {
@@ -375,46 +358,11 @@ export function LoginPage() {
         return
       }
 
-      if (!client) {
-        throw new Error('No hay cliente Supabase activo para validar este código.')
-      }
-      const { error: verifyError } = await client.auth.verifyOtp({
-        email: normalizedEmail,
-        token: normalizedCode,
-        type: 'email',
-      })
-      if (verifyError) throw verifyError
-      navigate(nextPath, { replace: true })
+      throw new Error('La migración de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo validar el código'))
+      setError(friendlyError(caught, 'No se pudo cambiar la contraseña migrada'))
     } finally {
-      setVerifyingCode(false)
-    }
-  }
-
-  async function importRecoverySession(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!client || importingRecovery) return
-    const payload = parseRecoverySessionPayload(recoveryPayload)
-    if (!payload) {
-      setError('Pega un enlace de recuperación o un bloque con access_token y refresh_token.')
-      return
-    }
-
-    setImportingRecovery(true)
-    setError(null)
-    setInfo(null)
-    try {
-      const { error: sessionError } = await client.auth.setSession({
-        access_token: payload.accessToken,
-        refresh_token: payload.refreshToken,
-      })
-      if (sessionError) throw sessionError
-      navigate(nextPath, { replace: true })
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo importar la sesión'))
-    } finally {
-      setImportingRecovery(false)
+      setConfirmingMigrationReset(false)
     }
   }
 
@@ -426,8 +374,6 @@ export function LoginPage() {
       />
     )
   }
-
-  const fallbackOnlyMode = isFallbackAuthConfigured
 
   return (
     <section className="auth-shell auth-shell-rich auth-shell-centered">
@@ -452,10 +398,10 @@ export function LoginPage() {
               </div>
               <h1>Entrar a Conectate</h1>
               <p>
-                Accede con contraseña, código, sesión vinculada o QR aprobado desde tu móvil.
+                Accede con tu contraseña o aprueba un QR desde tu móvil.
               </p>
             </div>
-            <div className="chip-row auth-mode-row auth-mode-grid">
+            <div className="chip-row auth-mode-row auth-mode-grid auth-mode-grid-two">
               <button
                 type="button"
                 className={mode === 'password' ? 'chip-btn active' : 'chip-btn'}
@@ -463,22 +409,6 @@ export function LoginPage() {
                 onClick={() => changeMode('password')}
               >
                 Contraseña
-              </button>
-              <button
-                type="button"
-                className={mode === 'code' ? 'chip-btn active' : 'chip-btn'}
-                aria-pressed={mode === 'code'}
-                onClick={() => changeMode('code')}
-              >
-                Código
-              </button>
-              <button
-                type="button"
-                className={mode === 'recovery' ? 'chip-btn active' : 'chip-btn'}
-                aria-pressed={mode === 'recovery'}
-                onClick={() => changeMode('recovery')}
-              >
-                Vincular sesión
               </button>
               <button
                 type="button"
@@ -495,22 +425,12 @@ export function LoginPage() {
             <strong>
               {mode === 'password'
                 ? 'Acceso clásico'
-                : mode === 'code'
-                  ? 'Código temporal'
-                  : mode === 'recovery'
-                    ? 'Importar sesión existente'
-                    : 'Aprobación desde el móvil'}
+                : 'Aprobación desde el móvil'}
             </strong>
             <p>
               {mode === 'password'
                 ? 'Ideal si quieres entrar manualmente desde este navegador.'
-                : mode === 'code'
-                  ? fallbackOnlyMode
-                    ? 'Crea una nueva contraseña para una cuenta migrada desde Supabase hacia Ubuntu.'
-                    : 'Útil cuando prefieres un acceso temporal sin escribir contraseña.'
-                  : mode === 'recovery'
-                    ? 'Pega un bloque válido con tokens si vienes de un flujo de recuperación o migración.'
-                    : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
+                : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
             </p>
           </div>
 
@@ -541,6 +461,62 @@ export function LoginPage() {
               </label>
               <button className="primary-btn" disabled={loading} type="submit">
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
+              </button>
+            </form>
+          ) : null}
+
+          {mode === 'password' && migrationSetupEmail ? (
+            <form className="surface-subcard section-stack migrated-password-card" onSubmit={confirmMigrationPasswordReset}>
+              <div>
+                <strong>Cambia tu contraseña para Ubuntu</strong>
+                <p>
+                  Por la migración desde Supabase, esta cuenta necesita una nueva contraseña local.
+                  Después de cambiarla, entrarás con normalidad en web y móvil.
+                </p>
+                <small>{migrationSetupEmail}</small>
+              </div>
+              <button
+                className="ghost-btn"
+                type="button"
+                disabled={requestingMigrationReset}
+                onClick={() => void requestMigrationPasswordReset()}
+              >
+                {requestingMigrationReset ? 'Generando código...' : 'Cambiar contraseña'}
+              </button>
+              <label>
+                Código de migración
+                <input
+                  type="text"
+                  required
+                  value={migrationSetupToken}
+                  autoComplete="one-time-code"
+                  onChange={(event) => setMigrationSetupToken(event.target.value)}
+                />
+              </label>
+              <label>
+                Nueva contraseña
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={fallbackResetPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setFallbackResetPassword(event.target.value)}
+                />
+              </label>
+              <label>
+                Repetir nueva contraseña
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={fallbackResetConfirmPassword}
+                  autoComplete="new-password"
+                  onChange={(event) => setFallbackResetConfirmPassword(event.target.value)}
+                />
+              </label>
+              <button className="primary-btn" disabled={confirmingMigrationReset} type="submit">
+                {confirmingMigrationReset ? 'Cambiando...' : 'Guardar contraseña y entrar'}
               </button>
             </form>
           ) : null}
@@ -578,98 +554,6 @@ export function LoginPage() {
               <button className="primary-btn" disabled={activatingMigratedPassword} type="submit">
                 {activatingMigratedPassword ? 'Activando...' : 'Crear contraseña y entrar'}
               </button>
-            </form>
-          ) : null}
-
-          {mode === 'code' ? (
-            <form className="section-stack" onSubmit={verifyAccessCode}>
-              <label>
-                Correo de la cuenta
-                <input
-                  type="email"
-                  required
-                  value={codeEmail}
-                  autoComplete="email"
-                  onChange={(event) => setCodeEmail(event.target.value)}
-                />
-              </label>
-              <div className="auth-inline-actions">
-                <button
-                  className="ghost-btn"
-                  type="button"
-                  disabled={sendingCode}
-                  onClick={() => void sendAccessCode()}
-                >
-                  {sendingCode ? 'Enviando...' : 'Enviar código o enlace'}
-                </button>
-              </div>
-              <label>
-                Código de acceso
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="Escribe aquí el código del correo"
-                  value={accessCode}
-                  onChange={(event) => setAccessCode(event.target.value)}
-                />
-              </label>
-              <small className="auth-foot">
-                {fallbackOnlyMode
-                  ? 'Si tu cuenta venía de Supabase, este paso te permite crear tu nueva contraseña en Ubuntu.'
-                  : 'Si tu proveedor envía enlace mágico en lugar de OTP, basta con abrir el correo y tocar el enlace.'}
-              </small>
-              {fallbackOnlyMode ? (
-                <>
-                  <label>
-                    Nueva contraseña
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      value={fallbackResetPassword}
-                      autoComplete="new-password"
-                      onChange={(event) => setFallbackResetPassword(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Confirmar contraseña
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      value={fallbackResetConfirmPassword}
-                      autoComplete="new-password"
-                      onChange={(event) => setFallbackResetConfirmPassword(event.target.value)}
-                    />
-                  </label>
-                </>
-              ) : null}
-              <button className="primary-btn" disabled={verifyingCode} type="submit">
-                {verifyingCode ? 'Validando...' : fallbackOnlyMode ? 'Cambiar contraseña y entrar' : 'Entrar con código'}
-              </button>
-            </form>
-          ) : null}
-
-          {mode === 'recovery' ? (
-            <form className="section-stack" onSubmit={importRecoverySession}>
-              <label>
-                Enlace o bloque de recuperación
-                <textarea
-                  className="text-input textarea-input"
-                  rows={5}
-                  placeholder="Pega aquí el enlace conectate://recovery o un JSON con access_token y refresh_token"
-                  value={recoveryPayload}
-                  onChange={(event) => setRecoveryPayload(event.target.value)}
-                />
-              </label>
-              <button className="primary-btn" disabled={importingRecovery} type="submit">
-                {importingRecovery ? 'Importando...' : 'Vincular e iniciar'}
-              </button>
-              <small className="auth-foot">
-                Este modo sirve para importar una sesión ya emitida desde otro dispositivo o desde un
-                flujo de recuperación compatible.
-              </small>
             </form>
           ) : null}
 

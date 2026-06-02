@@ -9,6 +9,7 @@ import conectate.com.core.testing.RuntimeSessionOverride
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackAuthResponse
+import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
 import conectate.com.data.localfallback.LocalFallbackUser
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -618,6 +619,13 @@ class AuthService @Inject constructor(
 
     suspend fun resetPassword(email: String): Result<Unit> {
         return try {
+            if (localFallbackApiClient.isConfigured) {
+                return localFallbackApiClient.requestPasswordReset(email).fold(
+                    onSuccess = { Result.success(Unit) },
+                    onFailure = { Result.failure(it) }
+                )
+            }
+
             supabaseConfig.client.auth.resetPasswordForEmail(
                 email = email,
                 redirectUrl = "conectate://recovery"
@@ -627,6 +635,39 @@ class AuthService @Inject constructor(
             Log.e("AuthService", "Reset password error", e)
             Result.failure(e)
         }
+    }
+
+    suspend fun requestLocalFallbackPasswordReset(email: String): Result<LocalFallbackPasswordResetResponse> {
+        if (!localFallbackApiClient.isConfigured) {
+            return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        }
+        return localFallbackApiClient.requestPasswordReset(email)
+    }
+
+    suspend fun confirmLocalFallbackPasswordReset(
+        resetToken: String,
+        newPassword: String
+    ): Result<Unit> {
+        if (!localFallbackApiClient.isConfigured) {
+            return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        }
+        val localSession = localFallbackApiClient.confirmPasswordReset(resetToken, newPassword)
+            .getOrElse { return Result.failure(it) }
+        persistLocalFallbackSession(localSession)
+        return Result.success(Unit)
+    }
+
+    suspend fun completeMigratedLocalPasswordReset(
+        migrationToken: String,
+        newPassword: String
+    ): Result<Unit> {
+        if (!localFallbackApiClient.isConfigured) {
+            return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        }
+        val localSession = localFallbackApiClient.completeMigratedPasswordReset(migrationToken, newPassword)
+            .getOrElse { return Result.failure(it) }
+        persistLocalFallbackSession(localSession)
+        return Result.success(Unit)
     }
 
     suspend fun updateUserPassword(newPassword: String): Result<Unit> {

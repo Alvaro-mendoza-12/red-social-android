@@ -960,7 +960,13 @@ app.post('/v1/auth/login', async (req, res, next) => {
     if (!hasLocalPassword) {
       const restoredPasswordOk = await verifyRestoredSupabasePassword(row, password)
       if (!restoredPasswordOk) {
-        return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+        const user = sanitizeUser(await hydrateUserRow(row))
+        await recordAudit('auth_migrated_password_setup_required', user.id, { email })
+        return res.status(409).json({
+          error: 'MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED',
+          email: user.email,
+          displayName: user.displayName,
+        })
       }
 
       row = await hydrateUserRow(row)

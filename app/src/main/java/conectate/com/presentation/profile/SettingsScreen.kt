@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -338,6 +339,31 @@ fun SettingsScreen(
                         }
                     )
                 }
+            }
+
+            Divider()
+
+            SettingsSection(title = "Dispositivos vinculados") {
+                OutlinedButton(
+                    onClick = {
+                        mainNavController.navigate(Screen.WebLoginScanner.createRoute()) {
+                            launchSingleTop = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Vincular Conectate Web por QR")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    "Escanea el QR que aparece en la web y aprueba el inicio desde esta cuenta.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
             }
 
             Divider()

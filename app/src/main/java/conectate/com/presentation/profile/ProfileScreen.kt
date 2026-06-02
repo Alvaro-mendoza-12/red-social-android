@@ -394,7 +394,20 @@ fun ProfileScreen(
                                         ) {
                                             Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Editar")
+                                            Text("Editar", maxLines = 1, fontSize = 12.sp)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                (mainNavController ?: navController).navigate(Screen.WebLoginScanner.createRoute()) {
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Web QR", maxLines = 1, fontSize = 12.sp)
                                         }
                                         OutlinedButton(
                                             onClick = { (mainNavController ?: navController).navigate(Screen.MyReports.route) },
@@ -403,7 +416,7 @@ fun ProfileScreen(
                                         ) {
                                             Icon(Icons.Default.Info, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Reportes")
+                                            Text("Reportes", maxLines = 1, fontSize = 12.sp)
                                         }
                                     } else {
                                         val isFollowing by viewModel.isFollowing.collectAsState()

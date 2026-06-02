@@ -3,6 +3,8 @@ package conectate.com.presentation.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.auth.AccountSuspendedException
+import conectate.com.data.localfallback.LocalFallbackMigratedPasswordResetRequiredException
+import conectate.com.data.localfallback.LocalFallbackMigratedPasswordSetupRequiredException
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
@@ -21,6 +23,17 @@ sealed class AuthState {
     object Loading : AuthState()
     data class Success(val user: User) : AuthState()
     data class Suspended(val suspensionEndDate: String?, val reason: String?) : AuthState()
+    data class MigratedPasswordSetupRequired(
+        val email: String,
+        val displayName: String? = null,
+        val migrationToken: String? = null
+    ) : AuthState()
+    data class MigrationPasswordCodeSent(
+        val email: String,
+        val resetToken: String? = null,
+        val delivery: String? = null,
+        val expiresInMinutes: Int? = null
+    ) : AuthState()
     object PasswordResetSent : AuthState()
     object PasswordChanged : AuthState()
     data class Error(val message: String) : AuthState()
@@ -138,6 +151,17 @@ class AuthViewModel  constructor(
                             suspensionEndDate = it.suspensionEndDate,
                             reason = it.reason
                         )
+                        is LocalFallbackMigratedPasswordSetupRequiredException ->
+                            AuthState.MigratedPasswordSetupRequired(
+                                email = it.email.ifBlank { email.trim().lowercase() },
+                                displayName = it.displayName
+                            )
+                        is LocalFallbackMigratedPasswordResetRequiredException ->
+                            AuthState.MigratedPasswordSetupRequired(
+                                email = it.email.ifBlank { email.trim().lowercase() },
+                                displayName = it.displayName,
+                                migrationToken = it.migrationToken
+                            )
                         else -> {
                             var message = mapAuthError(it)
                             AuthState.Error(message)
@@ -249,6 +273,66 @@ class AuthViewModel  constructor(
                 onFailure = { 
                     var message = mapAuthError(it)
                     AuthState.Error(message) 
+                }
+            )
+        }
+    }
+
+    fun requestMigratedPasswordCode(email: String) {
+        viewModelScope.launch {
+            val normalizedEmail = email.trim().lowercase()
+            if (normalizedEmail.isBlank()) {
+                _authState.value = AuthState.Error("Ingresa el correo de la cuenta migrada.")
+                return@launch
+            }
+
+            _authState.value = AuthState.Loading
+            val result = authRepository.requestLocalFallbackPasswordReset(normalizedEmail)
+            _authState.value = result.fold(
+                onSuccess = {
+                    AuthState.MigrationPasswordCodeSent(
+                        email = normalizedEmail,
+                        resetToken = it.resetToken,
+                        delivery = it.delivery,
+                        expiresInMinutes = it.expiresInMinutes
+                    )
+                },
+                onFailure = {
+                    AuthState.Error(mapAuthError(it))
+                }
+            )
+        }
+    }
+
+    fun confirmMigratedPasswordCode(resetToken: String, newPassword: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            val result = authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword)
+            _authState.value = result.fold(
+                onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    AuthState.Success(it)
+                },
+                onFailure = {
+                    AuthState.Error(mapAuthError(it))
+                }
+            )
+        }
+    }
+
+    fun completeMigratedPasswordReset(migrationToken: String, newPassword: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            val result = authRepository.completeMigratedLocalPasswordReset(migrationToken, newPassword)
+            _authState.value = result.fold(
+                onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    AuthState.Success(it)
+                },
+                onFailure = {
+                    AuthState.Error(mapAuthError(it))
                 }
             )
         }
