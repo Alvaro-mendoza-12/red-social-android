@@ -7,6 +7,8 @@ import android.webkit.MimeTypeMap
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -42,6 +44,8 @@ import javax.inject.Singleton
 class MomentRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val storageService: StorageService,
     @ApplicationContext private val context: Context
 ) {
@@ -87,10 +91,13 @@ class MomentRepository @Inject constructor(
     }
 
     private suspend fun startObservingReactive(internalScope: kotlinx.coroutines.CoroutineScope) {
-        // Initial fetch
         refreshMoments()
-        
-        // Real-time subscriptions
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            startUbuntuMomentsObservation(internalScope)
+            return
+        }
+
+        // Real-time subscriptions (Supabase)
         try {
             // IMPORTANTE: Conectar el cliente de Realtime para habilitar WebSockets
             android.util.Log.d("MomentRepository", "⚡ Intentando conectar a Realtime...")
@@ -381,11 +388,71 @@ class MomentRepository @Inject constructor(
         }
     }
 
+    private fun startUbuntuMomentsObservation(internalScope: kotlinx.coroutines.CoroutineScope) {
+        val token = authService.getAccessToken()?.trim().orEmpty()
+        if (token.isNotBlank()) {
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.subscribe("moments:live")
+        }
+        internalScope.launch {
+            ubuntuRealtimeClient.events.collect {
+                if (it.channel == "moments:live") {
+                    refreshMoments()
+                }
+            }
+        }
+        internalScope.launch {
+            while (internalScope.isActive) {
+                kotlinx.coroutines.delay(MOMENTS_FALLBACK_POLL_INTERVAL_MS)
+                refreshMoments()
+            }
+        }
+    }
+
     suspend fun refreshMoments() {
         android.util.Log.d("MomentRepository", ">>> refreshMoments() called")
         try {
             var currentUserId = authService.getCurrentUserId() ?: return
             android.util.Log.d("MomentRepository", "Refreshing for user: $currentUserId")
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val token = authService.getAccessToken()?.trim().orEmpty()
+                if (token.isBlank()) return
+                val feed = localFallbackApiClient.loadMomentsFeed(token).getOrElse { error ->
+                    android.util.Log.e("MomentRepository", "Ubuntu moments feed failed", error)
+                    return
+                }
+                val parsed = feed.items.mapNotNull { json ->
+                    val momentId = json["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val userId = json["user_id"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val visibilityType = json["visibility_type"]?.jsonPrimitive?.contentOrNull ?: "public"
+                    if (visibilityType == "silent" && userId != currentUserId) return@mapNotNull null
+                    if (visibilityType == "private" && userId != currentUserId) return@mapNotNull null
+                    Moment(
+                        id = momentId,
+                        userId = userId,
+                        mediaUrl = json["media_url"]?.jsonPrimitive?.contentOrNull ?: "",
+                        mediaType = json["media_type"]?.jsonPrimitive?.contentOrNull ?: "image",
+                        thumbnailUrl = json["thumbnail_url"]?.jsonPrimitive?.contentOrNull,
+                        durationHours = json["duration_hours"]?.jsonPrimitive?.intOrNull ?: 24,
+                        durationType = json["duration_type"]?.jsonPrimitive?.contentOrNull ?: "24h",
+                        visibility = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all",
+                        visibilityType = visibilityType,
+                        excludedIds = emptyList(),
+                        createdAt = json["created_at"]?.jsonPrimitive?.contentOrNull,
+                        expiresAt = json["expires_at"]?.jsonPrimitive?.contentOrNull,
+                        username = json["owner_name"]?.jsonPrimitive?.contentOrNull ?: "Usuario",
+                        userDisplayName = json["owner_name"]?.jsonPrimitive?.contentOrNull ?: "Usuario",
+                        userAvatarUrl = null,
+                        isVerified = false,
+                        caption = json["caption"]?.jsonPrimitive?.contentOrNull,
+                        isViewed = json["viewed_by_me"]?.jsonPrimitive?.booleanOrNull ?: false,
+                        allowReplies = json["allow_replies"]?.jsonPrimitive?.booleanOrNull ?: true
+                    )
+                }
+                _moments.value = parsed
+                return
+            }
             
             // Fetch moments joined with profiles
                 var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moments") {

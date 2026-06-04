@@ -160,6 +160,7 @@ class GroupRepository @Inject constructor(
         bindCollectionRealtimeAuthLifecycle(
             scope = scope,
             supabaseConfig = supabaseConfig,
+            authService = authService,
             logTag = "GroupRepository",
             logPrefix = "[GOD]",
             readyLog = "🟢 [G-REALTIME] Sistema Iniciado",

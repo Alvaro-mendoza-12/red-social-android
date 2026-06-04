@@ -74,9 +74,9 @@ class ProfileViewModel @Inject constructor(
         get() {
             // 1. Check email first (failsafe)
             val email = authService.getCurrentUserEmail()?.lowercase()?.trim() ?: ""
-            val isDesignatedAdmin = email == "gamergamerff017@gmail.com" || 
+            val isDesignatedAdmin = email == "gamergamerff004@gmail.com" ||
                                    email == "alvaromendozamarin004@gmail.com" ||
-                                   email == "gamergamerff004@gmail.com"
+                                   email == "gamergamerff017@gmail.com"
             
             if (isDesignatedAdmin) return true
 

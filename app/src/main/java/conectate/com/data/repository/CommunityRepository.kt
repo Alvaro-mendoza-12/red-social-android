@@ -150,6 +150,7 @@ class CommunityRepository @Inject constructor(
         bindCollectionRealtimeAuthLifecycle(
             scope = scope,
             supabaseConfig = supabaseConfig,
+            authService = authService,
             logTag = "CommunityRepository",
             logPrefix = "[COMM]",
             readyLog = "🟢 [C-REALTIME] Sistema Iniciado",

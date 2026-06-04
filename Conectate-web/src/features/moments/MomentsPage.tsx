@@ -9,7 +9,9 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
+import { fetchMomentsFeed, publishMoment, recordMomentView, type MomentItem } from './momentsData'
+import { isUbuntuPrimary } from '../../core/ubuntuBackend'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
 function inferMomentMediaType(file: File): 'image' | 'video' {
   if (file.type.startsWith('video/')) return 'video'
@@ -56,7 +58,7 @@ export function MomentsPage() {
   }, [items, user?.id])
 
   const loadMoments = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
@@ -78,6 +80,14 @@ export function MomentsPage() {
   }, [loadMoments])
 
   useEffect(() => {
+    if (isUbuntuPrimary) {
+      return subscribeUbuntuRealtime({
+        channel: 'moments:live',
+        onEvent: () => {
+          void loadMoments()
+        },
+      })
+    }
     const client = supabase
     if (!client || !user) return
     const channel = client
@@ -95,43 +105,17 @@ export function MomentsPage() {
   }, [loadMoments, user])
 
   async function handlePublish(file: File | null) {
-    if (!supabase || !user || !file || uploading) return
+    if (!user || !file || uploading) return
     setUploading(true)
     setError(null)
     try {
-      const mediaType = inferMomentMediaType(file)
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = `${user.id}/${Date.now()}_${safeName}`
-      const { error: uploadError } = await supabase.storage
-        .from('moment-media')
-        .upload(filePath, file, { contentType: file.type || undefined })
-      if (uploadError) throw uploadError
-
-      const { data } = supabase.storage.from('moment-media').getPublicUrl(filePath)
-      const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
-
-      const fullPayload: Record<string, unknown> = {
-        user_id: user.id,
-        media_url: data.publicUrl,
-        media_type: mediaType,
-        caption: caption.trim() || null,
-        duration_hours: durationHours,
+      await publishMoment({
+        file,
+        caption: caption.trim(),
+        durationHours,
         visibility,
-        allow_replies: allowReplies,
-        expires_at: expiresAt,
-      }
-      const { error: insertError } = await supabase.from('moments').insert(fullPayload)
-      if (insertError) {
-        const minimalPayload = {
-          user_id: user.id,
-          media_url: data.publicUrl,
-          media_type: mediaType,
-          expires_at: expiresAt,
-        }
-        const { error: minimalError } = await supabase.from('moments').insert(minimalPayload)
-        if (minimalError) throw minimalError
-      }
-
+        allowReplies,
+      })
       setCaption('')
       await loadMoments()
     } catch (caught) {
@@ -166,8 +150,8 @@ export function MomentsPage() {
     }
   }
 
-  if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar momentos." />
+  if (!isUbuntuPrimary && !supabase) {
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para momentos en Ubuntu." />
   }
 
   return (

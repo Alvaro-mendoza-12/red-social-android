@@ -10,6 +10,7 @@ import {
   subscribeRealtimeChannel,
   supabase,
 } from '../../core/supabase'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -193,6 +194,30 @@ export function FeedPage() {
   }, [feedCacheKey, loadFeed])
 
   useEffect(() => {
+    if (isFallbackSession && user?.id) {
+      const scheduleRefresh = () => {
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = setTimeout(() => {
+          void loadFeed({ silent: true })
+        }, 260)
+      }
+      const unsubscribeSelf = subscribeUbuntuRealtime({
+        channel: `user:${user.id}`,
+        onEvent: (event) => {
+          const scope = String(event.payload?.scope || '')
+          if (scope === 'inbox' || event.payload?.event === 'message') scheduleRefresh()
+        },
+      })
+      const unsubscribeFeed = subscribeUbuntuRealtime({
+        channel: 'feed:live',
+        onEvent: scheduleRefresh,
+      })
+      return () => {
+        unsubscribeSelf()
+        unsubscribeFeed()
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      }
+    }
     const client = supabase
     if (!client || isFallbackSession) return
     const scheduleRefresh = () => {

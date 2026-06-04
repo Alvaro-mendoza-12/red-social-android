@@ -381,3 +381,79 @@ export async function createFallbackPost(input: {
     body: JSON.stringify(input),
   })
 }
+
+export type FallbackVideosResponse = {
+  items: GenericRow[]
+}
+
+export async function loadFallbackVideos(limit = 80, offset = 0): Promise<FallbackVideosResponse> {
+  const params = new URLSearchParams()
+  params.set('limit', String(limit))
+  params.set('offset', String(offset))
+  return fallbackApiJson<FallbackVideosResponse>(`/v1/data/videos?${params.toString()}`)
+}
+
+export async function loadFallbackVideo(videoId: string): Promise<{ video: GenericRow }> {
+  return fallbackApiJson<{ video: GenericRow }>(`/v1/data/videos/${encodeURIComponent(videoId)}`)
+}
+
+export async function createFallbackVideo(input: {
+  title: string
+  description?: string
+  videoUrl: string
+  coverUrl?: string | null
+  durationSeconds?: number
+  trimStartSeconds?: number
+  trimEndSeconds?: number
+  isPublic?: boolean
+  tags?: string[]
+}): Promise<{ video: GenericRow }> {
+  return fallbackApiJson<{ video: GenericRow }>('/v1/data/videos', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function setFallbackVideoReaction(videoId: string, liked: boolean): Promise<{ ok: boolean }> {
+  return fallbackApiJson<{ ok: boolean }>(
+    `/v1/data/videos/${encodeURIComponent(videoId)}/reaction`,
+    {
+      method: liked ? 'POST' : 'DELETE',
+      body: liked ? JSON.stringify({}) : undefined,
+    },
+  )
+}
+
+export type FallbackFriendsResponse = {
+  items: GenericRow[]
+}
+
+export async function loadFallbackFriends(tab: 'incoming' | 'outgoing' | 'accepted' = 'incoming'): Promise<FallbackFriendsResponse> {
+  return fallbackApiJson<FallbackFriendsResponse>(`/v1/data/friends?tab=${encodeURIComponent(tab)}`)
+}
+
+export async function sendFallbackFriendRequest(receiverId: string): Promise<{ request: GenericRow }> {
+  return fallbackApiJson<{ request: GenericRow }>('/v1/data/friends', {
+    method: 'POST',
+    body: JSON.stringify({ receiverId }),
+  })
+}
+
+export async function updateFallbackFriendRequest(
+  requestId: string,
+  status: 'accepted' | 'rejected',
+): Promise<{ request: GenericRow }> {
+  return fallbackApiJson<{ request: GenericRow }>(
+    `/v1/data/friends/${encodeURIComponent(requestId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+  )
+}
+
+/** Lectura genérica PostgREST contra el servidor Ubuntu (datos importados o compat). */
+export async function loadUbuntuRestTable(table: string, query = ''): Promise<GenericRow[]> {
+  const suffix = query ? (query.startsWith('?') ? query : `?${query}`) : ''
+  return fallbackApiJson<GenericRow[]>(`/rest/v1/${encodeURIComponent(table)}${suffix}`)
+}

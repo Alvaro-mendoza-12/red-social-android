@@ -191,24 +191,38 @@ class MessageRepository @Inject constructor(
         
         // Start Global Realtime Listener using new MessageRealtimeSync component
         sessionStatusJob = scope.launch {
-            supabaseConfig.client.auth.sessionStatus.collect { status ->
+            val userIdFlow: Flow<String?> = if (supabaseConfig.isLocalFallbackPrimary) {
+                authService.currentSession.map { session ->
+                    session?.user?.id?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                }
+            } else {
+                supabaseConfig.client.auth.sessionStatus.map { status ->
+                    if (status is SessionStatus.Authenticated) {
+                        (status.session.user?.id ?: "").trim().lowercase().takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                }
+            }
+            userIdFlow.collect { userId ->
                 globalListenerJob?.cancel()
-                if (status is SessionStatus.Authenticated) {
-                    var userId = (status.session.user?.id ?: "").trim().lowercase()
-                    globalListenerJob = scope.launch {
-                        android.util.Log.d("MessageRepository", "[RECEIVE-FIX] Session Authenticated ($userId): Starting MessageRealtimeSync")
-                        messageRealtimeSync.start(userId)
+                if (userId.isNullOrBlank()) return@collect
+                globalListenerJob = scope.launch {
+                    android.util.Log.d(
+                        "MessageRepository",
+                        "[RECEIVE-FIX] Session active ($userId): Starting MessageRealtimeSync",
+                    )
+                    messageRealtimeSync.start(userId)
 
-                        launch {
-                            messageRealtimeSync.messageEvents.collect { msg ->
-                                messageEvents.emit(msg)
-                            }
+                    launch {
+                        messageRealtimeSync.messageEvents.collect { msg ->
+                            messageEvents.emit(msg)
                         }
+                    }
 
-                        launch {
-                            messageCacheManager.cachedChats.collect { chats ->
-                                _userChats.value = chats
-                            }
+                    launch {
+                        messageCacheManager.cachedChats.collect { chats ->
+                            _userChats.value = chats
                         }
                     }
                 }

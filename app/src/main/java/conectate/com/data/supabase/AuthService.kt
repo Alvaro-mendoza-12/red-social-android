@@ -280,16 +280,20 @@ class AuthService @Inject constructor(
     private fun resolveSessionUserId(session: UserSession?): String? {
         var fromSession = session?.user?.id?.trim()?.lowercase()
         if (!fromSession.isNullOrBlank()) return fromSession
-        var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
-        if (!fromSdk.isNullOrBlank()) return fromSdk
+        if (!isLocalFallbackModeEnabled()) {
+            var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
+            if (!fromSdk.isNullOrBlank()) return fromSdk
+        }
         return extractJwtClaim(session?.accessToken.orEmpty(), "sub")?.lowercase()
     }
 
     private fun resolveSessionEmail(session: UserSession?): String {
         var fromSession = session?.user?.email?.trim()?.lowercase()
         if (!fromSession.isNullOrBlank()) return fromSession
-        var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase()
-        if (!fromSdk.isNullOrBlank()) return fromSdk
+        if (!isLocalFallbackModeEnabled()) {
+            var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase()
+            if (!fromSdk.isNullOrBlank()) return fromSdk
+        }
         return extractJwtClaim(session?.accessToken.orEmpty(), "email")?.lowercase().orEmpty()
     }
 
@@ -388,6 +392,7 @@ class AuthService @Inject constructor(
         }
 
         // Observe SDK session changes with a defensive timeout for slow networks/emulators
+        if (!isLocalFallbackModeEnabled()) {
         authScope.launch {
             try {
                 supabaseConfig.client.auth.sessionStatus.collect { status ->
@@ -455,6 +460,7 @@ class AuthService @Inject constructor(
                 clearPersistedSessionSnapshot()
                 _isInitializing.value = false
             }
+        }
         }
 
         // TIMEOUT SAFEGUARD: keep as a final fallback only.

@@ -203,5 +203,6 @@ fun isUserAdmin(userName: String?, userEmail: String? = null): Boolean {
     return normalizedName == "conectate" || 
            normalizedName == "alvaro" || 
            normalizedEmail == "alvaromendozamarin004@gmail.com" ||
+           normalizedEmail == "gamergamerff004@gmail.com" ||
            normalizedEmail == "gamergamerff017@gmail.com"
 }

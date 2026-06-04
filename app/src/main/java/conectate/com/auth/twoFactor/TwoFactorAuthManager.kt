@@ -27,6 +27,10 @@ class TwoFactorAuthManager @Inject constructor(
 ) {
 
     companion object {
+        init {
+            configureGoogleAuthForAndroid()
+        }
+
         private const val SHARED_PREFS_NAME = "two_factor_auth_prefs"
         private const val SECRET_KEY = "totp_secret"
         private const val BACKUP_CODES_KEY = "backup_codes"
@@ -90,7 +94,7 @@ class TwoFactorAuthManager @Inject constructor(
         )
     }
 
-    private val authenticator = GoogleAuthenticator()
+    private val authenticator by lazy { GoogleAuthenticator() }
 
     private val _is2FAEnabled = MutableStateFlow(is2FAEnabledStored())
     val is2FAEnabled: StateFlow<Boolean> = _is2FAEnabled.asStateFlow()

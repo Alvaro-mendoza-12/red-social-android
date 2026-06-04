@@ -10,6 +10,13 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import {
+  createFallbackVideo,
+  loadFallbackVideos,
+  uploadFallbackFile,
+} from '../../core/fallbackData'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type ReelItem = {
   id: string
@@ -315,6 +322,19 @@ async function insertVideoWithFallback(payload: {
   trimStartSeconds: number
   trimEndSeconds: number
 }) {
+  if (isFallbackAuthConfigured) {
+    await createFallbackVideo({
+      title: payload.title,
+      description: payload.description,
+      videoUrl: payload.videoUrl,
+      coverUrl: payload.coverUrl,
+      durationSeconds: payload.durationSeconds,
+      trimStartSeconds: payload.trimStartSeconds,
+      trimEndSeconds: payload.trimEndSeconds,
+      isPublic: true,
+    })
+    return
+  }
   if (!supabase) return
 
   const snakeBase: GenericRow = {
@@ -400,7 +420,8 @@ async function insertVideoWithFallback(payload: {
 }
 
 export function ReelsPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<ReelItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -473,9 +494,32 @@ export function ReelsPage() {
   }, [items, onlyMine, searchQuery, sortBy, user])
 
   const loadVideos = useCallback(async (options?: { silent?: boolean }) => {
+    if (useUbuntu) {
+      if (options?.silent) {
+        setSyncing(true)
+      } else {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        const feed = await loadFallbackVideos(80, 0)
+        const mapped = feed.items.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
+        setItems(mapped)
+        writeCachedValue(reelsCacheKey, mapped)
+      } catch (caught) {
+        if (!options?.silent) {
+          setError(friendlyError(caught, 'No se pudo cargar reels desde Ubuntu'))
+        }
+      } finally {
+        setLoading(false)
+        setSyncing(false)
+      }
+      return
+    }
+
     if (!supabase) {
       setLoading(false)
-      setError('Supabase no está configurado.')
+      setError('Configura VITE_FALLBACK_API_URL para usar reels en Ubuntu.')
       return
     }
     if (options?.silent) {
@@ -541,7 +585,7 @@ export function ReelsPage() {
       setLoading(false)
       setSyncing(false)
     }
-  }, [reelsCacheKey])
+  }, [reelsCacheKey, useUbuntu])
 
   useEffect(() => {
     const cached = readCachedValue<ReelItem[]>(reelsCacheKey, 1000 * 60 * 60 * 8)
@@ -555,6 +599,7 @@ export function ReelsPage() {
   }, [loadVideos, reelsCacheKey])
 
   useEffect(() => {
+    if (useUbuntu) return
     const client = supabase
     if (!client) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -577,7 +622,7 @@ export function ReelsPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [loadVideos])
+  }, [loadVideos, useUbuntu])
 
   useEffect(() => {
     if (!videoFile) {
@@ -809,7 +854,8 @@ export function ReelsPage() {
 
   async function createReel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase || !user || !videoFile || posting) return
+    if (!user || !videoFile || posting) return
+    if (!useUbuntu && !supabase) return
     setPosting(true)
     setError(null)
 
@@ -852,63 +898,86 @@ export function ReelsPage() {
       const baseName = safeName(videoFile.name.replace(extension, ''))
       const videoPath = `${user.id}/videos/${Date.now()}_${baseName}${extension}`
 
-      const registerVideo = await supabase.rpc('register_media_object', {
-        p_bucket_name: 'videos',
-        p_object_path: videoPath,
-        p_content_type: videoFile.type || 'video/mp4',
-        p_size_bytes: videoFile.size,
-        p_sha256: null,
-      })
-      if (registerVideo.error && !isMissingFunctionError(registerVideo.error)) {
-        throw registerVideo.error
-      }
-
-      const { error: uploadVideoError } = await supabase.storage
-        .from('videos')
-        .upload(videoPath, videoFile, { contentType: videoFile.type || undefined })
-      if (uploadVideoError) throw uploadVideoError
-
-      const { data: videoPublicData } = supabase.storage.from('videos').getPublicUrl(videoPath)
-      const videoUrl = videoPublicData.publicUrl
-      if (!videoUrl) throw new Error('No se pudo obtener URL pública del video.')
-
+      let videoUrl = ''
       let coverUrl: string | null = null
-      if (selectedCoverFile) {
-        const coverExtension = fileExtension(selectedCoverFile, '.jpg')
-        const coverBaseName = safeName(selectedCoverFile.name.replace(coverExtension, ''))
-        const coverPath = `${user.id}/covers/${Date.now()}_${coverBaseName}${coverExtension}`
 
-        const registerCover = await supabase.rpc('register_media_object', {
+      if (useUbuntu) {
+        const uploadedVideo = await uploadFallbackFile('videos', videoFile, videoPath)
+        videoUrl = uploadedVideo.publicUrl || uploadedVideo.url
+        if (!videoUrl) throw new Error('No se pudo obtener URL pública del video.')
+        if (selectedCoverFile) {
+          const coverExtension = fileExtension(selectedCoverFile, '.jpg')
+          const coverBaseName = safeName(selectedCoverFile.name.replace(coverExtension, ''))
+          const coverPath = `${user.id}/covers/${Date.now()}_${coverBaseName}${coverExtension}`
+          const uploadedCover = await uploadFallbackFile('videos', selectedCoverFile, coverPath)
+          coverUrl = uploadedCover.publicUrl || uploadedCover.url || null
+        }
+      } else if (supabase) {
+        const registerVideo = await supabase.rpc('register_media_object', {
           p_bucket_name: 'videos',
-          p_object_path: coverPath,
-          p_content_type: selectedCoverFile.type || 'image/jpeg',
-          p_size_bytes: selectedCoverFile.size,
+          p_object_path: videoPath,
+          p_content_type: videoFile.type || 'video/mp4',
+          p_size_bytes: videoFile.size,
           p_sha256: null,
         })
-        if (registerCover.error && !isMissingFunctionError(registerCover.error)) {
-          throw registerCover.error
+        if (registerVideo.error && !isMissingFunctionError(registerVideo.error)) {
+          throw registerVideo.error
         }
 
-        const { error: uploadCoverError } = await supabase.storage
+        const { error: uploadVideoError } = await supabase.storage
           .from('videos')
-          .upload(coverPath, selectedCoverFile, { contentType: selectedCoverFile.type || undefined })
-        if (uploadCoverError) throw uploadCoverError
+          .upload(videoPath, videoFile, { contentType: videoFile.type || undefined })
+        if (uploadVideoError) throw uploadVideoError
 
-        const { data: coverPublicData } = supabase.storage.from('videos').getPublicUrl(coverPath)
-        coverUrl = coverPublicData.publicUrl || null
+        const { data: videoPublicData } = supabase.storage.from('videos').getPublicUrl(videoPath)
+        videoUrl = videoPublicData.publicUrl
+        if (!videoUrl) throw new Error('No se pudo obtener URL pública del video.')
+
+        if (selectedCoverFile) {
+          const coverExtension = fileExtension(selectedCoverFile, '.jpg')
+          const coverBaseName = safeName(selectedCoverFile.name.replace(coverExtension, ''))
+          const coverPath = `${user.id}/covers/${Date.now()}_${coverBaseName}${coverExtension}`
+
+          const registerCover = await supabase.rpc('register_media_object', {
+            p_bucket_name: 'videos',
+            p_object_path: coverPath,
+            p_content_type: selectedCoverFile.type || 'image/jpeg',
+            p_size_bytes: selectedCoverFile.size,
+            p_sha256: null,
+          })
+          if (registerCover.error && !isMissingFunctionError(registerCover.error)) {
+            throw registerCover.error
+          }
+
+          const { error: uploadCoverError } = await supabase.storage
+            .from('videos')
+            .upload(coverPath, selectedCoverFile, { contentType: selectedCoverFile.type || undefined })
+          if (uploadCoverError) throw uploadCoverError
+
+          const { data: coverPublicData } = supabase.storage.from('videos').getPublicUrl(coverPath)
+          coverUrl = coverPublicData.publicUrl || null
+        }
       }
 
-      const { data: profileRows } = await supabase
-        .from('profiles')
-        .select('display_name,username,avatar_url,photo_url,profile_image,email')
-        .eq('id', user.id)
-        .limit(1)
-      const profile = ((profileRows ?? []) as GenericRow[])[0] ?? {}
-      const displayName =
-        textOf(profile, ['display_name', 'username'], '') ||
-        textOf(profile, ['email'], '').split('@')[0] ||
+      let displayName =
+        String(user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? '').trim() ||
+        user.email?.split('@')[0] ||
         'Usuario'
-      const avatarUrl = textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '')
+      let avatarUrl = String(user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? '').trim()
+
+      if (!useUbuntu && supabase) {
+        const { data: profileRows } = await supabase
+          .from('profiles')
+          .select('display_name,username,avatar_url,photo_url,profile_image,email')
+          .eq('id', user.id)
+          .limit(1)
+        const profile = ((profileRows ?? []) as GenericRow[])[0] ?? {}
+        displayName =
+          textOf(profile, ['display_name', 'username'], '') ||
+          textOf(profile, ['email'], '').split('@')[0] ||
+          displayName
+        avatarUrl = textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], avatarUrl)
+      }
 
       const safeDurationSeconds = Math.max(0, measuredDurationSeconds)
       const safeTrimStart = Math.max(
@@ -961,8 +1030,8 @@ export function ReelsPage() {
   if (loading) {
     return <StatusView title="Cargando reels" description="Buscando videos..." />
   }
-  if (!supabase) {
-    return <StatusView title="Reels no disponible" description="Supabase no está configurado." />
+  if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
+    return <StatusView title="Reels no disponible" description="Configura VITE_FALLBACK_API_URL." />
   }
 
   return (

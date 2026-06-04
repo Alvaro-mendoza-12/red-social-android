@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
+import { fallbackApiJson } from '../../core/auth/fallbackAuth'
+import { getDataClient } from '../../core/ubuntuDataClient'
+import { isUbuntuPrimary } from '../../core/ubuntuBackend'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 
@@ -310,19 +314,20 @@ export function AdminModerationPage() {
   }, [filteredUserReports, userSelectedById])
 
   const loadAdminState = useCallback(async () => {
-    if (!supabase || !user) {
+    const client = getDataClient()
+    if (!client || !user) {
       setLoading(false)
       return
     }
     setLoading(true)
     try {
-      const { data, error: rpcError } = await supabase.rpc('is_current_user_admin', { p_user_id: user.id })
+      const { data, error: rpcError } = await client.rpc('is_current_user_admin', { p_user_id: user.id })
       if (!rpcError) {
         setIsAdmin(Boolean(data))
         return
       }
 
-      const { data: profileRows, error: profileError } = await supabase
+      const { data: profileRows, error: profileError } = await client
         .from('profiles')
         .select('is_admin,email')
         .eq('id', user.id)
@@ -332,8 +337,9 @@ export function AdminModerationPage() {
       const email = textOf(profile, ['email'], '').toLowerCase()
       setIsAdmin(
         Boolean(profile.is_admin) ||
-          email === 'gamergamerff017@gmail.com' ||
-          email === 'alvaromendozamarin004@gmail.com',
+          email === 'gamergamerff004@gmail.com' ||
+          email === 'alvaromendozamarin004@gmail.com' ||
+          email === 'gamergamerff017@gmail.com',
       )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo validar admin'))
@@ -343,9 +349,10 @@ export function AdminModerationPage() {
   }, [user])
 
   const loadVideoReports = useCallback(async () => {
-    if (!supabase || !user || !isAdmin) return
+    const client = getDataClient()
+    if (!client || !user || !isAdmin) return
     try {
-      const { data, error: reportsError } = await supabase
+      const { data, error: reportsError } = await client
         .from('video_reports')
         .select('*')
         .order('created_at', { ascending: false })
@@ -361,9 +368,10 @@ export function AdminModerationPage() {
   }, [isAdmin, user])
 
   const loadUserReports = useCallback(async () => {
-    if (!supabase || !user || !isAdmin) return
+    const client = getDataClient()
+    if (!client || !user || !isAdmin) return
     try {
-      const { data, error: reportsError } = await supabase
+      const { data, error: reportsError } = await client
         .from('reports')
         .select('*')
         .order('created_at', { ascending: false })
@@ -384,9 +392,16 @@ export function AdminModerationPage() {
   }, [isAdmin, user])
 
   const loadSuspendedProfiles = useCallback(async () => {
-    if (!supabase || !user || !isAdmin) return
+    const client = getDataClient()
+    if (!client || !user || !isAdmin) return
     try {
-      const { data, error: suspendError } = await supabase
+      if (isUbuntuPrimary) {
+        const payload = await fallbackApiJson<{ items: GenericRow[] }>('/v1/data/admin/suspended-profiles')
+        setSuspensionModuleAvailable(true)
+        setSuspendedProfiles((payload.items ?? []).map(mapSuspendedProfile))
+        return
+      }
+      const { data, error: suspendError } = await client
         .from('profiles')
         .select('id,display_name,username,email,is_suspended,suspended_until,suspension_end_date,suspension_reason,suspension_count')
         .eq('is_suspended', true)
@@ -406,9 +421,10 @@ export function AdminModerationPage() {
   }, [isAdmin, user])
 
   const loadEvents = useCallback(async () => {
-    if (!supabase || !user || !isAdmin) return
+    const client = getDataClient()
+    if (!client || !user || !isAdmin) return
     try {
-      const { data, error: eventsError } = await supabase
+      const { data, error: eventsError } = await client
         .from('moderation_events')
         .select('*')
         .order('created_at', { ascending: false })
@@ -436,9 +452,16 @@ export function AdminModerationPage() {
   }, [isAdmin, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
 
   useEffect(() => {
-    const client = supabase
-    if (!client || !isAdmin) return
-    const channel = client
+    if (isUbuntuPrimary) {
+      return subscribeUbuntuRealtime({
+        channel: 'admin:live',
+        onEvent: () => {
+          void Promise.all([loadVideoReports(), loadUserReports(), loadSuspendedProfiles(), loadEvents()])
+        },
+      })
+    }
+    if (!supabase || !isAdmin) return
+    const channel = supabase
       .channel('admin-moderation-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'video_reports' }, () => {
         void loadVideoReports()
@@ -454,7 +477,7 @@ export function AdminModerationPage() {
       })
       .subscribe()
     return () => {
-      void client.removeChannel(channel)
+      void supabase?.removeChannel(channel)
     }
   }, [isAdmin, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
 
@@ -495,7 +518,8 @@ export function AdminModerationPage() {
       reason?: string | null
     },
   ) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     const userId = targetUserId.trim()
     if (!userId) return
 
@@ -504,7 +528,7 @@ export function AdminModerationPage() {
     const permanent = options?.permanent ?? suspendPermanent
     const reason = options?.reason ?? (suspendReason.trim() || null)
 
-    const extendedResult = await supabase.rpc('secure_admin_set_user_suspension', {
+    const extendedResult = await client.rpc('secure_admin_set_user_suspension', {
       p_user_id: userId,
       p_suspend: true,
       p_days: durationValue,
@@ -519,7 +543,7 @@ export function AdminModerationPage() {
       throw extendedResult.error
     }
 
-    const fallbackResult = await supabase.rpc('secure_admin_set_user_suspension', {
+    const fallbackResult = await client.rpc('secure_admin_set_user_suspension', {
       p_user_id: userId,
       p_suspend: true,
       p_days: durationValue,
@@ -529,11 +553,12 @@ export function AdminModerationPage() {
   }
 
   async function updateVideoReport(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
-      const { error: updateError } = await supabase.rpc('secure_admin_update_video_report_status', {
+      const { error: updateError } = await client.rpc('secure_admin_update_video_report_status', {
         p_report_id: reportId,
         p_status: videoStatusById[reportId] ?? 'pendiente',
         p_action_note: videoNoteById[reportId] ?? null,
@@ -548,11 +573,12 @@ export function AdminModerationPage() {
   }
 
   async function warnVideoOwner(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
-      const { error: warnError } = await supabase.rpc('secure_admin_warn_video_owner_from_report', {
+      const { error: warnError } = await client.rpc('secure_admin_warn_video_owner_from_report', {
         p_report_id: reportId,
         p_message: videoNoteById[reportId] ?? null,
       })
@@ -566,11 +592,12 @@ export function AdminModerationPage() {
   }
 
   async function deleteVideoReportContent(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
-      const { error: deleteError } = await supabase.rpc('secure_admin_delete_reported_video', {
+      const { error: deleteError } = await client.rpc('secure_admin_delete_reported_video', {
         p_report_id: reportId,
         p_action_note: videoNoteById[reportId] ?? null,
       })
@@ -584,12 +611,13 @@ export function AdminModerationPage() {
   }
 
   async function suspendFromVideoReport(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
       const durationValue = Math.max(1, videoSuspendDaysById[reportId] ?? suspendDays)
-      const { error: suspendError } = await supabase.rpc('secure_suspend_video_owner_from_report', {
+      const { error: suspendError } = await client.rpc('secure_suspend_video_owner_from_report', {
         p_report_id: reportId,
         p_days: durationValue,
       })
@@ -613,7 +641,8 @@ export function AdminModerationPage() {
   }
 
   async function applySuspension() {
-    if (!supabase || !suspendUserId.trim() || suspending) return
+    const client = getDataClient()
+    if (!client || !suspendUserId.trim() || suspending) return
     setSuspending(true)
     setError(null)
     try {
@@ -628,12 +657,13 @@ export function AdminModerationPage() {
   }
 
   async function removeSuspension(userId = suspendUserId) {
-    if (!supabase || !userId.trim()) return
+    const client = getDataClient()
+    if (!client || !userId.trim()) return
     setSuspending(true)
     setSuspensionLoadingById((current) => ({ ...current, [userId]: true }))
     setError(null)
     try {
-      const { error: suspendError } = await supabase.rpc('secure_admin_set_user_suspension', {
+      const { error: suspendError } = await client.rpc('secure_admin_set_user_suspension', {
         p_user_id: userId.trim(),
         p_suspend: false,
       })
@@ -648,11 +678,12 @@ export function AdminModerationPage() {
   }
 
   async function updateUserReport(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setUserActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await client
         .from('reports')
         .update({ status: userStatusById[reportId] ?? 'pendiente' })
         .eq('id', reportId)
@@ -666,11 +697,12 @@ export function AdminModerationPage() {
   }
 
   async function deleteUserReport(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setUserActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
-      const { error: deleteError } = await supabase.from('reports').delete().eq('id', reportId)
+      const { error: deleteError } = await client.from('reports').delete().eq('id', reportId)
       if (deleteError) throw deleteError
       await loadUserReports()
     } catch (caught) {
@@ -681,7 +713,8 @@ export function AdminModerationPage() {
   }
 
   async function suspendFromUserReport(reportId: string) {
-    if (!supabase) return
+    const client = getDataClient()
+    if (!client) return
     setUserActionLoading((current) => ({ ...current, [reportId]: true }))
     setError(null)
     try {
@@ -771,7 +804,7 @@ export function AdminModerationPage() {
   }
 
   async function applyBulkVideoStatus() {
-    const client = supabase
+    const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkLoading) return
     setVideoBulkLoading(true)
     setBulkSummaryText(null)
@@ -813,7 +846,7 @@ export function AdminModerationPage() {
   }
 
   async function warnSelectedVideoReports() {
-    const client = supabase
+    const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkWarning) return
     setVideoBulkWarning(true)
     setBulkSummaryText(null)
@@ -853,7 +886,7 @@ export function AdminModerationPage() {
   }
 
   async function deleteSelectedReportedVideos() {
-    const client = supabase
+    const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkDeleting) return
     setVideoBulkDeleting(true)
     setBulkSummaryText(null)
@@ -893,13 +926,14 @@ export function AdminModerationPage() {
   }
 
   async function applyBulkUserStatus() {
-    if (!supabase || selectedUserIds.length === 0 || userBulkLoading) return
+    const client = getDataClient()
+    if (!client || selectedUserIds.length === 0 || userBulkLoading) return
     setUserBulkLoading(true)
     setBulkSummaryText(null)
     setBulkFailureDetails([])
     setError(null)
     try {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await client
         .from('reports')
         .update({ status: userBulkStatus })
         .in('id', selectedUserIds)
@@ -916,13 +950,14 @@ export function AdminModerationPage() {
   }
 
   async function deleteBulkUserReports() {
-    if (!supabase || selectedUserIds.length === 0 || userBulkDeleting) return
+    const client = getDataClient()
+    if (!client || selectedUserIds.length === 0 || userBulkDeleting) return
     setUserBulkDeleting(true)
     setBulkSummaryText(null)
     setBulkFailureDetails([])
     setError(null)
     try {
-      const { error: deleteError } = await supabase.from('reports').delete().in('id', selectedUserIds)
+      const { error: deleteError } = await client.from('reports').delete().in('id', selectedUserIds)
       if (deleteError) throw deleteError
       setBulkSummaryText(`Eliminación masiva usuario: ${selectedUserIds.length}/${selectedUserIds.length} OK`)
       setBulkFailureDetails([])
@@ -936,7 +971,8 @@ export function AdminModerationPage() {
   }
 
   async function suspendSelectedVideoOwners() {
-    if (!supabase || selectedVideoOwnerIds.length === 0 || videoBulkSuspending) return
+    const client = getDataClient()
+    if (!client || selectedVideoOwnerIds.length === 0 || videoBulkSuspending) return
     setVideoBulkSuspending(true)
     setBulkSummaryText(null)
     setBulkFailureDetails([])
@@ -969,7 +1005,8 @@ export function AdminModerationPage() {
   }
 
   async function suspendSelectedReportedUsers() {
-    if (!supabase || selectedReportedUserIds.length === 0 || userBulkSuspending) return
+    const client = getDataClient()
+    if (!client || selectedReportedUserIds.length === 0 || userBulkSuspending) return
     setUserBulkSuspending(true)
     setBulkSummaryText(null)
     setBulkFailureDetails([])
@@ -1001,7 +1038,14 @@ export function AdminModerationPage() {
     }
   }
 
-  if (!supabase) return <StatusView title="Supabase no configurado" description="Configura .env para usar moderación." />
+  if (!getDataClient()) {
+    return (
+      <StatusView
+        title="Backend no configurado"
+        description="Configura VITE_FALLBACK_API_URL para moderación en Ubuntu."
+      />
+    )
+  }
   if (loading) return <StatusView title="Verificando permisos admin" description="Espera un momento..." />
   if (!isAdmin) return <StatusView title="Acceso restringido" description="Tu cuenta no tiene permisos admin." />
 

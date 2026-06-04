@@ -4,7 +4,8 @@ FALLBACK_EDGE_PORT=3080
 FALLBACK_REALTIME_PORT=3002
 FALLBACK_DB_PORT=5433
 PUBLIC_BASE_URL=
-SIGNALING_CONTEXT=../../signaling-server
+# En Ubuntu (deploy): ../signaling-server desde esta carpeta. En el repo Windows: ../../signaling-server
+SIGNALING_CONTEXT=../signaling-server
 JWT_SECRET=change-this-with-openssl-rand-hex-32
 JWT_ISSUER=conectate-local-fallback
 JWT_EXPIRES_IN=7d
@@ -17,3 +18,4 @@ SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_SECRET_KEY=
 ADMIN_SYNC_TOKEN=change-this-with-openssl-rand-hex-32
+ADMIN_EMAILS=gamergamerff004@gmail.com,alvaromendozamarin004@gmail.com,gamergamerff017@gmail.com

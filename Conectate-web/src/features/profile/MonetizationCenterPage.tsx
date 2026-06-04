@@ -4,6 +4,7 @@ import { StatusView } from '../../components/StatusView'
 import { reportSupabaseServiceRestrictionIfPresent, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 
 type CreatorApplication = {
   id: string
@@ -213,7 +214,15 @@ export function MonetizationCenterPage() {
     }
   }
 
-  if (!supabase) return <StatusView title="Supabase no configurado" description="Configura .env para monetización." />
+  if (!supabase && isFallbackAuthConfigured) {
+    return (
+      <StatusView
+        title="Monetización en Ubuntu"
+        description="Este módulo usa tablas legacy. Importa CSV en la VM o espera la siguiente actualización del API Ubuntu."
+      />
+    )
+  }
+  if (!supabase) return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
   if (loading) return <StatusView title="Cargando monetización" description="Sincronizando programa de creadores, gifts y premium." />
 
   return (

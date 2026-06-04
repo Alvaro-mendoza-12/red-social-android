@@ -71,3 +71,5 @@ tools/jdk-17.zip
 .openclaw_staging_*/
 openclaw_*.zip
 signaling-server*.zip
+.vercel
+.env*

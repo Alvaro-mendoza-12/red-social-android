@@ -577,6 +577,16 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    @Serializable
+    data class LocalFallbackMomentsFeedResponse(
+        val items: List<JsonObject> = emptyList()
+    )
+
+    suspend fun loadMomentsFeed(accessToken: String): Result<LocalFallbackMomentsFeedResponse> {
+        if (!isConfigured) return Result.failure(IllegalStateException("FALLBACK_API_URL no configurada"))
+        return requestJson("$baseUrl/v1/data/moments/feed", accessToken)
+    }
+
     suspend fun loadFeed(
         accessToken: String,
         limit: Int = 60,

@@ -4,6 +4,9 @@ import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { loadFallbackVideo } from '../../core/fallbackData'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type VideoDetail = {
   id: string
@@ -49,7 +52,8 @@ function initialsOf(name: string): string {
 }
 
 export function VideoDetailPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const navigate = useNavigate()
   const { videoId = '' } = useParams()
   const cleanVideoId = useMemo(() => videoId.trim(), [videoId])
@@ -73,13 +77,40 @@ export function VideoDetailPage() {
   const isOwner = Boolean(user && video && user.id === video.ownerId)
 
   const load = useCallback(async () => {
-    if (!supabase || !cleanVideoId) {
+    if (!cleanVideoId) {
       setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
+      if (useUbuntu) {
+        const payload = await loadFallbackVideo(cleanVideoId)
+        const row = payload.video
+        const ownerId = textOf(row, ['userId', 'user_id'], '')
+        setVideo({
+          id: textOf(row, ['id'], ''),
+          ownerId,
+          ownerName: textOf(row, ['user_name', 'userName'], '') || ownerId || 'Usuario',
+          ownerAvatarUrl: textOf(row, ['user_profile_image', 'userProfileImage'], ''),
+          title: textOf(row, ['title'], 'Video'),
+          description: textOf(row, ['description'], ''),
+          videoUrl: textOf(row, ['videoUrl', 'video_url'], ''),
+          createdAt: textOf(row, ['created_at'], ''),
+        })
+        setEditTitle(textOf(row, ['title'], 'Video'))
+        setEditDescription(textOf(row, ['description'], ''))
+        setLikeCount(Number(row.like_count ?? row.likeCount ?? 0))
+        setLikedByMe(Boolean(row.liked_by_me ?? row.likedByMe ?? false))
+        setComments([])
+        return
+      }
+
+      if (!supabase) {
+        setError('Configura VITE_FALLBACK_API_URL para ver videos en Ubuntu.')
+        return
+      }
+
       const { data: videoRows, error: videoError } = await supabase
         .from('videos')
         .select('*')
@@ -221,7 +252,7 @@ export function VideoDetailPage() {
       }
     }
     void trackView()
-  }, [cleanVideoId])
+  }, [cleanVideoId, useUbuntu])
 
   useEffect(() => {
     const client = supabase
@@ -437,7 +468,9 @@ export function VideoDetailPage() {
     }
   }
 
-  if (!supabase) return <StatusView title="Supabase no configurado" description="Configura .env para usar videos." />
+  if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
+  }
   if (loading) return <StatusView title="Cargando video" description="Espera un momento..." />
   if (error) {
     return (

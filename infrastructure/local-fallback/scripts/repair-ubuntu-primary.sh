@@ -25,6 +25,38 @@ fail_with_logs() {
   exit 1
 }
 
+wait_http() {
+  local name="$1"
+  local url="$2"
+  local tries="${3:-60}"
+  local i
+  for i in $(seq 1 "$tries"); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "OK $name -> $url"
+      return 0
+    fi
+    sleep 2
+  done
+  fail_with_logs "$name no respondio: $url"
+}
+
+wait_for_postgres() {
+  local tries="${1:-90}"
+  local i
+  echo "==> Esperando Postgres (pg_isready)..."
+  for i in $(seq 1 "$tries"); do
+    if docker compose exec -T db pg_isready -U conectate -d conectate_fallback >/dev/null 2>&1; then
+      echo "OK Postgres listo (intento $i/$tries)"
+      return 0
+    fi
+    if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
+      echo "   Postgres aun iniciando ($i/$tries)..."
+    fi
+    sleep 2
+  done
+  fail_with_logs "Postgres no respondio a tiempo (5432)"
+}
+
 require_file() {
   local file="$1"
   if [ ! -f "$file" ]; then
@@ -74,21 +106,35 @@ ensure_secret() {
 ensure_secret POSTGRES_PASSWORD
 ensure_secret JWT_SECRET
 ensure_secret ADMIN_SYNC_TOKEN
+if ! grep -q "^ADMIN_EMAILS=" .env; then
+  set_env_value ADMIN_EMAILS "gamergamerff004@gmail.com,alvaromendozamarin004@gmail.com,gamergamerff017@gmail.com"
+fi
 set_env_value FALLBACK_EDGE_PORT "$FALLBACK_EDGE_PORT_INPUT"
 
-configured_signaling_context="$(grep -E '^SIGNALING_CONTEXT=' .env | tail -1 | cut -d= -f2- || true)"
-if [ -z "$configured_signaling_context" ] || [ ! -d "$configured_signaling_context" ]; then
-  if [ -d "$ROOT_DIR/../signaling-server" ]; then
-    set_env_value SIGNALING_CONTEXT "$ROOT_DIR/../signaling-server"
-  elif [ -d "$ROOT_DIR/../../signaling-server" ]; then
-    set_env_value SIGNALING_CONTEXT "$ROOT_DIR/../../signaling-server"
-  else
-    echo "ERROR: falta el directorio signaling-server para voz/llamadas." >&2
-    echo "Copia tambien la carpeta signaling-server a Ubuntu, por ejemplo:" >&2
-    echo "scp -P 2222 -r signaling-server alvaro@127.0.0.1:~/signaling-server" >&2
-    exit 1
-  fi
+resolve_signaling_context() {
+  local candidate
+  for candidate in \
+    "$ROOT_DIR/../signaling-server" \
+    "$ROOT_DIR/../../signaling-server" \
+    "$(grep -E '^SIGNALING_CONTEXT=' .env | tail -1 | cut -d= -f2- || true)"
+  do
+    [ -n "$candidate" ] || continue
+    if [ -f "$candidate/Dockerfile" ] && [ -f "$candidate/package.json" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! signaling_context="$(resolve_signaling_context)"; then
+  echo "ERROR: falta signaling-server con Dockerfile (voz/llamadas)." >&2
+  echo "En Ubuntu debe existir ~/signaling-server junto a ~/conectate-local-fallback." >&2
+  echo "Desde Windows vuelve a ejecutar: scripts/deploy-ubuntu.ps1" >&2
+  exit 1
 fi
+set_env_value SIGNALING_CONTEXT "$signaling_context"
+echo "==> SIGNALING_CONTEXT=$signaling_context"
 
 if [ -n "$PUBLIC_BASE_URL_INPUT" ]; then
   set_env_value PUBLIC_BASE_URL "${PUBLIC_BASE_URL_INPUT%/}"
@@ -106,7 +152,7 @@ docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
 
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db
-docker compose exec -T db pg_isready -U conectate -d conectate_fallback
+wait_for_postgres 90
 
 postgres_password="$(grep -E '^POSTGRES_PASSWORD=' .env | tail -1 | cut -d= -f2- || true)"
 if [ -z "$postgres_password" ]; then
@@ -133,21 +179,6 @@ done
 
 echo "==> Reconstruyendo servicios principales"
 docker compose up -d --build
-
-wait_http() {
-  local name="$1"
-  local url="$2"
-  local tries="${3:-60}"
-  local i
-  for i in $(seq 1 "$tries"); do
-    if curl -fsS "$url" >/dev/null 2>&1; then
-      echo "OK $name -> $url"
-      return 0
-    fi
-    sleep 2
-  done
-  fail_with_logs "$name no respondio: $url"
-}
 
 wait_http "api" "http://127.0.0.1:3001/ready"
 

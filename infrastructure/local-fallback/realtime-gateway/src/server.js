@@ -70,7 +70,15 @@ wss.on('connection', (ws, req) => {
   ws._rooms = new Set()
   ws._userId = null
 
-  const token = parseBearer(req.headers)
+  let queryToken = ''
+  try {
+    const requestUrl = new URL(req.url || '/', 'http://realtime-gateway.local')
+    queryToken = String(requestUrl.searchParams.get('token') || '').trim()
+  } catch {
+    queryToken = ''
+  }
+
+  const token = parseBearer(req.headers) || queryToken
   const payload = verifyToken(token)
 
   if (!payload?.sub) {
@@ -105,6 +113,16 @@ wss.on('connection', (ws, req) => {
         if (targetUserId !== ws._userId) {
           return send(ws, { type: 'error', error: 'FORBIDDEN_USER_ROOM' })
         }
+      }
+
+      const isChatRoom = channel.startsWith('chat:')
+      const isRoomChannel = channel.startsWith('room:')
+      const isChallengeRoom = channel === 'challenge:live'
+      const isFeedRoom = channel === 'feed:live'
+      const isMomentsRoom = channel === 'moments:live'
+      const isAdminRoom = channel === 'admin:live'
+      if (!isUserRoom && !isChatRoom && !isRoomChannel && !isChallengeRoom && !isFeedRoom && !isMomentsRoom && !isAdminRoom) {
+        return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL' })
       }
 
       ws._rooms.add(channel)

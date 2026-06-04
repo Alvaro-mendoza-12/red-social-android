@@ -370,7 +370,7 @@ export function LoginPage() {
     return (
       <StatusView
         title="Backend no configurado"
-        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu, o VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY si mantienes el puente anterior."
+        description="Configura VITE_FALLBACK_API_URL para usar tu servidor Ubuntu."
       />
     )
   }

@@ -2,36 +2,32 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 /**
- * 🔥 ENTERPRISE API CLIENT - NIVEL FACEBOOK/INSTAGRAM/TIKTOK
- * API optimizada con caching, retry logic, y error handling enterprise
+ * Cliente opcional legacy. Con Ubuntu como backend principal, supabase queda en null.
  */
 
-// 🔥 CONFIGURACIÓN
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase configuration. Please check your .env file.')
-}
-
-// 🔥 CLIENTE SUPABASE ENTERPRISE
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    }
-  },
-  global: {
-    headers: {
-      'X-Client-Info': 'conectate-web/2.0.0'
-    }
-  }
-})
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+        realtime: {
+          params: {
+            eventsPerSecond: 10,
+          },
+        },
+        global: {
+          headers: {
+            'X-Client-Info': 'conectate-web/2.0.0',
+          },
+        },
+      })
+    : null
 
 // 🔥 QUERY CLIENT ENTERPRISE
 export const queryClient = new QueryClient({

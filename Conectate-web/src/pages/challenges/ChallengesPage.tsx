@@ -5,6 +5,11 @@ import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat } from '../../features/messages/directChat'
+import { callUbuntuRpc } from '../../core/fallbackRpc'
+import { uploadFallbackFile } from '../../core/fallbackData'
+import { insertUbuntuChallengeSubmission, loadUbuntuChallengesBundle } from '../../core/challengesUbuntu'
+import { isUbuntuPrimary } from '../../core/ubuntuBackend'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
 type ActiveChallenge = {
   id: string
@@ -77,6 +82,10 @@ function remainingLabel(targetAt: string): string {
 }
 
 async function tryVoteRpc(submissionId: string): Promise<void> {
+  if (isUbuntuPrimary) {
+    await callUbuntuRpc('toggle_challenge_vote', { p_submission_id: submissionId })
+    return
+  }
   if (!supabase) return
   const client = supabase
   const errors: string[] = []
@@ -181,7 +190,28 @@ export function ChallengesPage() {
   }, [submissionFilter, submissionSearch, submissionSort, submissions, user?.id])
 
   const loadChallenge = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+    if (isUbuntuPrimary) {
+      setLoading(true)
+      setError(null)
+      try {
+        const bundle = await loadUbuntuChallengesBundle(user.id)
+        setActiveChallenge(bundle.activeChallenge)
+        setChallengeMeta(bundle.challengeMeta)
+        setSubmissions(bundle.submissions)
+        setWinnerProfiles(bundle.winnerProfiles)
+        setRanking(bundle.ranking)
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo cargar retos'))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+    if (!supabase) {
       setLoading(false)
       return
     }
@@ -375,6 +405,14 @@ export function ChallengesPage() {
   }, [loadChallenge])
 
   useEffect(() => {
+    if (isUbuntuPrimary) {
+      return subscribeUbuntuRealtime({
+        channel: 'challenge:live',
+        onEvent: () => {
+          void loadChallenge()
+        },
+      })
+    }
     const client = supabase
     if (!client || !user) return
     const channel = client
@@ -396,7 +434,7 @@ export function ChallengesPage() {
   }, [loadChallenge, user])
 
   async function submitTextAnswer() {
-    if (!supabase || !user || !activeChallenge || !challengeMeta || submitting) return
+    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || submitting) return
     const text = textAnswer.trim()
     if (!text) return
     setSubmitting(true)
@@ -408,8 +446,12 @@ export function ChallengesPage() {
         user_id: user.id,
         text_content: text,
       }
-      const { error: insertError } = await supabase.from('challenge_submissions').insert(payload)
-      if (insertError) throw insertError
+      if (isUbuntuPrimary) {
+        await insertUbuntuChallengeSubmission(payload)
+      } else {
+        const { error: insertError } = await supabase!.from('challenge_submissions').insert(payload)
+        if (insertError) throw insertError
+      }
       setTextAnswer('')
       await loadChallenge()
     } catch (caught) {
@@ -420,27 +462,38 @@ export function ChallengesPage() {
   }
 
   async function submitMediaAnswer(file: File | null) {
-    if (!supabase || !user || !activeChallenge || !challengeMeta || !file || uploadingFile) return
+    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || !file || uploadingFile) return
     setUploadingFile(true)
     setError(null)
     try {
       const mediaType = inferSubmissionMediaType(file)
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const path = `${user.id}/${activeChallenge.id}/${Date.now()}_${mediaType}_${safeName}`
-      const { error: uploadError } = await supabase.storage
-        .from('challenges')
-        .upload(path, file, { contentType: file.type || undefined })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('challenges').getPublicUrl(path)
+      let publicUrl = ''
+      if (isUbuntuPrimary) {
+        const uploaded = await uploadFallbackFile('challenges', file, path)
+        publicUrl = uploaded.publicUrl || uploaded.url
+      } else {
+        const { error: uploadError } = await supabase!.storage
+          .from('challenges')
+          .upload(path, file, { contentType: file.type || undefined })
+        if (uploadError) throw uploadError
+        const { data } = supabase!.storage.from('challenges').getPublicUrl(path)
+        publicUrl = data.publicUrl
+      }
 
       const payload: Record<string, unknown> = {
         challenge_id: challengeMeta.id,
         active_challenge_id: activeChallenge.id,
         user_id: user.id,
-        content_url: data.publicUrl,
+        content_url: publicUrl,
       }
-      const { error: insertError } = await supabase.from('challenge_submissions').insert(payload)
-      if (insertError) throw insertError
+      if (isUbuntuPrimary) {
+        await insertUbuntuChallengeSubmission(payload)
+      } else {
+        const { error: insertError } = await supabase!.from('challenge_submissions').insert(payload)
+        if (insertError) throw insertError
+      }
       await loadChallenge()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar archivo del reto'))
@@ -450,7 +503,7 @@ export function ChallengesPage() {
   }
 
   async function toggleVote(submissionId: string) {
-    if (!supabase || !user || !activeChallenge || !submissionId) return
+    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !submissionId) return
     try {
       await tryVoteRpc(submissionId)
       await loadChallenge()
@@ -474,7 +527,7 @@ export function ChallengesPage() {
   }
 
   if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar retos." />
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para retos en Ubuntu." />
   }
 
   return (

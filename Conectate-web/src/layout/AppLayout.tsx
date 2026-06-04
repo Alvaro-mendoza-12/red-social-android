@@ -14,6 +14,7 @@ import {
   subscribeRealtimeChannel,
   supabase,
 } from '../core/supabase'
+import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
 import { changeFallbackPassword } from '../core/auth/fallbackAuth'
@@ -443,6 +444,37 @@ export function AppLayout() {
   }, [loadShellCounters])
 
   useEffect(() => {
+    if (isFallbackSession && user) {
+      let refreshTimer: ReturnType<typeof setTimeout> | null = null
+      const scheduleRefresh = () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+          void loadShellCounters()
+        }, 250)
+      }
+      return subscribeUbuntuRealtime({
+        channel: `user:${user.id}`,
+        onEvent: (event) => {
+          if (event.payload?.event === 'call_invite') {
+            const callId = String(event.payload.callId ?? '').trim()
+            const callerUserId = String(event.payload.callerUserId ?? '').trim()
+            if (!callId || !callerUserId || callerUserId === user.id) return
+            setIncomingCall({
+              callId,
+              title: String(event.payload.title ?? '').trim() || 'Llamada',
+              callerUserId,
+              callerName: String(event.payload.callerName ?? '').trim() || 'Usuario',
+              callerAvatarUrl: String(event.payload.callerAvatarUrl ?? '').trim(),
+              contextType: String(event.payload.contextType ?? '').trim() || 'dm',
+              contextId: String(event.payload.contextId ?? '').trim(),
+              isVideo: Boolean(event.payload.isVideo),
+              receivedAt: Date.now(),
+            })
+          }
+          scheduleRefresh()
+        },
+      })
+    }
     const client = supabase
     if (isFallbackSession || !client || !user) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null

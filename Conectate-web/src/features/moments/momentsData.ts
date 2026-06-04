@@ -1,4 +1,8 @@
-import { supabase } from '../../core/supabase'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { fetchUbuntuMomentsFeed, publishUbuntuMoment, recordUbuntuMomentView } from '../../core/momentsUbuntu'
+import { getDataClient } from '../../core/ubuntuDataClient'
+import { isUbuntuPrimary } from '../../core/ubuntuBackend'
+import { uploadFallbackFile } from '../../core/fallbackData'
 import { isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 
 export type MomentItem = {
@@ -30,11 +34,12 @@ function toMillis(value: string): number {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
-export async function fetchMomentsFeed(currentUserId: string): Promise<MomentItem[]> {
-  if (!supabase || !currentUserId) return []
+async function fetchLegacyMomentsFeed(currentUserId: string): Promise<MomentItem[]> {
+  const client = getDataClient()
+  if (!client) return []
   const now = Date.now()
 
-  const { data: momentRows, error: momentsError } = await supabase
+  const { data: momentRows, error: momentsError } = await client
     .from('moments')
     .select('*')
     .order('created_at', { ascending: false })
@@ -47,7 +52,7 @@ export async function fetchMomentsFeed(currentUserId: string): Promise<MomentIte
   const userIds = Array.from(new Set(rows.map((row) => textOf(row, ['user_id'], '')).filter(Boolean)))
   const profilesById = new Map<string, string>()
   if (userIds.length > 0) {
-    const { data: profileRows } = await supabase.from('profiles').select('*').in('id', userIds)
+    const { data: profileRows } = await client.from('profiles').select('*').in('id', userIds)
     ;((profileRows ?? []) as GenericRow[]).forEach((profile) => {
       const id = textOf(profile, ['id'], '')
       if (!id) return
@@ -63,7 +68,7 @@ export async function fetchMomentsFeed(currentUserId: string): Promise<MomentIte
   const viewedByMe = new Set<string>()
   const viewersByMoment = new Map<string, Array<{ userId: string; viewedAt: string }>>()
   if (momentIds.length > 0) {
-    const { data: viewRows, error: viewsError } = await supabase
+    const { data: viewRows, error: viewsError } = await client
       .from('moment_views')
       .select('moment_id,user_id,viewed_at')
       .in('moment_id', momentIds)
@@ -91,7 +96,7 @@ export async function fetchMomentsFeed(currentUserId: string): Promise<MomentIte
   )
   const viewerNamesById = new Map<string, string>()
   if (viewerIds.length > 0) {
-    const { data: viewerRows } = await supabase.from('profiles').select('*').in('id', viewerIds)
+    const { data: viewerRows } = await client.from('profiles').select('*').in('id', viewerIds)
     ;((viewerRows ?? []) as GenericRow[]).forEach((viewer) => {
       const id = textOf(viewer, ['id'], '')
       if (!id) return
@@ -136,9 +141,23 @@ export async function fetchMomentsFeed(currentUserId: string): Promise<MomentIte
     })
 }
 
+export async function fetchMomentsFeed(currentUserId: string): Promise<MomentItem[]> {
+  if (!currentUserId) return []
+  if (isUbuntuPrimary || isFallbackAuthConfigured) {
+    return fetchUbuntuMomentsFeed(currentUserId)
+  }
+  return fetchLegacyMomentsFeed(currentUserId)
+}
+
 export async function recordMomentView(momentId: string, currentUserId: string): Promise<void> {
-  if (!supabase || !momentId || !currentUserId) return
-  const { error: viewError } = await supabase.from('moment_views').upsert(
+  if (!momentId || !currentUserId) return
+  if (isUbuntuPrimary || isFallbackAuthConfigured) {
+    await recordUbuntuMomentView(momentId)
+    return
+  }
+  const client = getDataClient()
+  if (!client) return
+  const { error: viewError } = await client.from('moment_views').upsert(
     {
       moment_id: momentId,
       user_id: currentUserId,
@@ -147,4 +166,44 @@ export async function recordMomentView(momentId: string, currentUserId: string):
     { onConflict: 'moment_id,user_id' },
   )
   if (viewError) throw viewError
+}
+
+export async function publishMoment(input: {
+  file: File
+  caption: string
+  durationHours: number
+  visibility: string
+  allowReplies: boolean
+}): Promise<void> {
+  const mediaType = input.file.type.startsWith('video/') ? 'video' : 'image'
+  const path = `moments/${Date.now()}_${mediaType}_${input.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+
+  if (isUbuntuPrimary || isFallbackAuthConfigured) {
+    const uploaded = await uploadFallbackFile('moment-media', input.file, path)
+    await publishUbuntuMoment({
+      mediaUrl: uploaded.publicUrl || uploaded.url,
+      mediaType,
+      caption: input.caption,
+      durationHours: input.durationHours,
+      visibility: input.visibility,
+      allowReplies: input.allowReplies,
+    })
+    return
+  }
+
+  const client = getDataClient()
+  if (!client) throw new Error('Cliente de datos no configurado')
+  const { error: uploadError } = await client.storage.from('moment-media').upload(path, input.file)
+  if (uploadError) throw uploadError
+  const { data } = client.storage.from('moment-media').getPublicUrl(path)
+  const mediaUrl = String((data as { publicUrl?: string })?.publicUrl ?? '')
+  const { error: insertError } = await client.from('moments').insert({
+    media_url: mediaUrl,
+    media_type: mediaType,
+    caption: input.caption,
+    duration_hours: input.durationHours,
+    visibility: input.visibility,
+    allow_replies: input.allowReplies,
+  })
+  if (insertError) throw insertError
 }

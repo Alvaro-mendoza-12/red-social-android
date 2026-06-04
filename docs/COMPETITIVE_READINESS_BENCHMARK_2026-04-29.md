@@ -34,7 +34,7 @@ Validation inputs used in this pass:
 ## Overall readiness estimate
 
 - Aggregate readiness: **6.9/10**
-- Estimated gap to “face-to-face” global competitor level: **~30-40%**
+- Estimated gap to ï¿½face-to-faceï¿½ global competitor level: **~30-40%**
 
 This means the platform is now in a strong product-engineering stage, but not yet at elite social-network maturity for global scale and reliability.
 

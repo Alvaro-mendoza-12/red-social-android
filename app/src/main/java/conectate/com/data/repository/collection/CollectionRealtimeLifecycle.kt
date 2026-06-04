@@ -1,5 +1,6 @@
 package conectate.com.data.repository.collection
 
+import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.gotrue.SessionStatus
 import io.github.jan.supabase.gotrue.auth
@@ -12,6 +13,7 @@ import kotlinx.coroutines.launch
 internal fun bindCollectionRealtimeAuthLifecycle(
     scope: CoroutineScope,
     supabaseConfig: SupabaseConfig,
+    authService: AuthService,
     logTag: String,
     logPrefix: String,
     readyLog: String,
@@ -19,6 +21,19 @@ internal fun bindCollectionRealtimeAuthLifecycle(
     onNotAuthenticated: () -> Unit
 ) {
     scope.launch {
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            authService.currentSession.collect { session ->
+                val userId = session?.user?.id?.trim().orEmpty()
+                if (userId.isNotBlank()) {
+                    android.util.Log.d(logTag, "$logPrefix Ubuntu session active ($userId). Starting listeners...")
+                    onAuthenticated(userId)
+                    android.util.Log.d(logTag, readyLog)
+                } else {
+                    android.util.Log.d(logTag, "$logPrefix Ubuntu session cleared. Stopping listeners...")
+                    onNotAuthenticated()
+                }
+            }
+        } else {
         val currentSession = supabaseConfig.client.auth.currentSessionOrNull()
         if (currentSession != null) {
             var userId = currentSession.user?.id.orEmpty()
@@ -41,6 +56,7 @@ internal fun bindCollectionRealtimeAuthLifecycle(
                 }
                 else -> Unit
             }
+        }
         }
     }
 }

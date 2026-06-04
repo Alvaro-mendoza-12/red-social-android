@@ -1,4 +1,10 @@
 const crypto = require('crypto')
+const {
+  publishChatMessageEvent,
+  publishChallengeLiveEvent,
+  publishRealtimeEvent,
+} = require('./realtime-publish')
+const { isAppAdmin, recordModerationEvent } = require('./admin-moderation-routes')
 
 const MAX_READ_ROWS = Number(process.env.POSTGREST_COMPAT_MAX_READ_ROWS || 10000)
 const RESERVED_QUERY_KEYS = new Set([
@@ -214,6 +220,46 @@ async function readSpecificRows(pool, tableName) {
       `, [MAX_READ_ROWS])
       return rows
     }
+    case 'moments': {
+      const { rows } = await pool.query(`
+        SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility,
+               visibility_type, allow_replies, duration_hours, duration_type, excluded_ids,
+               expires_at, created_at, updated_at
+        FROM fallback_moments
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'moment_views': {
+      const { rows } = await pool.query(`
+        SELECT moment_id::text, user_id, viewed_at
+        FROM fallback_moment_views
+        ORDER BY viewed_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'video_reports': {
+      const { rows } = await pool.query(`
+        SELECT id::text, video_id, video_owner_id, video_owner_name, video_title,
+               reporter_id, reporter_name, reason, details, status, warn_sent, strike_applied,
+               action_note, reviewed_at, created_at, updated_at
+        FROM fallback_video_reports
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'moderation_events': {
+      const { rows } = await pool.query(`
+        SELECT id::text, actor_id, context, content_ref, verdict, metadata_preview, created_at
+        FROM fallback_moderation_events
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
     case 'group_messages':
     case 'community_messages': {
       const collectionType = tableName === 'group_messages' ? 'group' : 'community'
@@ -279,6 +325,37 @@ async function readSpecificRows(pool, tableName) {
                NULL::timestamptz AS left_at
         FROM fallback_voice_room_participants
         ORDER BY joined_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'videos': {
+      const { rows } = await pool.query(`
+        SELECT id::text, user_id, user_name, user_profile_image, title, description,
+               video_url, cover_url, thumbnail_url, duration_seconds AS duration,
+               duration_seconds, trim_start_seconds, trim_end_seconds,
+               views, like_count, comment_count, share_count, is_public, tags,
+               created_at, updated_at
+        FROM fallback_videos
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'video_likes': {
+      const { rows } = await pool.query(`
+        SELECT (video_id || ':' || user_id) AS id, video_id, user_id, created_at
+        FROM fallback_video_likes
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
+    }
+    case 'friends': {
+      const { rows } = await pool.query(`
+        SELECT id::text, sender_id, receiver_id, status, created_at
+        FROM fallback_friends
+        ORDER BY created_at DESC
         LIMIT $1
       `, [MAX_READ_ROWS])
       return rows
@@ -474,15 +551,76 @@ async function upsertProfile(pool, auth, row) {
   })
 }
 
+async function insertVideoRow(pool, auth, row) {
+  const userId = row.user_id || row.userId || auth?.sub || ''
+  const videoUrl = row.video_url || row.videoUrl || ''
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_videos(
+        id, user_id, user_name, user_profile_image, title, description,
+        video_url, cover_url, thumbnail_url, duration_seconds, is_public, tags
+     )
+     VALUES (
+        COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()),
+        $2, $3, $4, $5, $6, $7, $8, $8, COALESCE($9, 0), COALESCE($10, TRUE), COALESCE($11::jsonb, '[]'::jsonb)
+     )
+     RETURNING id::text, user_id, user_name, user_profile_image, title, description,
+               video_url, cover_url, thumbnail_url, duration_seconds AS duration,
+               duration_seconds, views, like_count, comment_count, share_count,
+               is_public, tags, created_at, updated_at`,
+    [
+      row.id || null,
+      userId,
+      row.user_name || row.username || row.userName || 'Usuario',
+      row.user_profile_image || row.userProfileImage || null,
+      row.title || 'Video',
+      row.description || '',
+      videoUrl,
+      row.cover_url || row.thumbnail_url || row.thumbnailUrl || null,
+      Number(row.duration || row.duration_seconds || 0) || 0,
+      row.is_public ?? row.isPublic ?? true,
+      JSON.stringify(Array.isArray(row.tags) ? row.tags : []),
+    ],
+  )
+  return rows[0]
+}
+
+async function insertFriendRow(pool, auth, row) {
+  const senderId = row.sender_id || row.senderId || auth?.sub || ''
+  const receiverId = row.receiver_id || row.receiverId || ''
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_friends(sender_id, receiver_id, status)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
+     RETURNING id::text, sender_id, receiver_id, status, created_at`,
+    [senderId, receiverId, row.status || 'pending'],
+  )
+  return rows[0]
+}
+
 async function handleInsert(pool, tableName, auth, body) {
   const rows = []
   for (const entry of asArrayBody(body)) {
     const base = compactRow(entry)
     if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, base))
+    } else if (tableName === 'videos') {
+      rows.push(await insertVideoRow(pool, auth, base))
+    } else if (tableName === 'friends') {
+      rows.push(await insertFriendRow(pool, auth, base))
+    } else if (tableName === 'video_likes') {
+      const videoId = base.video_id || base.videoId
+      const userId = base.user_id || base.userId || auth?.sub
+      await pool.query(
+        `INSERT INTO fallback_video_likes(video_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [videoId, userId],
+      )
+      rows.push({ id: `${videoId}:${userId}`, video_id: videoId, user_id: userId })
     } else {
       rows.push(await storeCompatRow(pool, tableName, base))
     }
+  }
+  if (tableName === 'challenge_submissions') {
+    void publishChallengeLiveEvent({ action: 'submission' })
   }
   return rows
 }
@@ -532,11 +670,109 @@ async function handleDelete(pool, tableName, query) {
   return rows
 }
 
+async function toggleChallengeVote(pool, auth, submissionId) {
+  const cleanSubmissionId = String(submissionId || '').trim()
+  const userId = String(auth?.sub || '').trim()
+  if (!cleanSubmissionId || !userId) return { ok: false, error: 'INVALID_INPUT' }
+
+  const voteRowId = `${cleanSubmissionId}:${userId}`
+  const { rows: existingVotes } = await pool.query(
+    `SELECT row_id FROM fallback_compat_rows
+     WHERE table_name = 'challenge_votes' AND row_id = $1`,
+    [voteRowId],
+  )
+  const hadVote = existingVotes.length > 0
+
+  const submissions = await readTableRows(pool, 'challenge_submissions', { id: `eq.${cleanSubmissionId}` })
+  const submission = submissions[0]
+  if (!submission) return { ok: false, error: 'SUBMISSION_NOT_FOUND' }
+
+  let voteCount = Math.max(0, Number(submission.vote_count ?? submission.voteCount ?? 0) || 0)
+  if (hadVote) {
+    await pool.query(
+      `DELETE FROM fallback_compat_rows
+       WHERE table_name = 'challenge_votes' AND row_id = $1`,
+      [voteRowId],
+    )
+    voteCount = Math.max(0, voteCount - 1)
+  } else {
+    await storeCompatRow(pool, 'challenge_votes', {
+      id: voteRowId,
+      submission_id: cleanSubmissionId,
+      user_id: userId,
+      created_at: nowIso(),
+    })
+    voteCount += 1
+  }
+
+  await storeCompatRow(pool, 'challenge_submissions', {
+    ...submission,
+    id: cleanSubmissionId,
+    vote_count: voteCount,
+  })
+  await publishChallengeLiveEvent({ submissionId: cleanSubmissionId, voteCount })
+  return { ok: true, vote_count: voteCount, voted_by_me: !hadVote }
+}
+
+async function loadChallengeSubmissionsVoted(pool, auth, activeChallengeId) {
+  const cleanActiveId = String(activeChallengeId || '').trim()
+  if (!cleanActiveId) return []
+
+  const submissions = await readTableRows(pool, 'challenge_submissions', {
+    active_challenge_id: `eq.${cleanActiveId}`,
+  })
+  const votes = await readCompatRows(pool, 'challenge_votes')
+  const myVotes = new Set(
+    votes
+      .filter((vote) => String(vote.user_id || vote.userId || '') === String(auth?.sub || ''))
+      .map((vote) => String(vote.submission_id || vote.submissionId || '').trim())
+      .filter(Boolean),
+  )
+
+  const userIds = Array.from(
+    new Set(submissions.map((row) => String(row.user_id || row.userId || '').trim()).filter(Boolean)),
+  )
+  const profiles = await readTableRows(pool, 'profiles', {})
+  const profileById = new Map(
+    profiles.map((profile) => [String(profile.id || '').trim(), profile]).filter(([id]) => id),
+  )
+
+  return submissions.map((row) => {
+    const userId = String(row.user_id || row.userId || '').trim()
+    const profile = profileById.get(userId)
+    const ownerName =
+      profile?.display_name ||
+      profile?.displayName ||
+      profile?.full_name ||
+      profile?.username ||
+      'Usuario'
+    return {
+      ...row,
+      owner_name: ownerName,
+      voted_by_me: myVotes.has(String(row.id || '').trim()),
+      vote_count: Number(row.vote_count ?? row.voteCount ?? 0) || 0,
+    }
+  })
+}
+
+async function requireAdmin(pool, auth) {
+  if (!auth?.sub) return false
+  const identity = {
+    localUserId: auth.sub,
+    displayUserId: auth.sub,
+    ids: new Set([String(auth.sub).trim().toLowerCase()]),
+    values: [String(auth.sub).trim().toLowerCase()],
+  }
+  return isAppAdmin(pool, identity)
+}
+
 async function handleRpc(pool, req, rpcName) {
   const body = req.body || {}
   const auth = req.auth || null
 
   switch (rpcName) {
+    case 'is_current_user_admin':
+      return Boolean(await requireAdmin(pool, auth))
     case 'resolve_login_email': {
       const identifier = String(body.identifier || body.email || body.username || '').trim().toLowerCase()
       const { rows } = await pool.query(
@@ -560,7 +796,92 @@ async function handleRpc(pool, req, rpcName) {
          RETURNING id::text, chat_id, sender_id, content, content_type AS message_type, media_url, media_size, reply_to_id, created_at, updated_at`,
         [chatId, auth?.sub || '', content, messageType, mediaUrl, Number(body.media_size || body.mediaSize || 0) || 0, body.reply_to_id || body.replyToId || null],
       )
+      void publishChatMessageEvent({
+        chatId: String(chatId),
+        message: rows[0],
+        recipientIds: [],
+      })
       return rows[0]
+    }
+    case 'get_or_generate_active_challenge': {
+      const rows = await readTableRows(pool, 'active_challenges', {})
+      const active = rows
+        .filter((row) => ['active', 'voting', 'completed'].includes(String(row.status || '').toLowerCase()))
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+      return active[0] ? [active[0]] : []
+    }
+    case 'get_challenge_submissions_voted':
+      return loadChallengeSubmissionsVoted(pool, auth, body.p_active_challenge_id)
+    case 'toggle_challenge_vote':
+    case 'v2026_challenge_vote':
+    case 'challenge_v3_vote_toggle':
+      return toggleChallengeVote(
+        pool,
+        auth,
+        body.p_submission_id || body.p_id || body.target_id_text,
+      )
+    case 'secure_admin_set_user_suspension': {
+      if (!(await requireAdmin(pool, auth))) return { ok: false, error: 'ADMIN_REQUIRED' }
+      const userId = normalizeId(body.p_user_id || body.user_id || body.target_user_id || '')
+      const suspended = Boolean(body.p_suspend ?? body.is_suspended ?? body.suspend)
+      const reason = String(body.p_reason || body.reason || '').trim()
+      const until = body.p_suspended_until || body.suspended_until || body.suspension_end_date || null
+      await pool.query(
+        `INSERT INTO fallback_profile_moderation(user_id, is_suspended, suspended_until, suspension_end_date, suspension_reason, suspension_count, updated_at)
+         VALUES ($1, $2, $3::timestamptz, $3::timestamptz, $4, CASE WHEN $2 THEN 1 ELSE 0 END, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           is_suspended = EXCLUDED.is_suspended,
+           suspended_until = EXCLUDED.suspended_until,
+           suspension_end_date = EXCLUDED.suspension_end_date,
+           suspension_reason = EXCLUDED.suspension_reason,
+           suspension_count = CASE WHEN EXCLUDED.is_suspended THEN fallback_profile_moderation.suspension_count + 1 ELSE fallback_profile_moderation.suspension_count END,
+           updated_at = NOW()`,
+        [userId, suspended, until, reason],
+      )
+      await recordModerationEvent(pool, auth?.sub, {
+        context: 'suspension',
+        contentRef: userId,
+        verdict: suspended ? 'suspended' : 'unsuspended',
+        metadataPreview: reason,
+      })
+      void publishRealtimeEvent('admin:live', { event: 'moderation', action: 'suspension', userId })
+      return { ok: true }
+    }
+    case 'secure_admin_update_video_report_status': {
+      if (!(await requireAdmin(pool, auth))) return { ok: false, error: 'ADMIN_REQUIRED' }
+      const reportId = String(body.p_report_id || body.report_id || '').trim()
+      const status = String(body.p_status || body.status || 'revisado').trim()
+      await pool.query(
+        `UPDATE fallback_video_reports
+         SET status = $2, reviewed_at = NOW(), updated_at = NOW()
+         WHERE id::text = $1`,
+        [reportId, status],
+      )
+      void publishRealtimeEvent('admin:live', { event: 'moderation', action: 'video_report_status', reportId })
+      return { ok: true }
+    }
+    case 'secure_admin_warn_video_owner_from_report':
+    case 'secure_suspend_video_owner_from_report':
+    case 'secure_admin_delete_reported_video': {
+      if (!(await requireAdmin(pool, auth))) return { ok: false, error: 'ADMIN_REQUIRED' }
+      const reportId = String(body.p_report_id || body.report_id || '').trim()
+      await pool.query(
+        `UPDATE fallback_video_reports
+         SET warn_sent = CASE WHEN $2 = 'warn' THEN TRUE ELSE warn_sent END,
+             strike_applied = CASE WHEN $2 = 'suspend' THEN TRUE ELSE strike_applied END,
+             status = 'accion_aplicada',
+             reviewed_at = NOW(),
+             updated_at = NOW()
+         WHERE id::text = $1`,
+        [reportId, rpcName.includes('warn') ? 'warn' : rpcName.includes('delete') ? 'delete' : 'suspend'],
+      )
+      await recordModerationEvent(pool, auth?.sub, {
+        context: 'video_report',
+        contentRef: reportId,
+        verdict: rpcName,
+      })
+      void publishRealtimeEvent('admin:live', { event: 'moderation', action: rpcName, reportId })
+      return { ok: true }
     }
     case 'secure_mark_messages_read':
     case 'secure_mark_messages_delivered':

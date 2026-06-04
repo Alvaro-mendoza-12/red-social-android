@@ -144,6 +144,10 @@ class LiveRepository @Inject constructor(
 
     init {
         scope.launch {
+            if (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackModeEnabled()) {
+                _activeStreams.value = emptyList()
+                return@launch
+            }
             refreshActiveStreams()
             subscribeToLiveStreams()
         }

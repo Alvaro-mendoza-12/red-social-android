@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { isSupabaseConfigured } from '../../core/supabase'
 
 export type CallInvitePayload = {
   callId: string
@@ -51,13 +53,44 @@ async function sendBroadcast(
   })
 }
 
+async function sendUbuntuCallNotification(targetUserId: string, invite: CallInvitePayload) {
+  if (!isFallbackAuthConfigured) return
+  try {
+    await fallbackApiJson('/v1/data/notifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipientId: targetUserId,
+        actorId: invite.callerUserId,
+        type: 'call_invite',
+        targetId: invite.callId,
+        content: invite.isVideo ? 'Videollamada entrante' : 'Llamada entrante',
+        extraData: {
+          call_id: invite.callId,
+          call_context_type: invite.contextType,
+          call_context_id: invite.contextId ?? '',
+          call_title: invite.title,
+          call_created_at: new Date().toISOString(),
+          call_is_video: invite.isVideo,
+        },
+      }),
+    })
+  } catch (error) {
+    console.warn('No se pudo guardar notificación de llamada en Ubuntu', error)
+  }
+}
+
 export async function sendCallInvite(
-  client: SupabaseClient,
+  client: SupabaseClient | null,
   targetUserId: string,
   invite: CallInvitePayload,
 ) {
   const cleanTarget = targetUserId.trim()
   if (!cleanTarget) throw new Error('Falta el usuario destino para la llamada.')
+
+  if (!client || !isSupabaseConfigured) {
+    await sendUbuntuCallNotification(cleanTarget, invite)
+    return
+  }
 
   await sendBroadcast(client, callUserChannel(cleanTarget), 'call_invite', {
     callId: invite.callId,
@@ -92,12 +125,13 @@ export async function sendCallInvite(
 }
 
 export async function sendCallResponse(
-  client: SupabaseClient,
+  client: SupabaseClient | null,
   targetUserId: string,
   response: CallResponsePayload,
 ) {
   const cleanTarget = targetUserId.trim()
   if (!cleanTarget) return
+  if (!client || !isSupabaseConfigured) return
   await sendBroadcast(client, callUserChannel(cleanTarget), 'call_response', {
     callId: response.callId,
     action: response.action,

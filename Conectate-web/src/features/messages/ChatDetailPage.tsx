@@ -17,6 +17,7 @@ import {
   subscribeRealtimeChannel,
   supabase,
 } from '../../core/supabase'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import {
   formatDateTime,
   friendlyError,
@@ -1309,6 +1310,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [isFallbackSession, loadChatSettings, refreshScheduledJobs])
 
   useEffect(() => {
+    if (isFallbackSession && user && cleanChatId) {
+      return subscribeUbuntuRealtime({
+        channel: `chat:${cleanChatId}`,
+        onEvent: (event) => {
+          if (event.payload?.event !== 'message') return
+          const row = (event.payload.message ?? {}) as GenericRow
+          const messageId = textOf(row, ['id'], '')
+          if (!messageId) return
+          upsertMessageInState(mapMessage(row))
+          const pollId = textOf(row, ['poll_id', 'pollId'], '')
+          if (pollId) void refreshPollState(pollId)
+        },
+      })
+    }
     const client = supabase
     if (!client || !user || !cleanChatId || isFallbackSession) return
     const channel = client

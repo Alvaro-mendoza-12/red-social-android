@@ -210,7 +210,7 @@ export function ChallengesRankingPage() {
   }, [loadRanking, user])
 
   if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar ranking." />
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para ranking en Ubuntu." />
   }
 
   async function openDirectChat(userId: string) {

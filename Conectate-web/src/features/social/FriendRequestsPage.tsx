@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
-import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
+import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import {
+  loadFallbackFriends,
+  sendFallbackFriendRequest,
+  updateFallbackFriendRequest,
+} from '../../core/fallbackData'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { supabase } from '../../core/supabase'
+import { isMissingTableError } from '../../core/utils'
 
 type FriendRequest = {
   id: string
@@ -15,28 +23,42 @@ type FriendRequest = {
 function mapRequest(row: GenericRow): FriendRequest {
   return {
     id: textOf(row, ['id'], crypto.randomUUID()),
-    senderId: textOf(row, ['sender_id'], ''),
-    receiverId: textOf(row, ['receiver_id'], ''),
+    senderId: textOf(row, ['sender_id', 'senderId'], ''),
+    receiverId: textOf(row, ['receiver_id', 'receiverId'], ''),
     status: textOf(row, ['status'], 'pending'),
     createdAt: textOf(row, ['created_at'], ''),
   }
 }
 
 export function FriendRequestsPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [items, setItems] = useState<FriendRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tableAvailable, setTableAvailable] = useState(true)
 
   const loadRequests = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
     setLoading(true)
     setError(null)
     try {
+      if (useUbuntu) {
+        const response = await loadFallbackFriends('incoming')
+        setItems(response.items.map(mapRequest))
+        setTableAvailable(true)
+        return
+      }
+
+      if (!supabase) {
+        setError('Configura VITE_FALLBACK_API_URL para usar amistad en Ubuntu.')
+        setLoading(false)
+        return
+      }
+
       const { data, error: queryError } = await supabase
         .from('friends')
         .select('*')
@@ -48,51 +70,65 @@ export function FriendRequestsPage() {
     } catch (caught) {
       if (isMissingTableError(caught)) {
         setTableAvailable(false)
-        setError('La tabla friends no existe en este entorno Supabase.')
+        setError('La tabla friends no existe en este entorno.')
       } else {
         setError(friendlyError(caught, 'No se pudieron cargar las solicitudes'))
       }
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [useUbuntu, user])
 
   useEffect(() => {
     void loadRequests()
   }, [loadRequests])
 
   async function updateStatus(id: string, status: 'accepted' | 'rejected') {
-    if (!supabase || !user) return
-    const { error: updateError } = await supabase
-      .from('friends')
-      .update({ status })
-      .eq('id', id)
-      .eq('receiver_id', user.id)
-    if (updateError) {
-      setError(friendlyError(updateError, 'No se pudo actualizar la solicitud'))
-      return
+    if (!user) return
+    try {
+      if (useUbuntu) {
+        await updateFallbackFriendRequest(id, status)
+        await loadRequests()
+        return
+      }
+      if (!supabase) return
+      const { error: updateError } = await supabase
+        .from('friends')
+        .update({ status })
+        .eq('id', id)
+        .eq('receiver_id', user.id)
+      if (updateError) throw updateError
+      await loadRequests()
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar la solicitud'))
     }
-    await loadRequests()
   }
 
   async function sendRequest(targetId: string) {
-    if (!supabase || !user) return
+    if (!user) return
     const cleanTarget = targetId.trim().toLowerCase()
     if (!cleanTarget) return
-    const { error: insertError } = await supabase.from('friends').insert({
-      sender_id: user.id,
-      receiver_id: cleanTarget,
-      status: 'pending',
-    })
-    if (insertError) {
-      setError(friendlyError(insertError, 'No se pudo enviar solicitud'))
-      return
+    try {
+      if (useUbuntu) {
+        await sendFallbackFriendRequest(cleanTarget)
+        await loadRequests()
+        return
+      }
+      if (!supabase) return
+      const { error: insertError } = await supabase.from('friends').insert({
+        sender_id: user.id,
+        receiver_id: cleanTarget,
+        status: 'pending',
+      })
+      if (insertError) throw insertError
+      await loadRequests()
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo enviar solicitud'))
     }
-    await loadRequests()
   }
 
-  if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar amistad." />
+  if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
   }
   if (loading) return <StatusView title="Cargando solicitudes" description="Espera un momento..." />
   if (error && !tableAvailable) return <StatusView title="Solicitudes no disponibles" description={error} />
@@ -101,52 +137,48 @@ export function FriendRequestsPage() {
     <section className="section-stack">
       <header className="section-header">
         <h2>Solicitudes de amistad</h2>
-        <p>Acepta/rechaza solicitudes y envía una nueva por ID de usuario.</p>
+        <p>Gestiona invitaciones en tu servidor Ubuntu.</p>
       </header>
-
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault()
-          const form = event.currentTarget
-          const input = form.elements.namedItem('target_id') as HTMLInputElement | null
-          void sendRequest(input?.value ?? '')
-          if (input) input.value = ''
-        }}
-      >
-        <input name="target_id" className="text-input" placeholder="UUID del usuario destino" />
-        <button className="primary-btn" type="submit">
-          Enviar solicitud
-        </button>
-      </form>
-
       {error ? <p className="error-text">{error}</p> : null}
-
       {items.length === 0 ? (
-        <StatusView title="Sin solicitudes" description="No tienes solicitudes pendientes." />
+        <StatusView title="Sin solicitudes" description="No tienes invitaciones pendientes." />
       ) : (
-        <div className="list-stack">
-          {items.map((request) => (
-            <article key={request.id} className="surface-card">
-              <div className="row-between">
-                <strong>De: {request.senderId}</strong>
-                <small>{formatDateTime(request.createdAt)}</small>
+        <ul className="list-stack">
+          {items.map((item) => (
+            <li key={item.id} className="list-row">
+              <div>
+                <strong>{item.senderId}</strong>
+                <small>{formatDateTime(item.createdAt)}</small>
               </div>
-              <p>Estado: {request.status}</p>
-              {request.status === 'pending' ? (
-                <div className="row-actions">
-                  <button className="ghost-btn" type="button" onClick={() => void updateStatus(request.id, 'accepted')}>
+              {item.status === 'pending' ? (
+                <div className="inline-actions">
+                  <button type="button" onClick={() => void updateStatus(item.id, 'accepted')}>
                     Aceptar
                   </button>
-                  <button className="ghost-btn" type="button" onClick={() => void updateStatus(request.id, 'rejected')}>
+                  <button type="button" className="ghost-btn" onClick={() => void updateStatus(item.id, 'rejected')}>
                     Rechazar
                   </button>
                 </div>
-              ) : null}
-            </article>
+              ) : (
+                <span>{item.status}</span>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
+      <form
+        className="inline-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const form = event.currentTarget
+          const input = form.elements.namedItem('targetId') as HTMLInputElement
+          void sendRequest(input.value)
+          input.value = ''
+        }}
+      >
+        <input name="targetId" placeholder="ID de usuario destino" required />
+        <button type="submit">Enviar solicitud</button>
+      </form>
     </section>
   )
 }

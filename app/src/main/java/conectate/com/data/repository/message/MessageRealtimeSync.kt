@@ -9,6 +9,8 @@ import conectate.com.data.local.dao.MessageDao
 import conectate.com.data.model.Chat
 import conectate.com.data.model.Message
 import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.data.localfallback.UbuntuRealtimeClient
+import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.realtime.*
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,6 +27,8 @@ import javax.inject.Singleton
 @Singleton
 class MessageRealtimeSync @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
+    private val authService: AuthService,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val messageDao: MessageDao,
     private val chatDao: ChatDao,
     private val appMetrics: AppMetrics,
@@ -42,8 +47,10 @@ class MessageRealtimeSync @Inject constructor(
     private val _messageEvents = MutableSharedFlow<Message>(extraBufferCapacity = 100)
     val messageEvents: SharedFlow<Message> = _messageEvents.asSharedFlow()
 
+    private enum class QueuedMessageAction { Insert, Update }
+
     // v22.3: Canal para procesamiento secuencial y evitar saturación de corrutinas/DB
-    private val messageChannel = kotlinx.coroutines.channels.Channel<Pair<PostgresAction, JsonObject>>(
+    private val messageChannel = kotlinx.coroutines.channels.Channel<Pair<QueuedMessageAction, JsonObject>>(
         capacity = 1000,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     )
@@ -72,14 +79,18 @@ class MessageRealtimeSync @Inject constructor(
                     val (action, record) = item
                     val msg = parseMessageFromJson(record)
                     when (action) {
-                        is PostgresAction.Insert -> handleGlobalMessageInsert(msg, cleanUserId)
-                        is PostgresAction.Update -> handleGlobalMessageUpdate(msg, cleanUserId)
-                        else -> {}
+                        QueuedMessageAction.Insert -> handleGlobalMessageInsert(msg, cleanUserId)
+                        QueuedMessageAction.Update -> handleGlobalMessageUpdate(msg, cleanUserId)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in queue processor", e)
                 }
             }
+        }
+
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            startUbuntuRealtime(cleanUserId)
+            return
         }
 
         globalListenerJob = scope.launch {
@@ -97,8 +108,12 @@ class MessageRealtimeSync @Inject constructor(
                     launch {
                         changes.collect { change ->
                             // Enviar a la cola en lugar de procesar inmediatamente
-                            if (change is PostgresAction.Insert || change is PostgresAction.Update) {
-                                messageChannel.send(change to (if (change is PostgresAction.Insert) change.record else (change as PostgresAction.Update).record))
+                            when (change) {
+                                is PostgresAction.Insert ->
+                                    messageChannel.send(QueuedMessageAction.Insert to change.record)
+                                is PostgresAction.Update ->
+                                    messageChannel.send(QueuedMessageAction.Update to change.record)
+                                else -> Unit
                             }
                         }
                     }
@@ -127,6 +142,20 @@ class MessageRealtimeSync @Inject constructor(
                         channel?.unsubscribe()
                     } catch (_: Exception) {}
                 }
+            }
+        }
+    }
+
+    private fun startUbuntuRealtime(userId: String) {
+        globalListenerJob = scope.launch {
+            val token = authService.getAccessToken()?.trim().orEmpty()
+            if (token.isBlank()) return@launch
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.subscribe("user:$userId")
+            ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.event != "message") return@collect
+                val record = envelope.payload["message"]?.jsonObject ?: return@collect
+                messageChannel.send(QueuedMessageAction.Insert to record)
             }
         }
     }

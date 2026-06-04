@@ -344,6 +344,86 @@ async function localPosts(pool, limit = 5000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localVideos(pool, limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        user_id,
+        user_name,
+        user_profile_image,
+        title,
+        description,
+        video_url,
+        cover_url,
+        thumbnail_url,
+        duration_seconds,
+        trim_start_seconds,
+        trim_end_seconds,
+        views,
+        like_count,
+        comment_count,
+        share_count,
+        is_public,
+        tags,
+        created_at,
+        updated_at,
+        TRUE AS local_only
+     FROM fallback_videos
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localVideoLikes(pool, videoIds, limit = 10_000) {
+  const ids = Array.from(cleanSet(videoIds))
+  if (ids.length === 0) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT video_id, user_id, created_at
+     FROM fallback_video_likes
+     WHERE lower(video_id) = ANY($1::text[])
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [ids.map((id) => id.toLowerCase()), safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
+  const id = textOf(row, ['id'], '')
+  const userId = textOf(row, ['user_id', 'userId'], '')
+  const profile = profilesById.get(normalizeId(userId)) || {}
+  const cover = textOf(row, ['cover_url', 'thumbnail_url', 'coverUrl', 'thumbnailUrl'], '')
+  return {
+    ...row,
+    id,
+    user_id: userId,
+    user_name: textOf(row, ['user_name', 'userName'], '') || textOf(profile, ['display_name', 'username'], 'Usuario'),
+    user_profile_image:
+      textOf(row, ['user_profile_image', 'userProfileImage'], '') ||
+      textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+    title: textOf(row, ['title', 'caption'], 'Video'),
+    description: textOf(row, ['description', 'content'], ''),
+    video_url: textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
+    cover_url: cover,
+    thumbnail_url: cover,
+    duration_seconds: numberOf(row, ['duration_seconds', 'duration'], 0),
+    trim_start_seconds: numberOf(row, ['trim_start_seconds', 'trimStartSeconds'], 0),
+    trim_end_seconds: numberOf(row, ['trim_end_seconds', 'trimEndSeconds'], 0),
+    views: numberOf(row, ['views', 'view_count', 'viewCount'], 0),
+    like_count: likeCounts.get(id) ?? numberOf(row, ['like_count', 'likeCount'], 0),
+    comment_count: numberOf(row, ['comment_count', 'commentCount'], 0),
+    share_count: numberOf(row, ['share_count', 'shareCount'], 0),
+    is_public: boolOf(row, ['is_public', 'isPublic'], true),
+    liked_by_me: likedVideoIds.has(id),
+    created_at: textOf(row, ['created_at', 'updated_at'], ''),
+    updated_at: textOf(row, ['updated_at', 'created_at'], ''),
+  }
+}
+
 function normalizePostMediaUrls(row) {
   const urls = []
   const mediaUrls = row?.media_urls
@@ -592,7 +672,31 @@ async function createLocalNotification(pool, input) {
       JSON.stringify(extraData),
     ],
   )
-  return normalizeImportedRow(rows[0])
+  const notification = normalizeImportedRow(rows[0])
+  try {
+    const { publishRealtimeEvent } = require('./realtime-publish')
+    const envelope = {
+      event: type === 'call_invite' ? 'call_invite' : 'notification',
+      notification,
+      extraData,
+    }
+    if (type === 'call_invite') {
+      Object.assign(envelope, {
+        callId: extraData.call_id || extraData.callId || targetId,
+        title: extraData.call_title || extraData.callTitle || content,
+        callerUserId: actorId,
+        callerName: actorName,
+        callerAvatarUrl: actorAvatarUrl,
+        contextType: extraData.call_context_type || extraData.callContextType || 'dm',
+        contextId: extraData.call_context_id || extraData.callContextId || '',
+        isVideo: Boolean(extraData.call_is_video ?? extraData.callIsVideo),
+      })
+    }
+    void publishRealtimeEvent(`user:${recipientId}`, envelope)
+  } catch {
+    // Realtime es best-effort; la notificación HTTP ya quedó persistida.
+  }
+  return notification
 }
 
 async function localProfileOverride(pool, userId) {
@@ -1578,9 +1682,68 @@ async function ensureLocalDataTables(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_videos (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL DEFAULT 'Usuario',
+      user_profile_image TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      video_url TEXT NOT NULL,
+      cover_url TEXT,
+      thumbnail_url TEXT,
+      duration_seconds INT NOT NULL DEFAULT 0,
+      trim_start_seconds INT NOT NULL DEFAULT 0,
+      trim_end_seconds INT NOT NULL DEFAULT 0,
+      views INT NOT NULL DEFAULT 0,
+      like_count INT NOT NULL DEFAULT 0,
+      comment_count INT NOT NULL DEFAULT 0,
+      share_count INT NOT NULL DEFAULT 0,
+      is_public BOOLEAN NOT NULL DEFAULT TRUE,
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_videos_created
+     ON fallback_videos(created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_video_likes (
+      video_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (video_id, user_id)
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_friends (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      sender_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (sender_id, receiver_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_friends_receiver
+     ON fallback_friends(lower(receiver_id), created_at DESC)`,
+  )
+  const { ensureMomentsTables } = require('./moments-routes')
+  const { ensureAdminModerationTables } = require('./admin-moderation-routes')
+  await ensureMomentsTables(pool)
+  await ensureAdminModerationTables(pool)
 }
 
 function registerDataRoutes(app, { pool, authRequired }) {
+  const { publishChatMessageEvent } = require('./realtime-publish')
+  const { registerMomentsRoutes } = require('./moments-routes')
+  const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
+  registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerAdminModerationRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   app.get('/v1/data/profile/me', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -2803,28 +2966,34 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ...(await importedRows(pool, 'profiles', 5000)),
         ...(await fallbackUserProfileRows(pool, 5000)),
       ])
+      const roomRecipients = (existingRoom.participants || [])
+        .map((participant) => normalizeId(participant.id))
+        .filter((participantId) => participantId && !identity.ids.has(participantId))
       await Promise.all(
-        (existingRoom.participants || [])
-          .map((participant) => normalizeId(participant.id))
-          .filter((participantId) => participantId && !identity.ids.has(participantId))
-          .map((participantId) =>
-            createLocalNotification(pool, {
-              recipientId: participantId,
-              actorId: identity.displayUserId,
-              actorName: user.display_name || user.email || 'Usuario',
-              actorAvatarUrl: user.avatar_url || '',
-              type: 'message',
-              targetId: roomId,
-              targetType: config.kind,
-              content: content || previewFromMessage({ content_type: contentType }),
-              extraData: {
-                [`${config.kind}_id`]: roomId,
-                message_id: textOf(rows[0], ['id'], ''),
-              },
-            }),
-          ),
+        roomRecipients.map((participantId) =>
+          createLocalNotification(pool, {
+            recipientId: participantId,
+            actorId: identity.displayUserId,
+            actorName: user.display_name || user.email || 'Usuario',
+            actorAvatarUrl: user.avatar_url || '',
+            type: 'message',
+            targetId: roomId,
+            targetType: config.kind,
+            content: content || previewFromMessage({ content_type: contentType }),
+            extraData: {
+              [`${config.kind}_id`]: roomId,
+              message_id: textOf(rows[0], ['id'], ''),
+            },
+          }),
+        ),
       )
-      res.status(201).json({ message: enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById) })
+      const roomMessage = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
+      void publishChatMessageEvent({
+        chatId: `room:${config.kind}:${roomId}`,
+        message: roomMessage,
+        recipientIds: roomRecipients,
+      })
+      res.status(201).json({ message: roomMessage })
     } catch (error) {
       next(error)
     }
@@ -3036,6 +3205,233 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
+  app.get('/v1/data/videos', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 80, 200))
+      const offset = Math.max(0, Number(req.query.offset) || 0)
+      const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
+      const [importedProfiles, localProfiles, importedVideos, fallbackVideos] = await Promise.all([
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+      ])
+      const videos = [...importedVideos, ...fallbackVideos].filter((row) => {
+        const ownerId = textOf(row, ['user_id', 'userId'], '')
+        const isPublic = boolOf(row, ['is_public', 'isPublic'], true)
+        if (requestedUserId && normalizeId(ownerId) !== requestedUserId) return false
+        return isPublic || rowMatchesAny(row, ['user_id', 'userId'], identity.ids)
+      })
+      const videoIds = videos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const [importedLikes, fallbackLikes] = await Promise.all([
+        importedRows(pool, 'video_likes', 10_000),
+        localVideoLikes(pool, videoIds, 10_000),
+      ])
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const likeCounts = new Map()
+      const likedVideoIds = new Set()
+      for (const row of [...importedLikes, ...fallbackLikes]) {
+        const videoId = textOf(row, ['video_id', 'videoId'], '')
+        if (!videoId) continue
+        likeCounts.set(videoId, (likeCounts.get(videoId) || 0) + 1)
+        if (rowMatchesAny(row, ['user_id', 'userId'], identity.ids)) {
+          likedVideoIds.add(videoId)
+        }
+      }
+      const items = sortByDateDesc(videos, ['created_at', 'updated_at'])
+        .slice(offset, offset + limit)
+        .map((row) => enrichVideo(row, profilesById, likeCounts, likedVideoIds))
+      res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/videos/:videoId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      const [importedProfiles, localProfiles, importedVideos, fallbackVideos, importedLikes, fallbackLikes] = await Promise.all([
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+        importedRows(pool, 'video_likes', 10_000),
+        localVideoLikes(pool, [cleanId], 10_000),
+      ])
+      const row = [...importedVideos, ...fallbackVideos].find((entry) => normalizeId(textOf(entry, ['id'], '')) === cleanId)
+      if (!row) return res.status(404).json({ error: 'VIDEO_NOT_FOUND' })
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const likeCounts = new Map()
+      const likedVideoIds = new Set()
+      for (const likeRow of [...importedLikes, ...fallbackLikes]) {
+        const videoId = textOf(likeRow, ['video_id', 'videoId'], '')
+        if (normalizeId(videoId) !== cleanId) continue
+        likeCounts.set(videoId, (likeCounts.get(videoId) || 0) + 1)
+        if (rowMatchesAny(likeRow, ['user_id', 'userId'], identity.ids)) likedVideoIds.add(videoId)
+      }
+      res.json({ video: enrichVideo(row, profilesById, likeCounts, likedVideoIds) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/videos', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const title = String(req.body?.title || '').trim() || 'Nuevo reel'
+      const description = String(req.body?.description || '').trim()
+      const videoUrl = String(req.body?.videoUrl || req.body?.video_url || '').trim()
+      if (!videoUrl) return res.status(400).json({ error: 'VIDEO_URL_REQUIRED' })
+      const coverUrl = String(req.body?.coverUrl || req.body?.cover_url || req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim() || null
+      const durationSeconds = Math.max(0, Number(req.body?.durationSeconds ?? req.body?.duration_seconds ?? req.body?.duration ?? 0) || 0)
+      const trimStart = Math.max(0, Number(req.body?.trimStartSeconds ?? req.body?.trim_start_seconds ?? 0) || 0)
+      const trimEnd = Math.max(0, Number(req.body?.trimEndSeconds ?? req.body?.trim_end_seconds ?? durationSeconds) || durationSeconds)
+      const isPublic = req.body?.isPublic ?? req.body?.is_public
+      const tags = asArray(req.body?.tags)
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_videos(
+            user_id, user_name, user_profile_image, title, description,
+            video_url, cover_url, thumbnail_url, duration_seconds,
+            trim_start_seconds, trim_end_seconds, is_public, tags
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12::jsonb)
+         RETURNING *`,
+        [
+          identity.displayUserId,
+          user.display_name || user.email || 'Usuario',
+          user.avatar_url || null,
+          title,
+          description,
+          videoUrl,
+          coverUrl,
+          durationSeconds,
+          trimStart,
+          trimEnd,
+          isPublic === false ? false : true,
+          JSON.stringify(tags),
+        ],
+      )
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.status(201).json({ video: enrichVideo(normalizeImportedRow(rows[0]), profilesById, new Map(), new Set()) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/videos/:videoId/reaction', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      await pool.query(
+        `INSERT INTO fallback_video_likes(video_id, user_id)
+         VALUES ($1, $2)
+         ON CONFLICT (video_id, user_id) DO NOTHING`,
+        [cleanId, identity.displayUserId],
+      )
+      res.json({ ok: true, liked: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/videos/:videoId/reaction', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await pool.query(
+        `DELETE FROM fallback_video_likes
+         WHERE lower(video_id) = $1 AND lower(user_id) = $2`,
+        [normalizeId(req.params.videoId), identity.displayUserId],
+      )
+      res.json({ ok: true, liked: false })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/friends', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const tab = String(req.query.tab || 'incoming').trim().toLowerCase()
+      const [imported, localRows] = await Promise.all([
+        importedRows(pool, 'friends', 5000),
+        pool.query(
+          `SELECT id::text, sender_id, receiver_id, status, created_at
+           FROM fallback_friends
+           ORDER BY created_at DESC
+           LIMIT 5000`,
+        ).then((result) => result.rows.map(normalizeImportedRow)),
+      ])
+      const merged = [...imported, ...localRows].filter((row) => {
+        if (tab === 'outgoing') return rowMatchesAny(row, ['sender_id'], identity.ids)
+        if (tab === 'accepted') return row.status === 'accepted' && (rowMatchesAny(row, ['sender_id', 'receiver_id'], identity.ids))
+        return row.status === 'pending' && rowMatchesAny(row, ['receiver_id'], identity.ids)
+      })
+      res.json({ items: sortByDateDesc(merged, ['created_at']) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/friends', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const receiverId = normalizeId(req.body?.receiverId || req.body?.receiver_id || '')
+      if (!receiverId || receiverId === identity.displayUserId) {
+        return res.status(400).json({ error: 'INVALID_RECEIVER' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_friends(sender_id, receiver_id, status)
+         VALUES ($1, $2, 'pending')
+         ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
+         RETURNING id::text, sender_id, receiver_id, status, created_at`,
+        [identity.displayUserId, receiverId],
+      )
+      res.status(201).json({ request: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/friends/:requestId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const status = String(req.body?.status || '').trim().toLowerCase()
+      if (!['accepted', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'INVALID_STATUS' })
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_friends
+         SET status = $3
+         WHERE id::text = $1 AND lower(receiver_id) = $2
+         RETURNING id::text, sender_id, receiver_id, status, created_at`,
+        [normalizeId(req.params.requestId), identity.displayUserId, status],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
+      res.json({ request: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/messages/chats/:chatId', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -3171,24 +3567,31 @@ function registerDataRoutes(app, { pool, authRequired }) {
           .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
         ...arrayOf(chat || {}, ['participants']).map(normalizeId),
       ])
-      await Promise.all(
-        Array.from(recipientIds)
-          .filter((recipientId) => recipientId && !identity.ids.has(recipientId))
-          .map((recipientId) =>
-            createLocalNotification(pool, {
-              recipientId,
-              actorId: identity.displayUserId,
-              actorName: user.display_name || user.email || 'Usuario',
-              actorAvatarUrl: user.avatar_url || '',
-              type: 'message',
-              targetId: chatId,
-              targetType: 'chat',
-              content: content || previewFromMessage({ content_type: contentType }),
-              extraData: { chat_id: chatId, message_id: textOf(rows[0], ['id'], '') },
-            }),
-          ),
+      const recipientList = Array.from(recipientIds).filter(
+        (recipientId) => recipientId && !identity.ids.has(recipientId),
       )
-      res.status(201).json({ message: normalizeImportedRow(rows[0]) })
+      await Promise.all(
+        recipientList.map((recipientId) =>
+          createLocalNotification(pool, {
+            recipientId,
+            actorId: identity.displayUserId,
+            actorName: user.display_name || user.email || 'Usuario',
+            actorAvatarUrl: user.avatar_url || '',
+            type: 'message',
+            targetId: chatId,
+            targetType: 'chat',
+            content: content || previewFromMessage({ content_type: contentType }),
+            extraData: { chat_id: chatId, message_id: textOf(rows[0], ['id'], '') },
+          }),
+        ),
+      )
+      const normalizedMessage = normalizeImportedRow(rows[0])
+      void publishChatMessageEvent({
+        chatId,
+        message: normalizedMessage,
+        recipientIds: recipientList,
+      })
+      res.status(201).json({ message: normalizedMessage })
     } catch (error) {
       next(error)
     }

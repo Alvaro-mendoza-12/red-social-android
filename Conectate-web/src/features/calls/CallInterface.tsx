@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import { supabase } from '../../core/supabase'
 import { sendCallInvite, sendCallResponse } from './callRealtime'
 import WebCallManager, { type CallState, type CallParticipant } from './WebCallManager'
@@ -21,7 +22,7 @@ export function CallInterface({
   initialVideoEnabled = true,
   joinExisting = false,
 }: CallInterfaceProps) {
-  const { user, session } = useAuth()
+  const { user, session, isFallbackSession } = useAuth()
   const navigate = useNavigate()
   const [callState, setCallState] = useState<CallState | null>(null)
   const [callManager, setCallManager] = useState<WebCallManager | null>(null)
@@ -44,13 +45,17 @@ export function CallInterface({
   const avatarUrl = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
   const signalingBaseUrl = String(import.meta.env.VITE_CALL_SIGNALING_URL ?? import.meta.env.VITE_SIGNALING_URL ?? '').trim()
 
+  const accessToken = isFallbackSession
+    ? readFallbackSession()?.accessToken?.trim() ?? ''
+    : session?.access_token ?? ''
+
   useEffect(() => {
-    if (!user || !session?.access_token) return
+    if (!user || !accessToken) return
 
     try {
       const manager = new WebCallManager({
         userId: user.id,
-        accessToken: session.access_token,
+        accessToken,
         displayName,
         avatarUrl,
         signalingBaseUrl,
@@ -91,7 +96,7 @@ export function CallInterface({
       console.error('Error initializing call manager:', error)
       queueMicrotask(() => setError('No se pudo inicializar el sistema de llamadas'))
     }
-  }, [avatarUrl, displayName, navigate, session?.access_token, signalingBaseUrl, user])
+  }, [accessToken, avatarUrl, displayName, navigate, signalingBaseUrl, user])
 
   useEffect(() => {
     if (localVideoRef.current) {
@@ -106,7 +111,7 @@ export function CallInterface({
   }, [remoteStream])
 
   const initiateCall = useCallback(async () => {
-    if (!callManager || !user || !supabase || !remoteUserId.trim()) {
+    if (!callManager || !user || !remoteUserId.trim()) {
       setError('Ingresa un ID de usuario válido')
       return
     }

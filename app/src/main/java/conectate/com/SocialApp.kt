@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import conectate.com.auth.twoFactor.configureGoogleAuthForAndroid
 import conectate.com.util.AppDeviceTier
 import conectate.com.util.AppPerformanceProfiles
 
@@ -59,6 +60,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     private val appScope = newSafeScope("SocialApp", Dispatchers.Default)
 
     override fun onCreate() {
+        configureGoogleAuthForAndroid()
         super.onCreate()
         
         // 🔥 INICIALIZAR OPTIMIZADOR DE PRODUCCIÓN
