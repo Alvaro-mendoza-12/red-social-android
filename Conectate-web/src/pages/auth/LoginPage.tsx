@@ -22,11 +22,17 @@ import {
 } from '../../core/auth/webLoginPairing'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
+import { useWebPreferences } from '../../core/webPreferences'
 
 type LoginMode = 'password' | 'qr'
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
+}
+
+function isUbuntuInvalidCredentials(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return /inv[aá]lid/i.test(error.message) && /ubuntu/i.test(error.message)
 }
 
 function normalizeMode(value: string | null): LoginMode {
@@ -43,6 +49,7 @@ function normalizeNextPath(value: string | null): string {
 export function LoginPage() {
   const navigate = useNavigate()
   const client = supabase
+  const [webPreferences] = useWebPreferences()
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = useMemo<LoginMode>(() => normalizeMode(searchParams.get('mode')), [searchParams])
   const nextPath = useMemo(() => normalizeNextPath(searchParams.get('next')), [searchParams])
@@ -51,6 +58,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [migrationSetupEmail, setMigrationSetupEmail] = useState('')
   const [migrationSetupToken, setMigrationSetupToken] = useState('')
+  const [showMigrationToken, setShowMigrationToken] = useState(false)
+  const [legacyResetEmail, setLegacyResetEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
@@ -85,6 +94,8 @@ export function LoginPage() {
     setInfo(null)
     setMigratedPasswordReset(null)
     setMigrationSetupEmail('')
+    setLegacyResetEmail('')
+    setShowMigrationToken(false)
   }
 
   useEffect(() => {
@@ -225,6 +236,7 @@ export function LoginPage() {
     setLoading(true)
     setError(null)
     setInfo(null)
+    setLegacyResetEmail('')
     try {
       await signInWithResolvedEmail(client, email, password)
       setMigratedPasswordReset(null)
@@ -259,6 +271,12 @@ export function LoginPage() {
         setError(null)
         setInfo('Cuenta migrada desde Supabase. Crea tu contraseña local para continuar en el servidor Ubuntu.')
         return
+      }
+      if (isUbuntuInvalidCredentials(caught)) {
+        const normalized = normalizeEmail(email)
+        if (normalized) {
+          setLegacyResetEmail(normalized)
+        }
       }
       setError(friendlyError(caught, 'No se pudo iniciar sesión'))
     } finally {
@@ -296,9 +314,9 @@ export function LoginPage() {
     }
   }
 
-  async function requestMigrationPasswordReset() {
+  async function requestMigrationPasswordResetForEmail(targetEmail: string) {
     if (requestingMigrationReset) return
-    const normalizedEmail = normalizeEmail(migrationSetupEmail || email)
+    const normalizedEmail = normalizeEmail(targetEmail)
     if (!normalizedEmail) {
       setError('Ingresa el correo de la cuenta migrada.')
       return
@@ -312,9 +330,11 @@ export function LoginPage() {
         const reset = await requestFallbackPasswordReset(normalizedEmail)
         if (reset.resetToken) {
           setMigrationSetupToken(reset.resetToken)
+          setShowMigrationToken(false)
           setInfo('Ubuntu generó el código de migración. Lo pegamos automáticamente; crea tu nueva contraseña.')
           return
         }
+        setShowMigrationToken(true)
         setInfo(
           reset.delivery === 'console'
             ? 'Ubuntu generó el código, pero está configurado para mostrarlo en logs. En el servidor ejecuta docker compose logs --tail=80 api y pega aquí el token.'
@@ -329,6 +349,26 @@ export function LoginPage() {
     } finally {
       setRequestingMigrationReset(false)
     }
+  }
+
+  async function requestMigrationPasswordReset() {
+    return requestMigrationPasswordResetForEmail(migrationSetupEmail || email)
+  }
+
+  async function beginLegacyPasswordReset() {
+    const normalized = normalizeEmail(legacyResetEmail || email)
+    if (!normalized) return
+    setMigrationSetupEmail(normalized)
+    setMigrationSetupToken('')
+    setShowMigrationToken(false)
+    setFallbackResetPassword('')
+    setFallbackResetConfirmPassword('')
+    setMigratedPasswordReset(null)
+    setError(null)
+    setInfo(
+      'Si tu cuenta fue creada antes de migrar a Ubuntu, necesitas definir una nueva contraseña local una sola vez.',
+    )
+    await requestMigrationPasswordResetForEmail(normalized)
   }
 
   async function confirmMigrationPasswordReset(event: FormEvent<HTMLFormElement>) {
@@ -377,7 +417,12 @@ export function LoginPage() {
   }
 
   return (
-    <section className="auth-shell auth-shell-rich auth-shell-centered">
+    <section
+      className={[
+        'auth-shell auth-shell-rich auth-shell-centered',
+        `accent-${webPreferences.accentTheme}`,
+      ].join(' ')}
+    >
       <div className="auth-bg-scene" aria-hidden="true">
         <span className="auth-bg-card card-one">Chats</span>
         <span className="auth-bg-card card-two">Perfil</span>
@@ -447,6 +492,7 @@ export function LoginPage() {
                   onChange={(event) => {
                     setEmail(event.target.value)
                     setMigratedPasswordReset(null)
+                    setLegacyResetEmail('')
                   }}
                 />
               </label>
@@ -464,6 +510,24 @@ export function LoginPage() {
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
               </button>
             </form>
+          ) : null}
+
+          {mode === 'password' && legacyResetEmail && !migrationSetupEmail && !migratedPasswordReset ? (
+            <div className="surface-subcard legacy-reset-callout">
+              <strong>¿Cuenta antigua? Cambia tu contraseña</strong>
+              <p>
+                Si creaste tu cuenta antes de migrar a Ubuntu, tu contraseña vieja no se puede usar aquí.
+                Cambia la contraseña y podrás entrar con normalidad.
+              </p>
+              <button
+                className="primary-btn"
+                type="button"
+                disabled={requestingMigrationReset}
+                onClick={() => void beginLegacyPasswordReset()}
+              >
+                {requestingMigrationReset ? 'Preparando...' : 'Cambiar contraseña'}
+              </button>
+            </div>
           ) : null}
 
           {mode === 'password' && migrationSetupEmail ? (
@@ -484,16 +548,28 @@ export function LoginPage() {
               >
                 {requestingMigrationReset ? 'Generando código...' : 'Cambiar contraseña'}
               </button>
-              <label>
-                Código de migración
-                <input
-                  type="text"
-                  required
-                  value={migrationSetupToken}
-                  autoComplete="one-time-code"
-                  onChange={(event) => setMigrationSetupToken(event.target.value)}
-                />
-              </label>
+              {showMigrationToken || !migrationSetupToken ? (
+                <label>
+                  Código de migración
+                  <input
+                    type="text"
+                    required
+                    value={migrationSetupToken}
+                    autoComplete="one-time-code"
+                    onChange={(event) => setMigrationSetupToken(event.target.value)}
+                  />
+                </label>
+              ) : (
+                <div className="migration-token-ready">
+                  <div>
+                    <strong>Código listo</strong>
+                    <p>Ya lo guardamos. Ahora crea tu nueva contraseña.</p>
+                  </div>
+                  <button className="mini-action-btn" type="button" onClick={() => setShowMigrationToken(true)}>
+                    Ver código
+                  </button>
+                </div>
+              )}
               <label>
                 Nueva contraseña
                 <input

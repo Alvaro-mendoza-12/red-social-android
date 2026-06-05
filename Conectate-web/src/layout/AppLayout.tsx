@@ -850,6 +850,7 @@ export function AppLayout() {
         isNavCollapsed ? 'nav-collapsed' : '',
         isMessagesRoute ? 'route-messages' : '',
         `theme-${webPreferences.themeMode}`,
+        `accent-${webPreferences.accentTheme}`,
         `text-scale-${webPreferences.textScale}`,
       ].filter(Boolean).join(' ')}
     >

@@ -184,7 +184,7 @@ export function AccountSettingsPage() {
       },
       {
         label: 'Web',
-        value: webPreferences.themeMode,
+        value: `${webPreferences.themeMode} · ${webPreferences.accentTheme}`,
         hint: `${webPreferences.language.toUpperCase()} · ${webPreferences.textScale}`,
       },
     ],
@@ -195,6 +195,7 @@ export function AccountSettingsPage() {
       profileCompletion,
       webPreferences.language,
       webPreferences.textScale,
+      webPreferences.accentTheme,
       webPreferences.themeMode,
     ],
   )
@@ -540,39 +541,69 @@ export function AccountSettingsPage() {
       </article>
 
       <div className="settings-grid">
-        <article id="perfil-ajustes" className="surface-card section-stack">
+        <article id="perfil-ajustes" className="surface-card section-stack settings-card-wide">
           <div>
             <h3>Perfil</h3>
             <p>Datos visibles para tu comunidad.</p>
           </div>
           <div className="composer settings-stack">
-            <input
-              className="text-input"
-              placeholder="Nombre visible"
-              value={model.displayName}
-              onChange={(event) =>
-                setModel((current) => ({ ...current, displayName: event.target.value }))
-              }
-            />
-            <input
-              className="text-input tiny-input"
-              placeholder="Usuario"
-              value={model.username}
-              onChange={(event) => setModel((current) => ({ ...current, username: event.target.value }))}
-            />
-            <textarea
-              className="text-input textarea-input"
-              rows={4}
-              placeholder="Biografía"
-              value={model.bio}
-              onChange={(event) => setModel((current) => ({ ...current, bio: event.target.value }))}
-            />
-            <input
-              className="text-input"
-              placeholder="Avatar URL"
-              value={model.avatarUrl}
-              onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
-            />
+            <div className="settings-profile-preview">
+              <div
+                className="settings-profile-cover"
+                style={model.coverUrl.trim() ? { backgroundImage: `url(${model.coverUrl.trim()})` } : undefined}
+              />
+              <div className="settings-profile-avatar">
+                {model.avatarUrl.trim() ? (
+                  <img src={model.avatarUrl.trim()} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                ) : (
+                  <span>{(model.displayName.trim() || currentEmail || 'U').charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="settings-profile-meta">
+                <strong>{model.displayName.trim() || 'Tu perfil'}</strong>
+                <span>{model.username.trim() ? `@${model.username.trim()}` : currentEmail || ''}</span>
+              </div>
+            </div>
+
+            <div className="settings-form-grid">
+              <input
+                className="text-input"
+                placeholder="Nombre visible"
+                value={model.displayName}
+                onChange={(event) =>
+                  setModel((current) => ({ ...current, displayName: event.target.value }))
+                }
+              />
+              <input
+                className="text-input tiny-input"
+                placeholder="Usuario"
+                value={model.username}
+                onChange={(event) => setModel((current) => ({ ...current, username: event.target.value }))}
+              />
+              <textarea
+                className="text-input textarea-input settings-form-span-2"
+                rows={4}
+                placeholder="Biografía"
+                value={model.bio}
+                onChange={(event) => setModel((current) => ({ ...current, bio: event.target.value }))}
+              />
+            </div>
+
+            <div className="settings-form-grid">
+              <input
+                className="text-input"
+                placeholder="Avatar URL"
+                value={model.avatarUrl}
+                onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
+              />
+              <input
+                className="text-input"
+                placeholder="Banner / cover URL"
+                value={model.coverUrl}
+                onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
+              />
+            </div>
+
             <div className="asset-upload-row">
               <label className={isFallbackSession ? 'asset-upload-button' : 'asset-upload-button disabled'}>
                 <span>{uploadingAsset === 'avatar' ? 'Subiendo foto...' : 'Subir foto de perfil'}</span>
@@ -589,12 +620,6 @@ export function AccountSettingsPage() {
                   : 'Inicia con Ubuntu para subir archivos al storage propio.'}
               </small>
             </div>
-            <input
-              className="text-input"
-              placeholder="Banner / cover URL"
-              value={model.coverUrl}
-              onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
-            />
             <div className="asset-upload-row">
               <label className={isFallbackSession ? 'asset-upload-button secondary' : 'asset-upload-button secondary disabled'}>
                 <span>{uploadingAsset === 'cover' ? 'Subiendo portada...' : 'Subir portada'}</span>
@@ -611,20 +636,22 @@ export function AccountSettingsPage() {
                   : 'El storage propio se activa con sesión Ubuntu.'}
               </small>
             </div>
-            <input
-              className="text-input"
-              placeholder="Intereses separados por coma: anime, juegos, música"
-              value={model.interestsText}
-              onChange={(event) => setModel((current) => ({ ...current, interestsText: event.target.value }))}
-            />
-            <input
-              className="text-input"
-              placeholder="Juegos separados por coma"
-              value={model.linkedGamesText}
-              onChange={(event) => setModel((current) => ({ ...current, linkedGamesText: event.target.value }))}
-            />
+            <div className="settings-form-grid">
+              <input
+                className="text-input"
+                placeholder="Intereses separados por coma: anime, juegos, música"
+                value={model.interestsText}
+                onChange={(event) => setModel((current) => ({ ...current, interestsText: event.target.value }))}
+              />
+              <input
+                className="text-input"
+                placeholder="Juegos separados por coma"
+                value={model.linkedGamesText}
+                onChange={(event) => setModel((current) => ({ ...current, linkedGamesText: event.target.value }))}
+              />
+            </div>
             <textarea
-              className="text-input textarea-input"
+              className="text-input textarea-input settings-form-span-2"
               rows={3}
               placeholder="Logos de juegos: Minecraft=https://..."
               value={model.gameLogoUrlsText}
@@ -859,7 +886,7 @@ export function AccountSettingsPage() {
           <label className="settings-toggle-card vertical">
             <div>
               <strong>Apariencia</strong>
-              <p>Tema claro/oscuro/sistema como en móvil.</p>
+              <p>Modo claro/oscuro/sistema como en móvil.</p>
             </div>
             <select
               className="text-input tiny-input"
@@ -871,6 +898,25 @@ export function AccountSettingsPage() {
               <option value="system">Sistema</option>
               <option value="light">Claro</option>
               <option value="dark">Oscuro</option>
+            </select>
+          </label>
+          <label className="settings-toggle-card vertical">
+            <div>
+              <strong>Color del tema</strong>
+              <p>Cambia la paleta (gradientes y acentos) como en una red social más pro.</p>
+            </div>
+            <select
+              className="text-input tiny-input"
+              value={webPreferences.accentTheme}
+              onChange={(event) =>
+                updateWebPreferences({ accentTheme: event.target.value as typeof webPreferences.accentTheme })
+              }
+            >
+              <option value="conectate">Conectate</option>
+              <option value="ocean">Océano</option>
+              <option value="violet">Violeta</option>
+              <option value="emerald">Esmeralda</option>
+              <option value="midnight">Midnight</option>
             </select>
           </label>
           <label className="settings-toggle-card vertical">

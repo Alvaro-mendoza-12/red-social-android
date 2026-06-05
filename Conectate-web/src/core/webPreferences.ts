@@ -4,6 +4,7 @@ export type WebPreferences = {
   compactInbox: boolean
   lowDataMode: boolean
   themeMode: 'system' | 'light' | 'dark'
+  accentTheme: 'conectate' | 'ocean' | 'violet' | 'emerald' | 'midnight'
   textScale: 'compact' | 'normal' | 'large'
   language: string
 }
@@ -15,6 +16,7 @@ const defaultPreferences: WebPreferences = {
   compactInbox: false,
   lowDataMode: false,
   themeMode: 'system',
+  accentTheme: 'conectate',
   textScale: 'normal',
   language: 'es',
 }
@@ -32,6 +34,14 @@ export function readWebPreferences(): WebPreferences {
         parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'system'
           ? parsed.themeMode
           : 'system',
+      accentTheme:
+        parsed.accentTheme === 'conectate' ||
+        parsed.accentTheme === 'ocean' ||
+        parsed.accentTheme === 'violet' ||
+        parsed.accentTheme === 'emerald' ||
+        parsed.accentTheme === 'midnight'
+          ? parsed.accentTheme
+          : 'conectate',
       textScale:
         parsed.textScale === 'compact' || parsed.textScale === 'large' || parsed.textScale === 'normal'
           ? parsed.textScale
