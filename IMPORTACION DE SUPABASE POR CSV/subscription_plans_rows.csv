@@ -1,0 +1,4 @@
+id,name,description,price_monthly,price_yearly,features,is_active,sort_order
+0089ba17-a694-4b0f-9750-bca54ba96139,Premium Básico,Funciones premium básicas,4.99,49.99,"[""posts_sin_limite"", ""hashtags_trending"", ""sticker_packs""]",true,1
+bd7a8913-a193-4cb2-88d7-d76277ecd2a6,Premium Pro,Para creadores profesionales,9.99,99.99,"[""posts_sin_limite"", ""hashtags_trending"", ""sticker_packs"", ""analytics"", ""monetization""]",true,2
+cfc10171-2310-4fb4-bfc1-29ab6f0cc01c,Premium Creator,Para super creadores,19.99,199.99,"[""posts_sin_limite"", ""hashtags_trending"", ""sticker_packs"", ""analytics"", ""monetization"", ""priority_support""]",true,3

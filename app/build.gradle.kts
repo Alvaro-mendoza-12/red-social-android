@@ -242,7 +242,6 @@ dependencies {
     implementation(libs.mlkit.text.recognition)
     implementation(libs.zxing.android.embedded)
     implementation(libs.zxing.core)
-    implementation(libs.googleauth)
 
     implementation(libs.webrtc)
     implementation(libs.socket.io.client) {
