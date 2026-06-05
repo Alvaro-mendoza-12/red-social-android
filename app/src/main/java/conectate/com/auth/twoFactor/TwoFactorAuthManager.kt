@@ -10,7 +10,6 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.WriterException
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
-import com.warrenstrange.googleauth.GoogleAuthenticator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,10 +26,6 @@ class TwoFactorAuthManager @Inject constructor(
 ) {
 
     companion object {
-        init {
-            configureGoogleAuthForAndroid()
-        }
-
         private const val SHARED_PREFS_NAME = "two_factor_auth_prefs"
         private const val SECRET_KEY = "totp_secret"
         private const val BACKUP_CODES_KEY = "backup_codes"
@@ -94,8 +89,6 @@ class TwoFactorAuthManager @Inject constructor(
         )
     }
 
-    private val authenticator by lazy { GoogleAuthenticator() }
-
     private val _is2FAEnabled = MutableStateFlow(is2FAEnabledStored())
     val is2FAEnabled: StateFlow<Boolean> = _is2FAEnabled.asStateFlow()
 
@@ -107,7 +100,7 @@ class TwoFactorAuthManager @Inject constructor(
 
     suspend fun generateTOTPSecret(email: String): TwoFactorAuthResult {
         return runCatching {
-            val secret = authenticator.createCredentials().key
+            val secret = AndroidTotp.generateSecret()
             val totpSecret = TOTPSecret(
                 secret = secret,
                 accountName = email.trim().lowercase()
@@ -147,9 +140,7 @@ class TwoFactorAuthManager @Inject constructor(
         val numericCode = code.trim().toIntOrNull()
             ?: return registerFailedAttempt("El código de verificación no es válido.")
 
-        val isValid = runCatching {
-            authenticator.authorize(secret, numericCode)
-        }.getOrDefault(false)
+        val isValid = AndroidTotp.authorize(secret, numericCode)
 
         return if (isValid) {
             resetFailedAttempts()
@@ -232,9 +223,7 @@ class TwoFactorAuthManager @Inject constructor(
     fun is2FARequired(): Boolean = is2FAEnabledStored()
 
     suspend fun getCurrentTOTPCode(secret: String): String? {
-        val numericCode = runCatching {
-            authenticator.getTotpPassword(secret)
-        }.getOrNull() ?: return null
+        val numericCode = AndroidTotp.currentCode(secret).takeIf { it > 0 } ?: return null
         return numericCode.toString().padStart(TOTP_DIGITS, '0')
     }
 

@@ -50,10 +50,15 @@ class SupabaseConfig @Inject constructor(
     private val rawSupabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
     private val rawSupabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
     private val rawFallbackApiUrl: String = BuildConfig.FALLBACK_API_URL.trim().replace(Regex("/+$"), "")
-    val isLocalFallbackPrimary: Boolean = BuildConfig.FALLBACK_API_URL.trim().startsWith("http")
+    private val hasSupabaseBackend: Boolean =
+        rawSupabaseUrl.startsWith("http", ignoreCase = true) && rawSupabaseAnonKey.isNotBlank()
+    private val hasFallbackBackend: Boolean =
+        rawFallbackApiUrl.startsWith("http", ignoreCase = true)
+    /** Ubuntu/local API is primary only when configured and Supabase is not. */
+    val isLocalFallbackPrimary: Boolean = hasFallbackBackend && !hasSupabaseBackend
     val supabaseUrl: String = if (isLocalFallbackPrimary) rawFallbackApiUrl else rawSupabaseUrl
     val supabaseAnonKey: String = if (isLocalFallbackPrimary) LOCAL_FALLBACK_ANON_KEY else rawSupabaseAnonKey
-    val isConfigured: Boolean = !isLocalFallbackPrimary && rawSupabaseUrl.startsWith("http") && rawSupabaseAnonKey.isNotBlank()
+    val isConfigured: Boolean = hasSupabaseBackend
 
     // URLs específicas para diferentes servicios
     val authUrl: String = "$supabaseUrl/auth/v1"

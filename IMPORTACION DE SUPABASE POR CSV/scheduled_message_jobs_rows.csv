@@ -1,0 +1,2 @@
+id,owner_id,scope_type,target_id,content,content_type,media_url,translate_to,self_destruct_seconds,scheduled_for,status,error_message,created_at,updated_at
+3ada721c-7149-4479-bfbe-6e64d4749653,24eecc96-1c29-4183-bae9-bc6dd951e25b,dm,a794914d-b665-4512-81ec-12ec0f8c7e0f,hola,text,,hola,3,2026-02-25 10:06:31.725+00,sent,,2026-02-25 10:06:49.315445+00,2026-02-25 10:12:26.578264+00

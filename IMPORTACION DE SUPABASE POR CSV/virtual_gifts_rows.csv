@@ -1,0 +1,6 @@
+id,name,description,image_url,price_diamonds,price_credits,animation_url,is_active,sort_order,created_at
+13c32ee9-55a8-40fd-abcc-44bd1287ae9f,Rosa,Una hermosa rosa virtual,conectate://gift-assets/rose,25,4.99,,true,2,2026-04-26 04:16:10.774564+00
+4e705c0b-2e62-47bf-9378-24b1395e9edd,Trofeo,¡Felicitaciones por tu victoria!,conectate://gift-assets/trophy,50,9.99,,true,3,2026-04-26 04:16:10.774564+00
+632fdcce-8547-4ce0-8ace-2cc2c235fd23,Fuegos Artificiales,¡Celebración épica!,conectate://gift-assets/fireworks,100,19.99,,true,4,2026-04-26 04:16:10.774564+00
+693e4ec8-539e-4ee9-a265-436f360e81ac,Superestrella,Eres una estrella,conectate://gift-assets/star,200,39.99,,true,5,2026-04-26 04:16:10.774564+00
+e515ee81-8f96-419c-96b1-4b8339b83fe8,Corazón,Un corazón para expresar tu cariño,conectate://gift-assets/heart,10,1.99,,true,1,2026-04-26 04:16:10.774564+00
