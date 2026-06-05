@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { PasswordResetPage } from './PasswordResetPage'
 import {
   completeMigratedPasswordReset,
   confirmFallbackPasswordReset,
