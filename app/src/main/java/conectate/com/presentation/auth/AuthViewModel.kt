@@ -338,6 +338,70 @@ class AuthViewModel  constructor(
         }
     }
 
+    /**
+     * Flujo "sin código" para cuentas migradas:
+     * - Si el backend ya entregó migrationToken (caso reset requerido), lo usamos directo.
+     * - Si no hay migrationToken (caso setup requerido), solicitamos el reset token al backend
+     *   y si lo devuelve en la respuesta, confirmamos automáticamente sin pedir que el usuario lo escriba.
+     */
+    fun setupMigratedPassword(email: String, migrationToken: String?, newPassword: String) {
+        viewModelScope.launch {
+            val normalizedEmail = email.trim().lowercase()
+            val token = migrationToken?.trim().orEmpty()
+            val nextPassword = newPassword.trim()
+
+            if (normalizedEmail.isBlank()) {
+                _authState.value = AuthState.Error("No se encontró el correo de la cuenta migrada.")
+                return@launch
+            }
+            if (nextPassword.length < 8) {
+                _authState.value = AuthState.Error("La nueva contraseña debe tener al menos 8 caracteres.")
+                return@launch
+            }
+
+            _authState.value = AuthState.Loading
+
+            // Caso 1: el backend ya entregó migrationToken (no requiere código).
+            if (token.isNotBlank()) {
+                val result = authRepository.completeMigratedLocalPasswordReset(token, nextPassword)
+                _authState.value = result.fold(
+                    onSuccess = {
+                        _isUserLoggedIn.value = true
+                        _currentUserId.value = it.id
+                        AuthState.Success(it)
+                    },
+                    onFailure = { AuthState.Error(mapAuthError(it)) }
+                )
+                return@launch
+            }
+
+            // Caso 2: setup requerido (antes pedía "código de migración").
+            val resetRequest = authRepository.requestLocalFallbackPasswordReset(normalizedEmail)
+            val resetInfo = resetRequest.getOrElse {
+                _authState.value = AuthState.Error(mapAuthError(it))
+                return@launch
+            }
+
+            val resetToken = resetInfo.resetToken?.trim().orEmpty()
+            if (resetToken.isBlank()) {
+                _authState.value = AuthState.Error(
+                    "El servidor no devolvió el código automáticamente. Revisa la configuración del servidor Ubuntu o sus logs para obtenerlo."
+                )
+                return@launch
+            }
+
+            val confirm = authRepository.confirmLocalFallbackPasswordReset(resetToken, nextPassword)
+            _authState.value = confirm.fold(
+                onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    AuthState.Success(it)
+                },
+                onFailure = { AuthState.Error(mapAuthError(it)) }
+            )
+        }
+    }
+
     fun updatePassword(newPassword: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading

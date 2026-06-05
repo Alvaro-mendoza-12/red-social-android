@@ -62,7 +62,6 @@ fun LoginScreen(
     var migrationEmail by rememberSaveable { mutableStateOf("") }
     var migrationDisplayName by rememberSaveable { mutableStateOf("") }
     var migrationToken by rememberSaveable { mutableStateOf("") }
-    var migrationResetToken by rememberSaveable { mutableStateOf("") }
     var migrationNewPassword by rememberSaveable { mutableStateOf("") }
     var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
@@ -99,35 +98,20 @@ fun LoginScreen(
                 migrationEmail = resolvedEmail
                 migrationDisplayName = state.displayName.orEmpty()
                 migrationToken = state.migrationToken.orEmpty()
-                migrationResetToken = ""
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
                 migrationInfo = if (migrationToken.isNotBlank()) {
                     "Cuenta migrada desde Supabase. Crea tu nueva contraseña para activar Ubuntu."
                 } else {
-                    "Esta cuenta viene de Supabase y necesita crear una contraseña nueva en Ubuntu."
+                    "Esta cuenta viene de Supabase y necesita crear una contraseña nueva en Ubuntu. (Se generará el código automáticamente si el servidor lo permite.)"
                 }
                 if (resolvedEmail.isNotBlank()) email = resolvedEmail
                 password = ""
-            }
-            is AuthState.MigrationPasswordCodeSent -> {
-                loginType = "email"
-                migrationEmail = state.email
-                migrationToken = ""
-                migrationResetToken = state.resetToken.orEmpty()
-                migrationInfo = if (!state.resetToken.isNullOrBlank()) {
-                    "Ubuntu generó el código de migración y lo pegamos automáticamente."
-                } else if (state.delivery == "console") {
-                    "Ubuntu generó el código en los logs del servidor. Pégalo aquí para continuar."
-                } else {
-                    "Ubuntu recibió la solicitud. Si no ves el código, revisa la configuración de recuperación del servidor."
-                }
             }
             is AuthState.Success -> {
                 migrationEmail = ""
                 migrationDisplayName = ""
                 migrationToken = ""
-                migrationResetToken = ""
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
                 migrationInfo = ""
@@ -398,7 +382,6 @@ fun LoginScreen(
                         migrationEmail = ""
                         migrationDisplayName = ""
                         migrationToken = ""
-                        migrationResetToken = ""
                         migrationNewPassword = ""
                         migrationConfirmPassword = ""
                         migrationInfo = ""
@@ -452,18 +435,12 @@ fun LoginScreen(
                 MigratedPasswordSetupCard(
                     email = migrationEmail,
                     displayName = migrationDisplayName,
-                    migrationToken = migrationToken,
-                    resetToken = migrationResetToken,
                     newPassword = migrationNewPassword,
                     confirmPassword = migrationConfirmPassword,
                     info = migrationInfo,
                     isLoading = authState is AuthState.Loading,
-                    onResetTokenChange = { migrationResetToken = it },
                     onNewPasswordChange = { migrationNewPassword = it },
                     onConfirmPasswordChange = { migrationConfirmPassword = it },
-                    onRequestCode = {
-                        viewModel.requestMigratedPasswordCode(migrationEmail)
-                    },
                     onSubmit = {
                         val nextPassword = migrationNewPassword.trim()
                         if (nextPassword.length < 8) {
@@ -474,16 +451,11 @@ fun LoginScreen(
                             viewModel.setAuthError("La confirmación no coincide con la contraseña nueva.")
                             return@MigratedPasswordSetupCard
                         }
-                        if (migrationToken.isNotBlank()) {
-                            viewModel.completeMigratedPasswordReset(migrationToken, nextPassword)
-                        } else {
-                            val code = migrationResetToken.trim()
-                            if (code.isBlank()) {
-                                viewModel.setAuthError("Pega el código de migración antes de continuar.")
-                                return@MigratedPasswordSetupCard
-                            }
-                            viewModel.confirmMigratedPasswordCode(code, nextPassword)
-                        }
+                        viewModel.setupMigratedPassword(
+                            email = migrationEmail,
+                            migrationToken = migrationToken,
+                            newPassword = nextPassword
+                        )
                     }
                 )
 
@@ -574,16 +546,12 @@ fun LoginScreen(
 private fun MigratedPasswordSetupCard(
     email: String,
     displayName: String,
-    migrationToken: String,
-    resetToken: String,
     newPassword: String,
     confirmPassword: String,
     info: String,
     isLoading: Boolean,
-    onResetTokenChange: (String) -> Unit,
     onNewPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
-    onRequestCode: () -> Unit,
     onSubmit: () -> Unit
 ) {
     Card(
@@ -611,25 +579,6 @@ private fun MigratedPasswordSetupCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
-
-            if (migrationToken.isBlank()) {
-                Button(
-                    onClick = onRequestCode,
-                    enabled = !isLoading,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (isLoading) "Generando..." else "Cambiar contraseña")
-                }
-
-                OutlinedTextField(
-                    value = resetToken,
-                    onValueChange = onResetTokenChange,
-                    label = { Text("Código de migración") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    enabled = !isLoading
-                )
-            }
 
             OutlinedTextField(
                 value = newPassword,
