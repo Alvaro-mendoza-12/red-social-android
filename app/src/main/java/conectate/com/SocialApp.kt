@@ -35,7 +35,7 @@ import conectate.com.util.AppPerformanceProfiles
 @HiltAndroidApp
 class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     
-    @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var workerFactory: HiltWorkerFactory // ⚠️ No hay @Provides para este tipo
     @Inject lateinit var crashReporter: CrashReporter
     @Inject lateinit var logger: AppLogger
     @Inject lateinit var appMetrics: AppMetrics
@@ -56,7 +56,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             Configuration.Builder().build()
         }
 
-    private val appScope = newSafeScope("SocialApp", Dispatchers.Default)
+    private val appScope = newSafeScope("SocialApp", Dispatchers.Default) // ⚠️ Sin SupervisorJob
 
     override fun onCreate() {
         super.onCreate()
@@ -69,7 +69,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         Coil.setImageLoader(newImageLoader())
         
         // Initialize crash reporting
-        Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+        Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG) // ⚠️ Falta FirebaseApp.initializeApp()
         Firebase.crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
         Firebase.crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
 
