@@ -48,6 +48,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override val workManagerConfiguration: Configuration
         get() = try {
+            check(::workerFactory.isInitialized) 
             Configuration.Builder()
                 .setWorkerFactory(workerFactory)
                 .setMinimumLoggingLevel(android.util.Log.INFO)
