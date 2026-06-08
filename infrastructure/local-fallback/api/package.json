@@ -8,6 +8,8 @@
     "start": "node src/server.js",
     "import:csv": "node src/import-csv.js",
     "import:all-csv": "node src/import-all-csv.js",
+    "import:supabase-storage": "node src/import-supabase-storage.js",
+    "rewrite:supabase-storage-urls": "node src/rewrite-supabase-storage-urls.js",
     "check": "node --check src/server.js"
   },
   "engines": {

@@ -192,6 +192,18 @@ curl -sS -X POST http://127.0.0.1:3001/v1/admin/users/set-local-password \
   -d '{"email":"usuario@example.com","password":"NuevaClaveTemporal123!"}'
 ```
 
+## Importar multimedia de Supabase Storage
+
+Cuando Supabase permita acceder a los buckets, usa el procedimiento completo de
+`docs/SUPABASE_STORAGE_TO_UBUNTU.md`. El flujo recomendado es:
+
+```bash
+docker compose run --rm api npm run import:supabase-storage -- --dry-run
+docker compose run --rm api npm run import:supabase-storage
+docker compose run --rm api npm run rewrite:supabase-storage-urls -- --dry-run
+docker compose run --rm api npm run rewrite:supabase-storage-urls -- --apply
+```
+
 ## Importar usuarios/perfiles por CSV
 
 Si Supabase esta restringido por API pero puedes exportar CSV desde el

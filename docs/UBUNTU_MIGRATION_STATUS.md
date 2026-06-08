@@ -8,7 +8,7 @@ La migracion no esta al 100%.
 
 El proyecto ya puede funcionar con Ubuntu como backend primario cuando se configura `FALLBACK_API_URL` en Android y `VITE_FALLBACK_API_URL` en la web, pero todavia existen dependencias, nombres de clases, repositorios y rutas legacy de Supabase en codigo activo.
 
-Estimacion actual: 80-82%.
+Estimacion actual: 82-84%.
 
 ## Cambios recientes validados
 
@@ -23,6 +23,9 @@ Estimacion actual: 80-82%.
 - La mensajeria web privada, de grupos y comunidades usa `shouldUseUbuntuBackend`; con Ubuntu primario carga/envia/sube adjuntos por el servidor propio y no intenta Realtime/RPC de Supabase.
 - El build web exige `VITE_FALLBACK_API_URL`; Supabase legacy ya no es aceptado como backend valido para compilar.
 - El build Android exige `FALLBACK_API_URL` o `LOCAL_FALLBACK_API_URL` en `secrets.properties`; se elimino la URL ngrok hardcodeada como fallback automatico.
+- Se agrego importador reproducible de Supabase Storage hacia storage Ubuntu: `npm run import:supabase-storage`.
+- Se agrego reescritor seguro de URLs multimedia Supabase -> Ubuntu con `--dry-run` y `--apply`: `npm run rewrite:supabase-storage-urls`.
+- Se documento el procedimiento completo en `docs/SUPABASE_STORAGE_TO_UBUNTU.md`.
 
 ## Crash Android corregido
 
@@ -95,6 +98,13 @@ LEGACY_SUPABASE_IMPORT_ENABLED=false
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_SECRET_KEY=
+SUPABASE_STORAGE_BUCKETS=
+SUPABASE_STORAGE_DRY_RUN=false
+SUPABASE_STORAGE_OVERWRITE=false
+SUPABASE_STORAGE_PAGE_SIZE=100
+SUPABASE_STORAGE_SOURCE_BASE_URLS=
+SUPABASE_STORAGE_REWRITE_APPLY=false
 ```
 
 ## Pasos para mini PC
@@ -113,6 +123,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 ## Pendiente para 100%
 
 - Remover SDKs Supabase de Android y web.
+- Ejecutar en Ubuntu la importacion real de buckets Supabase Storage ahora que la cuota fue desbloqueada.
+- Ejecutar el reescritor de URLs de storage despues de verificar que los archivos ya existen en Ubuntu.
 - Sustituir todas las llamadas `supabase.from`, `supabase.storage`, `supabase.auth`, `supabase.rpc` y `supabase.realtime` por APIs Ubuntu.
 - Completar endpoints Ubuntu para cada modulo restante.
 - Completar endpoints Ubuntu de mensajeria avanzada: polls, reacciones, view-once, preferencias, traduccion y programacion de mensajes.
