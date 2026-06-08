@@ -73,3 +73,4 @@ openclaw_*.zip
 signaling-server*.zip
 .vercel
 .env*
+.aider*

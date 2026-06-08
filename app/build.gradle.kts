@@ -205,7 +205,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.process)
 
+    // Legacy compatibility while remaining repositories are moved to the Ubuntu API.
     implementation(libs.supabase.realtime)
     implementation(libs.supabase.gotrue)
     implementation(libs.supabase.postgrest)

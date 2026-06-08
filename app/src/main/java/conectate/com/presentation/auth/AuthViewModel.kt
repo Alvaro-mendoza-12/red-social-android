@@ -402,6 +402,42 @@ class AuthViewModel  constructor(
         }
     }
 
+    /**
+     * Flujo directo sin código de migración para usuarios migrados:
+     * Solo requiere email y nueva contraseña (con verificación).
+     */
+    fun directPasswordReset(email: String, newPassword: String, confirmPassword: String) {
+        viewModelScope.launch {
+            val normalizedEmail = email.trim().lowercase()
+            val nextPassword = newPassword.trim()
+            val nextConfirmPassword = confirmPassword.trim()
+
+            if (normalizedEmail.isBlank()) {
+                _authState.value = AuthState.Error("Por favor, ingresa tu correo electrónico.")
+                return@launch
+            }
+            if (nextPassword.length < 8) {
+                _authState.value = AuthState.Error("La nueva contraseña debe tener al menos 8 caracteres.")
+                return@launch
+            }
+            if (nextPassword != nextConfirmPassword) {
+                _authState.value = AuthState.Error("Las contraseñas no coinciden.")
+                return@launch
+            }
+
+            _authState.value = AuthState.Loading
+            val result = authRepository.directPasswordReset(normalizedEmail, nextPassword)
+            _authState.value = result.fold(
+                onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    AuthState.Success(it)
+                },
+                onFailure = { AuthState.Error(mapAuthError(it)) }
+            )
+        }
+    }
+
     fun updatePassword(newPassword: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading

@@ -58,7 +58,6 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [migrationSetupEmail, setMigrationSetupEmail] = useState('')
   const [migrationSetupToken, setMigrationSetupToken] = useState('')
-  const [showMigrationToken, setShowMigrationToken] = useState(false)
   const [legacyResetEmail, setLegacyResetEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -95,7 +94,6 @@ export function LoginPage() {
     setMigratedPasswordReset(null)
     setMigrationSetupEmail('')
     setLegacyResetEmail('')
-    setShowMigrationToken(false)
   }
 
   useEffect(() => {
@@ -328,18 +326,13 @@ export function LoginPage() {
     try {
       if (isFallbackAuthConfigured) {
         const reset = await requestFallbackPasswordReset(normalizedEmail)
-        if (reset.resetToken) {
-          setMigrationSetupToken(reset.resetToken)
-          setShowMigrationToken(false)
-          setInfo('Ubuntu generó el código de migración. Lo pegamos automáticamente; crea tu nueva contraseña.')
-          return
+        if (!reset.resetToken) {
+          throw new Error(
+            'Ubuntu no devolvió el token automáticamente. Configura PASSWORD_RESET_DELIVERY=response en el .env del servidor y reinicia docker compose.',
+          )
         }
-        setShowMigrationToken(true)
-        setInfo(
-          reset.delivery === 'console'
-            ? 'Ubuntu generó el código, pero está configurado para mostrarlo en logs. En el servidor ejecuta docker compose logs --tail=80 api y pega aquí el token.'
-            : 'Ubuntu recibió la solicitud de recuperación. Si no llega correo, cambia PASSWORD_RESET_DELIVERY=response en el .env del servidor.',
-        )
+        setMigrationSetupToken(reset.resetToken)
+        setInfo('Listo. Ahora crea tu nueva contraseña para entrar con normalidad (sin escribir código).')
         return
       }
 
@@ -360,7 +353,6 @@ export function LoginPage() {
     if (!normalized) return
     setMigrationSetupEmail(normalized)
     setMigrationSetupToken('')
-    setShowMigrationToken(false)
     setFallbackResetPassword('')
     setFallbackResetConfirmPassword('')
     setMigratedPasswordReset(null)
@@ -376,7 +368,9 @@ export function LoginPage() {
     if (confirmingMigrationReset) return
     const normalizedCode = migrationSetupToken.trim()
     if (!normalizedCode) {
-      setError('Pega el código de migración antes de continuar.')
+      setError(
+        'Primero pulsa “Cambiar contraseña” para que Ubuntu genere el token automáticamente. Si sigue vacío, configura PASSWORD_RESET_DELIVERY=response en el servidor.',
+      )
       return
     }
 
@@ -548,28 +542,12 @@ export function LoginPage() {
               >
                 {requestingMigrationReset ? 'Generando código...' : 'Cambiar contraseña'}
               </button>
-              {showMigrationToken || !migrationSetupToken ? (
-                <label>
-                  Código de migración
-                  <input
-                    type="text"
-                    required
-                    value={migrationSetupToken}
-                    autoComplete="one-time-code"
-                    onChange={(event) => setMigrationSetupToken(event.target.value)}
-                  />
-                </label>
-              ) : (
-                <div className="migration-token-ready">
-                  <div>
-                    <strong>Código listo</strong>
-                    <p>Ya lo guardamos. Ahora crea tu nueva contraseña.</p>
-                  </div>
-                  <button className="mini-action-btn" type="button" onClick={() => setShowMigrationToken(true)}>
-                    Ver código
-                  </button>
+              <div className="migration-token-ready">
+                <div>
+                  <strong>Sin código manual</strong>
+                  <p>Ubuntu genera el token internamente. Solo escribe tu nueva contraseña y confirma.</p>
                 </div>
-              )}
+              </div>
               <label>
                 Nueva contraseña
                 <input

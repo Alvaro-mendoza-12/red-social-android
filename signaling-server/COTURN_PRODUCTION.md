@@ -8,7 +8,8 @@ Esta app ya puede pedir credenciales TURN temporales al signaling server en:
 
 - `GET /turn-credentials`
 
-Ese endpoint valida el `Bearer` de Supabase y firma credenciales tipo TURN REST con `TURN_SECRET`.
+Ese endpoint valida el `Bearer` emitido por tu backend Ubuntu en `FALLBACK_API_URL`
+y firma credenciales tipo TURN REST con `TURN_SECRET`.
 
 ## 1. Instalar coturn en la VPS
 
@@ -92,8 +93,7 @@ sudo systemctl status coturn
 Copia `signaling-server/.env.example` a `signaling-server/.env` y completa:
 
 ```env
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=tu-service-role-key
+FALLBACK_API_URL=https://tu-url-ngrok-o-dominio-api
 SIGNALING_ALLOWED_ORIGINS=https://app.tudominio.com,https://admin.tudominio.com
 HTTP_RATE_LIMIT_PER_MINUTE=180
 SOCKET_RATE_LIMIT_PER_MINUTE=90
@@ -113,7 +113,8 @@ Reinicia tu signaling server despues de guardar el `.env`.
 Notas de hardening:
 
 - No uses `*` en `SIGNALING_ALLOWED_ORIGINS` en produccion.
-- `SUPABASE_SERVICE_ROLE_KEY` solo vive en el servidor, nunca en Android/Web.
+- `FALLBACK_API_URL` debe apuntar al backend Ubuntu publico que expone `/v1/auth/me`.
+- No configures llaves heredadas del proveedor anterior en el signaling server para produccion Ubuntu-only.
 - Si abres el panel admin en otro subdominio, agregalo explicitamente a `SIGNALING_ALLOWED_ORIGINS`.
 
 ### 5.1 Proxy HTTPS de Caddy
@@ -130,7 +131,7 @@ La idea es que todo el host `voice.srv1495648.hstgr.cloud` haga reverse proxy a 
 
 ## 6. Probar el endpoint
 
-Con un access token valido de Supabase:
+Con un access token valido del backend Ubuntu:
 
 ```bash
 curl -H "Authorization: Bearer TU_ACCESS_TOKEN" https://voice.srv1495648.hstgr.cloud/turn-credentials

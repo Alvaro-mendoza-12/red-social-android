@@ -280,20 +280,22 @@ class AuthService @Inject constructor(
     private fun resolveSessionUserId(session: UserSession?): String? {
         var fromSession = session?.user?.id?.trim()?.lowercase()
         if (!fromSession.isNullOrBlank()) return fromSession
-        if (!isLocalFallbackModeEnabled()) {
-            var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase()
-            if (!fromSdk.isNullOrBlank()) return fromSdk
+        if (isLocalFallbackModeEnabled()) {
+            return localFallbackDisplayUserIdFromPrefs()
         }
+        var fromSdk = runCatching { supabaseConfig.client.auth.currentUserOrNull()?.id?.trim()?.lowercase() }.getOrNull()
+        if (!fromSdk.isNullOrBlank()) return fromSdk
         return extractJwtClaim(session?.accessToken.orEmpty(), "sub")?.lowercase()
     }
 
     private fun resolveSessionEmail(session: UserSession?): String {
         var fromSession = session?.user?.email?.trim()?.lowercase()
         if (!fromSession.isNullOrBlank()) return fromSession
-        if (!isLocalFallbackModeEnabled()) {
-            var fromSdk = supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase()
-            if (!fromSdk.isNullOrBlank()) return fromSdk
+        if (isLocalFallbackModeEnabled()) {
+            return localFallbackEmailFromPrefs().orEmpty()
         }
+        var fromSdk = runCatching { supabaseConfig.client.auth.currentUserOrNull()?.email?.trim()?.lowercase() }.getOrNull()
+        if (!fromSdk.isNullOrBlank()) return fromSdk
         return extractJwtClaim(session?.accessToken.orEmpty(), "email")?.lowercase().orEmpty()
     }
 
@@ -327,149 +329,158 @@ class AuthService @Inject constructor(
     }
 
     init {
-        val runtimeSessionOverride = TestRuntimeOverrides.currentSession(context)
-        if (runtimeSessionOverride != null) {
-            _currentSession.value = runtimeSessionOverride.toAuthResponse()
-            _isInitializing.value = false
-            Log.d("AuthService", "Auth runtime override enabled for instrumentation tests")
-        } else if (isForcedLogout()) {
-            // User explicitly logged out: do not auto-recover SDK sessions.
-            _currentSession.value = null
-            clearPersistedSessionSnapshot()
-            _isInitializing.value = false
-            Log.w("AuthService", "Forced logout flag set: skipping session recovery")
-        } else {
+        // CRITICAL: When Ubuntu is the primary backend, skip all Supabase initialization
+        if (isLocalFallbackModeEnabled()) {
             val localSession = recoverPersistedLocalFallbackSession()
             if (localSession != null) {
                 _currentSession.value = localSession
+                Log.d("AuthService", "✅ Ubuntu backend: Local fallback session recovered at startup")
+            } else {
+                _currentSession.value = null
+                clearPersistedSessionSnapshot()
+                Log.d("AuthService", "✅ Ubuntu backend: No local session, ready for login")
+            }
+            _isInitializing.value = false
+            Log.d("AuthService", "✅ Ubuntu backend: Auth initialization complete (Supabase skipped)")
+        } else {
+            // Original Supabase initialization flow (only when NOT using Ubuntu)
+            val runtimeSessionOverride = TestRuntimeOverrides.currentSession(context)
+            if (runtimeSessionOverride != null) {
+                _currentSession.value = runtimeSessionOverride.toAuthResponse()
                 _isInitializing.value = false
-                Log.d("AuthService", "Local fallback session recovered at startup")
-            } else if (isLocalFallbackModeEnabled()) {
+                Log.d("AuthService", "Auth runtime override enabled for instrumentation tests")
+            } else if (isForcedLogout()) {
+                // User explicitly logged out: do not auto-recover SDK sessions.
                 _currentSession.value = null
                 clearPersistedSessionSnapshot()
                 _isInitializing.value = false
-                Log.w("AuthService", "Local fallback mode enabled: ignoring persisted Supabase session")
+                Log.w("AuthService", "Forced logout flag set: skipping session recovery")
             } else {
-                // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
-                authScope.launch {
-                    try {
-                        // Fast-path recovery from SDK cache first.
-                        var bootSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
-                        if (!isUsableSession(bootSession)) {
-                            bootSession = null
-                        }
+                val localSession = recoverPersistedLocalFallbackSession()
+                if (localSession != null) {
+                    _currentSession.value = localSession
+                    _isInitializing.value = false
+                    Log.d("AuthService", "Local fallback session recovered at startup")
+                } else {
+                    // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
+                    authScope.launch {
+                        try {
+                            // Fast-path recovery from SDK cache first.
+                            var bootSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
+                            if (!isUsableSession(bootSession)) {
+                                bootSession = null
+                            }
 
-                        // Fallback recovery from lightweight local cache (covers slow/offline edge cases).
-                        if (bootSession == null) {
-                            bootSession = recoverPersistedSessionFromSnapshot()
-                        }
+                            // Fallback recovery from lightweight local cache (covers slow/offline edge cases).
+                            if (bootSession == null) {
+                                bootSession = recoverPersistedSessionFromSnapshot()
+                            }
 
-                        bootSession?.let { cachedSession ->
-                            _currentSession.value = mapSession(cachedSession)
-                            persistSessionSnapshot(cachedSession)
-                            _isInitializing.value = false
-                            Log.d("AuthService", "Cached session recovered at startup")
+                            bootSession?.let { cachedSession ->
+                                _currentSession.value = mapSession(cachedSession)
+                                persistSessionSnapshot(cachedSession)
+                                _isInitializing.value = false
+                                Log.d("AuthService", "Cached session recovered at startup")
 
-                            // PROACTIVE REFRESH: If session is old, trigger background refresh immediately
-                            launch {
-                                try {
-                                    var token = cachedSession.accessToken
-                                    val exp = extractJwtClaim(token, "exp")?.toLongOrNull() ?: 0L
-                                    if (exp < (System.currentTimeMillis() / 1000) + 600) { // If less than 10 mins left
-                                        Log.i("AuthService", "Proactive background refresh triggered for recovered session")
-                                        supabaseConfig.client.auth.refreshCurrentSession()
+                                // PROACTIVE REFRESH: If session is old, trigger background refresh immediately
+                                launch {
+                                    try {
+                                        var token = cachedSession.accessToken
+                                        val exp = extractJwtClaim(token, "exp")?.toLongOrNull() ?: 0L
+                                        if (exp < (System.currentTimeMillis() / 1000) + 600) { // If less than 10 mins left
+                                            Log.i("AuthService", "Proactive background refresh triggered for recovered session")
+                                            supabaseConfig.client.auth.refreshCurrentSession()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("AuthService", "Proactive refresh failed", e)
                                     }
-                                } catch (e: Exception) {
-                                    Log.e("AuthService", "Proactive refresh failed", e)
                                 }
                             }
+                        } catch (e: Exception) {
+                            Log.e("AuthService", "Startup session recovery failed", e)
                         }
-                    } catch (e: Exception) {
-                        Log.e("AuthService", "Startup session recovery failed", e)
                     }
                 }
             }
-        }
 
-        // Observe SDK session changes with a defensive timeout for slow networks/emulators
-        if (!isLocalFallbackModeEnabled()) {
-        authScope.launch {
-            try {
-                supabaseConfig.client.auth.sessionStatus.collect { status ->
-                    TestRuntimeOverrides.currentSession(context)?.let { override ->
-                        _currentSession.value = override.toAuthResponse()
-                        _isInitializing.value = false
-                        return@collect
-                    }
-                    if (isForcedLogout()) {
-                        _currentSession.value = null
-                        clearPersistedSessionSnapshot()
-                        _isInitializing.value = false
-                        return@collect
-                    }
-                    recoverPersistedLocalFallbackSession()?.let { localSession ->
-                        _currentSession.value = localSession
-                        _isInitializing.value = false
-                        return@collect
-                    }
-                    if (isLocalFallbackModeEnabled()) {
-                        _currentSession.value = null
-                        clearPersistedSessionSnapshot()
-                        _isInitializing.value = false
-                        return@collect
-                    }
-                    if (status is SessionStatus.Authenticated) {
-                        if (isUsableSession(status.session)) {
-                            _currentSession.value = mapSession(status.session)
-                            persistSessionSnapshot(status.session)
-                            Log.d("AuthService", "SDK Session Active: ${status.session.user?.email}")
-                        } else {
+            // Observe SDK session changes with a defensive timeout for slow networks/emulators
+            authScope.launch {
+                try {
+                    supabaseConfig.client.auth.sessionStatus.collect { status ->
+                        TestRuntimeOverrides.currentSession(context)?.let { override ->
+                            _currentSession.value = override.toAuthResponse()
+                            _isInitializing.value = false
+                            return@collect
+                        }
+                        if (isForcedLogout()) {
                             _currentSession.value = null
                             clearPersistedSessionSnapshot()
-                            Log.w("AuthService", "Session Authenticated event ignored due to missing user context")
+                            _isInitializing.value = false
+                            return@collect
                         }
-                    } else {
-                        // Defensive fallback: avoid dropping session on transient auth status changes.
-                        val cachedSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
-                        if (isUsableSession(cachedSession)) {
-                            var safeSession = cachedSession ?: return@collect
-                            _currentSession.value = mapSession(safeSession)
-                            persistSessionSnapshot(safeSession)
-                            Log.d("AuthService", "Session status changed but cached session is still valid")
-                        } else {
-                            var recovered = recoverPersistedSessionFromSnapshot()
-                            if (isUsableSession(recovered)) {
-                                val safeRecovered = recovered ?: return@collect
-                                _currentSession.value = mapSession(safeRecovered)
-                                persistSessionSnapshot(safeRecovered)
-                                Log.d("AuthService", "Session recovered from persisted snapshot")
+                        recoverPersistedLocalFallbackSession()?.let { localSession ->
+                            _currentSession.value = localSession
+                            _isInitializing.value = false
+                            return@collect
+                        }
+                        if (isLocalFallbackModeEnabled()) {
+                            _currentSession.value = null
+                            clearPersistedSessionSnapshot()
+                            _isInitializing.value = false
+                            return@collect
+                        }
+                        if (status is SessionStatus.Authenticated) {
+                            if (isUsableSession(status.session)) {
+                                _currentSession.value = mapSession(status.session)
+                                persistSessionSnapshot(status.session)
+                                Log.d("AuthService", "SDK Session Active: ${status.session.user?.email}")
                             } else {
                                 _currentSession.value = null
                                 clearPersistedSessionSnapshot()
-                                Log.d("AuthService", "SDK Session Cleared/Not Authenticated")
+                                Log.w("AuthService", "Session Authenticated event ignored due to missing user context")
+                            }
+                        } else {
+                            // Defensive fallback: avoid dropping session on transient auth status changes.
+                            val cachedSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
+                            if (isUsableSession(cachedSession)) {
+                                var safeSession = cachedSession ?: return@collect
+                                _currentSession.value = mapSession(safeSession)
+                                persistSessionSnapshot(safeSession)
+                                Log.d("AuthService", "Session status changed but cached session is still valid")
+                            } else {
+                                var recovered = recoverPersistedSessionFromSnapshot()
+                                if (isUsableSession(recovered)) {
+                                    val safeRecovered = recovered ?: return@collect
+                                    _currentSession.value = mapSession(safeRecovered)
+                                    persistSessionSnapshot(safeRecovered)
+                                    Log.d("AuthService", "Session recovered from persisted snapshot")
+                                } else {
+                                    _currentSession.value = null
+                                    clearPersistedSessionSnapshot()
+                                    Log.d("AuthService", "SDK Session Cleared/Not Authenticated")
+                                }
                             }
                         }
+                        // Signal initialization complete after first status check.
+                        _isInitializing.value = false
                     }
-                    // Signal initialization complete after first status check.
+                } catch (e: Exception) {
+                    // Never crash the app due to an auth observer failure.
+                    Log.e("AuthService", "sessionStatus collector crashed", e)
+                    _currentSession.value = null
+                    clearPersistedSessionSnapshot()
                     _isInitializing.value = false
                 }
-            } catch (e: Exception) {
-                // Never crash the app due to an auth observer failure.
-                Log.e("AuthService", "sessionStatus collector crashed", e)
-                _currentSession.value = null
-                clearPersistedSessionSnapshot()
-                _isInitializing.value = false
             }
-        }
-        }
 
-        // TIMEOUT SAFEGUARD: keep as a final fallback only.
-        // If Supabase client takes too long to emit first status (e.g. network hang), force finish init
-        authScope.launch {
-            kotlinx.coroutines.delay(20000) // allow slower mobile-data startup before forcing login route
-            if (_isInitializing.value) {
-                Log.w("AuthService", "WARNING: Auth initialization timed out. Forcing completion.")
-                _isInitializing.value = false
+            // TIMEOUT SAFEGUARD: keep as a final fallback only.
+            // If Supabase client takes too long to emit first status (e.g. network hang), force finish init
+            authScope.launch {
+                kotlinx.coroutines.delay(20000) // allow slower mobile-data startup before forcing login route
+                if (_isInitializing.value) {
+                    Log.w("AuthService", "WARNING: Auth initialization timed out. Forcing completion.")
+                    _isInitializing.value = false
+                }
             }
         }
     }
@@ -676,7 +687,24 @@ class AuthService @Inject constructor(
         return Result.success(Unit)
     }
 
+    suspend fun directPasswordReset(
+        email: String,
+        newPassword: String
+    ): Result<Unit> {
+        if (!localFallbackApiClient.isConfigured) {
+            return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        }
+        val localSession = localFallbackApiClient.directPasswordReset(email, newPassword)
+            .getOrElse { return Result.failure(it) }
+        persistLocalFallbackSession(localSession)
+        return Result.success(Unit)
+    }
+
     suspend fun updateUserPassword(newPassword: String): Result<Unit> {
+        // Ubuntu backend handles password changes via changePassword endpoint
+        if (isLocalFallbackModeEnabled()) {
+            return Result.failure(Exception("Usa changePassword en LocalFallbackApiClient para Ubuntu."))
+        }
         return try {
             Log.d("AuthService", "Attempting to update password...")
             supabaseConfig.client.auth.modifyUser {
@@ -699,7 +727,7 @@ class AuthService @Inject constructor(
         privacyPolicyAcceptedAt: String? = null
     ): Result<Unit> {
         return try {
-            if (isLocalFallbackSession()) {
+            if (isLocalFallbackSession() || isLocalFallbackModeEnabled()) {
                 authPrefsOrNull?.edit()
                     ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, displayName ?: fullName)
                     ?.putString(KEY_LOCAL_FALLBACK_AVATAR_URL, avatarUrl)

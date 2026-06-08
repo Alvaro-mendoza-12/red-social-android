@@ -203,6 +203,12 @@ private data class LocalFallbackCompleteMigrationRequest(
 )
 
 @Serializable
+private data class LocalFallbackDirectPasswordResetRequest(
+    val email: String,
+    val newPassword: String
+)
+
+@Serializable
 private data class LocalFallbackSendMessageRequest(
     val id: String? = null,
     val content: String,
@@ -494,6 +500,28 @@ class LocalFallbackApiClient @Inject constructor(
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackPasswordResetConfirmRequest(resetToken.trim(), newPassword))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun directPasswordReset(
+        email: String,
+        newPassword: String
+    ): Result<LocalFallbackAuthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/direct") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackDirectPasswordResetRequest(email.trim().lowercase(), newPassword))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {

@@ -101,20 +101,28 @@ class SupabaseConfig @Inject constructor(
     // Official Supabase Client for Realtime
     // IMPORTANT: Initialized lazily to avoid blocking the Main thread during app startup.
     // The Supabase Auth plugin registers lifecycle callbacks and must be created on Main.
+    // CRITICAL: When Ubuntu is the primary backend, do NOT initialize Supabase client at all.
     @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
     val client: io.github.jan.supabase.SupabaseClient by lazy {
         val startAt = System.currentTimeMillis()
-        try {
-            val safeUrl = if (isConfigured) supabaseUrl else DISABLED_SUPABASE_URL
-            val safeKey = if (isConfigured) supabaseAnonKey else DISABLED_SUPABASE_KEY
 
-            createSupabaseClientOnMain(safeUrl, safeKey).also {
-                val endAt = System.currentTimeMillis()
-                Log.d("SupabaseConfig", "✅ Supabase Client initialized in ${endAt - startAt}ms")
-            }
-        } catch (e: Exception) {
-            Log.e("SupabaseConfig", "❌ CRITICAL: Failed to initialize Supabase Client", e)
+        // Si Ubuntu es el backend principal, no inicializar Supabase
+        if (isLocalFallbackPrimary) {
+            Log.w("SupabaseConfig", "⚠️ Ubuntu is primary backend - Skipping Supabase client initialization")
             createSupabaseClientOnMain(DISABLED_SUPABASE_URL, DISABLED_SUPABASE_KEY)
+        } else {
+            try {
+                val safeUrl = if (isConfigured) supabaseUrl else DISABLED_SUPABASE_URL
+                val safeKey = if (isConfigured) supabaseAnonKey else DISABLED_SUPABASE_KEY
+
+                createSupabaseClientOnMain(safeUrl, safeKey).also {
+                    val endAt = System.currentTimeMillis()
+                    Log.d("SupabaseConfig", "✅ Supabase Client initialized in ${endAt - startAt}ms")
+                }
+            } catch (e: Exception) {
+                Log.e("SupabaseConfig", "❌ CRITICAL: Failed to initialize Supabase Client", e)
+                createSupabaseClientOnMain(DISABLED_SUPABASE_URL, DISABLED_SUPABASE_KEY)
+            }
         }
     }
 

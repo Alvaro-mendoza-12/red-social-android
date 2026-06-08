@@ -16,11 +16,18 @@ const jwtSecret = String(process.env.JWT_SECRET || '')
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '7d'
 const databaseUrl = process.env.DATABASE_URL
 const corsOrigin = process.env.CORS_ORIGIN || '*'
-const supabaseUrl = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '')
-const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || '').trim()
-const supabaseAdminKey = String(
-  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-).trim()
+const legacySupabaseImportEnabled = /^(1|true|yes|on)$/i.test(
+  String(process.env.LEGACY_SUPABASE_IMPORT_ENABLED || '').trim(),
+)
+const supabaseUrl = legacySupabaseImportEnabled
+  ? String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '')
+  : ''
+const supabaseAnonKey = legacySupabaseImportEnabled
+  ? String(process.env.SUPABASE_ANON_KEY || '').trim()
+  : ''
+const supabaseAdminKey = legacySupabaseImportEnabled
+  ? String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  : ''
 const adminSyncToken = String(process.env.ADMIN_SYNC_TOKEN || '').trim()
 const passwordResetDelivery = String(process.env.PASSWORD_RESET_DELIVERY || 'console').trim().toLowerCase()
 const passwordResetTokenTtlMinutes = Math.max(
@@ -156,6 +163,7 @@ async function remoteSupabaseAuthRequest(path, options = {}) {
 }
 
 function getSupabaseAdminClient() {
+  if (!legacySupabaseImportEnabled) return null
   if (!supabaseUrl || !supabaseAdminKey) return null
 
   return {
@@ -701,8 +709,17 @@ app.get('/ready', async (_req, res, next) => {
 })
 
 app.get('/v1/upstream/supabase', async (_req, res) => {
+  if (!legacySupabaseImportEnabled) {
+    return res.json({
+      configured: false,
+      ok: false,
+      restricted: false,
+      legacyImportEnabled: false,
+    })
+  }
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    return res.json({ configured: false, ok: false, restricted: false })
+    return res.json({ configured: false, ok: false, restricted: false, legacyImportEnabled: true })
   }
 
   const controller = new AbortController()

@@ -12,6 +12,7 @@ import {
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVoiceRooms } from '../../core/fallbackData'
+import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 
 type VoiceRoom = {
   id: string
@@ -86,6 +87,7 @@ function mapRoom(row: GenericRow): VoiceRoom {
 
 export function VoiceRoomsPage() {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntuVoice = isFallbackAuthConfigured || isFallbackSession
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -100,7 +102,7 @@ export function VoiceRoomsPage() {
   const totalParticipants = rooms.reduce((sum, room) => sum + room.participantCount, 0)
 
   const loadRooms = useCallback(async (options?: { silent?: boolean }) => {
-    if (isFallbackSession) {
+    if (useUbuntuVoice) {
       if (options?.silent) {
         setSyncing(true)
       } else {
@@ -125,7 +127,7 @@ export function VoiceRoomsPage() {
 
     if (!supabase) {
       setLoading(false)
-      setError('Supabase no está configurado.')
+      setError('Configura VITE_FALLBACK_API_URL para usar salas de voz en Ubuntu.')
       return
     }
 
@@ -181,7 +183,7 @@ export function VoiceRoomsPage() {
       setLoading(false)
       setSyncing(false)
     }
-  }, [isFallbackSession])
+  }, [useUbuntuVoice])
 
   useEffect(() => {
     const cached = readCachedValue<VoiceRoom[]>(roomsCacheKey, 1000 * 60 * 60 * 8)
@@ -200,7 +202,7 @@ export function VoiceRoomsPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || isFallbackSession) return
+    if (!client || useUbuntuVoice) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) {
@@ -220,15 +222,15 @@ export function VoiceRoomsPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [isFallbackSession, loadRooms])
+  }, [loadRooms, useUbuntuVoice])
 
   useEffect(() => {
-    if (!isFallbackSession) return
+    if (!useUbuntuVoice) return
     const intervalId = window.setInterval(() => {
       void loadRooms({ silent: true })
     }, 7000)
     return () => window.clearInterval(intervalId)
-  }, [isFallbackSession, loadRooms])
+  }, [loadRooms, useUbuntuVoice])
 
   if (loading) return <StatusView title="Cargando voz" description="Buscando salas..." />
   if (error && rooms.length === 0) return <StatusView title="Voz no disponible" description={error} />

@@ -2,26 +2,20 @@ require('dotenv').config();
 const crypto = require('crypto');
 const http = require('http');
 const { Server } = require('socket.io');
-const { createClient } = require('@supabase/supabase-js');
 
 const PORT = Number(process.env.PORT || 3001);
 const { resolveLink, resolveCinemaItem } = require('./resolver');
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseEnabled = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const fallbackApiUrl = normalizeBaseUrl(
+    process.env.FALLBACK_API_URL ||
+    process.env.UBUNTU_API_URL ||
+    process.env.LOCAL_FALLBACK_API_URL ||
+    process.env.VITE_FALLBACK_API_URL
+);
+const ubuntuApiEnabled = Boolean(fallbackApiUrl);
 
-const supabase = supabaseEnabled
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        }
-    })
-    : null;
-
-if (!supabaseEnabled) {
-    console.warn('[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. participant_count sync is disabled.');
+if (!ubuntuApiEnabled) {
+    console.warn('[WARN] FALLBACK_API_URL is not set. Signaling auth will reject clients until the Ubuntu API URL is configured.');
 }
 
 const turnHost = process.env.TURN_HOST?.toString().trim() || '';
@@ -49,6 +43,10 @@ function parseBooleanEnv(value, defaultValue) {
     if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
     if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
     return defaultValue;
+}
+
+function normalizeBaseUrl(rawValue) {
+    return (rawValue || '').toString().trim().replace(/\/+$/, '');
 }
 
 function clampInt(rawValue, fallback, min, max) {
@@ -177,26 +175,81 @@ async function readJsonBody(req) {
     }
 }
 
-async function authenticateHttpUser(req) {
-    if (!supabase) {
-        return { error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured on server', status: 503 };
+function buildUbuntuApiUrl(path) {
+    const normalizedPath = path.toString().startsWith('/') ? path.toString() : `/${path}`;
+    return `${fallbackApiUrl}${normalizedPath}`;
+}
+
+async function callUbuntuApi(path, options = {}) {
+    if (!ubuntuApiEnabled) {
+        const error = new Error('FALLBACK_API_URL is not configured on signaling server');
+        error.status = 503;
+        throw error;
     }
 
-    const accessToken = extractBearerToken(req.headers.authorization);
+    const method = (options.method || 'GET').toString().toUpperCase();
+    const headers = {
+        Accept: 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...(options.headers || {})
+    };
+    if (options.accessToken) {
+        headers.Authorization = `Bearer ${options.accessToken}`;
+    }
+    if (options.body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(buildUbuntuApiUrl(path), {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+
+    const text = await response.text();
+    let payload = {};
+    if (text) {
+        try {
+            payload = JSON.parse(text);
+        } catch {
+            payload = { raw: text };
+        }
+    }
+
+    if (!response.ok) {
+        const error = new Error(payload?.error || `Ubuntu API request failed with HTTP ${response.status}`);
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+    }
+
+    return payload;
+}
+
+async function resolveUbuntuUser(accessToken) {
     if (!accessToken) {
         return { error: 'Missing bearer token', status: 401 };
     }
 
     try {
-        const { data, error } = await supabase.auth.getUser(accessToken);
-        if (error || !data?.user?.id) {
-            return { error: 'Invalid or expired bearer token', status: 401 };
+        const payload = await callUbuntuApi('/v1/auth/me', { accessToken });
+        const user = payload?.user;
+        if (!user?.id) {
+            return { error: 'Invalid Ubuntu auth response', status: 401 };
         }
-        return { user: data.user };
+        return { user };
     } catch (error) {
-        console.error('[AUTH] Failed to validate bearer token:', error);
-        return { error: 'Token validation failed', status: 401 };
+        console.error('[AUTH] Failed to validate bearer token with Ubuntu API:', error);
+        return {
+            error: error.status === 503 ? error.message : 'Invalid or expired bearer token',
+            status: error.status || 401
+        };
     }
+}
+
+async function authenticateHttpUser(req) {
+    const accessToken = extractBearerToken(req.headers.authorization);
+    return resolveUbuntuUser(accessToken);
 }
 
 function extractSocketToken(socket) {
@@ -212,25 +265,17 @@ async function authenticateSocketConnection(socket, next) {
         return;
     }
 
-    if (!supabase) {
-        next(new Error('Supabase auth is not configured on signaling server'));
-        return;
-    }
-
     const accessToken = extractSocketToken(socket);
-    if (!accessToken) {
-        next(new Error('Missing bearer token'));
+    const authResult = await resolveUbuntuUser(accessToken);
+    if (!authResult.user) {
+        next(new Error(authResult.error || 'Invalid or expired bearer token'));
         return;
     }
 
     try {
-        const { data, error } = await supabase.auth.getUser(accessToken);
-        if (error || !data?.user?.id) {
-            next(new Error('Invalid or expired bearer token'));
-            return;
-        }
-        socket.data.authUserId = data.user.id.toString().trim();
-        socket.data.authEmail = data.user.email?.toString().trim().toLowerCase() || '';
+        socket.data.authToken = accessToken;
+        socket.data.authUserId = authResult.user.id.toString().trim();
+        socket.data.authEmail = authResult.user.email?.toString().trim().toLowerCase() || '';
         next();
     } catch (error) {
         console.error('[AUTH] Failed to authenticate socket connection:', error);
@@ -344,7 +389,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
         sendJson(req, res, 200, {
             ok: true,
-            supabaseEnabled,
+            ubuntuApiEnabled,
             turnConfigured
         });
         return;
@@ -354,7 +399,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(req, res, 200, {
             ok: true,
             service: 'webrtc-signaling-server',
-            supabaseEnabled,
+            ubuntuApiEnabled,
             turnConfigured
         });
         return;
@@ -457,123 +502,73 @@ io.use(authenticateSocketConnection);
 callIo.use(authenticateSocketConnection);
 liveIo.use(authenticateSocketConnection);
 
+const unsupportedUbuntuPersistenceWarnings = new Set();
+
+function warnUnsupportedUbuntuPersistence(feature) {
+    if (unsupportedUbuntuPersistenceWarnings.has(feature)) return;
+    unsupportedUbuntuPersistenceWarnings.add(feature);
+    console.warn(`[WARN] ${feature} persistence is not implemented in the Ubuntu API yet. Realtime signaling will continue in memory.`);
+}
+
 async function setParticipantCount(roomId, participantCount) {
-    if (!supabase) return;
+    const normalizedCount = Math.max(0, Number(participantCount || 0));
+    console.log(`[DB] Voice room ${roomId} presence is ${normalizedCount}; Ubuntu API derives the persisted count from participant rows.`);
+}
 
+async function syncVoiceRoomJoin(socket, roomId, participant) {
     try {
-        const normalizedCount = Math.max(0, Number(participantCount || 0));
-        const { error: updateError } = await supabase
-            .from('voice_rooms')
-            .update({
-                participant_count: normalizedCount,
-                is_active: normalizedCount > 0
-            })
-            .eq('id', roomId);
-
-        if (updateError) throw updateError;
-        console.log(`[DB] Synced count for room ${roomId} to ${normalizedCount}`);
+        await callUbuntuApi(`/v1/data/voice/rooms/${encodeURIComponent(roomId)}/join`, {
+            method: 'POST',
+            accessToken: socket.data.authToken,
+            body: {
+                socketId: socket.id,
+                userName: participant?.name || 'Usuario',
+                userAvatarUrl: participant?.avatarUrl || '',
+                isMuted: Boolean(participant?.isMuted)
+            }
+        });
     } catch (error) {
-        console.error(`[DB] Error syncing participant_count for room ${roomId}:`, error);
+        console.error(`[DB] Error syncing voice room join for ${roomId}:`, error);
+        socket.emit('room-sync-warning', {
+            roomId,
+            error: error.message || 'VOICE_ROOM_JOIN_SYNC_FAILED'
+        });
+    }
+}
+
+async function syncVoiceRoomLeave(socket, roomId) {
+    try {
+        await callUbuntuApi(`/v1/data/voice/rooms/${encodeURIComponent(roomId)}/leave`, {
+            method: 'POST',
+            accessToken: socket.data.authToken
+        });
+    } catch (error) {
+        console.error(`[DB] Error syncing voice room leave for ${roomId}:`, error);
     }
 }
 
 async function setLiveViewerCount(liveId, viewerCount) {
-    if (!supabase) return;
-
-    try {
-        const { error } = await supabase
-            .from('live_streams')
-            .update({ viewer_count: Math.max(0, Number(viewerCount || 0)) })
-            .eq('id', liveId);
-
-        if (error) throw error;
-        console.log(`[DB] Synced viewer_count for live ${liveId} to ${viewerCount}`);
-    } catch (error) {
-        console.error(`[DB] Error syncing viewer_count for live ${liveId}:`, error);
-    }
+    warnUnsupportedUbuntuPersistence('Live viewer_count');
+    console.log(`[LIVE][DB] ${liveId} viewer_count=${Math.max(0, Number(viewerCount || 0))}`);
 }
 
 async function setLiveStreamActive(liveId) {
-    if (!supabase) return;
-
-    try {
-        const { error } = await supabase
-            .from('live_streams')
-            .update({ is_active: true })
-            .eq('id', liveId);
-
-        if (error) throw error;
-        console.log(`[DB] Marked live ${liveId} as active`);
-    } catch (error) {
-        console.error(`[DB] Error activating live ${liveId}:`, error);
-    }
+    warnUnsupportedUbuntuPersistence('Live active-state');
+    console.log(`[LIVE][DB] ${liveId} active=true`);
 }
 
 async function endLiveStream(liveId) {
-    if (!supabase) return;
-
-    try {
-        let error = null;
-
-        try {
-            ({ error } = await supabase
-                .from('live_streams')
-                .update({
-                    is_active: false,
-                    viewer_count: 0,
-                    ended_at: new Date().toISOString()
-                })
-                .eq('id', liveId));
-        } catch (innerError) {
-            ({ error } = await supabase
-                .from('live_streams')
-                .update({ is_active: false, viewer_count: 0 })
-                .eq('id', liveId));
-            if (error) throw error;
-            if (innerError) {
-                console.warn(`[DB] ended_at column missing while ending live ${liveId}, fallback applied`);
-            }
-            console.log(`[DB] Marked live ${liveId} as ended`);
-            return;
-        }
-
-        if (error) throw error;
-        console.log(`[DB] Marked live ${liveId} as ended`);
-    } catch (error) {
-        console.error(`[DB] Error ending live ${liveId}:`, error);
-    }
+    warnUnsupportedUbuntuPersistence('Live active-state');
+    console.log(`[LIVE][DB] ${liveId} active=false viewer_count=0`);
 }
 
 async function getLiveStreamMeta(liveId) {
-    if (!supabase) {
-        return {
-            exists: true,
-            isActive: true,
-            hostUserId: ''
-        };
-    }
-
-    try {
-        const { data, error } = await supabase
-            .from('live_streams')
-            .select('id, is_active, host_user_id')
-            .eq('id', liveId)
-            .maybeSingle();
-
-        if (error) throw error;
-        return {
-            exists: Boolean(data?.id),
-            isActive: data?.is_active === true,
-            hostUserId: data?.host_user_id?.toString().trim() || ''
-        };
-    } catch (error) {
-        console.error(`[DB] Error checking live ${liveId} metadata:`, error);
-        return {
-            exists: true,
-            isActive: true,
-            hostUserId: ''
-        };
-    }
+    warnUnsupportedUbuntuPersistence('Live metadata');
+    return {
+        exists: true,
+        isActive: true,
+        hostUserId: ''
+    };
 }
 
 // Track active rooms and their participants
@@ -592,47 +587,8 @@ function clearPendingVoiceRoomCleanup(roomId) {
 
 async function finalizeEmptyVoiceRoom(roomId) {
     clearPendingVoiceRoomCleanup(roomId);
-
-    if (!supabase) {
-        rooms.delete(roomId);
-        return;
-    }
-
-    try {
-        const { data, error } = await supabase
-            .from('voice_rooms')
-            .select('id, is_public, name')
-            .eq('id', roomId)
-            .maybeSingle();
-
-        if (error) throw error;
-        if (!data?.id) {
-            rooms.delete(roomId);
-            return;
-        }
-
-        if (data.is_public === false) {
-            const { error: deleteError } = await supabase
-                .from('voice_rooms')
-                .delete()
-                .eq('id', roomId);
-
-            if (deleteError) throw deleteError;
-            console.log(`[DB] Deleted orphan private voice room ${roomId}`);
-        } else {
-            const { error: updateError } = await supabase
-                .from('voice_rooms')
-                .update({ participant_count: 0, is_active: false })
-                .eq('id', roomId);
-
-            if (updateError) throw updateError;
-            console.log(`[DB] Marked empty voice room ${roomId} inactive`);
-        }
-    } catch (error) {
-        console.error(`[DB] Error finalizing empty voice room ${roomId}:`, error);
-    } finally {
-        rooms.delete(roomId);
-    }
+    rooms.delete(roomId);
+    console.log(`[ROOM] ${roomId} finalized in signaling memory. Ubuntu API participant rows are synced through join/leave.`);
 }
 
 function scheduleEmptyVoiceRoomCleanup(roomId) {
@@ -693,6 +649,11 @@ io.on('connection', (socket) => {
 
         console.log(`[JOIN] User ${userId} joined room ${roomId}. Room population: ${currentRoomParticipants.size}`);
         console.log(`[ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
+        await syncVoiceRoomJoin(socket, roomId, {
+            name,
+            avatarUrl,
+            isMuted: Boolean(data.isMuted)
+        });
         await setParticipantCount(roomId, currentRoomParticipants.size);
 
         // Notify others in the room
@@ -873,6 +834,7 @@ io.on('connection', (socket) => {
 
             console.log(`[LEAVE] User disconnected from room ${roomId}. Population: ${participants.size}`);
             socket.to(roomId).emit('user-left', socket.id);
+            await syncVoiceRoomLeave(socket, roomId);
             await setParticipantCount(roomId, participants.size);
 
             if (participants.size === 0) {

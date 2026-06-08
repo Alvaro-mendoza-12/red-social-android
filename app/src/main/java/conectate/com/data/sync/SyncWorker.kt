@@ -1,18 +1,30 @@
 package conectate.com.data.sync
 
 import android.content.Context
-import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 
-@HiltWorker
-class SyncWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
-    @Assisted workerParams: WorkerParameters,
-    private val syncManager: SyncManager
+class SyncWorker(
+    appContext: Context,
+    workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface SyncWorkerEntryPoint {
+        fun syncManager(): SyncManager
+    }
+
+    private val syncManager: SyncManager by lazy {
+        EntryPointAccessors.fromApplication(
+            applicationContext,
+            SyncWorkerEntryPoint::class.java
+        ).syncManager()
+    }
 
     override suspend fun doWork(): Result {
         var reason = inputData.getString(SyncManager.SYNC_REASON_KEY) ?: "worker"

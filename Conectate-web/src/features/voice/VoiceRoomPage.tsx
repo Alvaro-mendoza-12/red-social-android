@@ -24,7 +24,7 @@ import {
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { isFallbackAuthConfigured, readFallbackSession } from '../../core/auth/fallbackAuth'
 import WebRTCManager from './WebRTCManager'
 
 type VoiceRoom = {
@@ -262,6 +262,7 @@ function RemoteAudio({ stream, muted }: { stream: MediaStream; muted: boolean })
 
 export function VoiceRoomPage() {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntuVoice = isFallbackAuthConfigured || isFallbackSession
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
   const [room, setRoom] = useState<VoiceRoom | null>(null)
@@ -400,7 +401,7 @@ export function VoiceRoomPage() {
     setLoading(true)
     setError(null)
     try {
-      if (isFallbackSession) {
+      if (useUbuntuVoice) {
         const payload = await loadFallbackVoiceRoom(roomId)
         setRoom(mapRoom(payload.room, roomId))
         setParticipants((payload.participants ?? []).map(mapParticipant))
@@ -408,7 +409,7 @@ export function VoiceRoomPage() {
       }
 
       if (!supabase) {
-        setError('Supabase no está configurado.')
+        setError('Configura VITE_FALLBACK_API_URL para usar salas de voz en Ubuntu.')
         return
       }
 
@@ -449,10 +450,10 @@ export function VoiceRoomPage() {
     } finally {
       setLoading(false)
     }
-  }, [isFallbackSession, roomId])
+  }, [roomId, useUbuntuVoice])
 
   const loadParticipants = useCallback(async (targetRoomId: string, options?: { silent?: boolean }) => {
-    if (isFallbackSession) {
+    if (useUbuntuVoice) {
       if (options?.silent) {
         setSyncingParticipants(true)
       }
@@ -550,10 +551,10 @@ export function VoiceRoomPage() {
     } finally {
       setSyncingParticipants(false)
     }
-  }, [isFallbackSession, user?.id])
+  }, [useUbuntuVoice, user?.id])
 
   const fallbackParticipantUpdate = useCallback(async (targetRoomId: string, delta: number) => {
-    if (isFallbackSession) {
+    if (useUbuntuVoice) {
       setRoom((current) =>
         current && current.id === targetRoomId
           ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
@@ -584,10 +585,10 @@ export function VoiceRoomPage() {
       setRoom((current) => current && current.id === targetRoomId ? { ...current, participantCount: nextCount } : current)
       return
     }
-  }, [isFallbackSession])
+  }, [useUbuntuVoice])
 
   const syncParticipantCounter = useCallback(async (targetRoomId: string, delta: number) => {
-    if (isFallbackSession) {
+    if (useUbuntuVoice) {
       setRoom((current) =>
         current && current.id === targetRoomId
           ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
@@ -608,7 +609,7 @@ export function VoiceRoomPage() {
     }
     if (!isMissingFunctionError(rpcResult.error)) throw rpcResult.error
     await fallbackParticipantUpdate(targetRoomId, delta)
-  }, [fallbackParticipantUpdate, isFallbackSession])
+  }, [fallbackParticipantUpdate, useUbuntuVoice])
 
   const upsertSignalParticipant = useCallback((participant: SignalingParticipant) => {
     const socketId = String(participant.socketId ?? '').trim()
@@ -708,7 +709,7 @@ export function VoiceRoomPage() {
 
   const connectSignaling = useCallback(async (manager: WebRTCManager) => {
     if (!room || !user) return
-    const accessToken = isFallbackSession
+    const accessToken = useUbuntuVoice
       ? readFallbackSession()?.accessToken?.trim()
       : (await supabase?.auth.getSession())?.data.session?.access_token?.trim()
     if (!accessToken) {
@@ -876,7 +877,7 @@ export function VoiceRoomPage() {
     startPeerOffer,
     stopSignaling,
     upsertSignalParticipant,
-    isFallbackSession,
+    useUbuntuVoice,
     user,
   ])
 
@@ -911,7 +912,7 @@ export function VoiceRoomPage() {
     let incrementedCounter = false
 
     try {
-      if (isFallbackSession) {
+      if (useUbuntuVoice) {
         if (visibleParticipantCount >= room.maxParticipants && !isJoined) {
           throw new Error('Sala llena')
         }
@@ -993,7 +994,7 @@ export function VoiceRoomPage() {
       }
     } catch (caught) {
       if (createdParticipant) {
-        if (isFallbackSession) {
+        if (useUbuntuVoice) {
           await leaveFallbackVoiceRoom(room.id).catch(() => {})
         } else {
           await supabase
@@ -1020,13 +1021,13 @@ export function VoiceRoomPage() {
     displayName,
     isJoined,
     isJoining,
-    isFallbackSession,
     isMuted,
     loadParticipants,
     room,
     startLocalAudio,
     stopLocalMedia,
     syncParticipantCounter,
+    useUbuntuVoice,
     user,
     visibleParticipantCount,
   ])
@@ -1040,7 +1041,7 @@ export function VoiceRoomPage() {
     setIsLeaving(true)
     setJoinError(null)
     try {
-      if (isFallbackSession) {
+      if (useUbuntuVoice) {
         await leaveFallbackVoiceRoom(room.id)
         setIsJoined(false)
         joinedRef.current = false
@@ -1073,7 +1074,7 @@ export function VoiceRoomPage() {
     } finally {
       setIsLeaving(false)
     }
-  }, [isFallbackSession, isLeaving, loadParticipants, navigate, room, stopLocalMedia, syncParticipantCounter, user])
+  }, [isLeaving, loadParticipants, navigate, room, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
 
   const toggleMute = useCallback(async () => {
     if (!user || !room || !isJoined) return
@@ -1086,7 +1087,7 @@ export function VoiceRoomPage() {
     emitMuteState(nextMuted)
 
     try {
-      if (isFallbackSession) {
+      if (useUbuntuVoice) {
         await joinFallbackVoiceRoom(room.id, {
           userName: displayName,
           userAvatarUrl: avatarUrl,
@@ -1109,7 +1110,7 @@ export function VoiceRoomPage() {
       emitMuteState(!nextMuted)
       setJoinError(friendlyError(caught, 'No se pudo actualizar el micrófono'))
     }
-  }, [avatarUrl, displayName, emitMuteState, isFallbackSession, isJoined, isMuted, room, user])
+  }, [avatarUrl, displayName, emitMuteState, isJoined, isMuted, room, useUbuntuVoice, user])
 
   const toggleDeafen = useCallback(() => {
     setIsDeafened((current) => !current)
@@ -1134,7 +1135,7 @@ export function VoiceRoomPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !room?.id || isFallbackSession) return
+    if (!client || !room?.id || useUbuntuVoice) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer)
@@ -1156,15 +1157,15 @@ export function VoiceRoomPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [isFallbackSession, loadParticipants, room?.id])
+  }, [loadParticipants, room?.id, useUbuntuVoice])
 
   useEffect(() => {
-    if (!isFallbackSession || !room?.id) return
+    if (!useUbuntuVoice || !room?.id) return
     const intervalId = window.setInterval(() => {
       void loadParticipants(room.id, { silent: true })
     }, 5000)
     return () => window.clearInterval(intervalId)
-  }, [isFallbackSession, loadParticipants, room?.id])
+  }, [loadParticipants, room?.id, useUbuntuVoice])
 
   useEffect(() => {
     return () => {

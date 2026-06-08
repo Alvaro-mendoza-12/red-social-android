@@ -7,7 +7,8 @@ Frontend web independiente de tu app móvil Conectate.
 - Esta carpeta es autónoma.
 - La puedes mover a otro disco o ruta y seguirá funcionando igual.
 - No depende de archivos de `app/` Android.
-- La única conexión compartida entre móvil y web es Supabase.
+- Web y móvil pueden operar con el backend Ubuntu (`VITE_FALLBACK_API_URL` / `FALLBACK_API_URL`).
+- Supabase queda solo como compatibilidad opcional/legacy (no requerido para correr en Ubuntu).
 
 ## Actualización enterprise 2026-05-07
 

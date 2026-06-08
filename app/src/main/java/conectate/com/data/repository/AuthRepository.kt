@@ -698,6 +698,25 @@ class AuthRepository @Inject constructor(
         return Result.success(user)
     }
 
+    suspend fun directPasswordReset(
+        email: String,
+        newPassword: String
+    ): Result<User> {
+        val result = authService.directPasswordReset(email, newPassword)
+        if (result.isFailure) {
+            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo restablecer la contraseña."))
+        }
+
+        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
+        accountSessionRepository.captureCurrentAccount(
+            displayName = user.displayName,
+            avatarUrl = user.avatar_url
+        ).onFailure {
+            android.util.Log.w("AuthRepository", "Failed to save local fallback account after direct reset", it)
+        }
+        return Result.success(user)
+    }
+
     suspend fun updatePassword(newPassword: String): Result<Unit> {
         return authService.updateUserPassword(newPassword)
     }

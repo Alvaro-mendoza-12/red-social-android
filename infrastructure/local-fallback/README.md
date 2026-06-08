@@ -5,9 +5,10 @@ Ubuntu. Originalmente nacio como fallback ante restricciones de Supabase, pero
 ahora tambien puede usarse como backend principal para autenticacion, datos
 basicos, storage local y pantallas web/Android ya migradas.
 
-El puente con Supabase queda como herramienta opcional de importacion/sync. El
-servidor puede arrancar sin `SUPABASE_URL`, sin `SUPABASE_SERVICE_ROLE_KEY` y
-sin el SDK de Supabase.
+El puente con Supabase queda como herramienta opcional de importacion/sync y
+esta apagado por defecto. El servidor puede arrancar con
+`LEGACY_SUPABASE_IMPORT_ENABLED=false`, sin `SUPABASE_URL`, sin
+`SUPABASE_SERVICE_ROLE_KEY` y sin el SDK de Supabase.
 
 ## Servicios
 
@@ -138,6 +139,7 @@ nano ~/conectate-local-fallback/.env
 Usa una de estas variables:
 
 ```env
+LEGACY_SUPABASE_IMPORT_ENABLED=true
 SUPABASE_SECRET_KEY=sb_secret_xxx
 # o, si usas llave legacy:
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
@@ -146,7 +148,8 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 Tambien puedes poner `SUPABASE_URL` y `SUPABASE_ANON_KEY` en ese mismo `.env`
 para que el servidor pueda probar el estado del upstream.
 
-Despues reinicia la API:
+Despues reinicia la API. Cuando termines la importacion, vuelve a dejar
+`LEGACY_SUPABASE_IMPORT_ENABLED=false` y reinicia otra vez:
 
 ```bash
 cd ~/conectate-local-fallback
@@ -219,8 +222,8 @@ Notas:
 
 - `GET /health`: API viva, sin tocar base de datos.
 - `GET /ready`: API + Postgres disponibles.
-- `GET /v1/upstream/supabase`: prueba opcional del Supabase original si se
-  llenan `SUPABASE_URL` y `SUPABASE_ANON_KEY` en `.env`.
+- `GET /v1/upstream/supabase`: prueba opcional del proveedor anterior solo si
+  `LEGACY_SUPABASE_IMPORT_ENABLED=true` y se llenan sus llaves en `.env`.
 - `POST /v1/auth/register`: crea usuario local de respaldo.
 - `POST /v1/auth/login`: inicia sesion local de respaldo.
 - `GET /v1/auth/me`: valida token local.
