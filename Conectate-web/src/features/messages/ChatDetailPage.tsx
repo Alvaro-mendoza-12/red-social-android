@@ -26,6 +26,7 @@ import {
   type GenericRow,
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type ChatMessage = {
   id: string
@@ -626,6 +627,7 @@ type ChatDetailPageProps = {
 
 export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailPageProps = {}) {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const { chatId: routeChatId = '' } = useParams()
   const chatId = chatIdOverride ?? routeChatId
   const [loading, setLoading] = useState(true)
@@ -1138,7 +1140,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     setLoading(true)
     setError(null)
     try {
-      if (isFallbackSession) {
+      if (useUbuntu) {
         const response = await loadFallbackChat(cleanChatId)
         if (isStaleLoad()) return
         setTitle(response.title || 'Chat privado')
@@ -1240,7 +1242,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         setLoading(false)
       }
     }
-  }, [cleanChatId, isFallbackSession, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, user])
+  }, [cleanChatId, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, useUbuntu, user])
 
   useEffect(() => {
     void loadChat()
@@ -1287,7 +1289,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [showMessageSearch])
 
   useEffect(() => {
-    if (!cleanChatId || !user || isFallbackSession) return
+    if (!cleanChatId || !user || useUbuntu) return
     const syncReadState = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       void markAsDeliveredAndRead()
@@ -1301,16 +1303,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       window.removeEventListener('focus', syncReadState)
       document.removeEventListener('visibilitychange', syncReadState)
     }
-  }, [cleanChatId, isFallbackSession, markAsDeliveredAndRead, user])
+  }, [cleanChatId, markAsDeliveredAndRead, useUbuntu, user])
 
   useEffect(() => {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     void loadChatSettings()
     void refreshScheduledJobs()
-  }, [isFallbackSession, loadChatSettings, refreshScheduledJobs])
+  }, [loadChatSettings, refreshScheduledJobs, useUbuntu])
 
   useEffect(() => {
-    if (isFallbackSession && user && cleanChatId) {
+    if (useUbuntu && user && cleanChatId) {
       return subscribeUbuntuRealtime({
         channel: `chat:${cleanChatId}`,
         onEvent: (event) => {
@@ -1325,7 +1327,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       })
     }
     const client = supabase
-    if (!client || !user || !cleanChatId || isFallbackSession) return
+    if (!client || !user || !cleanChatId || useUbuntu) return
     const channel = client
       .channel(`chat-live-${cleanChatId}`)
       .on(
@@ -1376,11 +1378,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [cleanChatId, isFallbackSession, refreshPollState, removeMessageFromState, upsertMessageInState, user])
+  }, [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState, useUbuntu, user])
 
   async function sendMessage(input: SendMessageInput) {
     if (!user || !cleanChatId) return
-    if (isFallbackSession) {
+    if (useUbuntu) {
       const response = await sendFallbackChatMessage(cleanChatId, {
         content: input.content,
         contentType: input.contentType ?? 'text',
@@ -1429,7 +1431,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function sendPendingAttachments(textFallback: string) {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       if (!user || !cleanChatId || pendingAttachments.length === 0) return
       const queued = [...pendingAttachments]
       setUploading(true)
@@ -1490,13 +1492,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase && !isFallbackSession) return
+    if (!supabase && !useUbuntu) return
     const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading) return
     setSending(true)
     try {
       if (editingMessageId) {
-        if (isFallbackSession) {
+        if (useUbuntu) {
           setError('La edicion de mensajes en modo respaldo queda para la siguiente etapa.')
           return
         }
@@ -1540,7 +1542,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase) return
     const { error: reactionError } = await supabase.rpc('secure_toggle_message_reaction', {
       p_message_id: messageId,
@@ -1569,7 +1571,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForAll(message: ChatMessage) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !user || message.senderId !== user.id) return
     try {
       const nowIso = new Date().toISOString()
@@ -1592,7 +1594,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !user) return
     try {
       const nextDeletedBy = Array.from(new Set([...message.deletedBy, user.id]))
@@ -1753,7 +1755,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
 
   async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       setSettings((current) => ({ ...current, ...patch }))
       return
     }
@@ -1845,7 +1847,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function saveTranslationSettings() {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !user || !cleanChatId || savingSettings) return
     const targetLang = settings.targetLang.trim().toLowerCase() || 'es'
     setSavingSettings(true)
@@ -1878,8 +1880,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
   }
 
-  if (!supabase && !isFallbackSession) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar mensajes." />
+  if (!supabase && !useUbuntu) {
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para usar mensajes con Ubuntu." />
   }
 
   if (loading) {

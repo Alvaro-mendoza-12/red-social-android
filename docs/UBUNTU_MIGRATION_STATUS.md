@@ -8,7 +8,7 @@ La migracion no esta al 100%.
 
 El proyecto ya puede funcionar con Ubuntu como backend primario cuando se configura `FALLBACK_API_URL` en Android y `VITE_FALLBACK_API_URL` en la web, pero todavia existen dependencias, nombres de clases, repositorios y rutas legacy de Supabase en codigo activo.
 
-Estimacion actual: 78-80%.
+Estimacion actual: 80-82%.
 
 ## Cambios recientes validados
 
@@ -20,6 +20,7 @@ Estimacion actual: 78-80%.
 - La APK dejo de cerrarse al abrir en la prueba real con ADB.
 - El cliente web compatible `getDataClient()` ahora sube archivos reales a storage Ubuntu mediante `/storage/v1/object/...`; ya no devuelve exitos falsos en `storage.upload`.
 - El feed web usa `shouldUseUbuntuBackend`, asi que carga, publica, sube media y reacciona por Ubuntu cuando el backend propio es primario.
+- La mensajeria web privada, de grupos y comunidades usa `shouldUseUbuntuBackend`; con Ubuntu primario carga/envia/sube adjuntos por el servidor propio y no intenta Realtime/RPC de Supabase.
 
 ## Crash Android corregido
 
@@ -110,6 +111,6 @@ SUPABASE_SERVICE_ROLE_KEY=
 - Remover SDKs Supabase de Android y web.
 - Sustituir todas las llamadas `supabase.from`, `supabase.storage`, `supabase.auth`, `supabase.rpc` y `supabase.realtime` por APIs Ubuntu.
 - Completar endpoints Ubuntu para cada modulo restante.
-- Migrar completamente mensajeria web avanzada: polls, reacciones, view-once, preferencias, traduccion y programacion de mensajes.
+- Completar endpoints Ubuntu de mensajeria avanzada: polls, reacciones, view-once, preferencias, traduccion y programacion de mensajes.
 - Probar login, registro, reset de password, perfil, foto, posts, comentarios, likes, seguidores, mensajes, realtime, notificaciones, voz, video, grupos, reportes, busqueda, videos y storage con cuentas reales en Ubuntu.
 - Eliminar o archivar backups/documentos legacy para que la busqueda global no mezcle codigo actual con historial.

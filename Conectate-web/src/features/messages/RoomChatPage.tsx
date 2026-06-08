@@ -5,6 +5,7 @@ import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackRoomChat, sendFallbackRoomMessage, uploadFallbackFile } from '../../core/fallbackData'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type RoomScope = 'group' | 'community'
 
@@ -238,6 +239,7 @@ type RoomChatPageProps = {
 
 export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPageProps) {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const config = roomConfigByScope[scope]
   const cleanRoomId = useMemo(() => roomId.trim().toLowerCase(), [roomId])
   const [title, setTitle] = useState(scope === 'group' ? 'Grupo' : 'Comunidad')
@@ -509,7 +511,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [stopAudioStream])
 
   const loadPollStates = useCallback(async (rows: RoomMessage[]) => {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       setPollStatesById({})
       return
     }
@@ -530,10 +532,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       }),
     )
     setPollStatesById(Object.fromEntries(entries))
-  }, [isFallbackSession])
+  }, [useUbuntu])
 
   const refreshPollState = useCallback(async (pollId: string) => {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !pollId) return
     const { data, error } = await supabase.rpc('secure_get_poll_state', { p_poll_id: pollId })
     if (error) return
@@ -541,11 +543,11 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       ...current,
       [pollId]: ((data ?? []) as GenericRow[]).map(mapPollState),
     }))
-  }, [isFallbackSession])
+  }, [useUbuntu])
 
   const refreshMessageById = useCallback(
     async (messageId: string) => {
-      if (isFallbackSession) return
+      if (useUbuntu) return
       if (!supabase || !messageId || !cleanRoomId) return
       const { data, error } = await supabase
         .from(config.messageTable)
@@ -565,12 +567,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         void refreshPollState(mapped.pollId)
       }
     },
-    [cleanRoomId, config.messageTable, config.roomForeignKey, isFallbackSession, refreshPollState, removeMessageFromState, upsertMessageInState],
+    [cleanRoomId, config.messageTable, config.roomForeignKey, refreshPollState, removeMessageFromState, upsertMessageInState, useUbuntu],
   )
 
   const loadConsumedViewOnce = useCallback(
     async (rows: RoomMessage[]) => {
-      if (isFallbackSession) {
+      if (useUbuntu) {
         setConsumedViewOnce({})
         return
       }
@@ -597,14 +599,14 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       }, {})
       setConsumedViewOnce(consumed)
     },
-    [config.scopeType, isFallbackSession, user],
+    [config.scopeType, useUbuntu, user],
   )
 
   const markAsRead = useCallback(async () => {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !user || !cleanRoomId) return
     await supabase.rpc(config.markReadRpc, { [config.roomIdParam]: cleanRoomId })
-  }, [cleanRoomId, config.markReadRpc, config.roomIdParam, isFallbackSession, user])
+  }, [cleanRoomId, config.markReadRpc, config.roomIdParam, useUbuntu, user])
 
   const loadRoom = useCallback(async () => {
     const loadSequence = ++loadSequenceRef.current
@@ -618,7 +620,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     setLoading(true)
     setError(null)
     try {
-      if (isFallbackSession) {
+      if (useUbuntu) {
         const response = await loadFallbackRoomChat(scope, cleanRoomId)
         if (isStaleLoad()) return
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
@@ -678,7 +680,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     config.messageTable,
     config.roomForeignKey,
     config.roomTable,
-    isFallbackSession,
+    useUbuntu,
     loadConsumedViewOnce,
     loadPollStates,
     markAsRead,
@@ -732,7 +734,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   useEffect(() => {
     if (!cleanRoomId || !user) return
-    if (isFallbackSession) return
+    if (useUbuntu) return
     const syncReadState = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       void markAsRead()
@@ -746,11 +748,11 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       window.removeEventListener('focus', syncReadState)
       document.removeEventListener('visibilitychange', syncReadState)
     }
-  }, [cleanRoomId, isFallbackSession, markAsRead, user])
+  }, [cleanRoomId, markAsRead, useUbuntu, user])
 
   useEffect(() => {
     const client = supabase
-    if (!client || !user || !cleanRoomId || isFallbackSession) return
+    if (!client || !user || !cleanRoomId || useUbuntu) return
     const channel = client
       .channel(`${scope}-live-${cleanRoomId}`)
       .on(
@@ -796,19 +798,19 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     config.roomForeignKey,
     refreshPollState,
     removeMessageFromState,
-    isFallbackSession,
+    useUbuntu,
     scope,
     upsertMessageInState,
     user,
   ])
 
   useEffect(() => {
-    if (!isFallbackSession || !user || !cleanRoomId) return
+    if (!useUbuntu || !user || !cleanRoomId) return
     const intervalId = window.setInterval(() => {
       void loadRoom()
     }, 5000)
     return () => window.clearInterval(intervalId)
-  }, [cleanRoomId, isFallbackSession, loadRoom, user])
+  }, [cleanRoomId, loadRoom, useUbuntu, user])
 
   async function sendMessage(
     content: string,
@@ -820,7 +822,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     forwardedFromUserId: string | null = null,
   ) {
     if (!user || !cleanRoomId) return
-    if (isFallbackSession) {
+    if (useUbuntu) {
       const response = await sendFallbackRoomMessage(scope, cleanRoomId, {
         content,
         contentType,
@@ -862,7 +864,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   async function sendPendingAttachments(textFallback: string) {
     if (!user || !cleanRoomId || pendingAttachments.length === 0) return
-    if (!isFallbackSession && !supabase) return
+    if (!useUbuntu && !supabase) return
     const queued = [...pendingAttachments]
     setUploading(true)
     try {
@@ -870,7 +872,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const attachment = queued[index]
         const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `${scope}/${user.id}/${Date.now()}_${index}_${safeName}`
-        const publicUrl = isFallbackSession
+        const publicUrl = useUbuntu
           ? (await uploadFallbackFile(config.mediaBucket, attachment.file, filePath)).publicUrl
           : await (async () => {
               const { error: uploadError } = await supabase!.storage
@@ -918,7 +920,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase) return
     const payload: Record<string, unknown> = { p_message_id: messageId, p_emoji: emoji }
     const { error: reactionError } = await supabase.rpc(config.reactionRpc, payload)
@@ -931,7 +933,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   async function handleAttachViewOnceFile(file: File | null) {
     if (!user || !cleanRoomId || !file) return
-    if (!isFallbackSession && !supabase) return
+    if (!useUbuntu && !supabase) return
     setUploading(true)
     try {
       const contentType = inferContentType(file)
@@ -940,7 +942,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       }
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath = `${scope}/view-once/${user.id}/${Date.now()}_${safeName}`
-      const publicUrl = isFallbackSession
+      const publicUrl = useUbuntu
         ? (await uploadFallbackFile(config.mediaBucket, file, filePath)).publicUrl
         : await (async () => {
             const { error: uploadError } = await supabase!.storage
@@ -965,7 +967,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function createPoll() {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       setError('Las encuestas en grupos/comunidades se activarán en el servidor Ubuntu después de estabilizar mensajes y archivos.')
       return
     }
@@ -1002,7 +1004,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function votePollOption(pollId: string, optionId: string, selected: boolean) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !pollId || !optionId) return
     try {
       const { data, error: voteError } = await supabase.rpc('secure_vote_poll_option', {
@@ -1021,7 +1023,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function consumeViewOnce(message: RoomMessage) {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       if (message.mediaUrl) window.open(message.mediaUrl, '_blank', 'noopener,noreferrer')
       return
     }
@@ -1064,7 +1066,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function loadMessageReceipts(messageId: string) {
-    if (isFallbackSession) return
+    if (useUbuntu) return
     if (!supabase || !messageId) return
     try {
       const { data, error: receiptsError } = await supabase.rpc(config.receiptsRpc, { p_message_id: messageId })
@@ -1078,8 +1080,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
   }
 
-  if (!supabase && !isFallbackSession) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar mensajes." />
+  if (!supabase && !useUbuntu) {
+    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para usar mensajes con Ubuntu." />
   }
 
   if (loading) {
