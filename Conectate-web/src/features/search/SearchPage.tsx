@@ -4,8 +4,8 @@ import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import { searchFallbackProfiles, submitFallbackUserReport } from '../../core/fallbackData'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type ProfileCard = {
   id: string
@@ -24,7 +24,7 @@ function mapProfile(row: GenericRow): ProfileCard {
 }
 
 export function SearchPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<ProfileCard[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,7 +32,7 @@ export function SearchPage() {
   const [reportReasonById, setReportReasonById] = useState<Record<string, string>>({})
   const [reportDetailsById, setReportDetailsById] = useState<Record<string, string>>({})
   const [reportingById, setReportingById] = useState<Record<string, boolean>>({})
-  const useFallback = Boolean(readFallbackSession())
+  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
 
   useEffect(() => {
     async function loadProfiles() {

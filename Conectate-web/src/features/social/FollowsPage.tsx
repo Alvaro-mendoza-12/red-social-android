@@ -4,8 +4,8 @@ import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import { loadFallbackFollows, setFallbackProfileFollow } from '../../core/fallbackData'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type FollowTab = 'following' | 'followers'
 
@@ -24,13 +24,13 @@ function mapProfile(row: GenericRow): ProfileItem {
 }
 
 export function FollowsPage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [activeTab, setActiveTab] = useState<FollowTab>('following')
   const [items, setItems] = useState<ProfileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const useFallback = Boolean(readFallbackSession())
+  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

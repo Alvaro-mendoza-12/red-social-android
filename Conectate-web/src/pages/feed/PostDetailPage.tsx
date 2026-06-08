@@ -7,6 +7,7 @@ import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaUtils'
 
 type PostDetail = {
@@ -44,6 +45,7 @@ function initialsOf(name: string): string {
 
 export function PostDetailPage() {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
   const { postId = '' } = useParams()
   const cleanPostId = useMemo(() => postId.trim().toLowerCase(), [postId])
@@ -61,7 +63,7 @@ export function PostDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      if (isFallbackSession) {
+      if (useUbuntu) {
         const payload = await loadFallbackPostDetail(cleanPostId)
         const row = payload.post
         const postUserId = textOf(row, ['user_id'], '')
@@ -168,7 +170,7 @@ export function PostDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [cleanPostId, isFallbackSession])
+  }, [cleanPostId, useUbuntu])
 
   useEffect(() => {
     void load()
@@ -176,7 +178,7 @@ export function PostDetailPage() {
 
   useEffect(() => {
     const client = supabase
-    if (!client || !cleanPostId || isFallbackSession) return
+    if (!client || !cleanPostId || useUbuntu) return
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) {
@@ -198,14 +200,14 @@ export function PostDetailPage() {
       if (refreshTimer) clearTimeout(refreshTimer)
       void client.removeChannel(channel)
     }
-  }, [cleanPostId, isFallbackSession, load])
+  }, [cleanPostId, load, useUbuntu])
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!user || !cleanPostId) return
     const content = commentDraft.trim()
     if (!content) return
-    if (isFallbackSession) {
+    if (useUbuntu) {
       try {
         await addFallbackPostComment(cleanPostId, { content })
         setCommentDraft('')
@@ -231,7 +233,7 @@ export function PostDetailPage() {
 
   async function sharePost() {
     if (!user || !cleanPostId) return
-    if (isFallbackSession) {
+    if (useUbuntu) {
       try {
         await shareFallbackPost(cleanPostId)
       } catch (caught) {
@@ -250,7 +252,7 @@ export function PostDetailPage() {
     }
   }
 
-  if (!supabase && !isFallbackSession) return <StatusView title="Backend no configurado" description="Configura Ubuntu o Supabase legacy para usar posts." />
+  if (!supabase && !useUbuntu) return <StatusView title="Backend no configurado" description="Configura Ubuntu o Supabase legacy para usar posts." />
   if (loading) return <StatusView title="Cargando publicación" description="Espera un momento..." />
   if (error && !post) {
     return (

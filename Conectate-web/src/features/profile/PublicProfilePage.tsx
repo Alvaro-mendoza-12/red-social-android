@@ -5,8 +5,8 @@ import { QrCodeTile } from '../../components/QrCodeTile'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import { loadFallbackPublicProfile, setFallbackProfileFollow, submitFallbackUserReport } from '../../core/fallbackData'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 import { getOrCreateDirectChat } from '../messages/directChat'
@@ -58,7 +58,7 @@ function mapPublicPost(row: GenericRow): PublicPost {
 }
 
 export function PublicProfilePage() {
-  const { user } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const navigate = useNavigate()
   const { profileId = '' } = useParams()
   const cleanProfileId = useMemo(() => profileId.trim(), [profileId])
@@ -74,7 +74,7 @@ export function PublicProfilePage() {
   const [reportDetails, setReportDetails] = useState('')
   const [reporting, setReporting] = useState(false)
   const [shareStatus, setShareStatus] = useState<string | null>(null)
-  const useFallback = Boolean(readFallbackSession())
+  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
 
   const isSelf = Boolean(user && cleanProfileId && user.id === cleanProfileId)
   const canSeePosts = Boolean(profile && (!profile.isPrivate || isSelf || isFollowing))
