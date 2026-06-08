@@ -15,6 +15,7 @@ import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../co
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaUtils'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type FeedItem = {
   id: string
@@ -70,6 +71,7 @@ function mapPost(row: GenericRow): FeedItem {
 
 export function FeedPage() {
   const { user, isFallbackSession } = useAuth()
+  const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
   const feedCacheKey = `feed:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<FeedItem[]>([])
@@ -82,7 +84,7 @@ export function FeedPage() {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadFeed = useCallback(async (options?: LoadFeedOptions) => {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       if (!options?.silent) {
         setLoading(true)
         setError(null)
@@ -180,7 +182,7 @@ export function FeedPage() {
       setLoading(false)
       setRealtimeRefreshing(false)
     }
-  }, [feedCacheKey, isFallbackSession, user])
+  }, [feedCacheKey, useUbuntu, user])
 
   useEffect(() => {
     const cached = readCachedValue<FeedItem[]>(feedCacheKey, 1000 * 60 * 60 * 8)
@@ -194,7 +196,7 @@ export function FeedPage() {
   }, [feedCacheKey, loadFeed])
 
   useEffect(() => {
-    if (isFallbackSession && user?.id) {
+    if (useUbuntu && user?.id) {
       const scheduleRefresh = () => {
         if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
         refreshTimerRef.current = setTimeout(() => {
@@ -219,7 +221,7 @@ export function FeedPage() {
       }
     }
     const client = supabase
-    if (!client || isFallbackSession) return
+    if (!client || useUbuntu) return
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current)
@@ -242,7 +244,7 @@ export function FeedPage() {
       }
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [isFallbackSession, loadFeed])
+  }, [loadFeed, useUbuntu, user?.id])
 
   async function createPost(file: File | null) {
     if (!user || posting || uploading) return
@@ -259,7 +261,7 @@ export function FeedPage() {
         mediaType = inferPostMediaType(file)
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `${user.id}/${Date.now()}_${safeName}`
-        if (isFallbackSession) {
+        if (useUbuntu) {
           const uploaded = await uploadFallbackFile('post-media', file, filePath)
           mediaUrl = uploaded.publicUrl
         } else if (supabase) {
@@ -274,7 +276,7 @@ export function FeedPage() {
         }
       }
 
-      if (isFallbackSession) {
+      if (useUbuntu) {
         await createFallbackPost({
           content: text,
           mediaUrl: mediaUrl || null,
@@ -306,7 +308,7 @@ export function FeedPage() {
   }
 
   async function toggleLike(item: FeedItem) {
-    if (isFallbackSession) {
+    if (useUbuntu) {
       try {
         const nextLiked = !item.likedByMe
         setItems((current) =>

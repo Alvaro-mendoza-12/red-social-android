@@ -8,7 +8,7 @@ La migracion no esta al 100%.
 
 El proyecto ya puede funcionar con Ubuntu como backend primario cuando se configura `FALLBACK_API_URL` en Android y `VITE_FALLBACK_API_URL` en la web, pero todavia existen dependencias, nombres de clases, repositorios y rutas legacy de Supabase en codigo activo.
 
-Estimacion actual: 76-78%.
+Estimacion actual: 78-80%.
 
 ## Cambios recientes validados
 
@@ -18,6 +18,8 @@ Estimacion actual: 76-78%.
 - CSP de Vercel ya no permite `*.supabase.co` en `connect-src`.
 - Signaling server usa `FALLBACK_API_URL` para validar sesiones contra Ubuntu.
 - La APK dejo de cerrarse al abrir en la prueba real con ADB.
+- El cliente web compatible `getDataClient()` ahora sube archivos reales a storage Ubuntu mediante `/storage/v1/object/...`; ya no devuelve exitos falsos en `storage.upload`.
+- El feed web usa `shouldUseUbuntuBackend`, asi que carga, publica, sube media y reacciona por Ubuntu cuando el backend propio es primario.
 
 ## Crash Android corregido
 
@@ -108,5 +110,6 @@ SUPABASE_SERVICE_ROLE_KEY=
 - Remover SDKs Supabase de Android y web.
 - Sustituir todas las llamadas `supabase.from`, `supabase.storage`, `supabase.auth`, `supabase.rpc` y `supabase.realtime` por APIs Ubuntu.
 - Completar endpoints Ubuntu para cada modulo restante.
+- Migrar completamente mensajeria web avanzada: polls, reacciones, view-once, preferencias, traduccion y programacion de mensajes.
 - Probar login, registro, reset de password, perfil, foto, posts, comentarios, likes, seguidores, mensajes, realtime, notificaciones, voz, video, grupos, reportes, busqueda, videos y storage con cuentas reales en Ubuntu.
 - Eliminar o archivar backups/documentos legacy para que la busqueda global no mezcle codigo actual con historial.

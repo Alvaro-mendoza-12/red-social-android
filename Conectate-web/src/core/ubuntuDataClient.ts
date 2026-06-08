@@ -1,14 +1,43 @@
-import { fallbackApiJson } from './auth/fallbackAuth'
+import { fallbackApiJson, readFallbackSession } from './auth/fallbackAuth'
 import { callUbuntuRpc } from './fallbackRpc'
 import { isUbuntuPrimary } from './ubuntuBackend'
 import { supabase } from './supabase'
 
 type QueryResult<T> = { data: T | null; error: unknown | null }
+type SingleMode = 'many' | 'single' | 'maybeSingle'
+
+const fallbackApiUrl = import.meta.env.VITE_FALLBACK_API_URL?.trim().replace(/\/+$/, '') ?? ''
+
+function encodePathSegments(path: string) {
+  return path
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
+function publicStorageUrl(bucket: string, path: string) {
+  return `${fallbackApiUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodePathSegments(path)}`
+}
+
+function asError(value: unknown, fallback: string) {
+  if (value instanceof Error) return value
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const message = String(record.error || record.message || '').trim()
+    if (message) return new Error(message)
+  }
+  const message = String(value || '').trim()
+  return new Error(message || fallback)
+}
 
 class UbuntuQueryBuilder {
   private filters = new URLSearchParams()
   private orderValue = ''
   private limitValue = 0
+  private rangeValue: { from: number; to: number } | null = null
+  private singleMode: SingleMode = 'many'
   private insertBody: Record<string, unknown> | Record<string, unknown>[] | null = null
   private deleteMode = false
 
@@ -18,16 +47,36 @@ class UbuntuQueryBuilder {
     this.table = table
   }
 
-  select(_columns: string) {
+  select(_columns = '*', _options?: { count?: string; head?: boolean }) {
     return this
   }
 
-  eq(column: string, value: string) {
+  eq(column: string, value: string | number | boolean | null) {
     this.filters.set(column, `eq.${value}`)
     return this
   }
 
-  in(column: string, values: string[]) {
+  neq(column: string, value: string | number | boolean | null) {
+    this.filters.set(column, `neq.${value}`)
+    return this
+  }
+
+  is(column: string, value: string | boolean | null) {
+    this.filters.set(column, `is.${value}`)
+    return this
+  }
+
+  gte(column: string, value: string | number) {
+    this.filters.set(column, `gte.${value}`)
+    return this
+  }
+
+  lte(column: string, value: string | number) {
+    this.filters.set(column, `lte.${value}`)
+    return this
+  }
+
+  in(column: string, values: Array<string | number>) {
     this.filters.set(column, `in.(${values.join(',')})`)
     return this
   }
@@ -39,6 +88,24 @@ class UbuntuQueryBuilder {
 
   limit(count: number) {
     this.limitValue = count
+    return this
+  }
+
+  range(from: number, to: number) {
+    this.rangeValue = { from, to }
+    this.limitValue = Math.max(0, to - from + 1)
+    return this
+  }
+
+  single() {
+    this.singleMode = 'single'
+    this.limitValue = this.limitValue || 1
+    return this
+  }
+
+  maybeSingle() {
+    this.singleMode = 'maybeSingle'
+    this.limitValue = this.limitValue || 1
     return this
   }
 
@@ -67,18 +134,30 @@ class UbuntuQueryBuilder {
     const params = new URLSearchParams(this.filters)
     if (this.orderValue) params.set('order', this.orderValue)
     if (this.limitValue > 0) params.set('limit', String(this.limitValue))
+    if (this.rangeValue) params.set('offset', String(Math.max(0, this.rangeValue.from)))
     const query = params.toString()
     return query ? `?${query}` : ''
   }
 
-  then<TResult1 = QueryResult<unknown[]>, TResult2 = never>(
-    onfulfilled?: ((value: QueryResult<unknown[]>) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = QueryResult<unknown[] | unknown>, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult<unknown[] | unknown>) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     return this.execute().then(onfulfilled, onrejected)
   }
 
-  private async execute(): Promise<QueryResult<unknown[]>> {
+  private shapeResult(rows: unknown[] | null): QueryResult<unknown[] | unknown> {
+    if (this.singleMode === 'single') {
+      const row = rows?.[0] ?? null
+      return row ? { data: row, error: null } : { data: null, error: new Error('ROW_NOT_FOUND') }
+    }
+    if (this.singleMode === 'maybeSingle') {
+      return { data: rows?.[0] ?? null, error: null }
+    }
+    return { data: rows, error: null }
+  }
+
+  private async execute(): Promise<QueryResult<unknown[] | unknown>> {
     try {
       if (this.insertBody && !this.deleteMode) {
         const hasQuery = this.buildQuery().length > 1
@@ -90,7 +169,7 @@ class UbuntuQueryBuilder {
             body: JSON.stringify(this.insertBody),
           },
         )
-        return { data: rows, error: null }
+        return this.shapeResult(rows)
       }
       if (this.deleteMode) {
         await fallbackApiJson(`/rest/v1/${encodeURIComponent(this.table)}${this.buildQuery()}`, {
@@ -101,10 +180,48 @@ class UbuntuQueryBuilder {
       const rows = await fallbackApiJson<unknown[]>(
         `/rest/v1/${encodeURIComponent(this.table)}${this.buildQuery()}`,
       )
-      return { data: rows, error: null }
+      return this.shapeResult(rows)
     } catch (error) {
       return { data: null, error }
     }
+  }
+}
+
+async function uploadUbuntuStorageObject(bucket: string, path: string, file: File, options?: { upsert?: boolean; contentType?: string }) {
+  try {
+    if (!fallbackApiUrl) throw new Error('VITE_FALLBACK_API_URL no esta configurado.')
+    const token = readFallbackSession()?.accessToken?.trim()
+    if (!token) throw new Error('No hay una sesion Ubuntu activa para subir archivos.')
+    const objectPath = encodePathSegments(path)
+    if (!objectPath) throw new Error('Ruta de archivo invalida.')
+
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    headers.set('ngrok-skip-browser-warning', 'true')
+    headers.set('Content-Type', options?.contentType || file.type || 'application/octet-stream')
+
+    const response = await fetch(
+      `${fallbackApiUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`,
+      {
+        method: options?.upsert ? 'PUT' : 'POST',
+        headers,
+        body: file,
+      },
+    )
+    const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>
+    if (!response.ok) throw asError(payload, 'No se pudo subir el archivo a Ubuntu.')
+    const publicUrl = String(payload.publicUrl || publicStorageUrl(bucket, path))
+    return {
+      data: {
+        Key: String(payload.Key || `${bucket}/${path}`),
+        path: String(payload.path || path),
+        fullPath: `${bucket}/${path}`,
+        publicUrl,
+      },
+      error: null,
+    }
+  } catch (error) {
+    return { data: null, error }
   }
 }
 
@@ -120,10 +237,26 @@ export const ubuntuDataClient = {
   storage: {
     from(bucket: string) {
       return {
-        upload: async (_path: string, _file: File) => ({ error: null }),
+        upload: (path: string, file: File, options?: { upsert?: boolean; contentType?: string }) =>
+          uploadUbuntuStorageObject(bucket, path, file, options),
         getPublicUrl: (path: string) => ({
-          data: { publicUrl: `${import.meta.env.VITE_FALLBACK_API_URL}/v1/storage/public/${bucket}/${path}` },
+          data: { publicUrl: publicStorageUrl(bucket, path) },
         }),
+        remove: async (paths: string[]) => {
+          try {
+            await Promise.all(
+              paths.map((path) =>
+                fallbackApiJson(
+                  `/v1/storage/objects/${encodeURIComponent(bucket)}/${encodePathSegments(path)}`,
+                  { method: 'DELETE' },
+                ),
+              ),
+            )
+            return { data: paths.map((name) => ({ name })), error: null }
+          } catch (error) {
+            return { data: null, error }
+          }
+        },
       }
     },
   },
