@@ -44,8 +44,6 @@ android {
         val secretsFile = rootProject.file("secrets.properties")
         if (secretsFile.exists()) {
             props.load(FileInputStream(secretsFile))
-            val supabaseUrl = props.getProperty("SUPABASE_URL") ?: ""
-            val supabaseAnon = props.getProperty("SUPABASE_ANON_KEY") ?: ""
             val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
             val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
             val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
@@ -53,8 +51,8 @@ android {
             val fallbackApiUrl = props.getNonBlank("FALLBACK_API_URL")
                 ?: props.getNonBlank("LOCAL_FALLBACK_API_URL")
                 ?: "https://celtic-poise-omission.ngrok-free.dev"
-            buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
-            buildConfigField("String", "SUPABASE_ANON_KEY", supabaseAnon.asBuildConfigString())
+            buildConfigField("String", "SUPABASE_URL", "\"\"")
+            buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
             buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
             buildConfigField("String", "UPSTASH_REST_URL", upstashRestUrl.asBuildConfigString())
             buildConfigField("String", "UPSTASH_TOKEN", upstashToken.asBuildConfigString())

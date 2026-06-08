@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { isFallbackAuthConfigured } from '../auth/fallbackAuth'
 
 /**
  * Cliente opcional legacy. Con Ubuntu como backend principal, supabase queda en null.
@@ -9,7 +10,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
 export const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseAnonKey
+  !isFallbackAuthConfigured && supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
           persistSession: true,

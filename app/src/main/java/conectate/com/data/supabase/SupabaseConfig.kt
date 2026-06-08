@@ -54,8 +54,8 @@ class SupabaseConfig @Inject constructor(
         rawSupabaseUrl.startsWith("http", ignoreCase = true) && rawSupabaseAnonKey.isNotBlank()
     private val hasFallbackBackend: Boolean =
         rawFallbackApiUrl.startsWith("http", ignoreCase = true)
-    /** Ubuntu/local API is primary only when configured and Supabase is not. */
-    val isLocalFallbackPrimary: Boolean = hasFallbackBackend && !hasSupabaseBackend
+    /** Ubuntu/local API wins whenever configured, even if legacy Supabase keys remain in secrets.properties. */
+    val isLocalFallbackPrimary: Boolean = hasFallbackBackend
     val supabaseUrl: String = if (isLocalFallbackPrimary) rawFallbackApiUrl else rawSupabaseUrl
     val supabaseAnonKey: String = if (isLocalFallbackPrimary) LOCAL_FALLBACK_ANON_KEY else rawSupabaseAnonKey
     val isConfigured: Boolean = hasSupabaseBackend

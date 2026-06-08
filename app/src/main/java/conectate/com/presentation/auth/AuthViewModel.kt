@@ -40,7 +40,8 @@ sealed class AuthState {
 }
 
 
-class AuthViewModel  constructor(
+@HiltViewModel
+class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
