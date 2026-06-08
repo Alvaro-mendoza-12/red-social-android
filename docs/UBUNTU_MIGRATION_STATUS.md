@@ -21,6 +21,8 @@ Estimacion actual: 80-82%.
 - El cliente web compatible `getDataClient()` ahora sube archivos reales a storage Ubuntu mediante `/storage/v1/object/...`; ya no devuelve exitos falsos en `storage.upload`.
 - El feed web usa `shouldUseUbuntuBackend`, asi que carga, publica, sube media y reacciona por Ubuntu cuando el backend propio es primario.
 - La mensajeria web privada, de grupos y comunidades usa `shouldUseUbuntuBackend`; con Ubuntu primario carga/envia/sube adjuntos por el servidor propio y no intenta Realtime/RPC de Supabase.
+- El build web exige `VITE_FALLBACK_API_URL`; Supabase legacy ya no es aceptado como backend valido para compilar.
+- El build Android exige `FALLBACK_API_URL` o `LOCAL_FALLBACK_API_URL` en `secrets.properties`; se elimino la URL ngrok hardcodeada como fallback automatico.
 
 ## Crash Android corregido
 
@@ -79,6 +81,8 @@ VITE_FALLBACK_API_URL=https://tu-url-ngrok-o-dominio
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 ```
+
+Si `VITE_FALLBACK_API_URL` falta, el build web debe fallar. Si `SUPABASE_URL` o `SUPABASE_ANON_KEY` aparecen en `secrets.properties`, Android los ignora y empaqueta valores vacios.
 
 En Ubuntu:
 

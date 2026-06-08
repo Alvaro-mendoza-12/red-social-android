@@ -50,7 +50,9 @@ android {
             val realDebridToken = props.getProperty("REAL_DEBRID_TOKEN") ?: ""
             val fallbackApiUrl = props.getNonBlank("FALLBACK_API_URL")
                 ?: props.getNonBlank("LOCAL_FALLBACK_API_URL")
-                ?: "https://celtic-poise-omission.ngrok-free.dev"
+                ?: throw GradleException(
+                    "FALLBACK_API_URL or LOCAL_FALLBACK_API_URL is required in secrets.properties for Ubuntu backend builds."
+                )
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
             buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
@@ -59,13 +61,9 @@ android {
             buildConfigField("String", "TMDB_API_KEY", tmdbApiKey.asBuildConfigString())
             buildConfigField("String", "REAL_DEBRID_TOKEN", realDebridToken.asBuildConfigString())
         } else {
-            buildConfigField("String", "SUPABASE_URL", "\"\"")
-            buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
-            buildConfigField("String", "FALLBACK_API_URL", "\"https://celtic-poise-omission.ngrok-free.dev\"")
-            buildConfigField("String", "UPSTASH_REST_URL", "\"\"")
-            buildConfigField("String", "UPSTASH_TOKEN", "\"\"")
-            buildConfigField("String", "TMDB_API_KEY", "\"\"")
-            buildConfigField("String", "REAL_DEBRID_TOKEN", "\"\"")
+            throw GradleException(
+                "secrets.properties is required and must define FALLBACK_API_URL or LOCAL_FALLBACK_API_URL for Ubuntu backend builds."
+            )
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
