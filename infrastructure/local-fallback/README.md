@@ -62,6 +62,7 @@ Dentro del SSH de Ubuntu:
 
 ```bash
 cd ~/conectate-local-fallback
+bash scripts/sync-env-from-example.sh
 PUBLIC_BASE_URL=https://tu-dominio.ngrok-free.dev bash scripts/repair-ubuntu-primary.sh
 ```
 
@@ -69,8 +70,12 @@ Si todavia no tienes dominio fijo, ejecuta:
 
 ```bash
 cd ~/conectate-local-fallback
+bash scripts/sync-env-from-example.sh
 bash scripts/repair-ubuntu-primary.sh
 ```
+
+`sync-env-from-example.sh` agrega claves nuevas de `config.example` a `.env`
+sin borrar tus valores actuales, contrasenas ni tokens.
 
 Si `api` queda en `unhealthy` o `Restarting`, ejecuta el diagnostico:
 

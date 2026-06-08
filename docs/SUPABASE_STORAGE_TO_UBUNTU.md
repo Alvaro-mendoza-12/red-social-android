@@ -26,6 +26,7 @@ Entra a la carpeta del backend local:
 
 ```bash
 cd ~/conectate-local-fallback
+bash scripts/sync-env-from-example.sh
 ```
 
 Edita `.env`:

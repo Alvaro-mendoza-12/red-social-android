@@ -68,6 +68,10 @@ if [ ! -f ".env" ]; then
   cp config.example .env
 fi
 
+if [ -f "scripts/sync-env-from-example.sh" ]; then
+  bash scripts/sync-env-from-example.sh
+fi
+
 require_file "docker-compose.yml"
 require_file "api/package.json"
 require_file "api/src/server.js"
