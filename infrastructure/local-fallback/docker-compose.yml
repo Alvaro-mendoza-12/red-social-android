@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: conectate-local-fallback-db-main
     restart: unless-stopped
     environment:
       POSTGRES_DB: conectate_fallback
@@ -20,6 +21,7 @@ services:
   api:
     build:
       context: ./api
+    container_name: conectate-local-fallback-api-main
     restart: unless-stopped
     env_file:
       - .env
@@ -51,13 +53,14 @@ services:
   signaling:
     build:
       context: ${SIGNALING_CONTEXT:-../../signaling-server}
+    container_name: conectate-local-fallback-signaling-main
     restart: unless-stopped
     env_file:
       - .env
     environment:
       NODE_ENV: production
       PORT: 3003
-      LOCAL_FALLBACK_API_URL: http://api:3001
+      LOCAL_FALLBACK_API_URL: http://conectate-local-fallback-api-main:3001
       SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:-*}
     depends_on:
       api:
@@ -74,6 +77,7 @@ services:
 
   edge:
     image: nginx:1.27-alpine
+    container_name: conectate-local-fallback-edge-main
     restart: unless-stopped
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -93,6 +97,7 @@ services:
   realtime-gateway:
     build:
       context: ./realtime-gateway
+    container_name: conectate-local-fallback-realtime-main
     restart: unless-stopped
     env_file:
       - .env

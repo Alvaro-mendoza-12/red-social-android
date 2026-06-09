@@ -57,6 +57,26 @@ wait_for_postgres() {
   fail_with_logs "Postgres no respondio a tiempo (5432)"
 }
 
+cleanup_compose_run_containers() {
+  local project_prefix
+  local ids
+  local pattern
+  project_prefix="${COMPOSE_PROJECT_NAME:-conectate-local-fallback}"
+  for pattern in \
+    "${project_prefix}-api-run" \
+    "${project_prefix}-edge-run" \
+    "${project_prefix}-realtime-gateway-run" \
+    "${project_prefix}-signaling-run"
+  do
+    ids="$(docker ps -aq --filter "name=${pattern}" 2>/dev/null || true)"
+    if [ -n "$ids" ]; then
+      echo "==> Limpiando contenedores temporales ${pattern}*"
+      # shellcheck disable=SC2086
+      docker rm -f $ids >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 require_file() {
   local file="$1"
   if [ ! -f "$file" ]; then
@@ -80,7 +100,9 @@ require_file "api/src/postgrest-compat-routes.js"
 require_file "api/src/storage-routes.js"
 require_file "nginx/default.conf"
 
-if ! grep -q 'set $api_upstream http://api:3001' nginx/default.conf || ! grep -q "resolver 127.0.0.11" nginx/default.conf; then
+cleanup_compose_run_containers
+
+if ! grep -q 'set $api_upstream http://conectate-local-fallback-api-main:3001' nginx/default.conf || ! grep -q "resolver 127.0.0.11" nginx/default.conf; then
   fail_with_logs "nginx/default.conf esta desactualizado. Copia infrastructure/local-fallback/nginx/default.conf desde el repo a Ubuntu antes de levantar."
 fi
 
@@ -153,9 +175,11 @@ docker compose run --rm --no-deps api node --check src/data-routes.js
 docker compose run --rm --no-deps api node --check src/postgrest-compat-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
 docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
+cleanup_compose_run_containers
 
 echo "==> Limpiando contenedores huerfanos y red Docker sin borrar datos"
 docker compose down --remove-orphans
+cleanup_compose_run_containers
 
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db
@@ -186,6 +210,7 @@ done
 
 echo "==> Reconstruyendo servicios principales"
 docker compose up -d --build
+cleanup_compose_run_containers
 
 wait_http "api" "http://127.0.0.1:3001/ready"
 
@@ -194,17 +219,18 @@ docker compose exec -T api node -e "fetch('http://127.0.0.1:3001/ready').then(as
   || fail_with_logs "api responde por el host, pero no dentro de su propio contenedor"
 
 echo "==> Recreando edge para borrar cualquier IP vieja de api guardada por Nginx"
+cleanup_compose_run_containers
 docker compose rm -sf edge >/dev/null 2>&1 || true
 docker compose up -d --force-recreate --no-deps edge
 sleep 5
 
 echo "==> Diagnostico de red Docker edge -> api"
 docker compose exec -T edge nginx -t || fail_with_logs "la configuracion nginx de edge no es valida"
-docker compose exec -T edge getent hosts api || true
-docker compose exec -T edge wget -S -O- "http://api:3001/ready" || true
+docker compose exec -T edge getent hosts conectate-local-fallback-api-main || true
+docker compose exec -T edge wget -S -O- "http://conectate-local-fallback-api-main:3001/ready" || true
 
-docker compose exec -T edge wget -qO- "http://api:3001/ready" >/dev/null \
-  || fail_with_logs "edge no puede alcanzar api por la red Docker en http://api:3001/ready"
+docker compose exec -T edge wget -qO- "http://conectate-local-fallback-api-main:3001/ready" >/dev/null \
+  || fail_with_logs "edge no puede alcanzar api por la red Docker en http://conectate-local-fallback-api-main:3001/ready"
 docker compose exec -T edge wget -qO- "http://127.0.0.1:8080/ready" >/dev/null \
   || fail_with_logs "edge no puede entregar /ready desde nginx interno"
 

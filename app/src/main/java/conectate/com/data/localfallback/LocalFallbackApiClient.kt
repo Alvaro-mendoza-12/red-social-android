@@ -1289,7 +1289,7 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
-            "INVALID_CREDENTIALS" -> Exception("Correo o contraseña no coinciden. Si tu cuenta fue creada antes de migrar a Ubuntu, pulsa Cambiar contraseña migrada para crear tu nueva contraseña.")
+            "INVALID_CREDENTIALS" -> Exception("Correo o contraseña no coinciden. Si tu cuenta fue creada en Supabase antes de la migración, cambia tu contraseña para crearla en Ubuntu y volver a entrar normal.")
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")

@@ -32,7 +32,10 @@ function normalizeEmail(value: string): string {
 
 function isUbuntuInvalidCredentials(error: unknown): boolean {
   if (!(error instanceof Error)) return false
-  return /inv[aá]lid/i.test(error.message) && /ubuntu/i.test(error.message)
+  return (
+    /(inv[aá]lid|no coinciden|correo o contrase[ñn]a)/i.test(error.message) &&
+    /(ubuntu|migraci[oó]n|migrar|cambiar contrase[ñn]a)/i.test(error.message)
+  )
 }
 
 function normalizeMode(value: string | null): LoginMode {

@@ -35,8 +35,8 @@ done
 echo
 echo "==> Configuracion edge/nginx"
 if [ -f nginx/default.conf ]; then
-  if grep -q "resolver 127.0.0.11" nginx/default.conf && grep -q '\$api_upstream' nginx/default.conf; then
-    echo "OK: nginx/default.conf usa DNS dinamico de Docker para api"
+  if grep -q "resolver 127.0.0.11" nginx/default.conf && grep -q 'conectate-local-fallback-api-main:3001' nginx/default.conf; then
+    echo "OK: nginx/default.conf usa el contenedor fijo de api"
   else
     echo "ERROR: nginx/default.conf esta viejo. Copia infrastructure/local-fallback/nginx/default.conf desde el repo." >&2
   fi
@@ -73,10 +73,12 @@ docker compose run --rm --no-deps api node --check src/server.js
 docker compose run --rm --no-deps api node --check src/data-routes.js
 docker compose run --rm --no-deps api node --check src/postgrest-compat-routes.js
 docker compose run --rm --no-deps api node --check src/storage-routes.js
+docker ps -aq --filter "name=conectate-local-fallback-api-run" | xargs -r docker rm -f >/dev/null 2>&1 || true
 
 echo
 echo "==> Validacion de registro de rutas Express dentro de la imagen api"
 docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
+docker ps -aq --filter "name=conectate-local-fallback-api-run" | xargs -r docker rm -f >/dev/null 2>&1 || true
 
 echo
 echo "==> Salud de Postgres"
@@ -119,7 +121,7 @@ docker compose exec -T api node -e "fetch('http://127.0.0.1:3001/ready').then(as
 
 echo
 echo "==> Ready interno edge -> api por red Docker"
-docker compose exec -T edge wget -S -O- http://api:3001/ready || true
+docker compose exec -T edge wget -S -O- http://conectate-local-fallback-api-main:3001/ready || true
 
 echo
 echo "==> Ready edge/ngrok upstream local"
