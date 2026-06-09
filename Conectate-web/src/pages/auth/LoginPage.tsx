@@ -202,7 +202,7 @@ export function LoginPage() {
           throw new Error('La sesión aprobada llegó incompleta.')
         }
         if (!supabaseClient) {
-          throw new Error('No hay cliente Supabase activo para completar este QR.')
+          throw new Error('No hay sesión Ubuntu activa para completar este QR.')
         }
         const { error: sessionError } = await supabaseClient.auth.setSession({
           access_token: accessToken,
@@ -242,20 +242,36 @@ export function LoginPage() {
     } catch (caught) {
       if (isMigratedAccountPasswordSetupRequired(caught)) {
         const migratedEmail = normalizeEmail(caught.email || email)
-        setMigrationSetupEmail(migratedEmail)
-        setMigrationSetupToken('')
         setFallbackResetPassword('')
         setFallbackResetConfirmPassword('')
-        setMigratedPasswordReset(null)
+        setMigratedNewPassword('')
+        setMigratedConfirmPassword('')
         const nextParams = new URLSearchParams(searchParams)
         nextParams.set('mode', 'password')
         if (migratedEmail) {
           nextParams.set('email', migratedEmail)
         }
         setSearchParams(nextParams, { replace: true })
-        setInfo(
-          'Esta cuenta viene de Supabase y necesita crear una nueva contraseña en Ubuntu para continuar.',
-        )
+
+        if (caught.migrationToken.trim()) {
+          setMigrationSetupEmail('')
+          setMigrationSetupToken('')
+          setMigratedPasswordReset({
+            email: migratedEmail,
+            migrationToken: caught.migrationToken.trim(),
+            displayName: caught.displayName,
+          })
+          setError(null)
+          setInfo(
+            'Por la migración a Ubuntu, crea una nueva contraseña local una sola vez para seguir usando Conectate normalmente en web y móvil.',
+          )
+          return
+        }
+
+        setMigrationSetupEmail(migratedEmail)
+        setMigrationSetupToken('')
+        setMigratedPasswordReset(null)
+        setInfo('Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña local una sola vez.')
         return
       }
       if (isMigratedPasswordResetRequired(caught)) {
@@ -267,7 +283,7 @@ export function LoginPage() {
         setMigratedNewPassword('')
         setMigratedConfirmPassword('')
         setError(null)
-        setInfo('Cuenta migrada desde Supabase. Crea tu contraseña local para continuar en el servidor Ubuntu.')
+        setInfo('Cuenta migrada a Ubuntu. Crea tu contraseña local para continuar con normalidad.')
         return
       }
       if (isUbuntuInvalidCredentials(caught)) {
@@ -328,15 +344,15 @@ export function LoginPage() {
         const reset = await requestFallbackPasswordReset(normalizedEmail)
         if (!reset.resetToken) {
           throw new Error(
-            'Ubuntu no devolvió el token automáticamente. Configura PASSWORD_RESET_DELIVERY=response en el .env del servidor y reinicia docker compose.',
+            'Ubuntu no devolvió el permiso seguro automáticamente. Reinicia el servidor y vuelve a intentarlo.',
           )
         }
         setMigrationSetupToken(reset.resetToken)
-        setInfo('Listo. Ahora crea tu nueva contraseña para entrar con normalidad (sin escribir código).')
+        setInfo('Listo. Ahora crea tu nueva contraseña para entrar con normalidad.')
         return
       }
 
-      throw new Error('La migración de contraseña necesita el servidor Ubuntu configurado.')
+      throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo iniciar el cambio de contraseña migrada'))
     } finally {
@@ -358,7 +374,7 @@ export function LoginPage() {
     setMigratedPasswordReset(null)
     setError(null)
     setInfo(
-      'Si tu cuenta fue creada antes de migrar a Ubuntu, necesitas definir una nueva contraseña local una sola vez.',
+        'Si tu cuenta fue creada antes de migrar a Ubuntu, necesitas definir una nueva contraseña local una sola vez.',
     )
     await requestMigrationPasswordResetForEmail(normalized)
   }
@@ -369,7 +385,7 @@ export function LoginPage() {
     const normalizedCode = migrationSetupToken.trim()
     if (!normalizedCode) {
       setError(
-        'Primero pulsa “Cambiar contraseña” para que Ubuntu genere el token automáticamente. Si sigue vacío, configura PASSWORD_RESET_DELIVERY=response en el servidor.',
+        'Primero pulsa “Cambiar contraseña” para que Ubuntu prepare el cambio seguro automáticamente.',
       )
       return
     }
@@ -393,7 +409,7 @@ export function LoginPage() {
         return
       }
 
-      throw new Error('La migración de contraseña necesita el servidor Ubuntu configurado.')
+      throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo cambiar la contraseña migrada'))
     } finally {
@@ -529,7 +545,7 @@ export function LoginPage() {
               <div>
                 <strong>Cambia tu contraseña para Ubuntu</strong>
                 <p>
-                  Por la migración desde Supabase, esta cuenta necesita una nueva contraseña local.
+                  Por la migración a Ubuntu, esta cuenta necesita una nueva contraseña local.
                   Después de cambiarla, entrarás con normalidad en web y móvil.
                 </p>
                 <small>{migrationSetupEmail}</small>
@@ -540,12 +556,12 @@ export function LoginPage() {
                 disabled={requestingMigrationReset}
                 onClick={() => void requestMigrationPasswordReset()}
               >
-                {requestingMigrationReset ? 'Generando código...' : 'Cambiar contraseña'}
+                {requestingMigrationReset ? 'Preparando...' : 'Cambiar contraseña'}
               </button>
               <div className="migration-token-ready">
                 <div>
-                  <strong>Sin código manual</strong>
-                  <p>Ubuntu genera el token internamente. Solo escribe tu nueva contraseña y confirma.</p>
+                  <strong>Cambio directo</strong>
+                  <p>Ubuntu valida la cuenta internamente. Solo escribe tu nueva contraseña y confirma.</p>
                 </div>
               </div>
               <label>
@@ -581,8 +597,8 @@ export function LoginPage() {
               <div>
                 <strong>Actualización por migración</strong>
                 <p>
-                  Verificamos tu contraseña anterior de Supabase. Ahora crea la contraseña que usará
-                  tu cuenta en el servidor Ubuntu.
+                  Tu cuenta ya fue migrada a Ubuntu. Ahora crea la contraseña local que usarás
+                  para entrar en web y móvil.
                 </p>
                 <small>{migratedPasswordReset.email}</small>
               </div>
@@ -618,7 +634,7 @@ export function LoginPage() {
                 {creatingQr ? (
                   <StatusView
                     title="Generando QR"
-                    description="Preparando un código temporal y seguro para Conectate Web..."
+                    description="Preparando un QR temporal y seguro para Conectate Web..."
                   />
                 ) : qrPairing?.qrUrl ? (
                   <QrCodeTile
@@ -629,7 +645,7 @@ export function LoginPage() {
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description="El servidor Ubuntu no pudo preparar el código todavía. Revisa que Ngrok y la API estén encendidos."
+                    description="El servidor Ubuntu no pudo preparar el QR todavía. Revisa que Ngrok y la API estén encendidos."
                   />
                 )}
               </div>

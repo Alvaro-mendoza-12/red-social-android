@@ -38,6 +38,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - conectate-api
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -58,6 +62,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - conectate-signaling
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/turn-credentials').then(r=>process.exit([200,401,503].includes(r.status)?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -93,6 +101,10 @@ services:
       PORT: 3002
       JWT_SECRET: ${JWT_SECRET}
       JWT_ISSUER: ${JWT_ISSUER:-conectate-local-fallback}
+    networks:
+      default:
+        aliases:
+          - conectate-realtime
     ports:
       - "127.0.0.1:${FALLBACK_REALTIME_PORT:-3002}:3002"
     healthcheck:

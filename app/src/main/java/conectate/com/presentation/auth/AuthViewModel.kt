@@ -155,7 +155,8 @@ class AuthViewModel @Inject constructor(
                         is LocalFallbackMigratedPasswordSetupRequiredException ->
                             AuthState.MigratedPasswordSetupRequired(
                                 email = it.email.ifBlank { email.trim().lowercase() },
-                                displayName = it.displayName
+                                displayName = it.displayName,
+                                migrationToken = it.migrationToken
                             )
                         is LocalFallbackMigratedPasswordResetRequiredException ->
                             AuthState.MigratedPasswordSetupRequired(
@@ -386,7 +387,7 @@ class AuthViewModel @Inject constructor(
             val resetToken = resetInfo.resetToken?.trim().orEmpty()
             if (resetToken.isBlank()) {
                 _authState.value = AuthState.Error(
-                    "El servidor no devolvió el código automáticamente. Revisa la configuración del servidor Ubuntu o sus logs para obtenerlo."
+                    "Ubuntu no devolvió el permiso seguro para cambiar la contraseña. Reinicia el servidor y vuelve a intentarlo."
                 )
                 return@launch
             }

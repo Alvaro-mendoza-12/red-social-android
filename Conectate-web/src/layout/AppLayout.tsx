@@ -994,7 +994,7 @@ export function AppLayout() {
           <div className="offline-banner offline">
             Sin conexión. Se guardarán acciones y se sincronizarán al reconectar.
           </div>
-        ) : supabaseRestriction.active ? (
+        ) : !isFallbackSession && supabaseRestriction.active ? (
           <div className="offline-banner restricted">
             Supabase está restringido por cuota/servicio. La web sigue abierta, pero Realtime y storage se pausan hasta resolverlo.
           </div>

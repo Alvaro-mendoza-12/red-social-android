@@ -981,8 +981,11 @@ app.post('/v1/auth/login', async (req, res, next) => {
         await recordAudit('auth_migrated_password_setup_required', user.id, { email })
         return res.status(409).json({
           error: 'MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED',
+          migrationToken: signMigrationPasswordToken(user),
           email: user.email,
           displayName: user.displayName,
+          message:
+            'Por la migracion a Ubuntu, esta cuenta necesita crear una nueva contrasena local para continuar.',
         })
       }
 

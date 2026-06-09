@@ -375,12 +375,13 @@ class LocalFallbackMigratedPasswordResetRequiredException(
     val migrationToken: String,
     val email: String,
     val displayName: String
-) : Exception("Tu cuenta fue migrada al servidor local. Cambia tu contraseña para continuar.")
+) : Exception("Tu cuenta fue migrada a Ubuntu. Cambia tu contraseña para continuar.")
 
 class LocalFallbackMigratedPasswordSetupRequiredException(
     val email: String,
-    val displayName: String
-) : Exception("Tu cuenta viene de Supabase y necesita crear una contraseña en Ubuntu para continuar.")
+    val displayName: String,
+    val migrationToken: String
+) : Exception("Por la migración a Ubuntu, esta cuenta necesita crear una contraseña una sola vez.")
 
 @Serializable
 data class LocalFallbackPasswordResetResponse(
@@ -1288,15 +1289,16 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
-            "INVALID_CREDENTIALS" -> Exception("Correo o contraseña inválidos en el servidor Ubuntu.")
+            "INVALID_CREDENTIALS" -> Exception("Correo o contraseña no coinciden. Si tu cuenta fue creada antes de migrar a Ubuntu, pulsa Cambiar contraseña migrada para crear tu nueva contraseña.")
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
-            "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Escribe el código de migración y una contraseña de al menos 8 caracteres.")
-            "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El código de migración venció o no es válido.")
+            "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
+            "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
-                displayName = error.displayName.orEmpty()
+                displayName = error.displayName.orEmpty(),
+                migrationToken = error.migrationToken.orEmpty()
             )
             "MIGRATED_ACCOUNT_PASSWORD_RESET_REQUIRED" -> LocalFallbackMigratedPasswordResetRequiredException(
                 migrationToken = error.migrationToken.orEmpty(),

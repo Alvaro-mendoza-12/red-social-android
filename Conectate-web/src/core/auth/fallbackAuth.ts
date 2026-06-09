@@ -41,13 +41,17 @@ export class MigratedPasswordResetRequiredError extends Error {
 
 export class MigratedAccountPasswordSetupRequiredError extends Error {
   email: string
+  migrationToken: string
+  displayName: string
 
-  constructor(email: string) {
+  constructor(payload: { email: string; migrationToken?: string; displayName?: string }) {
     super(
-      'Por la migración de Supabase a Ubuntu, esta cuenta necesita crear una nueva contraseña antes de entrar.',
+      'Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña antes de entrar.',
     )
     this.name = 'MigratedAccountPasswordSetupRequiredError'
-    this.email = email
+    this.email = payload.email
+    this.migrationToken = payload.migrationToken ?? ''
+    this.displayName = payload.displayName ?? ''
   }
 }
 
@@ -69,11 +73,11 @@ function fallbackErrorMessage(error: unknown): string {
     }
     return message
   }
-  return String(error ?? 'No se pudo usar el servidor de respaldo.')
+  return String(error ?? 'No se pudo usar el servidor Ubuntu.')
 }
 
 function fallbackConnectionErrorMessage(): string {
-  return 'No se pudo conectar con el servidor Ubuntu. Revisa que la VM, Docker y ngrok esten encendidos, y que VITE_FALLBACK_API_URL apunte a tu URL publica actual.'
+  return 'No se pudo conectar con el servidor Ubuntu. Revisa que la VM, Docker y ngrok estén encendidos, y que VITE_FALLBACK_API_URL apunte a tu URL pública actual.'
 }
 
 async function parseFallbackResponse(response: Response) {
@@ -91,7 +95,7 @@ export async function fallbackApiJson<T>(
   init?: RequestInit & { auth?: boolean },
 ): Promise<T> {
   if (!isFallbackAuthConfigured) {
-    throw new Error('El servidor de respaldo no está configurado para esta web.')
+    throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
@@ -104,7 +108,7 @@ export async function fallbackApiJson<T>(
 
   if (init?.auth !== false) {
     const token = readFallbackSession()?.accessToken?.trim()
-    if (!token) throw new Error('No hay una sesión de respaldo activa.')
+    if (!token) throw new Error('No hay una sesión de Ubuntu activa.')
     headers.set('Authorization', `Bearer ${token}`)
   }
 
@@ -115,7 +119,7 @@ export async function fallbackApiJson<T>(
   const payload = await parseFallbackResponse(response)
   if (!response.ok) {
     const code = String(payload.error || payload.message || '').trim()
-    throw new Error(code || 'No se pudo consultar el servidor de respaldo.')
+    throw new Error(code || 'No se pudo consultar el servidor Ubuntu.')
   }
   return payload as T
 }
@@ -144,7 +148,7 @@ export function persistFallbackSession(payload: {
   const accessToken = String(payload.accessToken || '').trim()
   const user = payload.user
   if (!accessToken || !user?.id || !user.email) {
-    throw new Error('El servidor de respaldo devolvió una sesión incompleta.')
+    throw new Error('El servidor Ubuntu devolvió una sesión incompleta.')
   }
 
   const session: FallbackSession = {
@@ -160,7 +164,7 @@ export function persistFallbackSession(payload: {
 
   const mappedUser = fallbackSessionToUser(session)
   if (!mappedUser) {
-    throw new Error('No se pudo preparar la sesión local de respaldo.')
+    throw new Error('No se pudo preparar la sesión local de Ubuntu.')
   }
   return mappedUser
 }
@@ -239,7 +243,7 @@ export function fallbackSessionToUser(session: FallbackSession | null): User | n
 
 export async function signInWithFallbackAuth(email: string, password: string): Promise<User> {
   if (!isFallbackAuthConfigured) {
-    throw new Error('El servidor de respaldo no está configurado para esta web.')
+    throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
   const response = await fetchFallback('/v1/auth/login', {
@@ -265,15 +269,21 @@ export async function signInWithFallbackAuth(email: string, password: string): P
       })
     }
     if (code === 'MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED') {
-      throw new MigratedAccountPasswordSetupRequiredError(String(payload.email || email))
+      throw new MigratedAccountPasswordSetupRequiredError({
+        email: String(payload.email || email),
+        migrationToken: String(payload.migrationToken || ''),
+        displayName: String(payload.displayName || ''),
+      })
     }
     if (code === 'INVALID_CREDENTIALS') {
-      throw new Error('Correo o contraseña inválidos en el servidor Ubuntu.')
+      throw new Error(
+        'Correo o contraseña no coinciden. Si tu cuenta fue creada antes de migrar a Ubuntu, pulsa “Cambiar contraseña” para crear tu nueva contraseña.',
+      )
     }
     if (code === 'EMAIL_AND_PASSWORD_REQUIRED') {
-      throw new Error('Escribe el correo y la contraseña para entrar con respaldo.')
+      throw new Error('Escribe el correo y la contraseña para entrar con Ubuntu.')
     }
-    throw new Error(code || 'No se pudo iniciar sesión con el servidor de respaldo.')
+    throw new Error(code || 'No se pudo iniciar sesión con el servidor Ubuntu.')
   }
 
   return persistFallbackSession(payload as {

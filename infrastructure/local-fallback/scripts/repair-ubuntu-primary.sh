@@ -80,7 +80,7 @@ require_file "api/src/postgrest-compat-routes.js"
 require_file "api/src/storage-routes.js"
 require_file "nginx/default.conf"
 
-if ! grep -q "resolver 127.0.0.11" nginx/default.conf || ! grep -q '\$api_upstream' nginx/default.conf; then
+if ! grep -q 'set $api_upstream http://api:3001' nginx/default.conf || ! grep -q "resolver 127.0.0.11" nginx/default.conf; then
   fail_with_logs "nginx/default.conf esta desactualizado. Copia infrastructure/local-fallback/nginx/default.conf desde el repo a Ubuntu antes de levantar."
 fi
 
@@ -154,6 +154,9 @@ docker compose run --rm --no-deps api node --check src/postgrest-compat-routes.j
 docker compose run --rm --no-deps api node --check src/storage-routes.js
 docker compose run --rm --no-deps -e ROUTE_CHECK_ONLY=1 api node src/server.js
 
+echo "==> Limpiando contenedores huerfanos y red Docker sin borrar datos"
+docker compose down --remove-orphans
+
 echo "==> Aplicando migraciones idempotentes"
 docker compose up -d db
 wait_for_postgres 90
@@ -195,8 +198,15 @@ docker compose rm -sf edge >/dev/null 2>&1 || true
 docker compose up -d --force-recreate --no-deps edge
 sleep 5
 
+echo "==> Diagnostico de red Docker edge -> api"
+docker compose exec -T edge nginx -t || fail_with_logs "la configuracion nginx de edge no es valida"
+docker compose exec -T edge getent hosts api || true
+docker compose exec -T edge wget -S -O- "http://api:3001/ready" || true
+
 docker compose exec -T edge wget -qO- "http://api:3001/ready" >/dev/null \
   || fail_with_logs "edge no puede alcanzar api por la red Docker en http://api:3001/ready"
+docker compose exec -T edge wget -qO- "http://127.0.0.1:8080/ready" >/dev/null \
+  || fail_with_logs "edge no puede entregar /ready desde nginx interno"
 
 wait_http "edge" "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/ready"
 wait_http "realtime" "http://127.0.0.1:3002/health"

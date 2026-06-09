@@ -100,11 +100,8 @@ fun LoginScreen(
                 migrationToken = state.migrationToken.orEmpty()
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
-                migrationInfo = if (migrationToken.isNotBlank()) {
-                    "Cuenta migrada desde Supabase. Crea tu nueva contraseña para activar Ubuntu."
-                } else {
-                    "Esta cuenta viene de Supabase y necesita crear una contraseña nueva en Ubuntu. (Se generará el código automáticamente si el servidor lo permite.)"
-                }
+                migrationInfo =
+                    "Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña una sola vez."
                 if (resolvedEmail.isNotBlank()) email = resolvedEmail
                 password = ""
             }
@@ -409,21 +406,27 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Forgot Password Link
+            // Migrated account password setup. This stays local to Ubuntu and does not depend on email delivery.
             TextButton(
                 onClick = {
-                    val trimmedEmail = email.trim()
+                    val trimmedEmail = email.trim().lowercase()
                     if (trimmedEmail.isNotBlank()) {
-                        viewModel.resetPassword(trimmedEmail)
+                        migrationEmail = trimmedEmail
+                        migrationDisplayName = ""
+                        migrationToken = ""
+                        migrationNewPassword = ""
+                        migrationConfirmPassword = ""
+                        migrationInfo = "Si tu cuenta fue creada antes de migrar a Ubuntu, crea aquí tu nueva contraseña para entrar con normalidad."
+                        password = ""
+                        viewModel.resetAuthState()
                     } else {
-                        // Notify user that email is required
-                        viewModel.setAuthError("Por favor, ingresa tu correo electrónico para restablecer la contraseña.")
+                        viewModel.setAuthError("Ingresa tu correo para preparar el cambio de contraseña migrada.")
                     }
                 },
                 enabled = authState !is AuthState.Loading
             ) {
                 Text(
-                    text = "¿Olvidaste tu contraseña?",
+                    text = "Cambiar contraseña migrada",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -495,7 +498,7 @@ fun LoginScreen(
                 )
             }
 
-            // Show success for password reset
+            // Show success for legacy password reset only if a legacy flow explicitly uses it.
             if (authState is AuthState.PasswordResetSent) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
@@ -506,14 +509,14 @@ fun LoginScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Correo enviado",
+                            text = "Cambio preparado",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Revisa tu bandeja de entrada para restablecer tu contraseña.",
+                            text = "Crea tu nueva contraseña local para entrar con Ubuntu.",
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             style = MaterialTheme.typography.bodyMedium
                         )

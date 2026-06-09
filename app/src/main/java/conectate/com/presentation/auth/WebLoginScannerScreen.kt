@@ -258,7 +258,7 @@ private fun defaultScanOptions(): ScanOptions {
     return ScanOptions().apply {
         setPrompt("Escanea el QR de Conectate Web")
         setBeepEnabled(false)
-        setOrientationLocked(false)
+        setOrientationLocked(true)
         setDesiredBarcodeFormats(ScanOptions.QR_CODE)
     }
 }
