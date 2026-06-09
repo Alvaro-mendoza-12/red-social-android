@@ -666,7 +666,7 @@ class AuthRepository @Inject constructor(
     ): Result<User> {
         val result = authService.confirmLocalFallbackPasswordReset(resetToken, newPassword)
         if (result.isFailure) {
-            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo cambiar la contraseña migrada."))
+            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo cambiar la contraseña en Ubuntu."))
         }
 
         val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }

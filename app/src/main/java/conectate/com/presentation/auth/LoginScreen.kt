@@ -101,7 +101,7 @@ fun LoginScreen(
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
                 migrationInfo =
-                    "Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña una sola vez."
+                    "Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña una sola vez para volver a entrar normal."
                 if (resolvedEmail.isNotBlank()) email = resolvedEmail
                 password = ""
             }
@@ -416,17 +416,17 @@ fun LoginScreen(
                         migrationToken = ""
                         migrationNewPassword = ""
                         migrationConfirmPassword = ""
-                        migrationInfo = "Si tu cuenta fue creada antes de migrar a Ubuntu, crea aquí tu nueva contraseña para entrar con normalidad."
+                        migrationInfo = "Tu cuenta ya existe, pero necesita una nueva contraseña en Ubuntu. Créala una sola vez y podrás entrar con normalidad."
                         password = ""
                         viewModel.resetAuthState()
                     } else {
-                        viewModel.setAuthError("Ingresa tu correo para preparar el cambio de contraseña migrada.")
+                        viewModel.setAuthError("Ingresa tu correo para preparar el cambio de contraseña en Ubuntu.")
                     }
                 },
                 enabled = authState !is AuthState.Loading
             ) {
                 Text(
-                    text = "Cambiar contraseña migrada",
+                    text = "Cambiar contraseña",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -568,7 +568,7 @@ private fun MigratedPasswordSetupCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Cambia tu contraseña para Ubuntu",
+                text = "Cambia tu contraseña",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -576,7 +576,7 @@ private fun MigratedPasswordSetupCard(
             Text(
                 text = buildString {
                     if (displayName.isNotBlank()) append("$displayName, ")
-                    append(info.ifBlank { "Tu cuenta migrada necesita una contraseña local nueva." })
+                    append(info.ifBlank { "Tu cuenta necesita una contraseña nueva en Ubuntu." })
                     append("\nCuenta: $email")
                 },
                 style = MaterialTheme.typography.bodyMedium,

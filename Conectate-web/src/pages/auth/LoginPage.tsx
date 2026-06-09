@@ -293,6 +293,9 @@ export function LoginPage() {
         const normalized = normalizeEmail(email)
         if (normalized) {
           setLegacyResetEmail(normalized)
+          setError(null)
+          setInfo('Esta cuenta necesita crear una nueva contraseña en Ubuntu por la migración. Pulsa “Cambiar contraseña” para continuar.')
+          return
         }
       }
       setError(friendlyError(caught, 'No se pudo iniciar sesión'))
@@ -357,7 +360,7 @@ export function LoginPage() {
 
       throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo iniciar el cambio de contraseña migrada'))
+      setError(friendlyError(caught, 'No se pudo preparar el cambio de contraseña en Ubuntu'))
     } finally {
       setRequestingMigrationReset(false)
     }
@@ -414,7 +417,7 @@ export function LoginPage() {
 
       throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cambiar la contraseña migrada'))
+      setError(friendlyError(caught, 'No se pudo cambiar la contraseña en Ubuntu'))
     } finally {
       setConfirmingMigrationReset(false)
     }
@@ -527,10 +530,10 @@ export function LoginPage() {
 
           {mode === 'password' && legacyResetEmail && !migrationSetupEmail && !migratedPasswordReset ? (
             <div className="surface-subcard legacy-reset-callout">
-              <strong>¿Cuenta antigua? Cambia tu contraseña</strong>
+              <strong>Actualiza tu contraseña</strong>
               <p>
-                Si creaste tu cuenta antes de migrar a Ubuntu, tu contraseña vieja no se puede usar aquí.
-                Cambia la contraseña y podrás entrar con normalidad.
+                Tu cuenta existe, pero por la migración a Ubuntu necesitamos crear una contraseña nueva.
+                Después entrarás con normalidad en web y móvil.
               </p>
               <button
                 className="primary-btn"

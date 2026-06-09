@@ -277,7 +277,7 @@ export async function signInWithFallbackAuth(email: string, password: string): P
     }
     if (code === 'INVALID_CREDENTIALS') {
       throw new Error(
-        'Correo o contraseña no coinciden. Si tu cuenta fue creada en Supabase antes de la migración, pulsa “Cambiar contraseña” para crear tu nueva contraseña en Ubuntu.',
+        'Esta cuenta necesita actualizar su contraseña por la migración a Ubuntu. Pulsa “Cambiar contraseña” y crea una nueva contraseña para entrar normalmente.',
       )
     }
     if (code === 'EMAIL_AND_PASSWORD_REQUIRED') {

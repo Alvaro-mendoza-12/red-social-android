@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.supabase.AuthService
-import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.model.User
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.AuthRepository
@@ -21,7 +20,6 @@ import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.Post
 import conectate.com.data.repository.FriendRepository
 import conectate.com.data.repository.FriendStatus
-import io.github.jan.supabase.realtime.*
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
@@ -34,7 +32,6 @@ class ProfileViewModel @Inject constructor(
     val userRepository: UserRepository,
     private val authRepository: AuthRepository,
     private val authService: AuthService,
-    private val supabase: SupabaseConfig,
     val videoRepository: VideoRepository,
     private val badgeRepository: conectate.com.data.repository.BadgeRepository,
     val postRepository: conectate.com.data.repository.PostRepository,
@@ -161,25 +158,10 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun subscribeToProfileUpdates(userId: String) {
-        realtimeJob = viewModelScope.launch {
-            try {
-                android.util.Log.d("ProfileViewModel", "Subscribing to realtime updates for user: $userId")
-                val channel = supabase.client.realtime.channel("profile_$userId")
-                val changeset = channel.postgresChangeFlow<io.github.jan.supabase.realtime.PostgresAction.Update>(schema = "public") {
-                    table = "profiles"
-                    filter = "id=eq.$userId"
-                }
-
-                channel.subscribe()
-
-                changeset.collect {
-                    android.util.Log.d("ProfileViewModel", "Realtime update received for user: $userId")
-                    reloadProfileSilently(userId)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Realtime subscription failed", e)
-            }
-        }
+        android.util.Log.d(
+            "ProfileViewModel",
+            "Profile realtime for $userId is handled by the Ubuntu session; skipping Supabase realtime."
+        )
     }
 
     private val _isToggling = MutableStateFlow(false)

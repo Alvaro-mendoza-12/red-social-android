@@ -57,14 +57,14 @@ export function PasswordResetPage({
       if (reset.resetToken) {
         setResetToken(reset.resetToken)
         setStep('confirm')
-        setInfo('✅ Código de migración generado automáticamente.')
+        setInfo('Cambio de contraseña preparado automáticamente en Ubuntu.')
         return
       }
 
       setInfo(
         reset.delivery === 'console'
-          ? '📋 Ubuntu generó el código. Revisa los logs del servidor y pégalo aquí.'
-          : '📧 Se envió un código a tu correo. Si no llega, revisa spam.',
+          ? 'Ubuntu preparó el cambio. Continúa creando tu nueva contraseña.'
+          : 'Ubuntu preparó el cambio. Continúa creando tu nueva contraseña.',
       )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo iniciar la migración'))
