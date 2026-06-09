@@ -259,6 +259,7 @@ private fun defaultScanOptions(): ScanOptions {
         setPrompt("Escanea el QR de Conectate Web")
         setBeepEnabled(false)
         setOrientationLocked(true)
+        setCaptureActivity(PortraitQrCaptureActivity::class.java)
         setDesiredBarcodeFormats(ScanOptions.QR_CODE)
     }
 }

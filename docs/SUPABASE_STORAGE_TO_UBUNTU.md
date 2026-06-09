@@ -68,6 +68,16 @@ curl -f http://127.0.0.1:3080/ready
 curl -f http://127.0.0.1:3080/health
 ```
 
+## Ruta rapida recomendada
+
+Si `PUBLIC_BASE_URL`, `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` ya estan completos en `.env`, puedes ejecutar todo el flujo de una vez:
+
+```bash
+bash scripts/import-storage-to-ubuntu.sh
+```
+
+Ese script hace el `dry-run`, copia los buckets, reescribe URLs hacia Ubuntu, reinicia servicios y muestra los conteos locales.
+
 ## 4. Simular importacion
 
 Este paso solo lista lo que va a copiar:
