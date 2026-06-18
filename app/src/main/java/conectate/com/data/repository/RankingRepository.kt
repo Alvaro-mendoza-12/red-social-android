@@ -3,7 +3,10 @@ package conectate.com.data.repository
 import conectate.com.data.model.Post
 import conectate.com.data.model.User
 import conectate.com.data.model.Video
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.SupabaseConfig
+import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.*
 import io.ktor.http.*
 import javax.inject.Inject
@@ -18,13 +21,45 @@ import kotlinx.serialization.json.*
 @Singleton
 class RankingRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient
 ) {
 
 
 
     suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val token = authService.getAccessToken()
+                    ?: return@withContext Result.failure(Exception("No access token available"))
+                val response = supabaseConfig.httpClient.get("${localFallbackApiClient.baseUrl}/v1/data/profiles/search") {
+                    header("Authorization", "Bearer $token")
+                    parameter("q", "")
+                    parameter("limit", "100")
+                }
+                if (!response.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("Error fetching Ubuntu top users"))
+                }
+                val body = response.bodyAsText()
+                val root = supabaseConfig.json.parseToJsonElement(body).jsonObject
+                val users = (root["items"] as? JsonArray)
+                    ?.mapNotNull { item ->
+                        runCatching {
+                            supabaseConfig.json.decodeFromJsonElement<User>(
+                                item.jsonObject.normalizedStorageUrls()
+                            )
+                        }.getOrNull()
+                    }
+                    .orEmpty()
+                    .sortedByDescending {
+                        when (filter) {
+                            "posts" -> it.post_count ?: 0
+                            else -> it.followers_count ?: 0
+                        }
+                    }
+                return@withContext Result.success(users)
+            }
+
             var orderColumn = when (filter) {
                 "likes" -> "likes_count" // Assuming these columns exist or we count them
                 "views" -> "views_count" // Assuming mostly for video creators
@@ -55,6 +90,22 @@ class RankingRepository @Inject constructor(
 
     suspend fun getTopVideos(filter: String = "views"): Result<List<Video>> = withContext(Dispatchers.IO) {
          try {
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val token = authService.getAccessToken()
+                    ?: return@withContext Result.failure(Exception("No access token available"))
+                val videos = localFallbackApiClient.loadVideos(token, limit = 100, offset = 0).getOrThrow()
+                return@withContext Result.success(
+                    videos.sortedByDescending {
+                        when (filter) {
+                            "likes" -> it.likeCount
+                            "comments" -> it.commentCount
+                            "shares" -> it.shareCount
+                            else -> it.views
+                        }
+                    }
+                )
+            }
+
             var orderColumn = when (filter) {
                 "likes" -> "like_count"
                 else -> "views"
@@ -94,6 +145,21 @@ class RankingRepository @Inject constructor(
 
     suspend fun getTopPosts(filter: String = "likes"): Result<List<Post>> = withContext(Dispatchers.IO) {
         try {
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val token = authService.getAccessToken()
+                    ?: return@withContext Result.failure(Exception("No access token available"))
+                val posts = localFallbackApiClient.loadFeed(token, limit = 100, offset = 0).getOrThrow().items
+                return@withContext Result.success(
+                    posts.sortedByDescending {
+                        when (filter) {
+                            "shares" -> it.shareCount
+                            "comments" -> it.commentCount
+                            else -> it.likeCount
+                        }
+                    }
+                )
+            }
+
              var orderColumn = when (filter) {
                 "shares" -> "share_count"
                 else -> "like_count"
@@ -175,6 +241,21 @@ class RankingRepository @Inject constructor(
                 }.toSet()
             } else emptySet()
         } catch (e: Exception) { emptySet() }
+    }
+
+    private fun JsonObject.normalizedStorageUrls(): JsonObject = buildJsonObject {
+        this@normalizedStorageUrls.forEach { (key, value) ->
+            val normalized = if (
+                key in setOf("avatar_url", "cover_url", "photo_url", "profile_image") &&
+                value is JsonPrimitive &&
+                value.contentOrNull != null
+            ) {
+                JsonPrimitive(UbuntuStorageUrl.rewrite(value.contentOrNull))
+            } else {
+                value
+            }
+            put(key, normalized)
+        }
     }
 }
 

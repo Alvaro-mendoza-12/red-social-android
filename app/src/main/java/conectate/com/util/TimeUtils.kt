@@ -16,10 +16,10 @@ object TimeUtils {
         val days = hours / 24L
 
         return when {
-            minutes < 1 -> "Ahora"
-            minutes < 60 -> "Hace $minutes min"
-            hours < 24 -> "Hace $hours h"
-            days < 7 -> "Hace $days d"
+            elapsedMillis < 60_000L -> "hace ${elapsedMillis / 1000L} s"
+            minutes < 60 -> "hace $minutes min"
+            hours < 24 -> "hace $hours h"
+            days < 7 -> "hace $days d"
             else -> formatTimestamp(Instant.ofEpochMilli(timestampMillis).toString())
         }
     }
@@ -51,7 +51,8 @@ object TimeUtils {
 
             if (minutes < 60) {
                 if (minutes <= 0) {
-                    "últ. vez hace un momento"
+                    val seconds = Duration.between(lastSeenInstant, now).seconds.coerceAtLeast(0)
+                    "últ. vez hace $seconds segundos"
                 } else {
                     "últ. vez hace $minutes ${if (minutes == 1L) "minuto" else "minutos"}"
                 }

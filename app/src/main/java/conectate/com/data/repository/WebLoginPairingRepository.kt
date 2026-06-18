@@ -2,6 +2,8 @@ package conectate.com.data.repository
 
 import conectate.com.BuildConfig
 import conectate.com.data.supabase.SupabaseConfig
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -32,6 +34,17 @@ data class WebLoginPairingSession(
 )
 
 @Serializable
+data class WebLoginManagedSession(
+    @SerialName("sessionId") val sessionId: String,
+    @SerialName("deviceLabel") val deviceLabel: String? = null,
+    @SerialName("ipAddress") val ipAddress: String? = null,
+    @SerialName("userAgent") val userAgent: String? = null,
+    @SerialName("createdAt") val createdAt: String? = null,
+    @SerialName("lastSeenAt") val lastSeenAt: String? = null,
+    @SerialName("revokedAt") val revokedAt: String? = null
+)
+
+@Serializable
 private data class WebLoginPairingRequest(
     val action: String,
     @SerialName("pairId") val pairId: String? = null,
@@ -44,6 +57,18 @@ private data class WebLoginPairingRequest(
 private data class WebLoginPairingError(
     val error: String? = null,
     val message: String? = null
+)
+
+@Serializable
+private data class WebLoginSessionsResponse(
+    val sessions: List<WebLoginManagedSession> = emptyList()
+)
+
+@Serializable
+private data class WebLoginRevokeAllResponse(
+    val ok: Boolean = false,
+    val revoked: Int = 0,
+    val sessions: List<WebLoginManagedSession> = emptyList()
 )
 
 @Singleton
@@ -63,6 +88,9 @@ class WebLoginPairingRepository @Inject constructor(
         } else {
             "${supabaseConfig.supabaseUrl}/functions/v1/web-login-pairing"
         }
+
+    private val webSessionsUrl: String
+        get() = "$fallbackBaseUrl/v1/auth/web-sessions"
 
     suspend fun getPairingStatus(pairId: String, nonce: String): Result<WebLoginPairingSession> {
         return invoke(
@@ -106,6 +134,61 @@ class WebLoginPairingRepository @Inject constructor(
         )
     }
 
+    suspend fun listActiveWebSessions(accessToken: String): Result<List<WebLoginManagedSession>> = runCatching {
+        ensureUbuntuWebSessions()
+        val response = supabaseConfig.httpClient.get(webSessionsUrl) {
+            ubuntuHeaders(accessToken)
+        }
+        val raw = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException(
+                parseErrorMessage(
+                    raw = raw,
+                    fallback = "No pudimos leer las sesiones web activas desde Ubuntu."
+                )
+            )
+        }
+        supabaseConfig.json.decodeFromString(WebLoginSessionsResponse.serializer(), raw).sessions
+    }
+
+    suspend fun revokeWebSession(
+        sessionId: String,
+        accessToken: String
+    ): Result<Unit> = runCatching {
+        ensureUbuntuWebSessions()
+        val cleanSessionId = sessionId.trim()
+        require(cleanSessionId.isNotBlank()) { "Sesión web inválida." }
+        val response = supabaseConfig.httpClient.delete("$webSessionsUrl/$cleanSessionId") {
+            ubuntuHeaders(accessToken)
+        }
+        val raw = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException(
+                parseErrorMessage(
+                    raw = raw,
+                    fallback = "No pudimos cerrar esa sesión web."
+                )
+            )
+        }
+    }
+
+    suspend fun revokeAllWebSessions(accessToken: String): Result<Int> = runCatching {
+        ensureUbuntuWebSessions()
+        val response = supabaseConfig.httpClient.delete(webSessionsUrl) {
+            ubuntuHeaders(accessToken)
+        }
+        val raw = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException(
+                parseErrorMessage(
+                    raw = raw,
+                    fallback = "No pudimos cerrar las sesiones web."
+                )
+            )
+        }
+        supabaseConfig.json.decodeFromString(WebLoginRevokeAllResponse.serializer(), raw).revoked
+    }
+
     private suspend fun invoke(
         request: WebLoginPairingRequest,
         accessToken: String? = null
@@ -139,6 +222,31 @@ class WebLoginPairingRepository @Inject constructor(
         }
 
         supabaseConfig.json.decodeFromString(WebLoginPairingSession.serializer(), raw)
+    }
+
+    private fun ensureUbuntuWebSessions() {
+        if (!useUbuntuPrimary) {
+            throw IllegalStateException(
+                "Las sesiones web revocables necesitan FALLBACK_API_URL apuntando a Ubuntu."
+            )
+        }
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.ubuntuHeaders(accessToken: String) {
+        header("ngrok-skip-browser-warning", "true")
+        accessToken.trim().takeIf { it.isNotBlank() }?.let { token ->
+            header("Authorization", "Bearer $token")
+        }
+    }
+
+    private fun parseErrorMessage(raw: String, fallback: String): String {
+        val parsed = runCatching {
+            supabaseConfig.json.decodeFromString(WebLoginPairingError.serializer(), raw)
+        }.getOrNull()
+        return parsed?.message
+            ?: parsed?.error
+            ?: raw.take(180).takeIf { it.isNotBlank() }
+            ?: fallback
     }
 }
 

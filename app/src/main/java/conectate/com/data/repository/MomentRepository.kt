@@ -8,6 +8,7 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
@@ -51,6 +52,7 @@ class MomentRepository @Inject constructor(
 ) {
     private companion object {
         private const val MOMENTS_FALLBACK_POLL_INTERVAL_MS = 45_000L
+        private const val MAX_MOMENT_VIDEO_DURATION_SECONDS = 25L
     }
 
     private val _moments = MutableStateFlow<List<Moment>>(emptyList())
@@ -64,6 +66,14 @@ class MomentRepository @Inject constructor(
     private var viewsChannel: RealtimeChannel? = null
 
     private var observationJob: kotlinx.coroutines.Job? = null
+    private val locallyDeletedMomentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun canonicalMomentId(momentId: String): String =
+        momentId.trim().lowercase()
+
+    private fun shouldUseUbuntuBackend(): Boolean =
+        localFallbackApiClient.isConfigured &&
+            (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
 
     init {
         // Observe auth session changes to restart Realtime with the correct token
@@ -92,7 +102,7 @@ class MomentRepository @Inject constructor(
 
     private suspend fun startObservingReactive(internalScope: kotlinx.coroutines.CoroutineScope) {
         refreshMoments()
-        if (supabaseConfig.isLocalFallbackPrimary) {
+        if (shouldUseUbuntuBackend()) {
             startUbuntuMomentsObservation(internalScope)
             return
         }
@@ -364,7 +374,7 @@ class MomentRepository @Inject constructor(
                 caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                 isViewed = isViewed,
                 allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true
-            )
+            ).normalizedStorageUrls()
 
             // Add or update in list
             var currentList = _moments.value.toMutableList()
@@ -415,7 +425,7 @@ class MomentRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId() ?: return
             android.util.Log.d("MomentRepository", "Refreshing for user: $currentUserId")
 
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (shouldUseUbuntuBackend()) {
                 val token = authService.getAccessToken()?.trim().orEmpty()
                 if (token.isBlank()) return
                 val feed = localFallbackApiClient.loadMomentsFeed(token).getOrElse { error ->
@@ -424,6 +434,7 @@ class MomentRepository @Inject constructor(
                 }
                 val parsed = feed.items.mapNotNull { json ->
                     val momentId = json["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    if (locallyDeletedMomentIds.contains(canonicalMomentId(momentId))) return@mapNotNull null
                     val userId = json["user_id"]?.jsonPrimitive?.contentOrNull ?: ""
                     val visibilityType = json["visibility_type"]?.jsonPrimitive?.contentOrNull ?: "public"
                     if (visibilityType == "silent" && userId != currentUserId) return@mapNotNull null
@@ -443,12 +454,12 @@ class MomentRepository @Inject constructor(
                         expiresAt = json["expires_at"]?.jsonPrimitive?.contentOrNull,
                         username = json["owner_name"]?.jsonPrimitive?.contentOrNull ?: "Usuario",
                         userDisplayName = json["owner_name"]?.jsonPrimitive?.contentOrNull ?: "Usuario",
-                        userAvatarUrl = null,
-                        isVerified = false,
+                        userAvatarUrl = UbuntuStorageUrl.rewrite(json["owner_avatar_url"]?.jsonPrimitive?.contentOrNull),
+                        isVerified = json["is_verified"]?.jsonPrimitive?.booleanOrNull ?: false,
                         caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                         isViewed = json["viewed_by_me"]?.jsonPrimitive?.booleanOrNull ?: false,
                         allowReplies = json["allow_replies"]?.jsonPrimitive?.booleanOrNull ?: true
-                    )
+                    ).normalizedStorageUrls()
                 }
                 _moments.value = parsed
                 return
@@ -489,6 +500,7 @@ class MomentRepository @Inject constructor(
                         var visibilityType = json["visibility_type"]?.jsonPrimitive?.content ?: "public"
                         var userId = json["user_id"]?.jsonPrimitive?.content ?: ""
                         var momentId = json["id"]?.jsonPrimitive?.content ?: ""
+                        if (locallyDeletedMomentIds.contains(canonicalMomentId(momentId))) return@mapNotNull null
                         
                         if (visibilityType == "silent" && userId != currentUserId) return@mapNotNull null
                         if (visibilityType == "private" && userId != currentUserId) return@mapNotNull null
@@ -555,7 +567,7 @@ class MomentRepository @Inject constructor(
                             caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                             isViewed = viewedMomentIds.contains(momentId),
                             allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true
-                        )
+                        ).normalizedStorageUrls()
                 }
                 _moments.value = parsedMoments
             }
@@ -588,6 +600,16 @@ class MomentRepository @Inject constructor(
 
             val payload = resolveMomentMediaPayload(mediaUri = mediaUri, mediaType = mediaType, bytes = rawBytes)
                 .getOrElse { return@withContext Result.failure(it) }
+            val normalizedMediaType = if (payload.contentType.startsWith("video/")) "video" else "image"
+            if (normalizedMediaType == "video") {
+                val durationSeconds = readVideoDurationSeconds(mediaUri)
+                    ?: return@withContext Result.failure(Exception("No se pudo validar la duración del video."))
+                if (durationSeconds > MAX_MOMENT_VIDEO_DURATION_SECONDS) {
+                    return@withContext Result.failure(
+                        Exception("El momento dura ${durationSeconds}s. Máximo permitido: ${MAX_MOMENT_VIDEO_DURATION_SECONDS}s.")
+                    )
+                }
+            }
 
             val uuid = UUID.randomUUID().toString()
             var fileName = "${userId}/$uuid.${payload.extension}"
@@ -595,12 +617,12 @@ class MomentRepository @Inject constructor(
             val uploadResult = storageService.uploadFile("moment-media", fileName, payload.bytes, payload.contentType)
             if (uploadResult.isFailure) return@withContext Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
 
-            val mediaUrl = storageService.getPublicUrl("moment-media", fileName)
+            val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", fileName)).orEmpty()
 
             // 1.1 Generate and Upload Thumbnail
             var thumbnailUrl: String? = null
             try {
-                val thumbBytes = if (mediaType == "video") {
+                val thumbBytes = if (normalizedMediaType == "video") {
                     generateVideoThumbnail(mediaUri)
                 } else {
                     // For images, we can either use the original or generate a smaller one.
@@ -612,7 +634,7 @@ class MomentRepository @Inject constructor(
                     val thumbFileName = "${userId}/${uuid}_thumb.jpg"
                     val thumbUpload = storageService.uploadFile("moment-media", thumbFileName, thumbBytes, "image/jpeg")
                     if (thumbUpload.isSuccess) {
-                        thumbnailUrl = storageService.getPublicUrl("moment-media", thumbFileName)
+                        thumbnailUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", thumbFileName))
                     }
                 }
             } catch (e: Exception) {
@@ -628,7 +650,7 @@ class MomentRepository @Inject constructor(
             val momentData = buildJsonObject {
                 put("user_id", userId)
                 put("media_url", mediaUrl)
-                put("media_type", mediaType)
+                put("media_type", normalizedMediaType)
                 if (thumbnailUrl != null) put("thumbnail_url", thumbnailUrl)
                 put("duration_hours", durationHours)
                 put("duration_type", durationType)
@@ -638,6 +660,23 @@ class MomentRepository @Inject constructor(
                 put("expires_at", expiresAt)
                 if (caption != null) put("caption", caption)
                 put("allow_replies", allowReplies)
+            }
+
+            if (shouldUseUbuntuBackend()) {
+                val createdMoment = localFallbackApiClient.createMoment(
+                    accessToken = accessToken,
+                    mediaUrl = mediaUrl,
+                    mediaType = normalizedMediaType,
+                    thumbnailUrl = thumbnailUrl,
+                    durationHours = durationHours,
+                    durationType = durationType,
+                    visibility = visibility,
+                    visibilityType = visibilityType,
+                    caption = caption,
+                    allowReplies = allowReplies
+                ).getOrElse { return@withContext Result.failure(it) }
+                refreshMoments()
+                return@withContext Result.success(createdMoment.normalizedStorageUrls())
             }
 
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
@@ -831,6 +870,11 @@ class MomentRepository @Inject constructor(
             }
             android.util.Log.d("MomentRepository", "Access token obtained")
 
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.recordMomentView(accessToken, momentId)
+                return@withContext result
+            }
+
             android.util.Log.d("MomentRepository", "Sending POST to moment_views...")
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/moment_views") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -865,6 +909,10 @@ class MomentRepository @Inject constructor(
     suspend fun getMomentViewers(momentId: String): Result<List<MomentView>> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend()) {
+                return@withContext localFallbackApiClient.loadMomentViewers(accessToken, momentId)
+            }
 
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moment_views") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -912,7 +960,7 @@ class MomentRepository @Inject constructor(
                         userDisplayName = finalName,
                         userAvatarUrl = profile?.get("avatar_url")?.jsonPrimitive?.content,
                         isVerified = profile?.get("is_verified")?.jsonPrimitive?.boolean ?: false
-                    )
+                    ).normalizedStorageUrls()
                 }
                 Result.success(viewers)
             } else {
@@ -926,8 +974,22 @@ class MomentRepository @Inject constructor(
 
 
     suspend fun deleteMoment(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val cleanMomentId = canonicalMomentId(momentId)
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            if (cleanMomentId.isBlank()) return@withContext Result.failure(Exception("Moment invalido"))
+            locallyDeletedMomentIds.add(cleanMomentId)
+            _moments.value = _moments.value.filterNot { canonicalMomentId(it.id) == cleanMomentId }
+
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.deleteMoment(accessToken, momentId)
+                if (result.isSuccess) {
+                    _moments.value = _moments.value.filterNot { canonicalMomentId(it.id) == cleanMomentId }
+                } else {
+                    locallyDeletedMomentIds.remove(cleanMomentId)
+                }
+                return@withContext result
+            }
             
             // Note: We might want to also delete the file from storage
             // Fetch moment first to get storage path
@@ -941,12 +1003,33 @@ class MomentRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(Unit)
             } else {
+                locallyDeletedMomentIds.remove(cleanMomentId)
                 Result.failure(Exception("Failed to delete moment"))
             }
         } catch (e: Exception) {
+            if (cleanMomentId.isNotBlank()) {
+                locallyDeletedMomentIds.remove(cleanMomentId)
+            }
             Result.failure(e)
         }
     }
+
+    private fun readVideoDurationSeconds(uri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?: return null
+            kotlin.math.ceil(durationMs / 1000.0).toLong().coerceAtLeast(1L)
+        } catch (e: Exception) {
+            android.util.Log.e("MomentRepository", "Error reading moment video duration", e)
+            null
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
     private fun generateVideoThumbnail(uri: Uri): ByteArray? {
         val retriever = MediaMetadataRetriever()
         return try {
@@ -966,6 +1049,16 @@ class MomentRepository @Inject constructor(
             try { retriever.release() } catch (e: Exception) {}
         }
     }
+
+    private fun Moment.normalizedStorageUrls(): Moment = copy(
+        mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
+        thumbnailUrl = UbuntuStorageUrl.rewrite(thumbnailUrl),
+        userAvatarUrl = UbuntuStorageUrl.rewrite(userAvatarUrl)
+    )
+
+    private fun MomentView.normalizedStorageUrls(): MomentView = copy(
+        userAvatarUrl = UbuntuStorageUrl.rewrite(userAvatarUrl)
+    )
 }
 
 

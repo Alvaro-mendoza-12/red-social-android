@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -60,7 +61,7 @@ fun CommentAudioPlayer(
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .build()
                     )
-                    setDataSource(audioUrl)
+                    UbuntuMedia.setDataSource(this, audioUrl)
                     prepareAsync()
                     setOnPreparedListener { 
                         start()

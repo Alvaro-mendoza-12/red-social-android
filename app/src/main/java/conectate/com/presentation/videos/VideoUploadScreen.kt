@@ -79,7 +79,7 @@ class VideoUploadViewModel @Inject constructor(
             _uploadError.value = null
         } else {
             _videoUri.value = null
-            _uploadError.value = "El video no puede durar más de 30 segundos."
+            _uploadError.value = "El video no puede durar más de 45 segundos."
         }
     }
     
@@ -92,8 +92,8 @@ class VideoUploadViewModel @Inject constructor(
             val time = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
             retriever.release()
             val timeInMillisec = time?.toLong() ?: 0L
-            // limit to 30 seconds (30000 ms) + small buffer (e.g. 1s)
-            timeInMillisec <= 31000 
+            // Limit to 45 seconds plus a small capture/export tolerance.
+            timeInMillisec <= 46_000
         } catch (e: Exception) {
             e.printStackTrace()
             false

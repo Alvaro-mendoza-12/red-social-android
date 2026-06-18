@@ -1759,6 +1759,19 @@ class CommunityRepository @Inject constructor(
             var community = getCommunityById(cleanId)
             var privileges = community?.let { resolveCommunityGovernancePrivileges(it, userId) }
 
+            if (authService.isLocalFallbackModeEnabled() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                if (privileges?.canManageCollection == true) {
+                    localFallbackApiClient.deleteCollection(token, "communities", cleanId).getOrThrow()
+                } else {
+                    localFallbackApiClient.leaveCollection(token, "communities", cleanId).getOrThrow()
+                }
+                communityDao.deleteCommunity(cleanId)
+                scope.launch { syncCommunities() }
+                return@withContext Result.success(Unit)
+            }
+
             if (privileges?.canManageCollection == true) {
                 collectionAdminRemoteStore.softDeleteCollection(
                     collectionTable = "communities",

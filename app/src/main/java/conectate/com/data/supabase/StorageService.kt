@@ -3,6 +3,7 @@ package conectate.com.data.supabase
 import conectate.com.core.media.MediaUploadGuard
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
@@ -189,14 +190,16 @@ class StorageService @Inject constructor(
 
     suspend fun downloadFile(bucketName: String, fileName: String): Result<ByteArray> {
         return try {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured &&
+                fileName.startsWith("http", ignoreCase = true)
+            ) {
+                return localFallbackApiClient.downloadPublicFile(UbuntuStorageUrl.rewrite(fileName) ?: fileName)
+            }
+
             var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val publicUrl = if (fileName.startsWith("http", ignoreCase = true)) {
-                    fileName
-                } else {
-                    localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
-                }
+                val publicUrl = localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
                 return localFallbackApiClient.downloadPublicFile(publicUrl)
             }
             var accessToken = authService.getAccessTokenAwait()
@@ -311,6 +314,9 @@ class StorageService @Inject constructor(
 
     fun getPublicUrl(bucketName: String, fileName: String): String {
         if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            if (fileName.startsWith("http", ignoreCase = true)) {
+                return UbuntuStorageUrl.rewrite(fileName).orEmpty()
+            }
             var normalizedPath = normalizeStoragePath(fileName) ?: return ""
             return localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
         }
@@ -326,6 +332,12 @@ class StorageService @Inject constructor(
 
     suspend fun createSignedUrl(bucketName: String, fileName: String, expiresIn: Int = 3600): Result<String> {
         return try {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured &&
+                fileName.startsWith("http", ignoreCase = true)
+            ) {
+                return Result.success(UbuntuStorageUrl.rewrite(fileName).orEmpty())
+            }
+
             var normalizedPath = normalizeStoragePath(fileName)
                 ?: return Result.failure(Exception("Invalid storage path"))
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {

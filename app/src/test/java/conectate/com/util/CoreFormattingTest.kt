@@ -13,13 +13,13 @@ class CoreFormattingTest {
     @Test
     fun `formatRelativeDate returns fallback for null timestamp`() {
         val result = DateUtils.formatRelativeDate(null)
-        assertEquals("Recientemente", result)
+        assertEquals("sin fecha", result)
     }
 
     @Test
     fun `formatRelativeDate returns fallback for invalid timestamp`() {
         val result = DateUtils.formatRelativeDate("no-es-fecha")
-        assertEquals("Hace un momento", result)
+        assertEquals("sin fecha", result)
     }
 
     @Test

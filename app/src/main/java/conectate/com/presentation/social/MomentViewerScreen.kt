@@ -34,7 +34,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -42,8 +42,18 @@ import coil.compose.AsyncImage
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+
+private const val IMAGE_MOMENT_DURATION_MS = 6_000
+private const val MAX_VIDEO_MOMENT_DURATION_MS = 25_000L
+private const val DEFAULT_VIDEO_MOMENT_DURATION_MS = 25_000L
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -56,11 +66,20 @@ fun MomentViewerScreen(
 
     val moments by viewModel.moments.collectAsState()
     val viewers by viewModel.viewers.collectAsState()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { moments.size })
+    val visibleMoments = remember(moments, momentId) {
+        val selectedMoment = moments.firstOrNull { it.id == momentId }
+        val selectedUserId = selectedMoment?.userId
+        if (!selectedUserId.isNullOrBlank()) {
+            moments.filter { it.userId == selectedUserId }
+        } else {
+            moments
+        }
+    }
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { visibleMoments.size })
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    if (moments.isEmpty()) {
+    if (visibleMoments.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -69,13 +88,15 @@ fun MomentViewerScreen(
 
     var showViewersSheet by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
+    var verticalDragTotal by remember { mutableStateOf(0f) }
+    val videoDurationsMs = remember { mutableStateMapOf<String, Long>() }
 
     // Track view for the current moment
-    LaunchedEffect(pagerState.currentPage, moments.size) {
-        android.util.Log.d("MomentDebug", "Page Changed: ${pagerState.currentPage}, Moments: ${moments.size}")
+    LaunchedEffect(pagerState.currentPage, visibleMoments.size) {
+        android.util.Log.d("MomentDebug", "Page Changed: ${pagerState.currentPage}, Moments: ${visibleMoments.size}")
 
-        if (moments.isNotEmpty() && pagerState.currentPage in moments.indices) {
-            val currentMoment = moments[pagerState.currentPage]
+        if (visibleMoments.isNotEmpty() && pagerState.currentPage in visibleMoments.indices) {
+            val currentMoment = visibleMoments[pagerState.currentPage]
             viewModel.recordView(currentMoment.id)
             if (currentMoment.userId != null && currentMoment.userId == viewModel.currentUserId) {
                 viewModel.loadViewers(currentMoment.id)
@@ -85,11 +106,11 @@ fun MomentViewerScreen(
 
     // Ensure we start at the right index once moments load
     var hasScrolledToInitial by remember { mutableStateOf(false) }
-    LaunchedEffect(moments.size, momentId) {
-        android.util.Log.d("MomentDebug", "Initial Scroll Check: moments=${moments.size}, hasScrolled=$hasScrolledToInitial")
-        if (moments.isNotEmpty() && !hasScrolledToInitial) {
+    LaunchedEffect(visibleMoments.size, momentId) {
+        android.util.Log.d("MomentDebug", "Initial Scroll Check: moments=${visibleMoments.size}, hasScrolled=$hasScrolledToInitial")
+        if (visibleMoments.isNotEmpty() && !hasScrolledToInitial) {
 
-            val startIndex = moments.indexOfFirst { it.id == momentId }
+            val startIndex = visibleMoments.indexOfFirst { it.id == momentId }
             val safeIndex = if (startIndex != -1) startIndex else 0
             if (safeIndex != pagerState.currentPage) {
                 pagerState.scrollToPage(safeIndex)
@@ -99,25 +120,63 @@ fun MomentViewerScreen(
     }
 
     // Auto-advance logic using Animatable for smooth progress
-    val currentProgress = remember(pagerState.currentPage) { Animatable(0f) }
+    val activeMomentId = visibleMoments.getOrNull(pagerState.currentPage)?.id
+    val currentProgress = remember(activeMomentId) { Animatable(0f) }
+    var lastAdvancedMomentId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeMomentId) {
+        lastAdvancedMomentId = null
+    }
+    val advanceToNextMoment: () -> Unit = {
+        val momentToAdvance = visibleMoments.getOrNull(pagerState.currentPage)?.id
+        if (momentToAdvance != null && lastAdvancedMomentId != momentToAdvance) {
+            lastAdvancedMomentId = momentToAdvance
+            coroutineScope.launch {
+                if (pagerState.currentPage < visibleMoments.size - 1) {
+                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                } else {
+                    navController.popBackStack()
+                }
+            }
+        }
+    }
     
     // Reset progress when page changes
-    LaunchedEffect(pagerState.currentPage, paused) {
+    val activeMomentDurationMs = visibleMoments
+        .getOrNull(pagerState.currentPage)
+        ?.let { moment ->
+            if (moment.isVideoMoment()) {
+                videoDurationsMs[moment.id] ?: DEFAULT_VIDEO_MOMENT_DURATION_MS
+            } else {
+                IMAGE_MOMENT_DURATION_MS.toLong()
+            }
+        } ?: IMAGE_MOMENT_DURATION_MS.toLong()
+
+    LaunchedEffect(
+        hasScrolledToInitial,
+        pagerState.currentPage,
+        visibleMoments.getOrNull(pagerState.currentPage)?.id,
+        paused,
+        activeMomentDurationMs
+    ) {
+        if (!hasScrolledToInitial) return@LaunchedEffect
         if (!paused) {
-            // Animate to 1f over 15 seconds (moment duration)
+            val currentMoment = visibleMoments.getOrNull(pagerState.currentPage)
+            val currentMomentId = currentMoment?.id ?: return@LaunchedEffect
+            val durationMs = if (currentMoment.isVideoMoment()) activeMomentDurationMs else IMAGE_MOMENT_DURATION_MS.toLong()
+            if (currentProgress.value <= 0.001f || currentProgress.value >= 1f) {
+                currentProgress.snapTo(0f)
+            }
+            val remainingDurationMs = (durationMs * (1f - currentProgress.value))
+                .roundToInt()
+                .coerceAtLeast(250)
             currentProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 15000, easing = LinearEasing)
+                animationSpec = tween(durationMillis = remainingDurationMs, easing = LinearEasing)
             )
-            // If animation finishes and we haven't paused/changed page, move next
-            if (pagerState.currentPage < moments.size - 1) {
-                // Fix: Launch scroll in parent scope so it doesn't get cancelled when currentPage changes
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                }
-            } else {
-                navController.popBackStack()
+            if (paused || visibleMoments.getOrNull(pagerState.currentPage)?.id != currentMomentId) {
+                return@LaunchedEffect
             }
+            advanceToNextMoment()
         } else {
             currentProgress.stop() // Stop animation if paused
         }
@@ -135,20 +194,29 @@ fun MomentViewerScreen(
             beyondBoundsPageCount = 1,
             pageSpacing = 0.dp, // Ensure no gaps
             contentPadding = PaddingValues(0.dp), // Ensure no padding
-            key = { index -> moments.getOrNull(index)?.id ?: index }
+            key = { index -> visibleMoments.getOrNull(index)?.id ?: index }
         ) { pageIndex ->
-            moments.getOrNull(pageIndex)?.let { moment ->
+            visibleMoments.getOrNull(pageIndex)?.let { moment ->
                 // STRICT VISIBILITY CONTROL
                 val isVisible = (pageIndex == pagerState.currentPage)
                 MomentContent(
                     moment = moment,
-                    isVisible = isVisible
+                    isVisible = isVisible,
+                    paused = paused,
+                    onVideoDurationKnown = { momentId, durationMs ->
+                        videoDurationsMs[momentId] = clampMomentVideoDuration(durationMs)
+                    },
+                    onVideoEnded = { momentId ->
+                        if (momentId == visibleMoments.getOrNull(pagerState.currentPage)?.id && !paused) {
+                            advanceToNextMoment()
+                        }
+                    }
                 )
             }
         }
 
         // Overlay UI
-        val currentMoment = moments.getOrNull(pagerState.currentPage)
+        val currentMoment = visibleMoments.getOrNull(pagerState.currentPage)
         if (currentMoment != null) {
              Column(
                 modifier = Modifier
@@ -162,7 +230,7 @@ fun MomentViewerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    repeat(moments.size) { index ->
+                    repeat(visibleMoments.size) { index ->
                         val progressValue = when {
                             index < pagerState.currentPage -> 1f
                             index == pagerState.currentPage -> currentProgress.value
@@ -202,7 +270,7 @@ fun MomentViewerScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Hace poco", // In a real app, format moment.createdAt
+                            text = formatMomentTimestamp(currentMoment.createdAt),
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 12.sp
                         )
@@ -218,11 +286,27 @@ fun MomentViewerScreen(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
-                        onVerticalDrag = { _, _ ->
-                            // Optional: add visual feedback
+                        onDragStart = {
+                            verticalDragTotal = 0f
+                        },
+                        onVerticalDrag = { _, dragAmount ->
+                            verticalDragTotal += dragAmount
                         },
                         onDragEnd = {
-                            // Threshold for swipe
+                            val moment = visibleMoments.getOrNull(pagerState.currentPage)
+                            if (verticalDragTotal < -120f && moment?.userId == viewModel.currentUserId) {
+                                moment?.let {
+                                    paused = true
+                                    viewModel.loadViewers(it.id)
+                                    showViewersSheet = true
+                                }
+                            } else if (verticalDragTotal > 160f) {
+                                navController.popBackStack()
+                            }
+                            verticalDragTotal = 0f
+                        },
+                        onDragCancel = {
+                            verticalDragTotal = 0f
                         }
                     )
                 }
@@ -230,13 +314,15 @@ fun MomentViewerScreen(
                     detectTapGestures(
                         onTap = { offset ->
                             val width = size.width
+                            val leftZone = width * 0.25f
+                            val rightZone = width * 0.75f
                             coroutineScope.launch {
-                                if (offset.x < width / 3) {
+                                if (offset.x < leftZone) {
                                     if (pagerState.currentPage > 0) {
                                         pagerState.animateScrollToPage(pagerState.currentPage - 1)
                                     }
-                                } else {
-                                    if (pagerState.currentPage < moments.size - 1) {
+                                } else if (offset.x > rightZone) {
+                                    if (pagerState.currentPage < visibleMoments.size - 1) {
                                         pagerState.animateScrollToPage(pagerState.currentPage + 1)
                                     } else {
                                         navController.popBackStack()
@@ -384,9 +470,11 @@ fun MomentViewerScreen(
             ViewersList(
                 viewers = viewers,
                 onDeleteMoment = {
-                    viewModel.deleteMoment(moments[pagerState.currentPage].id) {
-                        navController.popBackStack()
-                    }
+                    visibleMoments.getOrNull(pagerState.currentPage)?.let { moment ->
+                        viewModel.deleteMoment(moment.id) {
+                            navController.popBackStack()
+                        }
+                    } ?: navController.popBackStack()
                 },
                 isOwner = true
             )
@@ -398,7 +486,10 @@ fun MomentViewerScreen(
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 fun MomentContent(
     moment: Moment,
-    isVisible: Boolean
+    isVisible: Boolean,
+    paused: Boolean,
+    onVideoDurationKnown: (String, Long) -> Unit,
+    onVideoEnded: (String) -> Unit
 ) {
     val context = LocalContext.current
     // Only log if visibile to reduce noise
@@ -408,19 +499,26 @@ fun MomentContent(
 
     // Force clipping to prevent next slide from overlapping
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-        if (moment.mediaType == "video") {
+        if (moment.isVideoMoment()) {
             var isVideoReady by remember { mutableStateOf(false) }
 
             val exoPlayer = remember(moment.mediaUrl) {
                 ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(MediaItem.fromUri(moment.mediaUrl))
-                    repeatMode = Player.REPEAT_MODE_ONE
+                    setMediaItem(UbuntuMedia.mediaItem(moment.mediaUrl))
+                    repeatMode = Player.REPEAT_MODE_OFF
                     prepare()
                     
-                    // Limit playback to 15 seconds loop
                     addListener(object : Player.Listener {
                          override fun onPlaybackStateChanged(playbackState: Int) {
-                             // Check explicitly during playback
+                             if (playbackState == Player.STATE_READY) {
+                                 val knownDuration = duration
+                                 if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
+                                     onVideoDurationKnown(moment.id, knownDuration)
+                                 }
+                             }
+                             if (playbackState == Player.STATE_ENDED) {
+                                 onVideoEnded(moment.id)
+                             }
                          }
                          override fun onRenderedFirstFrame() {
                              isVideoReady = true
@@ -429,22 +527,26 @@ fun MomentContent(
                 }
             }
 
-            // Monitor duration loop
-            LaunchedEffect(isVisible, exoPlayer) {
-                if (isVisible) {
-                    while (true) {
-                        if (exoPlayer.currentPosition >= 15000) {
-                            exoPlayer.seekTo(0)
-                        }
-                        delay(100)
-                    }
+            // Sync play state with visibility
+            LaunchedEffect(isVisible, paused, moment.id) {
+                if (isVisible && exoPlayer.playbackState == Player.STATE_ENDED) {
+                    exoPlayer.seekTo(0)
                 }
+                exoPlayer.playWhenReady = isVisible && !paused
+                if (!isVisible || paused) exoPlayer.pause()
             }
 
-            // Sync play state with visibility
-            LaunchedEffect(isVisible) {
-                exoPlayer.playWhenReady = isVisible
-                if (!isVisible) exoPlayer.pause()
+            LaunchedEffect(isVisible, exoPlayer, moment.id) {
+                if (isVisible) {
+                    exoPlayer.seekTo(0)
+                    while (true) {
+                        val knownDuration = exoPlayer.duration
+                        if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
+                            onVideoDurationKnown(moment.id, knownDuration)
+                        }
+                        delay(250)
+                    }
+                }
             }
 
             DisposableEffect(exoPlayer) {
@@ -473,7 +575,7 @@ fun MomentContent(
                         model = moment.thumbnailUrl ?: moment.mediaUrl, 
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Fit
                     )
                 }
             }
@@ -482,7 +584,7 @@ fun MomentContent(
                 model = moment.mediaUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
         }
     }
@@ -547,4 +649,41 @@ fun ViewersList(
         
         Spacer(modifier = Modifier.height(32.dp))
     }
+}
+
+private fun Moment.isVideoMoment(): Boolean {
+    val type = mediaType.trim().lowercase()
+    val url = mediaUrl.substringBefore('?').lowercase()
+    return type == "video" ||
+        type.startsWith("video/") ||
+        url.endsWith(".mp4") ||
+        url.endsWith(".mov") ||
+        url.endsWith(".m4v") ||
+        url.endsWith(".webm")
+}
+
+private fun clampMomentVideoDuration(durationMs: Long): Long {
+    return when {
+        durationMs <= 0L || durationMs == C.TIME_UNSET -> DEFAULT_VIDEO_MOMENT_DURATION_MS
+        else -> durationMs.coerceIn(1_000L, MAX_VIDEO_MOMENT_DURATION_MS)
+    }
+}
+
+private fun formatMomentTimestamp(createdAt: String?): String {
+    val instant = runCatching {
+        createdAt?.let { Instant.parse(it) }
+    }.getOrNull() ?: return "Ahora"
+
+    val now = Instant.now()
+    val elapsedSeconds = Duration.between(instant, now).seconds.coerceAtLeast(0)
+    val elapsed = when {
+        elapsedSeconds < 60 -> "hace ${elapsedSeconds}s"
+        elapsedSeconds < 3_600 -> "hace ${elapsedSeconds / 60} min"
+        elapsedSeconds < 86_400 -> "hace ${elapsedSeconds / 3_600} h"
+        else -> "hace ${elapsedSeconds / 86_400} d"
+    }
+    val localTime = instant
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("HH:mm"))
+    return "$localTime · $elapsed"
 }

@@ -9,6 +9,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -28,6 +30,9 @@ fun VideoThumbnail(
     videoRepository: VideoRepository,
     onClick: () -> Unit
 ) {
+    val stats by videoRepository.getVideoStatsFlow(video.id).collectAsState(initial = null)
+    val viewCount = maxOf(video.views, stats?.viewCount ?: 0)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -36,7 +41,7 @@ fun VideoThumbnail(
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(video.thumbnailUrl ?: video.videoUrl) // Fallback to video URL if no thumbnail
+                .data(video.thumbnailUrl.ifBlank { video.videoUrl })
                 .crossfade(true)
                 .build(),
             contentDescription = "Video Thumbnail",
@@ -70,7 +75,7 @@ fun VideoThumbnail(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = video.views.toString(),
+                        text = viewCount.toString(),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold

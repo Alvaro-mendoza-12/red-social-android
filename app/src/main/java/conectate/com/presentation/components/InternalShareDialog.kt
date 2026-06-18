@@ -43,9 +43,12 @@ fun InternalShareDialog(
                         if (it.length >= 2) {
                             scope.launch {
                                 userRepository.searchUsers(it).onSuccess { users ->
-                                    searchResults = users
+                                    searchResults = users.deduplicateShareTargets()
                                 }
                             }
+                        } else {
+                            searchResults = emptyList()
+                            selectedUser = null
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -59,7 +62,7 @@ fun InternalShareDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(searchResults, key = { it.id }) { user ->
+                    items(searchResults, key = { user -> user.id.ifBlank { user.email.ifBlank { user.displayName } } }) { user ->
                         val isSelected = selectedUser?.id == user.id
                         val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                         
@@ -110,6 +113,39 @@ fun InternalShareDialog(
             }
         }
     )
+}
+
+private fun List<User>.deduplicateShareTargets(): List<User> {
+    val indexByKey = LinkedHashMap<String, Int>()
+    val deduped = mutableListOf<User>()
+    for (user in this) {
+        val keys = listOf(
+            user.id,
+            user.email,
+            user.username.orEmpty(),
+            user.display_name.orEmpty(),
+            user.full_name.orEmpty()
+        )
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() && it != "null" }
+            .distinct()
+        if (keys.isEmpty()) continue
+        val existingIndex = keys.firstNotNullOfOrNull { indexByKey[it] }
+        if (existingIndex == null) {
+            val newIndex = deduped.size
+            deduped += user
+            keys.forEach { indexByKey[it] = newIndex }
+        } else {
+            val existing = deduped[existingIndex]
+            deduped[existingIndex] = when {
+                existing.avatar_url.isNullOrBlank() && !user.avatar_url.isNullOrBlank() -> user
+                existing.email.isBlank() && user.email.isNotBlank() -> user
+                else -> existing
+            }
+            keys.forEach { indexByKey[it] = existingIndex }
+        }
+    }
+    return deduped
 }
 
 // Helper to use MutableState in a more concise way if needed, but standard is fine

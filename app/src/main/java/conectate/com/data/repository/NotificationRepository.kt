@@ -4,6 +4,9 @@ import android.content.Context
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.repository.RepositoryCallHandler
 import conectate.com.core.result.AppResult
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
+import conectate.com.data.model.Notification
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,11 +21,15 @@ import javax.inject.Singleton
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import android.util.Log
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 
 @Singleton
 class NotificationRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val repositoryCallHandler: RepositoryCallHandler,
     @ApplicationContext private val context: Context
 ) {
@@ -43,10 +50,6 @@ class NotificationRepository @Inject constructor(
     init {
         // Automatically start observing if we have a user
         scope.launch {
-            if (authService.isLocalFallbackSession()) {
-                _unreadCount.value = 0
-                return@launch
-            }
             authService.getCurrentUserId()?.let {
                 updateUnreadCount()
             }
@@ -109,8 +112,13 @@ class NotificationRepository @Inject constructor(
     suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
         return try {
             if (authService.isLocalFallbackSession()) {
-                _unreadCount.value = 0
-                return Result.success(emptyList())
+                val token = authService.getAccessToken()
+                    ?: return Result.failure(Exception("No token"))
+                return localFallbackApiClient.loadNotifications(token)
+                    .map { response ->
+                        _unreadCount.value = response.unreadCount
+                        response.items
+                    }
             }
 
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
@@ -191,7 +199,10 @@ class NotificationRepository @Inject constructor(
 
     suspend fun markAsRead(notificationId: String): Result<Unit> {
         if (authService.isLocalFallbackSession()) {
-            return Result.success(Unit)
+            val token = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            return localFallbackApiClient.markNotificationRead(token, notificationId)
+                .onSuccess { updateUnreadCount() }
         }
 
         return safeRepositoryCall("notifications.markAsRead") {
@@ -227,8 +238,10 @@ class NotificationRepository @Inject constructor(
 
     suspend fun markAllAsRead(): Result<Unit> {
         if (authService.isLocalFallbackSession()) {
-            _unreadCount.value = 0
-            return Result.success(Unit)
+            val token = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            return localFallbackApiClient.markAllNotificationsRead(token)
+                .onSuccess { _unreadCount.value = 0 }
         }
 
         return safeRepositoryCall("notifications.markAllAsRead") {
@@ -266,7 +279,25 @@ class NotificationRepository @Inject constructor(
         targetId: String? = null
     ): Result<Unit> {
         if (authService.isLocalFallbackSession()) {
-            return Result.success(Unit)
+            val token = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            val normalizedTypes = types
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (normalizedTypes.isEmpty()) return Result.success(Unit)
+            return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
+                .mapCatching { response ->
+                    response.items
+                        .asSequence()
+                        .filter { notification -> notification.type.trim().lowercase() in normalizedTypes }
+                        .filter { notification -> actorId.isNullOrBlank() || notification.actorId.equals(actorId.trim(), ignoreCase = true) }
+                        .filter { notification -> targetId.isNullOrBlank() || notification.targetId.equals(targetId.trim(), ignoreCase = true) }
+                        .forEach { notification ->
+                            localFallbackApiClient.markNotificationRead(token, notification.id).getOrThrow()
+                        }
+                    updateUnreadCount()
+                }
         }
 
         return safeRepositoryCall("notifications.markMatchingAsRead") {
@@ -314,8 +345,7 @@ class NotificationRepository @Inject constructor(
 
     suspend fun updateUnreadCount(): Result<Int> {
         if (authService.isLocalFallbackSession()) {
-            _unreadCount.value = 0
-            return Result.success(0)
+            return getUnreadCount()
         }
 
         return getUnreadCount()
@@ -323,8 +353,13 @@ class NotificationRepository @Inject constructor(
 
     suspend fun getUnreadCount(): Result<Int> {
         if (authService.isLocalFallbackSession()) {
-            _unreadCount.value = 0
-            return Result.success(0)
+            val token = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
+                .map { response ->
+                    _unreadCount.value = response.unreadCount
+                    response.unreadCount
+                }
         }
 
         return safeRepositoryCall("notifications.getUnreadCount") {
@@ -356,8 +391,20 @@ class NotificationRepository @Inject constructor(
      */
     fun observeNotifications(): Flow<conectate.com.data.model.Notification> = flow {
         if (authService.isLocalFallbackSession()) {
-            _unreadCount.value = 0
-            return@flow
+            val userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
+            val token = authService.getAccessToken()?.trim().orEmpty()
+            if (token.isBlank()) return@flow
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.subscribe("user:$userId")
+            ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.event != "notification") return@collect
+                val payload = envelope.payload["notification"]?.jsonObject ?: return@collect
+                val notification = supabaseConfig.json.decodeFromJsonElement<Notification>(payload)
+                if (notification.recipientId.equals(userId, ignoreCase = true)) {
+                    _unreadCount.value = _unreadCount.value + 1
+                    emit(notification)
+                }
+            }
         }
 
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
@@ -433,6 +480,18 @@ class NotificationRepository @Inject constructor(
 
             var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
+            if (authService.isLocalFallbackSession()) {
+                return localFallbackApiClient.createNotification(
+                    accessToken = token,
+                    recipientId = recipientId,
+                    type = type,
+                    targetId = targetId,
+                    targetType = extraData["target_type"]?.jsonPrimitive?.contentOrNull,
+                    content = content,
+                    extraData = extraData
+                ).map { Unit }
+            }
+
             val notificationData = buildJsonObject {
                 put("recipient_id", recipientId)
                 put("actor_id", actorId)
@@ -470,6 +529,13 @@ class NotificationRepository @Inject constructor(
 
             if (prefs.getString(KEY_LAST_REGISTERED_FCM, null) == cacheKey) {
                 return Result.success(Unit)
+            }
+
+            if (authService.isLocalFallbackSession()) {
+                return localFallbackApiClient.registerFcmToken(accessToken, cleanToken)
+                    .onSuccess {
+                        prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
+                    }
             }
 
             var body = buildJsonObject {
@@ -511,6 +577,13 @@ class NotificationRepository @Inject constructor(
             if (lastRegisteredToken == null) {
                 prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
                 return Result.success(Unit)
+            }
+
+            if (authService.isLocalFallbackSession()) {
+                return localFallbackApiClient.unregisterFcmToken(accessToken, lastRegisteredToken)
+                    .onSuccess {
+                        prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
+                    }
             }
 
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {

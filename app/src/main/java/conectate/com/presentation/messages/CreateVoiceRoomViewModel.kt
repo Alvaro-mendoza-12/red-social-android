@@ -41,7 +41,7 @@ class CreateVoiceRoomViewModel @Inject constructor(
                 val result = repository.createRoom(name, description, isPublic, password)
                 if (result.isSuccess) {
                     val room = result.getOrThrow()
-                    onSuccess(room.readableId ?: room.id) // Fallback to UUID if readable missing
+                    onSuccess(room.id)
                 } else {
                     _error.value = result.exceptionOrNull()?.message
                 }

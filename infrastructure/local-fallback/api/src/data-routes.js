@@ -169,19 +169,36 @@ function profileName(row, fallback = 'Usuario') {
 }
 
 function profileAvatar(row) {
-  return textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'picture', 'image'], '')
+  return versionedAssetUrl(
+    textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'picture', 'image'], ''),
+    textOf(row, ['updated_at', 'created_at'], ''),
+  )
+}
+
+function versionedAssetUrl(url, versionSource) {
+  const cleanUrl = String(url || '').trim()
+  if (!cleanUrl || cleanUrl.startsWith('data:')) return cleanUrl
+  const versionMs = toMillis(versionSource)
+  const version = versionMs > 0 ? String(versionMs) : String(versionSource || '').trim()
+  if (!version) return cleanUrl
+  const [base, hash = ''] = cleanUrl.split('#', 2)
+  const stripped = base
+    .replace(/([?&])v=[^&#]*&?/g, '$1')
+    .replace(/[?&]$/, '')
+  const separator = stripped.includes('?') ? '&' : '?'
+  return `${stripped}${separator}v=${encodeURIComponent(version)}${hash ? `#${hash}` : ''}`
 }
 
 function profileId(row) {
-  return normalizeId(textOf(row, ['id', 'user_id', 'profile_id', 'supabase_user_id'], ''))
+  return normalizeId(textOf(row, ['supabase_user_id', 'supabaseUserId', 'id', 'user_id', 'profile_id'], ''))
 }
 
 function indexProfiles(rows) {
   const byId = new Map()
   for (const row of rows) {
-    for (const key of ['id', 'user_id', 'profile_id', 'supabase_user_id']) {
+    for (const key of ['id', 'user_id', 'profile_id', 'supabase_user_id', 'email', 'username', 'display_name']) {
       const id = normalizeId(row[key])
-      if (id && !byId.has(id)) byId.set(id, row)
+      if (id) byId.set(id, row)
     }
   }
   return byId
@@ -225,6 +242,8 @@ async function localMessages(pool, chatIds) {
         media_size,
         status,
         reply_to_id,
+        delivered_at,
+        read_at,
         created_at,
         updated_at
      FROM fallback_messages
@@ -233,6 +252,72 @@ async function localMessages(pool, chatIds) {
     [ids],
   )
   return rows.map(normalizeImportedRow)
+}
+
+function chatParticipantKey(participants) {
+  return Array.from(cleanSet(participants)).sort().join(':')
+}
+
+async function localChats(pool, limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        participants,
+        participant_key,
+        is_group,
+        group_name,
+        last_message,
+        last_message_at,
+        last_message_sender_id,
+        last_message_id,
+        created_at,
+        updated_at
+     FROM fallback_chats
+     ORDER BY updated_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localChatParticipants(pool, chatIds = []) {
+  const ids = Array.from(cleanSet(chatIds))
+  const { rows } = await pool.query(
+    `SELECT
+        chat_id::text,
+        user_id,
+        joined_at,
+        last_read_at,
+        is_muted,
+        is_pinned,
+        is_archived,
+        is_favorite,
+        cleared_at
+     FROM fallback_chat_participants
+     WHERE ($1::text[] = '{}'::text[] OR lower(chat_id::text) = ANY($1::text[]))
+     ORDER BY joined_at DESC
+     LIMIT 10000`,
+    [ids],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localNicknames(pool, userId) {
+  const cleanUserId = normalizeId(userId)
+  if (!cleanUserId) return new Map()
+  const { rows } = await pool.query(
+    `SELECT target_user_id, nickname
+     FROM fallback_nicknames
+     WHERE lower(user_id) = $1`,
+    [cleanUserId],
+  )
+  return new Map(
+    rows
+      .map(normalizeImportedRow)
+      .map((row) => [normalizeId(textOf(row, ['target_user_id', 'targetUserId'], '')), textOf(row, ['nickname'], '')])
+      .filter(([target, nickname]) => target && nickname),
+  )
 }
 
 async function localCollectionMessages(pool, kind, roomId) {
@@ -295,6 +380,18 @@ async function localCollectionRooms(pool, kind, limit = 2000) {
     [cleanKind, safeLimit],
   )
   return rows.map(normalizeImportedRow)
+}
+
+async function localDeletedCollectionRoomIds(pool, kind) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  if (!['group', 'community'].includes(cleanKind)) return new Set()
+  const { rows } = await pool.query(
+    `SELECT lower(id::text) AS id
+     FROM fallback_collection_rooms
+     WHERE room_kind = $1 AND is_deleted = TRUE`,
+    [cleanKind],
+  )
+  return new Set(rows.map((row) => normalizeId(row.id)).filter(Boolean))
 }
 
 async function localCollectionMembers(pool, kind, limit = 10_000) {
@@ -392,6 +489,239 @@ async function localVideoLikes(pool, videoIds, limit = 10_000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localVideoShares(pool, videoIds, limit = 10_000) {
+  const ids = Array.from(cleanSet(videoIds))
+  if (ids.length === 0) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        post_id AS video_id,
+        user_id,
+        content_type,
+        created_at,
+        TRUE AS local_only
+     FROM fallback_shares
+     WHERE content_type = 'video'
+       AND lower(post_id) = ANY($1::text[])
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [ids, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localVideoMetrics(pool, videoIds) {
+  const ids = Array.from(cleanSet(videoIds))
+  if (ids.length === 0) return new Map()
+  const { rows } = await pool.query(
+    `SELECT lower(video_id) AS video_id,
+            views_delta,
+            share_delta
+     FROM fallback_video_metrics
+     WHERE lower(video_id) = ANY($1::text[])`,
+    [ids],
+  )
+  return new Map(rows.map((row) => [
+    row.video_id,
+    {
+      viewsDelta: Number(row.views_delta) || 0,
+      shareDelta: Number(row.share_delta) || 0,
+    },
+  ]))
+}
+
+async function localVideoDeletionIds(pool, videoIds = null) {
+  const ids = videoIds ? Array.from(cleanSet(videoIds)) : []
+  const result = ids.length > 0
+    ? await pool.query(
+        `SELECT lower(video_id) AS video_id
+         FROM fallback_video_deletions
+         WHERE lower(video_id) = ANY($1::text[])`,
+        [ids],
+      )
+    : await pool.query(`SELECT lower(video_id) AS video_id FROM fallback_video_deletions`)
+  return new Set(result.rows.map((row) => row.video_id).filter(Boolean))
+}
+
+async function importedVideoComments(pool, limit = 10_000) {
+  const [videoComments, genericComments, postComments] = await Promise.all([
+    importedRows(pool, 'video_comments', limit),
+    importedRows(pool, 'comments', limit),
+    importedRows(pool, 'post_comments', limit),
+  ])
+  return [...videoComments, ...genericComments, ...postComments]
+}
+
+async function localVideoComments(pool, videoId, limit = 5000) {
+  const cleanVideoId = normalizeId(videoId)
+  if (!cleanVideoId) return []
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 20_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        video_id,
+        user_id,
+        user_name,
+        user_profile_image,
+        content,
+        content_type,
+        media_url,
+        parent_comment_id,
+        created_at,
+        updated_at
+     FROM fallback_video_comments
+     WHERE lower(video_id) = $1 AND is_deleted = FALSE
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [cleanVideoId, safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localVideoCommentCounts(pool, videoIds) {
+  const ids = Array.from(cleanSet(videoIds))
+  if (ids.length === 0) return new Map()
+  const { rows } = await pool.query(
+    `SELECT lower(video_id) AS video_id, COUNT(*)::int AS total
+     FROM fallback_video_comments
+     WHERE lower(video_id) = ANY($1::text[]) AND is_deleted = FALSE
+     GROUP BY lower(video_id)`,
+    [ids],
+  )
+  return new Map(rows.map((row) => [row.video_id, Number(row.total) || 0]))
+}
+
+async function syncLocalVideoCommentCount(pool, videoId) {
+  const cleanVideoId = normalizeId(videoId)
+  if (!cleanVideoId) return 0
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM fallback_video_comments
+     WHERE lower(video_id) = $1 AND is_deleted = FALSE`,
+    [cleanVideoId],
+  )
+  const total = Number(rows[0]?.total) || 0
+  await pool.query(
+    `UPDATE fallback_videos
+     SET comment_count = $2,
+         updated_at = NOW()
+     WHERE lower(id::text) = $1`,
+    [cleanVideoId, total],
+  )
+  return total
+}
+
+function videoIdOf(row) {
+  return normalizeId(textOf(row, [
+    'video_id',
+    'videoId',
+    'video',
+    'video_uuid',
+    'videoUuid',
+    'reel_id',
+    'reelId',
+    'media_id',
+    'mediaId',
+    'content_id',
+    'contentId',
+    'target_id',
+    'targetId',
+    'entity_id',
+    'entityId',
+    'resource_id',
+    'resourceId',
+    'object_id',
+    'objectId',
+    'post_id',
+    'postId',
+  ], ''))
+}
+
+function parentCommentIdOf(row) {
+  const value = normalizeId(textOf(row, ['parent_comment_id', 'parent_id', 'parentId', 'reply_to_id', 'replyToId'], ''))
+  if (!value || value === '0' || value === 'null' || value === 'undefined' || value === 'none') return null
+  return value
+}
+
+function importedVideoCommentRows(rows, videoIds = null) {
+  const filterIds = videoIds ? cleanSet(videoIds) : null
+  return rows
+    .filter((row) => !boolOf(row, ['is_deleted', 'deleted'], false))
+    .filter((row) => {
+      const videoId = videoIdOf(row)
+      return videoId && (!filterIds || filterIds.has(videoId))
+    })
+}
+
+function videoCommentCountsFromRows(rows) {
+  const counts = new Map()
+  for (const row of rows) {
+    const videoId = videoIdOf(row)
+    if (!videoId) continue
+    counts.set(videoId, (counts.get(videoId) || 0) + 1)
+  }
+  return counts
+}
+
+function mergeCountMaps(...maps) {
+  const merged = new Map()
+  for (const map of maps) {
+    for (const [key, value] of map.entries()) {
+      merged.set(key, (merged.get(key) || 0) + (Number(value) || 0))
+    }
+  }
+  return merged
+}
+
+function videoOwnerIds(row) {
+  return cleanSet([
+    textOf(row, ['user_id', 'userId', 'profile_id', 'author_id'], ''),
+    textOf(row, ['owner_id', 'creator_id'], ''),
+  ])
+}
+
+async function videoNotificationOwnerId(pool, videoId, identity) {
+  const cleanVideoId = normalizeId(videoId)
+  if (!cleanVideoId) return ''
+  const [fallbackVideos, importedVideos] = await Promise.all([
+    localVideos(pool, 5000),
+    importedRows(pool, 'videos', 5000),
+  ])
+  const row = [...fallbackVideos, ...importedVideos]
+    .find((entry) => normalizeId(textOf(entry, ['id'], '')) === cleanVideoId)
+  if (!row) return ''
+  return Array.from(videoOwnerIds(row))
+    .find((ownerId) => ownerId && !identity.ids.has(ownerId)) || ''
+}
+
+function profileAliasSet(profile) {
+  return cleanSet([
+    textOf(profile, ['id'], ''),
+    textOf(profile, ['user_id', 'userId'], ''),
+    textOf(profile, ['profile_id', 'profileId'], ''),
+    textOf(profile, ['supabase_user_id', 'supabaseUserId'], ''),
+    textOf(profile, ['email'], ''),
+    textOf(profile, ['username', 'handle'], ''),
+  ])
+}
+
+function ownerMatchesRequestedProfile(row, requestedIds) {
+  if (!requestedIds || requestedIds.size === 0) return true
+  const owners = videoOwnerIds(row)
+  return Array.from(owners).some((id) => requestedIds.has(id))
+}
+
+function mergeRowsById(rows) {
+  const byId = new Map()
+  for (const row of rows) {
+    const id = normalizeId(textOf(row, ['id'], ''))
+    if (!id) continue
+    byId.set(id, { ...(byId.get(id) || {}), ...row })
+  }
+  return Array.from(byId.values())
+}
+
 function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
   const id = textOf(row, ['id'], '')
   const userId = textOf(row, ['user_id', 'userId'], '')
@@ -401,10 +731,10 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
     ...row,
     id,
     user_id: userId,
-    user_name: textOf(row, ['user_name', 'userName'], '') || textOf(profile, ['display_name', 'username'], 'Usuario'),
+    user_name: profileName(profile, textOf(row, ['user_name', 'userName'], 'Usuario')),
     user_profile_image:
-      textOf(row, ['user_profile_image', 'userProfileImage'], '') ||
-      textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+      textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '') ||
+      textOf(row, ['user_profile_image', 'userProfileImage'], ''),
     title: textOf(row, ['title', 'caption'], 'Video'),
     description: textOf(row, ['description', 'content'], ''),
     video_url: textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
@@ -421,6 +751,384 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
     liked_by_me: likedVideoIds.has(id),
     created_at: textOf(row, ['created_at', 'updated_at'], ''),
     updated_at: textOf(row, ['updated_at', 'created_at'], ''),
+  }
+}
+
+function mapVideoComment(row, profilesById, currentIdentity) {
+  const id = textOf(row, ['id'], '')
+  const userId = textOf(row, ['user_id', 'profile_id', 'author_id'], '')
+  const profile = profilesById.get(normalizeId(userId)) || {}
+  const parentCommentId = parentCommentIdOf(row)
+  return {
+    ...row,
+    id,
+    video_id: videoIdOf(row),
+    user_id: userId,
+    user_name: profileName(profile, textOf(row, ['user_name', 'display_name', 'author_name'], 'Usuario')),
+    user_profile_image:
+      profileAvatar(profile) || textOf(row, ['user_profile_image', 'user_avatar_url', 'avatar_url'], ''),
+    content: textOf(row, ['content', 'comment', 'comment_text', 'body', 'message', 'text'], ''),
+    content_type: textOf(row, ['content_type', 'contentType'], 'text') || 'text',
+    media_url: textOf(row, ['media_url', 'audio_url', 'file_url'], ''),
+    parent_comment_id: parentCommentId,
+    likes: numberOf(row, ['likes', 'like_count'], 0),
+    is_mine: currentIdentity ? rowMatchesAny(row, ['user_id', 'profile_id', 'author_id'], currentIdentity.ids) : false,
+    created_at: textOf(row, ['created_at', 'updated_at'], ''),
+    updated_at: textOf(row, ['updated_at', 'created_at'], ''),
+  }
+}
+
+function challengeId(row) {
+  return normalizeId(textOf(row, ['id', 'challenge_id'], ''))
+}
+
+const CHALLENGE_ACTIVE_INTERVAL_SQL = "15 minutes"
+const CHALLENGE_VOTING_INTERVAL_SQL = "30 seconds"
+const CHALLENGE_PODIUM_INTERVAL_SQL = "6 seconds"
+const DEFAULT_CHALLENGE_MASTERS = [
+  {
+    title: 'Canta tu cancion favorita',
+    description: 'Graba un audio o video corto cantando una parte de tu cancion favorita.',
+    challenge_type: 'audio',
+    difficulty: 'normal',
+  },
+  {
+    title: 'Foto con algo verde',
+    description: 'Toma una foto donde aparezca claramente algo verde.',
+    challenge_type: 'camera',
+    difficulty: 'easy',
+  },
+  {
+    title: 'Adivinanza rapida',
+    description: 'Responde: Blanco por dentro, verde por fuera. Si quieres que te lo diga, espera. ¿Que es?',
+    challenge_type: 'text',
+    difficulty: 'easy',
+  },
+  {
+    title: 'Trabalenguas express',
+    description: 'Di rapido: Tres tristes tigres tragaban trigo en un trigal.',
+    challenge_type: 'audio',
+    difficulty: 'hard',
+  },
+  {
+    title: 'Dibuja en 30 segundos',
+    description: 'Dibuja una casa, un sol y una persona usando el editor de dibujo.',
+    challenge_type: 'drawing',
+    difficulty: 'normal',
+  },
+  {
+    title: 'Objeto misterioso',
+    description: 'Sube una foto de un objeto cotidiano desde un angulo dificil de reconocer.',
+    challenge_type: 'camera',
+    difficulty: 'normal',
+  },
+  {
+    title: 'Mini historia',
+    description: 'Escribe una historia de maximo tres lineas que empiece con: Hoy paso algo raro...',
+    challenge_type: 'text',
+    difficulty: 'normal',
+  },
+  {
+    title: 'Imita un sonido',
+    description: 'Graba un audio imitando un sonido y deja que los demas voten.',
+    challenge_type: 'audio',
+    difficulty: 'normal',
+  },
+  {
+    title: 'Reto creativo del dia',
+    description: 'Sube una foto, video, audio, dibujo o texto y compite en el ranking.',
+    challenge_type: 'mixed',
+    difficulty: 'normal',
+  },
+]
+
+async function localChallengeMasters(pool, limit = 2000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 2000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        title,
+        description,
+        challenge_type,
+        difficulty,
+        creator_id,
+        created_at,
+        updated_at
+     FROM fallback_challenges_master
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function localActiveChallenges(pool, limit = 2000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 2000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        challenge_id::text,
+        expires_at,
+        voting_expires_at,
+        status,
+        winner_ids,
+        created_at,
+        updated_at
+     FROM fallback_active_challenges
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
+async function challengeWinnerIds(pool, activeChallengeId, limit = 3) {
+  const activeId = normalizeId(activeChallengeId)
+  if (!activeId) return []
+  const { rows } = await pool.query(
+    `SELECT
+        s.user_id,
+        COUNT(v.submission_id)::int AS vote_count,
+        MIN(s.created_at) AS first_submitted_at
+     FROM fallback_challenge_submissions s
+     LEFT JOIN fallback_challenge_votes v
+       ON lower(v.submission_id) = lower(s.id::text)
+     WHERE lower(s.active_challenge_id) = $1
+     GROUP BY s.user_id
+     ORDER BY vote_count DESC, first_submitted_at ASC
+     LIMIT $2`,
+    [activeId, Math.max(1, Math.min(Number(limit) || 3, 10))],
+  )
+  return rows
+    .map((row) => normalizeId(row.user_id))
+    .filter(Boolean)
+}
+
+async function purgeChallengeSession(pool, activeChallengeId) {
+  const activeId = normalizeId(activeChallengeId)
+  if (!activeId) return
+  await pool.query(
+    `DELETE FROM fallback_challenge_votes
+     WHERE lower(submission_id) IN (
+       SELECT lower(id::text)
+       FROM fallback_challenge_submissions
+       WHERE lower(active_challenge_id) = $1
+     )`,
+    [activeId],
+  )
+  await pool.query(
+    `DELETE FROM fallback_challenge_submissions
+     WHERE lower(active_challenge_id) = $1`,
+    [activeId],
+  )
+  await pool.query(
+    `DELETE FROM fallback_active_challenges
+     WHERE lower(id::text) = $1`,
+    [activeId],
+  )
+}
+
+async function ensureDefaultChallengeMasters(pool, creatorId = 'system') {
+  let masters = await localChallengeMasters(pool, 500)
+  if (masters.length >= 8) return masters
+
+  const existingTitles = new Set(
+    masters
+      .map((row) => textOf(row, ['title'], '').trim().toLowerCase())
+      .filter(Boolean),
+  )
+
+  for (const master of DEFAULT_CHALLENGE_MASTERS) {
+    const titleKey = master.title.trim().toLowerCase()
+    if (existingTitles.has(titleKey)) continue
+    await pool.query(
+      `INSERT INTO fallback_challenges_master(title, description, challenge_type, difficulty, creator_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [master.title, master.description, master.challenge_type, master.difficulty, creatorId],
+    )
+    existingTitles.add(titleKey)
+  }
+
+  return localChallengeMasters(pool, 500)
+}
+
+async function hasChallengeSubmissions(pool, activeChallengeId) {
+  const activeId = normalizeId(activeChallengeId)
+  if (!activeId) return false
+  const { rows } = await pool.query(
+    `SELECT 1
+     FROM fallback_challenge_submissions
+     WHERE lower(active_challenge_id) = $1
+     LIMIT 1`,
+    [activeId],
+  )
+  return rows.length > 0
+}
+
+async function ensureActiveChallenge(pool, user) {
+  const now = new Date()
+  const identity = userIdentity(user)
+  let masters = await ensureDefaultChallengeMasters(pool, identity.displayUserId)
+  const activeRows = await localActiveChallenges(pool, 50)
+  const existing = activeRows.find((row) => {
+    const status = textOf(row, ['status'], '').toLowerCase()
+    const expiresAt = toMillis(row.expires_at)
+    const votingExpiresAt = toMillis(row.voting_expires_at)
+    if (status === 'voting') return !votingExpiresAt || votingExpiresAt > now.getTime()
+    if (status === 'completed') return expiresAt && expiresAt > now.getTime()
+    return status === 'active' && (!expiresAt || expiresAt > now.getTime())
+  })
+  if (existing) {
+    const status = textOf(existing, ['status'], '').toLowerCase()
+    const expiresAt = toMillis(existing.expires_at)
+    const maxActiveExpiresAt = now.getTime() + 15 * 60 * 1000
+    const existingMaster = masters.find((row) => challengeId(row) === normalizeId(textOf(existing, ['challenge_id'], '')))
+    const existingTitle = textOf(existingMaster || {}, ['title'], '').trim().toLowerCase()
+    if (
+      status === 'active' &&
+      existingTitle === 'reto creativo del dia' &&
+      masters.length > 1 &&
+      !(await hasChallengeSubmissions(pool, textOf(existing, ['id'], '')))
+    ) {
+      await purgeChallengeSession(pool, textOf(existing, ['id'], ''))
+    } else {
+    if (status === 'active' && (!expiresAt || expiresAt > maxActiveExpiresAt)) {
+      const { rows } = await pool.query(
+        `UPDATE fallback_active_challenges
+         SET expires_at = NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}',
+             voting_expires_at = NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}' + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}',
+             updated_at = NOW()
+         WHERE id = $1::uuid
+         RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
+        [textOf(existing, ['id'], '')],
+      )
+      if (rows[0]) return normalizeImportedRow(rows[0])
+    }
+    return existing
+    }
+  }
+
+  const expiredCompleted = activeRows.find((row) => {
+    const status = textOf(row, ['status'], '').toLowerCase()
+    const expiresAt = toMillis(row.expires_at)
+    return status === 'completed' && expiresAt && expiresAt <= now.getTime()
+  })
+  if (expiredCompleted) {
+    await purgeChallengeSession(pool, textOf(expiredCompleted, ['id'], ''))
+  }
+
+  const expiredVoting = activeRows.find((row) => {
+    const status = textOf(row, ['status'], '').toLowerCase()
+    const votingExpiresAt = toMillis(row.voting_expires_at)
+    return status === 'voting' && votingExpiresAt && votingExpiresAt <= now.getTime()
+  })
+  if (expiredVoting) {
+    const winners = await challengeWinnerIds(pool, textOf(expiredVoting, ['id'], ''), 3)
+    const { rows } = await pool.query(
+      `UPDATE fallback_active_challenges
+       SET status = 'completed',
+           winner_ids = $2::jsonb,
+           expires_at = NOW() + INTERVAL '${CHALLENGE_PODIUM_INTERVAL_SQL}',
+           updated_at = NOW()
+       WHERE id = $1::uuid
+       RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
+      [textOf(expiredVoting, ['id'], ''), JSON.stringify(winners)],
+    )
+    if (rows[0]) return normalizeImportedRow(rows[0])
+  }
+
+  const expiredActive = activeRows.find((row) => {
+    const status = textOf(row, ['status'], '').toLowerCase()
+    const expiresAt = toMillis(row.expires_at)
+    return status === 'active' && expiresAt && expiresAt <= now.getTime()
+  })
+  if (expiredActive) {
+    const { rows } = await pool.query(
+      `UPDATE fallback_active_challenges
+       SET status = 'voting',
+           voting_expires_at = CASE
+             WHEN voting_expires_at IS NULL OR voting_expires_at <= NOW()
+             THEN NOW() + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}'
+             ELSE voting_expires_at
+           END,
+           updated_at = NOW()
+       WHERE id = $1::uuid
+       RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
+      [textOf(expiredActive, ['id'], '')],
+    )
+    if (rows[0]) return normalizeImportedRow(rows[0])
+  }
+
+  const availableMasters = masters.length > 1
+    ? masters.filter((row) => textOf(row, ['title'], '').trim().toLowerCase() !== 'reto creativo del dia')
+    : masters
+  const masterPool = availableMasters.length > 0 ? availableMasters : masters
+  const master = masterPool[Math.floor(Math.random() * masterPool.length)]
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_active_challenges(challenge_id, expires_at, voting_expires_at, status)
+     VALUES ($1::uuid, NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}', NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}' + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}', 'active')
+     RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
+    [challengeId(master)],
+  )
+  return normalizeImportedRow(rows[0])
+}
+
+function mapChallenge(row) {
+  return {
+    id: textOf(row, ['id'], ''),
+    title: textOf(row, ['title'], 'Reto'),
+    description: textOf(row, ['description'], ''),
+    challenge_type: textOf(row, ['challenge_type', 'challengeType'], 'mixed'),
+    difficulty: textOf(row, ['difficulty'], 'normal'),
+    creator_id: textOf(row, ['creator_id', 'user_id'], ''),
+    participantCount: numberOf(row, ['participant_count', 'participantCount'], 0),
+    isCompleted: boolOf(row, ['is_completed', 'isCompleted'], false),
+    created_at: textOf(row, ['created_at'], ''),
+    updated_at: textOf(row, ['updated_at'], ''),
+  }
+}
+
+function mapActiveChallenge(row, master) {
+  const challengeIdValue = textOf(row, ['challenge_id', 'challengeId'], '')
+  const fallbackMaster = master || {
+    id: challengeIdValue,
+    title: 'Reto creativo del dia',
+    description: 'Sube una foto, video, audio, dibujo o texto y compite en el ranking.',
+    challenge_type: 'mixed',
+    difficulty: 'normal',
+  }
+  return {
+    id: textOf(row, ['id'], ''),
+    challenge_id: challengeIdValue,
+    challenge: mapChallenge(fallbackMaster),
+    expires_at: textOf(row, ['expires_at', 'expiresAt'], ''),
+    voting_expires_at: textOf(row, ['voting_expires_at', 'votingExpiresAt'], ''),
+    status: textOf(row, ['status'], 'active'),
+    winner_ids: arrayOf(row, ['winner_ids', 'winnerIds']),
+  }
+}
+
+function mapChallengeSubmission(row, profilesById, voteCounts, votedSubmissionIds) {
+  const id = textOf(row, ['id'], '')
+  const userId = textOf(row, ['user_id', 'profile_id'], '')
+  const profile = profilesById.get(normalizeId(userId)) || {}
+  return {
+    ...row,
+    id,
+    challenge_id: textOf(row, ['challenge_id', 'challengeId'], ''),
+    active_challenge_id: textOf(row, ['active_challenge_id', 'activeChallengeId'], ''),
+    user_id: userId,
+    user_data: {
+      id: userId,
+      display_name: profileName(profile, textOf(row, ['user_name'], 'Usuario')),
+      username: textOf(profile, ['username'], ''),
+      avatar_url: profileAvatar(profile),
+    },
+    content_url: textOf(row, ['content_url', 'contentUrl', 'media_url'], '') || null,
+    text_content: textOf(row, ['text_content', 'textContent', 'content'], '') || null,
+    vote_count: voteCounts.get(id) ?? numberOf(row, ['vote_count', 'voteCount'], 0),
+    voted_by_me: votedSubmissionIds.has(id),
+    created_at: textOf(row, ['created_at'], ''),
   }
 }
 
@@ -514,16 +1222,19 @@ async function fallbackUserProfileRows(pool, limit = 5000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
   const { rows } = await pool.query(
     `SELECT
-        id::text AS id,
-        supabase_user_id::text AS supabase_user_id,
-        email,
-        display_name,
-        display_name AS full_name,
-        avatar_url,
-        created_at,
-        last_login_at AS updated_at
-     FROM fallback_users
-     ORDER BY created_at DESC
+        u.id::text AS id,
+        u.supabase_user_id::text AS supabase_user_id,
+        COALESCE(o.profile->>'email', u.email) AS email,
+        COALESCE(o.profile->>'display_name', o.profile->>'displayName', o.profile->>'full_name', u.display_name) AS display_name,
+        COALESCE(o.profile->>'full_name', o.profile->>'fullName', o.profile->>'display_name', u.display_name) AS full_name,
+        COALESCE(o.profile->>'username', split_part(u.email, '@', 1)) AS username,
+        COALESCE(o.profile->>'avatar_url', o.profile->>'avatarUrl', o.profile->>'photo_url', o.profile->>'profile_image', u.avatar_url) AS avatar_url,
+        COALESCE(o.profile->>'cover_url', o.profile->>'coverUrl') AS cover_url,
+        u.created_at,
+        COALESCE(o.updated_at, u.last_login_at, u.created_at) AS updated_at
+     FROM fallback_users u
+     LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+     ORDER BY COALESCE(o.updated_at, u.created_at) DESC
      LIMIT $1`,
     [safeLimit],
   )
@@ -732,25 +1443,28 @@ async function allPublicProfiles(pool) {
     importedRows(pool, 'profiles', 10_000),
     fallbackUserProfileRows(pool, 10_000),
   ])
-  const byId = new Map()
+  const byCanonicalId = new Map()
+  const aliasToCanonicalId = new Map()
 
-  for (const row of importedProfiles) {
+  const upsertProfile = (row, preferLatest = false) => {
     const profile = normalizeProfileForPublic(row)
-    if (profile.id && !byId.has(profile.id)) byId.set(profile.id, profile)
+    const aliases = profileAliasSet(profile)
+    if (aliases.size === 0) return
+    const knownCanonicalId = Array.from(aliases).map((alias) => aliasToCanonicalId.get(alias)).find(Boolean)
+    const canonicalId = knownCanonicalId || normalizeId(profile.supabase_user_id) || profile.id || Array.from(aliases)[0]
+    const existing = byCanonicalId.get(canonicalId) || {}
+    const merged = preferLatest
+      ? normalizeProfileForPublic({ ...existing, ...profile }, canonicalId)
+      : normalizeProfileForPublic({ ...profile, ...existing }, canonicalId)
+    byCanonicalId.set(canonicalId, merged)
+    for (const alias of profileAliasSet(merged)) aliasToCanonicalId.set(alias, canonicalId)
+    for (const alias of aliases) aliasToCanonicalId.set(alias, canonicalId)
   }
 
-  for (const row of fallbackProfiles) {
-    const profile = normalizeProfileForPublic(row)
-    if (!profile.id) continue
-    const existing = byId.get(profile.id) || {}
-    byId.set(profile.id, normalizeProfileForPublic({ ...existing, ...profile }, profile.id))
-    const supabaseId = normalizeId(profile.supabase_user_id)
-    if (supabaseId && !byId.has(supabaseId)) {
-      byId.set(supabaseId, normalizeProfileForPublic({ ...existing, ...profile, id: supabaseId }, supabaseId))
-    }
-  }
+  for (const row of importedProfiles) upsertProfile(row, false)
+  for (const row of fallbackProfiles) upsertProfile(row, true)
 
-  return Array.from(byId.values())
+  return Array.from(byCanonicalId.values())
 }
 
 function profileMatchesQuery(profile, query) {
@@ -790,6 +1504,7 @@ async function getCurrentUser(pool, req) {
             sync_source,
             sync_status,
             created_at,
+            updated_at,
             last_login_at
      FROM fallback_users
      WHERE id = $1
@@ -818,7 +1533,7 @@ function fallbackProfileRow(user) {
     full_name: user.display_name || user.email,
     avatar_url: user.avatar_url || '',
     created_at: user.created_at,
-    updated_at: user.last_login_at || user.created_at,
+    updated_at: user.updated_at || user.last_login_at || user.created_at,
   }
 }
 
@@ -830,7 +1545,7 @@ function buildProfileForUser(user, importedProfile = {}, overrideProfile = {}) {
   }
   return {
     ...merged,
-    id: textOf(merged, ['id'], user.supabase_user_id || user.id),
+    id: textOf(merged, ['supabase_user_id', 'supabaseUserId', 'id'], user.supabase_user_id || user.id),
     email: textOf(merged, ['email'], user.email),
     display_name: profileName(merged, user.display_name || user.email),
     full_name: textOf(merged, ['full_name'], profileName(merged, user.display_name || user.email)),
@@ -897,12 +1612,16 @@ function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) 
     ...row,
     user_id: authorId || textOf(row, ['user_id'], ''),
     user_name: textOf(row, ['user_name', 'display_name'], '') || profileName(profile, 'Usuario'),
-    user_profile_image: textOf(row, ['user_profile_image', 'avatar_url'], '') || profileAvatar(profile),
+    user_profile_image: profileAvatar(profile) || textOf(row, ['user_profile_image', 'avatar_url'], ''),
     media_urls: mediaUrls,
     media_url: textOf(row, ['media_url'], '') || mediaUrls[0] || '',
     visibility: textOf(row, ['visibility'], 'public'),
-    like_count: numberOf(row, ['like_count', 'likes_count'], likeCounts.get(postId) || 0),
-    comment_count: numberOf(row, ['comment_count', 'comments_count'], commentCounts.get(postId) || 0),
+    like_count: likeCounts.has(postId)
+      ? likeCounts.get(postId)
+      : numberOf(row, ['like_count', 'likes_count'], 0),
+    comment_count: commentCounts.has(postId)
+      ? commentCounts.get(postId)
+      : numberOf(row, ['comment_count', 'comments_count'], 0),
     liked_by_me: likedPostIds.has(postId),
   }
 }
@@ -945,8 +1664,8 @@ function enrichPostComment(row, profilesById) {
     id: textOf(row, ['id'], `${textOf(row, ['post_id'], 'post')}-${createdAt}-${userId}`),
     post_id: normalizeId(textOf(row, ['post_id'], '')),
     user_id: userId,
-    user_name: textOf(row, ['user_name', 'display_name', 'author_name'], '') || profileName(profile, userId || 'Usuario'),
-    user_avatar_url: textOf(row, ['user_avatar_url', 'avatar_url', 'user_profile_image'], '') || profileAvatar(profile),
+    user_name: profileName(profile, textOf(row, ['user_name', 'display_name', 'author_name'], userId || 'Usuario')),
+    user_avatar_url: profileAvatar(profile) || textOf(row, ['user_avatar_url', 'avatar_url', 'user_profile_image'], ''),
     content: textOf(row, ['content', 'text', 'body'], ''),
     created_at: createdAt,
     updated_at: textOf(row, ['updated_at', 'created_at'], createdAt),
@@ -1096,7 +1815,7 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
   if (!config || !cleanRoomId) return null
 
   const identity = userIdentity(user)
-  const [importedProfiles, localProfiles, importedRooms, importedMembers, importedMessages, localRooms, localMembers] = await Promise.all([
+  const [importedProfiles, localProfiles, importedRooms, importedMembers, importedMessages, localRooms, localMembers, deletedLocalRoomIds] = await Promise.all([
     importedRows(pool, 'profiles', 5000),
     fallbackUserProfileRows(pool, 5000),
     importedRows(pool, config.roomTable, 5000),
@@ -1104,10 +1823,16 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
     importedRows(pool, config.messageTable, 10_000),
     localCollectionRooms(pool, config.kind, 5000),
     localCollectionMembers(pool, config.kind, 10_000),
+    localDeletedCollectionRoomIds(pool, config.kind),
   ])
   const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
-  const rooms = [...importedRooms, ...localRooms]
+  const rooms = mergeRowsById([...importedRooms, ...localRooms])
+    .filter((row) => {
+      const id = normalizeId(textOf(row, ['id'], ''))
+      return id && !deletedLocalRoomIds.has(id) && !boolOf(row, ['is_deleted', 'deleted'], false)
+    })
   const members = [...importedMembers, ...localMembers]
+    .filter((row) => !deletedLocalRoomIds.has(roomIdOf(row, config.roomKey)))
   const room = rooms.find((row) => normalizeId(textOf(row, ['id'], '')) === cleanRoomId)
   if (!room) return null
 
@@ -1156,6 +1881,15 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
 
 function voiceRoomId(row) {
   return normalizeId(textOf(row, ['id', 'room_id', 'voice_room_id'], ''))
+}
+
+function voiceRoomReadableId(row) {
+  return normalizeId(textOf(row, ['readable_id', 'readableId', 'agora_channel_name', 'agoraChannelName'], ''))
+}
+
+function voiceRoomMatches(row, cleanRoomId) {
+  if (!cleanRoomId) return false
+  return voiceRoomId(row) === cleanRoomId || voiceRoomReadableId(row) === cleanRoomId
 }
 
 function voiceParticipantRoomId(row) {
@@ -1253,7 +1987,86 @@ function mapVoiceRoom(row, profilesById, participantCount) {
   }
 }
 
+async function publishVoiceRoomsLiveEvent(payload) {
+  try {
+    const { publishRealtimeEvent } = require('./realtime-publish')
+    await publishRealtimeEvent('voice-rooms:live', {
+      event: 'voice-room',
+      ...(payload || {}),
+    })
+  } catch (error) {
+    console.warn('[voice-rooms-live]', error?.message || error)
+  }
+}
+
 async function ensureLocalDataTables(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_chats (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      participants TEXT[] NOT NULL DEFAULT '{}'::text[],
+      participant_key TEXT UNIQUE,
+      is_group BOOLEAN NOT NULL DEFAULT FALSE,
+      group_name TEXT,
+      last_message TEXT,
+      last_message_at TIMESTAMPTZ,
+      last_message_sender_id TEXT,
+      last_message_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS participants TEXT[] NOT NULL DEFAULT '{}'::text[]`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS participant_key TEXT UNIQUE`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS is_group BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS group_name TEXT`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS last_message TEXT`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS last_message_sender_id TEXT`,
+    `ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS last_message_id TEXT`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_chats_participant_key
+     ON fallback_chats(participant_key)
+     WHERE participant_key IS NOT NULL`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_chats_updated
+     ON fallback_chats(updated_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_chat_participants (
+      chat_id UUID NOT NULL REFERENCES fallback_chats(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_read_at TIMESTAMPTZ,
+      is_muted BOOLEAN NOT NULL DEFAULT FALSE,
+      is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+      is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+      is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
+      cleared_at TIMESTAMPTZ,
+      PRIMARY KEY (chat_id, user_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_chat_participants_user
+     ON fallback_chat_participants(lower(user_id), joined_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_nicknames (
+      user_id TEXT NOT NULL,
+      target_user_id TEXT NOT NULL,
+      nickname TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, target_user_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_nicknames_user
+     ON fallback_nicknames(lower(user_id), lower(target_user_id))`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1265,14 +2078,19 @@ async function ensureLocalDataTables(pool) {
       media_size BIGINT NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'sent',
       reply_to_id TEXT,
+      delivered_at TIMESTAMPTZ,
+      read_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(
-    `ALTER TABLE fallback_messages
-     ADD COLUMN IF NOT EXISTS media_size BIGINT NOT NULL DEFAULT 0`,
-  )
+  for (const statement of [
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS media_size BIGINT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`,
+  ]) {
+    await pool.query(statement)
+  }
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_messages_chat_created
      ON fallback_messages(lower(chat_id), created_at)`,
@@ -1498,6 +2316,20 @@ async function ensureLocalDataTables(pool) {
      ON fallback_notifications(target_type, lower(target_id), created_at DESC)`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_fcm_tokens (
+      user_id TEXT NOT NULL,
+      token TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT 'android',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, token)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_fcm_tokens_user
+     ON fallback_fcm_tokens(lower(user_id), updated_at DESC)`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_room_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
@@ -1706,10 +2538,61 @@ async function ensureLocalDataTables(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  for (const statement of [
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT 'Usuario'`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS user_profile_image TEXT`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS video_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS cover_url TEXT`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS thumbnail_url TEXT`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS duration_seconds INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS trim_start_seconds INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS trim_end_seconds INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS like_count INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS comment_count INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS share_count INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_videos_created
      ON fallback_videos(created_at DESC)`,
   )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_video_metrics (
+      video_id TEXT PRIMARY KEY,
+      views_delta INT NOT NULL DEFAULT 0,
+      share_delta INT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_video_metrics ADD COLUMN IF NOT EXISTS views_delta INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_video_metrics ADD COLUMN IF NOT EXISTS share_delta INT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_video_metrics ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_video_deletions (
+      video_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_video_deletions ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_video_deletions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_video_likes (
       video_id TEXT NOT NULL,
@@ -1718,6 +2601,94 @@ async function ensureLocalDataTables(pool) {
       PRIMARY KEY (video_id, user_id)
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_video_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      video_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL DEFAULT 'Usuario',
+      user_profile_image TEXT,
+      content TEXT NOT NULL DEFAULT '',
+      content_type TEXT NOT NULL DEFAULT 'text',
+      media_url TEXT,
+      parent_comment_id TEXT,
+      is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS video_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT 'Usuario'`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS user_profile_image TEXT`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'text'`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS media_url TEXT`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS parent_comment_id TEXT`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_video_comments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_video_comments_video_created
+     ON fallback_video_comments(lower(video_id), is_deleted, created_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_challenges_master (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      challenge_type TEXT NOT NULL DEFAULT 'mixed',
+      difficulty TEXT NOT NULL DEFAULT 'normal',
+      creator_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_active_challenges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      challenge_id UUID NOT NULL REFERENCES fallback_challenges_master(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+      voting_expires_at TIMESTAMPTZ,
+      status TEXT NOT NULL DEFAULT 'active',
+      winner_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_challenge_submissions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      challenge_id TEXT NOT NULL,
+      active_challenge_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      content_url TEXT,
+      text_content TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (active_challenge_id, user_id)
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_challenge_votes (
+      submission_id TEXT NOT NULL,
+      voter_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (submission_id, voter_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_challenge_submissions_active
+     ON fallback_challenge_submissions(lower(active_challenge_id), created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_challenge_votes_submission
+     ON fallback_challenge_votes(lower(submission_id), created_at DESC)`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_friends (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1742,7 +2713,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
   const { publishChatMessageEvent } = require('./realtime-publish')
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
-  registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, createLocalNotification })
   registerAdminModerationRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   app.get('/v1/data/profile/me', authRequired, async (req, res, next) => {
     try {
@@ -1802,6 +2773,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
 
       const patch = profilePatchFromBody(req.body || {})
       if (Object.keys(patch).length === 0) {
@@ -1830,6 +2802,55 @@ function registerDataRoutes(app, { pool, authRequired }) {
          WHERE id = $1`,
         [user.id, nextDisplayName, nextAvatarUrl],
       )
+      if (nextDisplayName || nextAvatarUrl) {
+        await Promise.all([
+          pool.query(
+            `UPDATE fallback_videos
+             SET user_name = COALESCE($2, user_name),
+                 user_profile_image = COALESCE($3, user_profile_image),
+                 updated_at = NOW()
+             WHERE lower(user_id) = ANY($1::text[])`,
+            [identity.values, nextDisplayName, nextAvatarUrl],
+          ),
+          pool.query(
+            `UPDATE fallback_video_comments
+             SET user_name = COALESCE($2, user_name),
+                 user_profile_image = COALESCE($3, user_profile_image),
+                 updated_at = NOW()
+             WHERE lower(user_id) = ANY($1::text[])`,
+            [identity.values, nextDisplayName, nextAvatarUrl],
+          ),
+          pool.query(
+            `UPDATE fallback_posts
+             SET user_name = COALESCE($2, user_name),
+                 user_profile_image = COALESCE($3, user_profile_image),
+                 updated_at = NOW()
+             WHERE lower(user_id) = ANY($1::text[])`,
+            [identity.values, nextDisplayName, nextAvatarUrl],
+          ),
+          pool.query(
+            `UPDATE fallback_post_comments
+             SET updated_at = NOW()
+             WHERE lower(user_id) = ANY($1::text[])`,
+            [identity.values],
+          ),
+          pool.query(
+            `UPDATE fallback_notifications
+             SET actor_name = COALESCE($2, actor_name),
+                 actor_avatar_url = COALESCE($3, actor_avatar_url),
+                 updated_at = NOW()
+             WHERE lower(actor_id) = ANY($1::text[])`,
+            [identity.values, nextDisplayName, nextAvatarUrl],
+          ),
+          pool.query(
+            `UPDATE fallback_voice_room_participants
+             SET user_name = COALESCE($2, user_name),
+                 user_avatar_url = COALESCE($3, user_avatar_url)
+             WHERE lower(user_id) = ANY($1::text[])`,
+            [identity.values, nextDisplayName, nextAvatarUrl],
+          ),
+        ])
+      }
 
       const refreshedUser = { ...user, display_name: nextDisplayName || user.display_name, avatar_url: nextAvatarUrl || user.avatar_url }
       const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
@@ -1872,10 +2893,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         localReports(pool, 5000),
       ])
       const reportRows = [...importedReports, ...fallbackReports]
-      const profile = profiles.find((row) => {
-        const ids = cleanSet([row.id, row.user_id, row.profile_id, row.supabase_user_id])
-        return ids.has(profileId)
-      })
+      const profile = profiles.find((row) => profileAliasSet(row).has(profileId))
       if (!profile) return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
 
       const targetIds = cleanSet([profile.id, profile.user_id, profile.profile_id, profile.supabase_user_id, profileId])
@@ -1936,10 +2954,15 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const tab = String(req.query.tab || 'following').toLowerCase() === 'followers' ? 'followers' : 'following'
       const identity = userIdentity(user)
+      const requestedProfileId = normalizeId(req.query.profileId || req.query.profile_id || '')
       const [profiles, follows] = await Promise.all([allPublicProfiles(pool), combinedFollows(pool)])
       const profilesById = indexProfiles(profiles)
+      const profile = requestedProfileId
+        ? profiles.find((row) => profileAliasSet(row).has(requestedProfileId))
+        : null
+      const sourceIds = profile ? profileAliasSet(profile) : identity.ids
       const items = follows
-        .filter((row) => rowMatchesAny(row, [tab === 'following' ? 'follower_id' : 'following_id'], identity.ids))
+        .filter((row) => rowMatchesAny(row, [tab === 'following' ? 'follower_id' : 'following_id'], sourceIds))
         .map((row) => {
           const targetId = normalizeId(textOf(row, [tab === 'following' ? 'following_id' : 'follower_id'], ''))
           const profile = targetId ? profilesById.get(targetId) : null
@@ -2059,17 +3082,19 @@ function registerDataRoutes(app, { pool, authRequired }) {
         localNotifications(pool, 20_000),
       ])
       const profilesById = indexProfiles(profiles)
-      const items = sortByDateDesc(
+      const matchingNotifications = sortByDateDesc(
         [...importedNotifications, ...fallbackNotifications]
           .filter((row) => rowMatchesAny(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], identity.ids))
           .map((row) => normalizeNotification(row, profilesById))
           .filter((row) => !unreadOnly || !row.is_read),
         ['created_at', 'updated_at'],
-      ).slice(0, limit)
+      )
+      const unreadCount = matchingNotifications.filter((row) => !row.is_read).length
+      const items = matchingNotifications.slice(0, limit)
 
       res.json({
         items,
-        unreadCount: items.filter((row) => !row.is_read).length,
+        unreadCount,
       })
     } catch (error) {
       next(error)
@@ -2134,6 +3159,45 @@ function registerDataRoutes(app, { pool, authRequired }) {
          WHERE lower(recipient_id) = ANY($1::text[])
            AND is_read = FALSE`,
         [identity.values],
+      )
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/notifications/fcm-tokens', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const token = cleanText(req.body?.token, 600)
+      const platform = cleanText(req.body?.platform, 40) || 'android'
+      if (!token) return res.status(400).json({ error: 'TOKEN_REQUIRED' })
+      await pool.query(
+        `INSERT INTO fallback_fcm_tokens(user_id, token, platform, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (user_id, token)
+         DO UPDATE SET platform = EXCLUDED.platform, updated_at = NOW()`,
+        [identity.displayUserId, token, platform],
+      )
+      res.status(201).json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/notifications/fcm-tokens', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const token = cleanText(req.body?.token || req.query?.token, 600)
+      if (!token) return res.status(400).json({ error: 'TOKEN_REQUIRED' })
+      await pool.query(
+        `DELETE FROM fallback_fcm_tokens
+         WHERE lower(user_id) = $1 AND token = $2`,
+        [identity.displayUserId, token],
       )
       res.json({ ok: true })
     } catch (error) {
@@ -2578,15 +3642,25 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       if (tab === 'groups' || tab === 'communities') {
         const config = collectionConfig(tab)
-        const [importedMemberships, importedRooms, importedMessages, localRooms, localMemberships] = await Promise.all([
+        const [importedMemberships, importedRooms, importedMessages, localRooms, localMemberships, deletedLocalRoomIds] = await Promise.all([
           importedRows(pool, config.memberTable, 5000),
           importedRows(pool, config.roomTable, 2000),
           importedRows(pool, config.messageTable, 10_000),
           localCollectionRooms(pool, config.kind, 2000),
           localCollectionMembers(pool, config.kind, 10_000),
+          localDeletedCollectionRoomIds(pool, config.kind),
         ])
         const memberships = [...importedMemberships, ...localMemberships]
-        const rooms = [...importedRooms, ...localRooms]
+          .filter((row) => {
+            const roomId = roomIdOf(row, config.roomKey)
+            const status = textOf(row, ['status', 'member_status'], '').toLowerCase()
+            return roomId && !deletedLocalRoomIds.has(roomId) && !['left', 'removed', 'deleted'].includes(status)
+          })
+        const rooms = mergeRowsById([...importedRooms, ...localRooms])
+          .filter((row) => {
+            const roomId = normalizeId(textOf(row, ['id'], ''))
+            return roomId && !deletedLocalRoomIds.has(roomId) && !boolOf(row, ['is_deleted', 'deleted'], false)
+          })
         const roomIds = cleanSet(
           memberships
             .filter((row) => rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids))
@@ -2634,12 +3708,21 @@ function registerDataRoutes(app, { pool, authRequired }) {
         return res.json({ items })
       }
 
-      const [profiles, chats, participants, importedMessages] = await Promise.all([
+      const [profiles, localProfiles, chats, importedParticipants, importedMessages, fallbackChats] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'chats', 5000),
         importedRows(pool, 'chat_participants', 10_000),
         importedRows(pool, 'messages', 10_000),
+        localChats(pool, 5000),
       ])
+      const nicknamesByTarget = await localNicknames(pool, identity.displayUserId)
+      const chatIdsFromLocal = fallbackChats.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const participants = [
+        ...importedParticipants,
+        ...(await localChatParticipants(pool, chatIdsFromLocal)),
+      ]
+      const allChats = [...chats, ...fallbackChats]
 
       const participantChatIds = cleanSet(
         participants
@@ -2647,7 +3730,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
           .map((row) => textOf(row, ['chat_id'], '')),
       )
 
-      const chatRows = chats.filter((row) => {
+      const chatRows = allChats.filter((row) => {
         const chatId = normalizeId(textOf(row, ['id'], ''))
         const isGroup = boolOf(row, ['is_group'], false)
         return !isGroup && (rowParticipantsContain(row, identity.ids) || participantChatIds.has(chatId))
@@ -2657,16 +3740,19 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ...importedMessages.filter((row) => cleanSet(chatIds).has(normalizeId(textOf(row, ['chat_id'], '')))),
         ...(await localMessages(pool, chatIds)),
       ]
-      const profilesById = indexProfiles(profiles)
+      const profilesById = indexProfiles([...profiles, ...localProfiles])
 
       const participantByChat = new Map()
       const otherByChat = new Map()
+      const lastReadByChat = new Map()
       for (const row of participants) {
         const chatId = normalizeId(textOf(row, ['chat_id'], ''))
         const userId = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
         if (!chatId || !userId) continue
         if (identity.ids.has(userId)) {
           participantByChat.set(chatId, row)
+          const lastReadAt = textOf(row, ['last_read_at', 'lastReadAt'], '')
+          if (lastReadAt) lastReadByChat.set(chatId, lastReadAt)
         } else if (!otherByChat.has(chatId)) {
           otherByChat.set(chatId, userId)
         }
@@ -2681,6 +3767,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
         const senderId = normalizeId(textOf(message, ['sender_id'], ''))
         const readAt = textOf(message, ['read_at'], '')
         const status = textOf(message, ['status'], '').toLowerCase()
+        const lastReadAt = toMillis(lastReadByChat.get(chatId))
+        const messageAt = toMillis(textOf(message, ['created_at', 'updated_at'], ''))
+        if (lastReadAt && messageAt && messageAt <= lastReadAt) continue
         if (senderId && !identity.ids.has(senderId) && !readAt && status !== 'read' && status !== 'seen') {
           unreadByChat.set(chatId, (unreadByChat.get(chatId) || 0) + 1)
         }
@@ -2699,9 +3788,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
           const participant = participantByChat.get(cleanChatId) || {}
           const latest = latestByChat.get(cleanChatId) || {}
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name'], 'Chat privado')
+          const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
           return {
             id,
-            title: otherProfile ? profileName(otherProfile, fallbackName) : fallbackName,
+            title: nickname || (otherProfile ? profileName(otherProfile, fallbackName) : fallbackName),
             subtitle: previewFromMessage(latest) || textOf(row, ['last_message'], 'Sin mensajes'),
             updatedAt:
               textOf(latest, ['created_at', 'updated_at'], '') ||
@@ -2709,6 +3799,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             kind: 'chat',
             avatarUrl: otherProfile ? profileAvatar(otherProfile) : textOf(row, ['other_user_image', 'avatar_url'], ''),
             profileId: otherId || null,
+            nickname: nickname || null,
             unreadCount: unreadByChat.get(cleanChatId) || 0,
             isPinned: boolOf(participant, ['is_pinned'], false),
             isMuted: boolOf(participant, ['is_muted'], false),
@@ -2720,6 +3811,187 @@ function registerDataRoutes(app, { pool, authRequired }) {
         })
 
       res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/chats', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const profiles = await allPublicProfiles(pool)
+      const resolveParticipantId = (value) => {
+        const clean = normalizeId(value)
+        if (!clean) return ''
+        if (clean.startsWith('placeholder_')) return ''
+        const profile = profiles.find((row) => profileAliasSet(row).has(clean))
+        return profile ? profileId(profile) : clean
+      }
+      const requestedTargetParticipants = [
+        ...asArray(req.body?.participants),
+        req.body?.participantId,
+        req.body?.participant_id,
+      ]
+      if (requestedTargetParticipants.length === 0) {
+        return res.status(400).json({ error: 'DIRECT_CHAT_TARGET_REQUIRED' })
+      }
+      const participants = Array.from(cleanSet([
+        ...requestedTargetParticipants.map(resolveParticipantId),
+        identity.displayUserId,
+      ])).sort()
+      if (participants.length !== 2 || !participants.includes(identity.displayUserId)) {
+        return res.status(400).json({ error: 'DIRECT_CHAT_REQUIRES_TWO_PARTICIPANTS' })
+      }
+
+      const participantKey = chatParticipantKey(participants)
+      let chatRow = null
+      const existingChat = await pool.query(
+        `SELECT
+            id::text,
+            participants,
+            participant_key,
+            is_group,
+            group_name,
+            last_message,
+            last_message_at,
+            last_message_sender_id,
+            last_message_id,
+            created_at,
+            updated_at
+         FROM fallback_chats
+         WHERE participant_key = $1
+         LIMIT 1`,
+        [participantKey],
+      )
+      chatRow = existingChat.rows[0] || null
+
+      if (!chatRow) {
+        try {
+          const inserted = await pool.query(
+            `INSERT INTO fallback_chats(participants, participant_key, is_group, created_at, updated_at)
+             VALUES ($1::text[], $2, FALSE, NOW(), NOW())
+             RETURNING
+                id::text,
+                participants,
+                participant_key,
+                is_group,
+                group_name,
+                last_message,
+                last_message_at,
+                last_message_sender_id,
+                last_message_id,
+                created_at,
+                updated_at`,
+            [participants, participantKey],
+          )
+          chatRow = inserted.rows[0]
+        } catch (error) {
+          if (error?.code !== '23505') throw error
+          const recovered = await pool.query(
+            `SELECT
+                id::text,
+                participants,
+                participant_key,
+                is_group,
+                group_name,
+                last_message,
+                last_message_at,
+                last_message_sender_id,
+                last_message_id,
+                created_at,
+                updated_at
+             FROM fallback_chats
+             WHERE participant_key = $1
+             LIMIT 1`,
+            [participantKey],
+          )
+          chatRow = recovered.rows[0] || null
+        }
+      }
+
+      if (!chatRow) return res.status(500).json({ error: 'DIRECT_CHAT_CREATE_FAILED' })
+      const chat = normalizeImportedRow(chatRow)
+      for (const participantId of participants) {
+        await pool.query(
+          `INSERT INTO fallback_chat_participants(chat_id, user_id, joined_at)
+           VALUES ($1::uuid, $2, NOW())
+           ON CONFLICT (chat_id, user_id) DO NOTHING`,
+          [chat.id, participantId],
+        )
+      }
+      res.status(201).json({ chat })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/chats/:chatId/read', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const cleanChatId = normalizeId(req.params.chatId)
+      const uuidChatId = validUuid(cleanChatId)
+      if (!cleanChatId || !uuidChatId) return res.status(400).json({ error: 'CHAT_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const localParticipants = await localChatParticipants(pool, [cleanChatId])
+      const importedParticipants = (await importedRows(pool, 'chat_participants', 10_000))
+        .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
+      const participantRows = [...importedParticipants, ...localParticipants]
+      const participantIds = Array.from(cleanSet(
+        participantRows.map((row) => textOf(row, ['user_id', 'profile_id'], '')),
+      ))
+      if (participantRows.length > 0) {
+        const hasAccess = participantRows.some((row) => rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids))
+        if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+      }
+
+      const fallbackChat = (await localChats(pool, 5000))
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
+      if (!fallbackChat) {
+        await pool.query(
+          `INSERT INTO fallback_chats(id, participants, is_group, created_at, updated_at)
+           VALUES ($1::uuid, $2::text[], FALSE, NOW(), NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             participants = CASE
+               WHEN array_length(fallback_chats.participants, 1) IS NULL OR array_length(fallback_chats.participants, 1) = 0
+               THEN EXCLUDED.participants
+               ELSE fallback_chats.participants
+             END,
+             updated_at = GREATEST(fallback_chats.updated_at, EXCLUDED.updated_at)`,
+          [uuidChatId, participantIds.length > 0 ? participantIds : [identity.displayUserId]],
+        )
+      }
+
+      await pool.query(
+        `UPDATE fallback_messages
+         SET status = 'read',
+             delivered_at = COALESCE(delivered_at, NOW()),
+             read_at = COALESCE(read_at, NOW()),
+             updated_at = NOW()
+         WHERE lower(chat_id) = $1
+           AND NOT (lower(sender_id) = ANY($2::text[]))`,
+        [cleanChatId, Array.from(identity.ids)],
+      )
+
+      await pool.query(
+        `INSERT INTO fallback_chat_participants(chat_id, user_id, joined_at, last_read_at)
+         VALUES ($1::uuid, $2, NOW(), NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET
+           last_read_at = CASE
+             WHEN fallback_chat_participants.last_read_at IS NULL
+               OR fallback_chat_participants.last_read_at < EXCLUDED.last_read_at
+             THEN EXCLUDED.last_read_at
+             ELSE fallback_chat_participants.last_read_at
+           END`,
+        [uuidChatId, identity.displayUserId],
+      )
+
+      res.json({ ok: true, chatId: cleanChatId, lastReadAt: new Date().toISOString() })
     } catch (error) {
       next(error)
     }
@@ -2864,6 +4136,104 @@ function registerDataRoutes(app, { pool, authRequired }) {
       )
 
       res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete(['/v1/data/messages/groups/:roomId', '/v1/data/messages/communities/:roomId'], authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(messageCollectionFromRequest(req))
+      const roomId = normalizeId(req.params.roomId)
+      const uuidRoomId = validUuid(roomId)
+      if (!config || !roomId || !uuidRoomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const [importedRooms, localRows, importedMembers, localMembers] = await Promise.all([
+        importedRows(pool, config.roomTable, 5000),
+        pool.query(
+          `SELECT
+              id::text,
+              room_kind,
+              name,
+              image,
+              description,
+              category,
+              is_public,
+              creator_id,
+              is_deleted,
+              only_admins_can_talk,
+              created_at,
+              updated_at
+           FROM fallback_collection_rooms
+           WHERE room_kind = $1 AND lower(id::text) = $2
+           LIMIT 1`,
+          [config.kind, roomId],
+        ).then((result) => result.rows.map(normalizeImportedRow)),
+        importedRows(pool, config.memberTable, 10_000),
+        localCollectionMembers(pool, config.kind, 10_000),
+      ])
+      const room = mergeRowsById([...importedRooms, ...localRows])
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === roomId)
+      if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+
+      const members = [...importedMembers, ...localMembers]
+        .filter((row) => roomIdOf(row, config.roomKey) === roomId)
+      const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+      const isAdminMember = members.some((row) => {
+        const role = textOf(row, ['role'], '').toLowerCase()
+        return rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids) && ['owner', 'admin', 'creator'].includes(role)
+      })
+      if (!isCreator && !isAdminMember) return res.status(403).json({ error: 'ROOM_DELETE_DENIED' })
+
+      await pool.query(
+        `INSERT INTO fallback_collection_rooms(
+            id,
+            room_kind,
+            name,
+            image,
+            description,
+            category,
+            is_public,
+            creator_id,
+            is_deleted,
+            only_admins_can_talk,
+            created_at,
+            updated_at
+         )
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET
+            room_kind = EXCLUDED.room_kind,
+            name = COALESCE(NULLIF(EXCLUDED.name, ''), fallback_collection_rooms.name),
+            image = COALESCE(EXCLUDED.image, fallback_collection_rooms.image),
+            description = COALESCE(EXCLUDED.description, fallback_collection_rooms.description),
+            category = COALESCE(EXCLUDED.category, fallback_collection_rooms.category),
+            is_public = EXCLUDED.is_public,
+            creator_id = COALESCE(NULLIF(EXCLUDED.creator_id, ''), fallback_collection_rooms.creator_id),
+            is_deleted = TRUE,
+            updated_at = NOW()`,
+        [
+          uuidRoomId,
+          config.kind,
+          collectionRoomTitle(room, config.titleFallback),
+          collectionRoomAvatar(room) || null,
+          cleanText(textOf(room, ['description', 'about'], ''), 500) || null,
+          config.kind === 'community' ? cleanText(textOf(room, ['category'], ''), 80) || null : null,
+          boolOf(room, ['is_public', 'public'], true),
+          normalizeId(textOf(room, ['creator_id', 'owner_id', 'user_id'], '')) || identity.displayUserId,
+          boolOf(room, ['only_admins_can_talk'], false),
+        ],
+      )
+      await pool.query(
+        `DELETE FROM fallback_collection_members
+         WHERE room_kind = $1 AND lower(room_id) = $2`,
+        [config.kind, roomId],
+      )
+
+      res.json({ ok: true, roomId, deleted: true })
     } catch (error) {
       next(error)
     }
@@ -3076,7 +4446,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
       )
 
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
-      res.status(201).json({ room: mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, 0) })
+      const room = mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, 0)
+      void publishVoiceRoomsLiveEvent({ action: 'created', roomId: room.id, room })
+      res.status(201).json({ room })
     } catch (error) {
       next(error)
     }
@@ -3121,15 +4493,16 @@ function registerDataRoutes(app, { pool, authRequired }) {
         fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'voice_rooms', 1000),
         importedRows(pool, 'voice_room_participants', 10_000),
-        localVoiceParticipants(pool, cleanRoomId),
+        localVoiceParticipants(pool),
         localVoiceRooms(pool, 1000),
       ])
       const rooms = [...importedRooms, ...fallbackRooms]
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
-      const room = rooms.find((row) => voiceRoomId(row) === cleanRoomId)
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      const actualRoomId = voiceRoomId(room) || cleanRoomId
       const participants = [...importedParticipants, ...fallbackParticipants]
-        .filter((row) => voiceParticipantRoomId(row) === cleanRoomId)
+        .filter((row) => voiceParticipantRoomId(row) === actualRoomId)
         .map((row) => mapVoiceParticipant(row, profilesById))
       res.json({
         room: mapVoiceRoom(room, profilesById, participants.length),
@@ -3148,8 +4521,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!cleanRoomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
 
       const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
-      const room = rooms.find((row) => voiceRoomId(row) === cleanRoomId)
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      const actualRoomId = voiceRoomId(room) || cleanRoomId
 
       const identity = userIdentity(user)
       await pool.query(
@@ -3173,7 +4547,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             is_muted = EXCLUDED.is_muted,
             updated_at = NOW()`,
         [
-          cleanRoomId,
+          actualRoomId,
           identity.displayUserId,
           String(req.body?.userName || user.display_name || user.email || 'Usuario').trim(),
           String(req.body?.userAvatarUrl || user.avatar_url || '').trim(),
@@ -3181,9 +4555,17 @@ function registerDataRoutes(app, { pool, authRequired }) {
           Boolean(req.body?.isMuted),
         ],
       )
-      const payload = await localVoiceParticipants(pool, cleanRoomId)
+      await pool.query(
+        `UPDATE fallback_voice_rooms
+         SET updated_at = NOW()
+         WHERE lower(id::text) = $1`,
+        [actualRoomId],
+      )
+      const payload = await localVoiceParticipants(pool, actualRoomId)
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
-      res.json({ participants: payload.map((row) => mapVoiceParticipant(row, profilesById)) })
+      const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
+      void publishVoiceRoomsLiveEvent({ action: 'joined', roomId: actualRoomId, participants })
+      res.json({ participants })
     } catch (error) {
       next(error)
     }
@@ -3194,12 +4576,61 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
+      const cleanRoomId = normalizeId(req.params.roomId)
+      const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
+      const actualRoomId = room ? voiceRoomId(room) || cleanRoomId : cleanRoomId
       await pool.query(
         `DELETE FROM fallback_voice_room_participants
          WHERE lower(room_id) = $1 AND lower(user_id) = $2`,
-        [normalizeId(req.params.roomId), identity.displayUserId],
+        [actualRoomId, identity.displayUserId],
       )
+      await pool.query(
+        `UPDATE fallback_voice_rooms
+         SET updated_at = NOW()
+         WHERE lower(id::text) = $1`,
+        [actualRoomId],
+      )
+      void publishVoiceRoomsLiveEvent({ action: 'left', roomId: actualRoomId, userId: identity.displayUserId })
       res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/voice/rooms/:roomId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const cleanRoomId = normalizeId(req.params.roomId)
+      if (!cleanRoomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      const actualRoomId = voiceRoomId(room) || cleanRoomId
+      if (!rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)) {
+        return res.status(403).json({ error: 'VOICE_ROOM_DELETE_DENIED' })
+      }
+
+      const uuidRoomId = validUuid(actualRoomId)
+      if (uuidRoomId) {
+        await pool.query(
+          `UPDATE fallback_voice_rooms
+           SET is_active = FALSE, updated_at = NOW()
+           WHERE lower(id::text) = $1`,
+          [actualRoomId],
+        )
+      }
+      await pool.query(
+        `DELETE FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1`,
+        [actualRoomId],
+      )
+      void publishVoiceRoomsLiveEvent({ action: 'deleted', roomId: actualRoomId })
+      res.json({ ok: true, roomId: actualRoomId, deleted: true })
     } catch (error) {
       next(error)
     }
@@ -3214,22 +4645,76 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 80, 200))
       const offset = Math.max(0, Number(req.query.offset) || 0)
       const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
+      const requestedSharedBy = normalizeId(req.query.sharedBy || req.query.shared_by || '')
+      const searchQuery = cleanText(req.query.q || req.query.query || '', 120).toLowerCase()
       const [importedProfiles, localProfiles, importedVideos, fallbackVideos] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'videos', 5000),
         localVideos(pool, 5000),
       ])
-      const videos = [...importedVideos, ...fallbackVideos].filter((row) => {
+      const requestedOwnerIds = cleanSet([requestedUserId])
+      if (requestedUserId) {
+        for (const profile of [...importedProfiles, ...localProfiles]) {
+          const aliases = profileAliasSet(profile)
+          if (aliases.has(requestedUserId)) {
+            for (const alias of aliases) requestedOwnerIds.add(alias)
+          }
+        }
+      }
+      const requestedSharedByIds = cleanSet([requestedSharedBy])
+      if (requestedSharedBy) {
+        for (const profile of [...importedProfiles, ...localProfiles]) {
+          const aliases = profileAliasSet(profile)
+          if (aliases.has(requestedSharedBy)) {
+            for (const alias of aliases) requestedSharedByIds.add(alias)
+          }
+        }
+      }
+      const mergedVideos = mergeRowsById([...importedVideos, ...fallbackVideos])
+      const mergedVideoIds = mergedVideos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const deletedVideoIds = await localVideoDeletionIds(pool, mergedVideoIds)
+      let videos = mergedVideos.filter((row) => {
+        if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
         const ownerId = textOf(row, ['user_id', 'userId'], '')
         const isPublic = boolOf(row, ['is_public', 'isPublic'], true)
-        if (requestedUserId && normalizeId(ownerId) !== requestedUserId) return false
+        if (requestedUserId && !ownerMatchesRequestedProfile(row, requestedOwnerIds)) return false
+        if (searchQuery) {
+          const haystack = [
+            textOf(row, ['title', 'caption'], ''),
+            textOf(row, ['description', 'content'], ''),
+            ...arrayOf(row, ['tags']),
+          ].join(' ').toLowerCase()
+          if (!haystack.includes(searchQuery)) return false
+        }
         return isPublic || rowMatchesAny(row, ['user_id', 'userId'], identity.ids)
       })
+      if (requestedSharedBy) {
+        const [importedSharesForProfile, fallbackSharesForProfile] = await Promise.all([
+          importedRows(pool, 'shares', 10_000),
+          localVideoShares(pool, mergedVideoIds, 10_000),
+        ])
+        const sharedVideoIds = new Set(
+          [...importedSharesForProfile, ...fallbackSharesForProfile]
+            .filter((row) => {
+              const contentType = textOf(row, ['content_type', 'contentType', 'type'], '').toLowerCase()
+              if (contentType && contentType !== 'video') return false
+              return rowMatchesAny(row, ['user_id', 'profile_id'], requestedSharedByIds)
+            })
+            .map((row) => normalizeId(textOf(row, ['video_id', 'videoId', 'post_id', 'content_id'], '')))
+            .filter(Boolean),
+        )
+        videos = videos.filter((row) => sharedVideoIds.has(normalizeId(textOf(row, ['id'], ''))))
+      }
       const videoIds = videos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
-      const [importedLikes, fallbackLikes] = await Promise.all([
+      const [importedLikes, fallbackLikes, importedVideoCommentRowsAll, localCommentCounts, importedShares, fallbackShares, metricRows] = await Promise.all([
         importedRows(pool, 'video_likes', 10_000),
         localVideoLikes(pool, videoIds, 10_000),
+        importedVideoComments(pool, 10_000),
+        localVideoCommentCounts(pool, videoIds),
+        importedRows(pool, 'shares', 10_000),
+        localVideoShares(pool, videoIds, 10_000),
+        localVideoMetrics(pool, videoIds),
       ])
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
       const likeCounts = new Map()
@@ -3242,9 +4727,43 @@ function registerDataRoutes(app, { pool, authRequired }) {
           likedVideoIds.add(videoId)
         }
       }
+      const importedCommentCounts = videoCommentCountsFromRows(importedVideoCommentRows(importedVideoCommentRowsAll, videoIds))
+      const commentCounts = mergeCountMaps(importedCommentCounts, localCommentCounts)
+      const relevantImportedShares = importedShares.filter((row) => {
+        const contentType = textOf(row, ['content_type', 'contentType', 'type'], '').toLowerCase()
+        return contentType === 'video' || textOf(row, ['video_id', 'videoId'], '')
+      })
+      const { counts: shareCounts, mine: sharedVideoIds } = countPostInteractions(
+        [...relevantImportedShares, ...fallbackShares],
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: importedShareCounts } = countPostInteractions(
+        relevantImportedShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: localShareCounts } = countPostInteractions(
+        fallbackShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
       const items = sortByDateDesc(videos, ['created_at', 'updated_at'])
         .slice(offset, offset + limit)
-        .map((row) => enrichVideo(row, profilesById, likeCounts, likedVideoIds))
+        .map((row) => {
+          const video = enrichVideo(row, profilesById, likeCounts, likedVideoIds)
+          const cleanVideoId = normalizeId(video.id)
+          const metrics = metricRows.get(cleanVideoId) || { viewsDelta: 0, shareDelta: 0 }
+          const mergedCommentCount = commentCounts.get(cleanVideoId)
+          const mergedShareCount = shareCounts.get(cleanVideoId)
+          return {
+            ...video,
+            views: video.local_only ? video.views : video.views + metrics.viewsDelta,
+            comment_count: mergedCommentCount == null ? video.comment_count : Math.max(video.comment_count, mergedCommentCount),
+            share_count: Math.max(video.share_count, importedShareCounts.get(cleanVideoId) || 0) + (localShareCounts.get(cleanVideoId) || 0),
+            shared_by_me: sharedVideoIds.has(cleanVideoId),
+          }
+        })
       res.json({ items })
     } catch (error) {
       next(error)
@@ -3265,6 +4784,8 @@ function registerDataRoutes(app, { pool, authRequired }) {
         importedRows(pool, 'video_likes', 10_000),
         localVideoLikes(pool, [cleanId], 10_000),
       ])
+      const deletedVideoIds = await localVideoDeletionIds(pool, [cleanId])
+      if (deletedVideoIds.has(cleanId)) return res.status(404).json({ error: 'VIDEO_NOT_FOUND' })
       const row = [...importedVideos, ...fallbackVideos].find((entry) => normalizeId(textOf(entry, ['id'], '')) === cleanId)
       if (!row) return res.status(404).json({ error: 'VIDEO_NOT_FOUND' })
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
@@ -3276,7 +4797,45 @@ function registerDataRoutes(app, { pool, authRequired }) {
         likeCounts.set(videoId, (likeCounts.get(videoId) || 0) + 1)
         if (rowMatchesAny(likeRow, ['user_id', 'userId'], identity.ids)) likedVideoIds.add(videoId)
       }
-      res.json({ video: enrichVideo(row, profilesById, likeCounts, likedVideoIds) })
+      const [importedVideoCommentRowsAll, localCommentCounts, importedShares, fallbackShares, metricRows] = await Promise.all([
+        importedVideoComments(pool, 10_000),
+        localVideoCommentCounts(pool, [cleanId]),
+        importedRows(pool, 'shares', 10_000),
+        localVideoShares(pool, [cleanId], 10_000),
+        localVideoMetrics(pool, [cleanId]),
+      ])
+      const importedCommentCounts = videoCommentCountsFromRows(importedVideoCommentRows(importedVideoCommentRowsAll, [cleanId]))
+      const commentCounts = mergeCountMaps(importedCommentCounts, localCommentCounts)
+      const relevantImportedShares = importedShares.filter((shareRow) => {
+        const contentType = textOf(shareRow, ['content_type', 'contentType', 'type'], '').toLowerCase()
+        return contentType === 'video' || normalizeId(textOf(shareRow, ['video_id', 'videoId'], '')) === cleanId
+      })
+      const { counts: shareCounts, mine: sharedVideoIds } = countPostInteractions(
+        [...relevantImportedShares, ...fallbackShares],
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: importedShareCounts } = countPostInteractions(
+        relevantImportedShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: localShareCounts } = countPostInteractions(
+        fallbackShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const video = enrichVideo(row, profilesById, likeCounts, likedVideoIds)
+      const metrics = metricRows.get(cleanId) || { viewsDelta: 0, shareDelta: 0 }
+      res.json({
+        video: {
+          ...video,
+          views: video.local_only ? video.views : video.views + metrics.viewsDelta,
+          comment_count: commentCounts.get(cleanId) == null ? video.comment_count : Math.max(video.comment_count, commentCounts.get(cleanId)),
+          share_count: Math.max(video.share_count, importedShareCounts.get(cleanId) || 0) + (localShareCounts.get(cleanId) || 0),
+          shared_by_me: sharedVideoIds.has(cleanId),
+        },
+      })
     } catch (error) {
       next(error)
     }
@@ -3293,6 +4852,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!videoUrl) return res.status(400).json({ error: 'VIDEO_URL_REQUIRED' })
       const coverUrl = String(req.body?.coverUrl || req.body?.cover_url || req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim() || null
       const durationSeconds = Math.max(0, Number(req.body?.durationSeconds ?? req.body?.duration_seconds ?? req.body?.duration ?? 0) || 0)
+      if (durationSeconds > 45) {
+        return res.status(400).json({ error: 'VIDEO_TOO_LONG', message: 'El video no puede durar mas de 45 segundos.' })
+      }
       const trimStart = Math.max(0, Number(req.body?.trimStartSeconds ?? req.body?.trim_start_seconds ?? 0) || 0)
       const trimEnd = Math.max(0, Number(req.body?.trimEndSeconds ?? req.body?.trim_end_seconds ?? durationSeconds) || durationSeconds)
       const isPublic = req.body?.isPublic ?? req.body?.is_public
@@ -3333,12 +4895,29 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const cleanId = normalizeId(req.params.videoId)
-      await pool.query(
+      const likeInsert = await pool.query(
         `INSERT INTO fallback_video_likes(video_id, user_id)
          VALUES ($1, $2)
-         ON CONFLICT (video_id, user_id) DO NOTHING`,
+         ON CONFLICT (video_id, user_id) DO NOTHING
+         RETURNING video_id`,
         [cleanId, identity.displayUserId],
       )
+      if (likeInsert.rowCount > 0) {
+        const recipientId = await videoNotificationOwnerId(pool, cleanId, identity)
+        if (recipientId) {
+          await createLocalNotification(pool, {
+            recipientId,
+            actorId: identity.displayUserId,
+            actorName: user.display_name || user.email || 'Usuario',
+            actorAvatarUrl: user.avatar_url || '',
+            type: 'like_video',
+            targetId: cleanId,
+            targetType: 'video',
+            content: 'Le gustó tu video.',
+            extraData: { video_id: cleanId },
+          })
+        }
+      }
       res.json({ ok: true, liked: true })
     } catch (error) {
       next(error)
@@ -3356,6 +4935,543 @@ function registerDataRoutes(app, { pool, authRequired }) {
         [normalizeId(req.params.videoId), identity.displayUserId],
       )
       res.json({ ok: true, liked: false })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/videos/:videoId/view', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const cleanId = normalizeId(req.params.videoId)
+
+      const localUpdate = await pool.query(
+        `UPDATE fallback_videos
+         SET views = views + 1,
+             updated_at = NOW()
+         WHERE lower(id::text) = $1
+         RETURNING views`,
+        [cleanId],
+      )
+      if (localUpdate.rows[0]) {
+        return res.json({ ok: true, view_count: Number(localUpdate.rows[0].views) || 0 })
+      }
+
+      const metrics = await pool.query(
+        `INSERT INTO fallback_video_metrics(video_id, views_delta, updated_at)
+         VALUES ($1, 1, NOW())
+         ON CONFLICT (video_id)
+         DO UPDATE SET views_delta = fallback_video_metrics.views_delta + 1,
+                       updated_at = NOW()
+         RETURNING views_delta`,
+        [cleanId],
+      )
+      const importedVideos = await importedRows(pool, 'videos', 5000)
+      const videoRow = importedVideos
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanId) || {}
+      const baseViews = numberOf(videoRow, ['views', 'view_count', 'viewCount'], 0)
+      const viewsDelta = Number(metrics.rows[0]?.views_delta) || 0
+      res.json({ ok: true, view_count: baseViews + viewsDelta })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/videos/:videoId/share', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      if (!cleanId) return res.status(400).json({ error: 'VIDEO_ID_REQUIRED' })
+
+      const shareInsert = await pool.query(
+        `INSERT INTO fallback_shares(user_id, post_id, content_type, created_at)
+         VALUES ($1, $2, 'video', NOW())
+         ON CONFLICT (user_id, post_id, content_type) DO NOTHING
+         RETURNING post_id`,
+        [identity.displayUserId, cleanId],
+      )
+      if (shareInsert.rowCount > 0) {
+        const recipientId = await videoNotificationOwnerId(pool, cleanId, identity)
+        if (recipientId) {
+          await createLocalNotification(pool, {
+            recipientId,
+            actorId: identity.displayUserId,
+            actorName: user.display_name || user.email || 'Usuario',
+            actorAvatarUrl: user.avatar_url || '',
+            type: 'share_video',
+            targetId: cleanId,
+            targetType: 'video',
+            content: 'Añadió tu video a su perfil.',
+            extraData: { video_id: cleanId },
+          })
+        }
+      }
+      const [importedShares, fallbackShares, importedVideos, fallbackVideos] = await Promise.all([
+        importedRows(pool, 'shares', 10_000),
+        localVideoShares(pool, [cleanId], 10_000),
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+      ])
+      const videoRow = [...fallbackVideos, ...importedVideos]
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanId) || {}
+      const relevantImportedShares = importedShares.filter((row) => {
+        const contentType = textOf(row, ['content_type', 'contentType', 'type'], '').toLowerCase()
+        return contentType === 'video' || normalizeId(textOf(row, ['video_id', 'videoId'], '')) === cleanId
+      })
+      const { counts, mine } = countPostInteractions(
+        [...relevantImportedShares, ...fallbackShares],
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: importedShareCounts } = countPostInteractions(
+        relevantImportedShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: localShareCounts } = countPostInteractions(
+        fallbackShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const baseShareCount = numberOf(videoRow, ['share_count', 'shareCount'], 0)
+      res.json({
+        ok: true,
+        share_count: Math.max(baseShareCount, importedShareCounts.get(cleanId) || 0) + (localShareCounts.get(cleanId) || 0),
+        shared_by_me: mine.has(cleanId),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/videos/:videoId/share', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      if (!cleanId) return res.status(400).json({ error: 'VIDEO_ID_REQUIRED' })
+
+      await pool.query(
+        `DELETE FROM fallback_shares
+         WHERE lower(user_id) = $1
+           AND lower(post_id) = $2
+           AND content_type = 'video'`,
+        [identity.displayUserId, cleanId],
+      )
+
+      const [importedShares, fallbackShares, importedVideos, fallbackVideos] = await Promise.all([
+        importedRows(pool, 'shares', 10_000),
+        localVideoShares(pool, [cleanId], 10_000),
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+      ])
+      const videoRow = [...fallbackVideos, ...importedVideos]
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanId) || {}
+      const relevantImportedShares = importedShares.filter((row) => {
+        const contentType = textOf(row, ['content_type', 'contentType', 'type'], '').toLowerCase()
+        return contentType === 'video' || normalizeId(textOf(row, ['video_id', 'videoId'], '')) === cleanId
+      })
+      const { counts: importedShareCounts } = countPostInteractions(
+        relevantImportedShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const { counts: localShareCounts } = countPostInteractions(
+        fallbackShares,
+        identity,
+        ['video_id', 'videoId', 'post_id', 'content_id'],
+      )
+      const baseShareCount = numberOf(videoRow, ['share_count', 'shareCount'], 0)
+      res.json({
+        ok: true,
+        share_count: Math.max(baseShareCount, importedShareCounts.get(cleanId) || 0) + (localShareCounts.get(cleanId) || 0),
+        shared_by_me: false,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/videos/:videoId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      if (!cleanId) return res.status(400).json({ error: 'VIDEO_ID_REQUIRED' })
+
+      const [importedVideos, fallbackVideos] = await Promise.all([
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+      ])
+      const row = [...fallbackVideos, ...importedVideos]
+        .find((entry) => normalizeId(textOf(entry, ['id'], '')) === cleanId)
+      if (!row) return res.status(404).json({ error: 'VIDEO_NOT_FOUND' })
+      if (!rowMatchesAny(row, ['user_id', 'userId', 'profile_id', 'author_id', 'owner_id', 'creator_id'], identity.ids)) {
+        return res.status(403).json({ error: 'VIDEO_NOT_OWNED' })
+      }
+
+      await pool.query(`DELETE FROM fallback_videos WHERE lower(id::text) = $1`, [cleanId])
+      await pool.query(
+        `INSERT INTO fallback_video_deletions(video_id, user_id, deleted_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (video_id)
+         DO UPDATE SET user_id = EXCLUDED.user_id, deleted_at = NOW()`,
+        [cleanId, identity.displayUserId],
+      )
+      await Promise.all([
+        pool.query(`DELETE FROM fallback_video_likes WHERE lower(video_id) = $1`, [cleanId]),
+        pool.query(`DELETE FROM fallback_video_comments WHERE lower(video_id) = $1`, [cleanId]),
+        pool.query(`DELETE FROM fallback_shares WHERE content_type = 'video' AND lower(post_id) = $1`, [cleanId]),
+        pool.query(`DELETE FROM fallback_video_metrics WHERE lower(video_id) = $1`, [cleanId]),
+      ])
+      res.json({ ok: true, deleted: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/videos/:videoId/comments', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      const [importedProfiles, localProfiles, importedCommentRowsAll, localComments] = await Promise.all([
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+        importedVideoComments(pool, 10_000),
+        localVideoComments(pool, cleanId, Number(req.query.limit) || 5000),
+      ])
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const comments = sortByDateDesc(
+        [...importedVideoCommentRows(importedCommentRowsAll, [cleanId]), ...localComments],
+        ['created_at', 'updated_at'],
+      ).reverse()
+      res.json({ items: comments.map((row) => mapVideoComment(row, profilesById, identity)) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/videos/:videoId/comments', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.videoId)
+      const content = String(req.body?.content || '').trim()
+      const contentType = String(req.body?.contentType || req.body?.content_type || 'text').trim() || 'text'
+      const mediaUrl = String(req.body?.mediaUrl || req.body?.media_url || '').trim() || null
+      const parentCommentId = String(req.body?.parentId || req.body?.parent_comment_id || '').trim() || null
+      if (!cleanId || (!content && !mediaUrl)) {
+        return res.status(400).json({ error: 'VIDEO_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_video_comments(
+            video_id,
+            user_id,
+            user_name,
+            user_profile_image,
+            content,
+            content_type,
+            media_url,
+            parent_comment_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id::text, video_id, user_id, user_name, user_profile_image, content,
+                   content_type, media_url, parent_comment_id, created_at, updated_at`,
+        [
+          cleanId,
+          identity.displayUserId,
+          user.display_name || user.email || 'Usuario',
+          user.avatar_url || null,
+          content,
+          contentType,
+          mediaUrl,
+          parentCommentId,
+        ],
+      )
+      const recipientId = await videoNotificationOwnerId(pool, cleanId, identity)
+      if (recipientId) {
+        await createLocalNotification(pool, {
+          recipientId,
+          actorId: identity.displayUserId,
+          actorName: user.display_name || user.email || 'Usuario',
+          actorAvatarUrl: user.avatar_url || '',
+          type: 'comment_video',
+          targetId: cleanId,
+          targetType: 'video',
+          content: 'Comentó tu video.',
+          extraData: { video_id: cleanId, comment_id: rows[0]?.id },
+        })
+      }
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      const commentCount = await syncLocalVideoCommentCount(pool, cleanId)
+      res.status(201).json({
+        comment: mapVideoComment(normalizeImportedRow(rows[0]), profilesById, identity),
+        comment_count: commentCount,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/videos/comments/:commentId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const commentId = normalizeId(req.params.commentId)
+      const { rowCount } = await pool.query(
+        `UPDATE fallback_video_comments
+         SET is_deleted = TRUE, updated_at = NOW()
+         WHERE lower(id::text) = $1 AND lower(user_id) = $2`,
+        [commentId, identity.displayUserId],
+      )
+      if (rowCount === 0) return res.status(404).json({ error: 'VIDEO_COMMENT_NOT_FOUND' })
+      const { rows } = await pool.query(
+        `SELECT video_id
+         FROM fallback_video_comments
+         WHERE lower(id::text) = $1
+         LIMIT 1`,
+        [commentId],
+      )
+      const commentCount = rows[0]?.video_id
+        ? await syncLocalVideoCommentCount(pool, rows[0].video_id)
+        : 0
+      res.json({ ok: true, comment_count: commentCount })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/challenges/active', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const active = await ensureActiveChallenge(pool, user)
+      const masters = await localChallengeMasters(pool, 500)
+      const master = masters.find((row) => challengeId(row) === normalizeId(textOf(active, ['challenge_id'], '')))
+      res.json({ activeChallenge: mapActiveChallenge(active, master) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/challenges/master', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const title = cleanText(req.body?.title, 180)
+      if (!title) return res.status(400).json({ error: 'TITLE_REQUIRED' })
+      const description = cleanText(req.body?.description, 2000)
+      const challengeType = cleanText(req.body?.type || req.body?.challengeType || req.body?.challenge_type || 'mixed', 80) || 'mixed'
+      const difficulty = cleanText(req.body?.difficulty || 'normal', 80) || 'normal'
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_challenges_master(title, description, challenge_type, difficulty, creator_id)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id::text, title, description, challenge_type, difficulty, creator_id, created_at, updated_at`,
+        [title, description, challengeType, difficulty, identity.displayUserId],
+      )
+      res.status(201).json({ challenge: mapChallenge(normalizeImportedRow(rows[0])) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/challenges/master/mine', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const masters = await localChallengeMasters(pool, 1000)
+      res.json({ items: masters.filter((row) => rowMatchesAny(row, ['creator_id'], identity.ids)).map(mapChallenge) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/challenges/master/:challengeId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const { rowCount } = await pool.query(
+        `DELETE FROM fallback_challenges_master
+         WHERE lower(id::text) = $1 AND lower(creator_id) = $2`,
+        [normalizeId(req.params.challengeId), identity.displayUserId],
+      )
+      if (rowCount === 0) return res.status(404).json({ error: 'CHALLENGE_NOT_FOUND' })
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/challenges/:activeChallengeId/submissions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const activeId = normalizeId(req.params.activeChallengeId)
+      const { rows: submissionRows } = await pool.query(
+        `SELECT id::text, challenge_id, active_challenge_id, user_id, content_url, text_content, created_at, updated_at
+         FROM fallback_challenge_submissions
+         WHERE lower(active_challenge_id) = $1 OR lower(challenge_id) = $1
+         ORDER BY created_at DESC`,
+        [activeId],
+      )
+      const submissionIds = submissionRows.map((row) => normalizeId(row.id)).filter(Boolean)
+      const [{ rows: voteRows }, importedProfiles, localProfiles] = await Promise.all([
+        submissionIds.length > 0
+          ? pool.query(
+              `SELECT submission_id, voter_id FROM fallback_challenge_votes
+               WHERE lower(submission_id) = ANY($1::text[])`,
+              [submissionIds],
+            )
+          : Promise.resolve({ rows: [] }),
+        importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
+      ])
+      const voteCounts = new Map()
+      const votedSubmissionIds = new Set()
+      for (const vote of voteRows) {
+        const submissionId = normalizeId(vote.submission_id)
+        voteCounts.set(submissionId, (voteCounts.get(submissionId) || 0) + 1)
+        if (identity.ids.has(normalizeId(vote.voter_id))) votedSubmissionIds.add(submissionId)
+      }
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      res.json({
+        items: submissionRows
+          .map(normalizeImportedRow)
+          .map((row) => mapChallengeSubmission(row, profilesById, voteCounts, votedSubmissionIds)),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/challenges/:activeChallengeId/submissions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const activeId = normalizeId(req.params.activeChallengeId)
+      const activeRows = await localActiveChallenges(pool, 500)
+      const active = activeRows.find((row) => normalizeId(textOf(row, ['id'], '')) === activeId)
+      const challengeIdValue = String(req.body?.challengeId || req.body?.challenge_id || textOf(active || {}, ['challenge_id']) || activeId).trim()
+      const contentUrl = String(req.body?.contentUrl || req.body?.content_url || '').trim() || null
+      const textContent = String(req.body?.textContent || req.body?.text_content || '').trim() || null
+      if (!activeId || (!contentUrl && !textContent)) {
+        return res.status(400).json({ error: 'ACTIVE_CHALLENGE_AND_CONTENT_REQUIRED' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_challenge_submissions(challenge_id, active_challenge_id, user_id, content_url, text_content)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (active_challenge_id, user_id)
+         DO UPDATE SET
+            challenge_id = EXCLUDED.challenge_id,
+            content_url = EXCLUDED.content_url,
+            text_content = EXCLUDED.text_content,
+            updated_at = NOW()
+         RETURNING id::text, challenge_id, active_challenge_id, user_id, content_url, text_content, created_at, updated_at`,
+        [challengeIdValue, activeId, identity.displayUserId, contentUrl, textContent],
+      )
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.status(201).json({
+        submission: mapChallengeSubmission(normalizeImportedRow(rows[0]), profilesById, new Map(), new Set()),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/challenges/:activeChallengeId/submissions/me', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const activeId = normalizeId(req.params.activeChallengeId)
+      const { rows } = await pool.query(
+        `SELECT id::text, challenge_id, active_challenge_id, user_id, content_url, text_content, created_at, updated_at
+         FROM fallback_challenge_submissions
+         WHERE (lower(active_challenge_id) = $1 OR lower(challenge_id) = $1)
+           AND lower(user_id) = $2
+         LIMIT 1`,
+        [activeId, identity.displayUserId],
+      )
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      res.json({
+        submission: rows[0]
+          ? mapChallengeSubmission(normalizeImportedRow(rows[0]), profilesById, new Map(), new Set())
+          : null,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/challenges/:activeChallengeId/participation', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const activeId = normalizeId(req.params.activeChallengeId)
+      const { rows } = await pool.query(
+        `SELECT 1
+         FROM fallback_challenge_submissions
+         WHERE (lower(active_challenge_id) = $1 OR lower(challenge_id) = $1)
+           AND lower(user_id) = $2
+         LIMIT 1`,
+        [activeId, identity.displayUserId],
+      )
+      res.json({ participating: rows.length > 0 })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/challenges/submissions/:submissionId/vote', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const submissionId = normalizeId(req.params.submissionId)
+      const existing = await pool.query(
+        `SELECT 1 FROM fallback_challenge_votes
+         WHERE lower(submission_id) = $1 AND lower(voter_id) = $2
+         LIMIT 1`,
+        [submissionId, identity.displayUserId],
+      )
+      let votedByMe = true
+      if (existing.rows.length > 0) {
+        await pool.query(
+          `DELETE FROM fallback_challenge_votes
+           WHERE lower(submission_id) = $1 AND lower(voter_id) = $2`,
+          [submissionId, identity.displayUserId],
+        )
+        votedByMe = false
+      } else {
+        await pool.query(
+          `INSERT INTO fallback_challenge_votes(submission_id, voter_id)
+           VALUES ($1, $2)
+           ON CONFLICT (submission_id, voter_id) DO NOTHING`,
+          [submissionId, identity.displayUserId],
+        )
+      }
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM fallback_challenge_votes
+         WHERE lower(submission_id) = $1`,
+        [submissionId],
+      )
+      res.json({ vote_count: Number(rows[0]?.total || 0), voted_by_me: votedByMe })
     } catch (error) {
       next(error)
     }
@@ -3432,6 +5548,132 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
+  app.delete('/v1/data/friends/:requestId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const requestId = normalizeId(req.params.requestId)
+      const { rows } = await pool.query(
+        `DELETE FROM fallback_friends
+         WHERE id::text = $1
+           AND (lower(sender_id) = $2 OR lower(receiver_id) = $2)
+         RETURNING id::text, sender_id, receiver_id, status, created_at`,
+        [requestId, identity.displayUserId],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
+      res.json({ request: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/friends/users/:targetUserId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const targetUserId = normalizeId(req.params.targetUserId)
+      if (!targetUserId) return res.status(400).json({ error: 'TARGET_USER_REQUIRED' })
+      const { rows } = await pool.query(
+        `DELETE FROM fallback_friends
+         WHERE (
+           (lower(sender_id) = $1 AND lower(receiver_id) = $2)
+           OR (lower(sender_id) = $2 AND lower(receiver_id) = $1)
+         )
+         RETURNING id::text, sender_id, receiver_id, status, created_at`,
+        [identity.displayUserId, targetUserId],
+      )
+      res.json({ items: rows.map(normalizeImportedRow), deleted: rows.length })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/typing', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const targetType = String(req.body?.targetType || req.body?.target_type || '').trim().toLowerCase()
+      const conversationId = normalizeId(req.body?.conversationId || req.body?.conversation_id || '')
+      const isTyping = Boolean(req.body?.isTyping ?? req.body?.is_typing)
+      const displayName = String(req.body?.displayName || req.body?.display_name || user.display_name || user.email || '').trim()
+      const channelPrefixByType = {
+        chat: 'typing-chat',
+        group: 'typing-group',
+        community: 'typing-community',
+      }
+      const channelPrefix = channelPrefixByType[targetType]
+      if (!channelPrefix || !conversationId) return res.status(400).json({ error: 'INVALID_TYPING_TARGET' })
+
+      const { publishRealtimeEvent } = require('./realtime-publish')
+      const payload = {
+        event: 'typing',
+        conversationId,
+        targetType,
+        userId: identity.displayUserId,
+        displayName,
+        isTyping,
+        timestamp: Date.now(),
+      }
+      const published = await publishRealtimeEvent(`${channelPrefix}:${conversationId}`, payload)
+      res.json({ ok: true, published })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/messages/nicknames/:targetUserId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const targetUserId = normalizeId(req.params.targetUserId)
+      const nickname = cleanText(req.body?.nickname, 120)
+      if (!targetUserId) return res.status(400).json({ error: 'TARGET_USER_REQUIRED' })
+
+      if (!nickname) {
+        await pool.query(
+          `DELETE FROM fallback_nicknames
+           WHERE lower(user_id) = $1 AND lower(target_user_id) = $2`,
+          [identity.displayUserId, targetUserId],
+        )
+        return res.json({ ok: true, nickname: null })
+      }
+
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_nicknames(user_id, target_user_id, nickname, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id, target_user_id)
+         DO UPDATE SET nickname = EXCLUDED.nickname, updated_at = NOW()
+         RETURNING user_id, target_user_id, nickname, updated_at`,
+        [identity.displayUserId, targetUserId, nickname],
+      )
+      res.json({ ok: true, nickname: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/messages/nicknames/:targetUserId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const targetUserId = normalizeId(req.params.targetUserId)
+      if (!targetUserId) return res.status(400).json({ error: 'TARGET_USER_REQUIRED' })
+      await pool.query(
+        `DELETE FROM fallback_nicknames
+         WHERE lower(user_id) = $1 AND lower(target_user_id) = $2`,
+        [identity.displayUserId, targetUserId],
+      )
+      res.json({ ok: true, nickname: null })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/messages/chats/:chatId', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -3439,12 +5681,19 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const identity = userIdentity(user)
       const chatId = normalizeId(req.params.chatId)
-      const [profiles, chats, participants, importedMessages] = await Promise.all([
+      const [profiles, localProfiles, importedChats, importedParticipants, importedMessages, fallbackChats] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
+        fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'chats', 5000),
         importedRows(pool, 'chat_participants', 10_000),
         importedRows(pool, 'messages', 10_000),
+        localChats(pool, 5000),
       ])
+      const chats = [...importedChats, ...fallbackChats]
+      const participants = [
+        ...importedParticipants,
+        ...(await localChatParticipants(pool, [chatId])),
+      ]
 
       const chat = chats.find((row) => normalizeId(textOf(row, ['id'], '')) === chatId)
       const memberRows = participants.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId)
@@ -3463,8 +5712,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
         otherId = arrayOf(chat, ['participants']).map(normalizeId).find((entry) => !identity.ids.has(entry)) || ''
       }
 
-      const profilesById = indexProfiles(profiles)
+      const profilesById = indexProfiles([...profiles, ...localProfiles])
       const otherProfile = otherId ? profilesById.get(otherId) : null
+      const nicknamesByTarget = await localNicknames(pool, identity.displayUserId)
+      const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
       const messages = [
         ...importedMessages.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId),
         ...(await localMessages(pool, [chatId])),
@@ -3497,8 +5748,8 @@ function registerDataRoutes(app, { pool, authRequired }) {
       }
 
       res.json({
-        chat,
-        title: otherProfile ? profileName(otherProfile, 'Chat privado') : textOf(chat, ['name', 'group_name'], 'Chat privado'),
+        chat: { ...chat, nickname: nickname || null },
+        title: nickname || (otherProfile ? profileName(otherProfile, 'Chat privado') : textOf(chat, ['name', 'group_name'], 'Chat privado')),
         otherParticipant: otherId
           ? {
               id: otherId,
@@ -3556,11 +5807,31 @@ function registerDataRoutes(app, { pool, authRequired }) {
          RETURNING id::text, chat_id, sender_id, content, content_type, media_url, media_size, status, reply_to_id, created_at, updated_at`,
         [requestedId, chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
       )
-      const [chats, participants] = await Promise.all([
+      const insertedMessage = normalizeImportedRow(rows[0])
+      await pool.query(
+        `UPDATE fallback_chats
+         SET last_message = $2,
+             last_message_at = COALESCE($3::timestamptz, NOW()),
+             last_message_sender_id = $4,
+             last_message_id = $5,
+             updated_at = NOW()
+         WHERE lower(id::text) = $1`,
+        [
+          chatId,
+          previewFromMessage(insertedMessage),
+          textOf(insertedMessage, ['created_at'], '') || null,
+          senderId,
+          textOf(insertedMessage, ['id'], ''),
+        ],
+      )
+      const [importedChats, importedParticipants, fallbackChats, fallbackParticipants] = await Promise.all([
         importedRows(pool, 'chats', 5000),
         importedRows(pool, 'chat_participants', 10_000),
+        localChats(pool, 5000),
+        localChatParticipants(pool, [chatId]),
       ])
-      const chat = chats.find((row) => normalizeId(textOf(row, ['id'], '')) === chatId)
+      const chat = [...importedChats, ...fallbackChats].find((row) => normalizeId(textOf(row, ['id'], '')) === chatId)
+      const participants = [...importedParticipants, ...fallbackParticipants]
       const recipientIds = new Set([
         ...participants
           .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId)
@@ -3581,17 +5852,16 @@ function registerDataRoutes(app, { pool, authRequired }) {
             targetId: chatId,
             targetType: 'chat',
             content: content || previewFromMessage({ content_type: contentType }),
-            extraData: { chat_id: chatId, message_id: textOf(rows[0], ['id'], '') },
+            extraData: { chat_id: chatId, message_id: textOf(insertedMessage, ['id'], '') },
           }),
         ),
       )
-      const normalizedMessage = normalizeImportedRow(rows[0])
       void publishChatMessageEvent({
         chatId,
-        message: normalizedMessage,
+        message: insertedMessage,
         recipientIds: recipientList,
       })
-      res.status(201).json({ message: normalizedMessage })
+      res.status(201).json({ message: insertedMessage })
     } catch (error) {
       next(error)
     }

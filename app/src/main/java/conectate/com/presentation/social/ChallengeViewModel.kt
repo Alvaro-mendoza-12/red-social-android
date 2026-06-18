@@ -368,6 +368,8 @@ class ChallengeViewModel @Inject constructor(
                 resetLocalParticipationState() 
                 checkParticipation(initial.challengeId, getSessionStartTime(initial)) 
                 startMasterTimer(initial)
+            }.onFailure {
+                android.util.Log.e("ChallengeViewModel", "Initial active challenge load failed", it)
             }
 
             // Escuchar cambios en tiempo real
@@ -456,17 +458,16 @@ class ChallengeViewModel @Inject constructor(
                 if (previous?.status != updated.status || previous?.id != updated.id || countdownJob?.isActive != true) {
                     startMasterTimer(updated)
                 }
+            }.onFailure {
+                android.util.Log.e("ChallengeViewModel", "Manual active challenge load failed", it)
             }
         }
     }
 
     private fun getSessionStartTime(challenge: ActiveChallenge): String? {
         return try {
-            // expiresAt is ISO 8601
-            // Duration is now 10 mins.
             val expires = Instant.parse(challenge.expiresAt)
-            // Buffer increased to ensure overlap
-            val start = expires.minus(12, ChronoUnit.MINUTES) 
+            val start = expires.minus(16, ChronoUnit.MINUTES)
             start.toString()
         } catch (e: Exception) {
             android.util.Log.e("ChallengeViewModel", "Error parsing time", e)

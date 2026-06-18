@@ -56,6 +56,7 @@ import conectate.com.presentation.common.ConnectivityViewModel
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.util.AudioRecorder
+import conectate.com.util.UbuntuMedia
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -164,20 +165,7 @@ class VideoPlayerViewModel @Inject constructor(
                         // _viewCount.value = video.views
 
                         commentsSubscriptionJob?.cancel()
-                        commentsSubscriptionJob = viewModelScope.launch {
-                            videoRepository.getCommentsFlow(videoId).collect { comments ->
-                                val currentState = _uiState.value
-                                if (currentState is VideoPlayerUiState.Success) {
-                                    _uiState.value = currentState.copy(comments = comments)
-                                } else {
-                                    _uiState.value = VideoPlayerUiState.Success(
-                                        video = video,
-                                        comments = comments,
-                                        isLiked = _isLiked.value
-                                    )
-                                }
-                            }
-                        }
+                        refreshComments(video, preserveCurrent = false)
                     },
                     onFailure = { error ->
                         _uiState.value = VideoPlayerUiState.Error(
@@ -198,7 +186,7 @@ class VideoPlayerViewModel @Inject constructor(
                 if (stats != null) {
                     _likeCount.value = stats.likeCount
                     _commentCount.value = stats.commentCount
-                    _viewCount.value = stats.viewCount
+                    _viewCount.value = maxOf(_viewCount.value, stats.viewCount)
                     _shareCount.value = stats.shareCount
                 }
             }
@@ -248,15 +236,65 @@ class VideoPlayerViewModel @Inject constructor(
 
         android.util.Log.d("VideoPlayerVM", "Launching coroutine to add comment for videoId: $videoId, parentId: $parentId")
         viewModelScope.launch {
-            videoRepository.addComment(videoId, text, parentId = parentId).onSuccess {
+            videoRepository.addComment(videoId, text, parentId = parentId).onSuccess { insertedComment ->
                 android.util.Log.d("VideoPlayerVM", "Comment added successfully, clearing text")
+                val currentState = _uiState.value
+                if (currentState is VideoPlayerUiState.Success) {
+                    val nextComments = mergeComments(currentState.comments, listOf(insertedComment))
+                    _uiState.value = currentState.copy(comments = nextComments)
+                    _commentCount.value = maxOf(_commentCount.value, nextComments.size)
+                }
                 _commentText.value = ""
                 _replyingTo.value = null
                 clearMentionSuggestions()
+                refreshCommentsAfterWrite()
             }.onFailure { e ->
                 android.util.Log.e("VideoPlayerVM", "Error sending comment", e)
             }
         }
+    }
+
+    private fun refreshCommentsAfterWrite() {
+        viewModelScope.launch {
+            delay(250)
+            val currentVideo = (_uiState.value as? VideoPlayerUiState.Success)?.video
+            refreshComments(currentVideo, preserveCurrent = true)
+        }
+    }
+
+    private suspend fun refreshComments(video: Video?, preserveCurrent: Boolean) {
+        val loaded = videoRepository.loadVideoCommentsNow(videoId)
+            .onFailure { error ->
+                android.util.Log.e("VideoPlayerVM", "Failed to refresh comments", error)
+            }
+            .getOrNull()
+            ?: emptyList()
+        val currentState = _uiState.value
+        val currentComments = if (preserveCurrent && currentState is VideoPlayerUiState.Success) {
+            currentState.comments
+        } else {
+            emptyList()
+        }
+        val nextComments = mergeComments(currentComments, loaded)
+        if (currentState is VideoPlayerUiState.Success) {
+            _uiState.value = currentState.copy(comments = nextComments)
+        } else if (video != null) {
+            _uiState.value = VideoPlayerUiState.Success(
+                video = video,
+                comments = nextComments,
+                isLiked = _isLiked.value
+            )
+        }
+        _commentCount.value = maxOf(_commentCount.value, nextComments.size)
+    }
+
+    private fun mergeComments(
+        current: List<VideoComment>,
+        incoming: List<VideoComment>
+    ): List<VideoComment> {
+        return (current + incoming)
+            .filter { it.id.isNotBlank() }
+            .distinctBy { it.id.trim().lowercase() }
     }
 
     fun onReplyClick(comment: VideoComment) {
@@ -351,7 +389,8 @@ class VideoPlayerViewModel @Inject constructor(
         
         mediaPlayer = MediaPlayer().apply {
             try {
-                setDataSource(comment.mediaUrl)
+                val audioUrl = comment.mediaUrl ?: return
+                UbuntuMedia.setDataSource(this, audioUrl)
                 prepareAsync()
                 setOnPreparedListener { 
                     start()
@@ -396,6 +435,7 @@ class VideoPlayerViewModel @Inject constructor(
             val file = voiceMessageManager.getRecordedFile()
             if (file != null && file.exists()) {
                 videoRepository.sendAudioComment(videoId, file)
+                    .onSuccess { refreshCommentsAfterWrite() }
                 voiceMessageManager.clearRecording()
             }
         }
@@ -408,8 +448,15 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun deleteComment(comment: VideoComment) {
         viewModelScope.launch {
-            videoRepository.deleteComment(comment.id)
-            // The subscription to getCommentsFlow will handle the UI update
+            videoRepository.deleteComment(comment.id).onSuccess {
+                val currentState = _uiState.value
+                if (currentState is VideoPlayerUiState.Success) {
+                    val nextComments = currentState.comments.filterNot { it.id.equals(comment.id, ignoreCase = true) }
+                    _uiState.value = currentState.copy(comments = nextComments)
+                    _commentCount.value = nextComments.size
+                }
+                refreshCommentsAfterWrite()
+            }
         }
     }
 
@@ -480,7 +527,7 @@ class VideoPlayerViewModel @Inject constructor(
                 val currentState = _uiState.value
                 if (currentState is VideoPlayerUiState.Success) {
                     val video = currentState.video
-                    val userId = authRepository.getCurrentUserId() ?: return@launch
+                    authRepository.getCurrentUserId() ?: return@launch
                     val wasShared = video.sharedByMe
 
                     // Optimistic Update
@@ -490,19 +537,6 @@ class VideoPlayerViewModel @Inject constructor(
                     _uiState.value = currentState.copy(video = video.copy(sharedByMe = newSharedState))
                     _shareCount.value = newShareCount
 
-                    val shareResult = if (newSharedState) {
-                        shareRepository.shareContent(userId, "video", videoId)
-                    } else {
-                        shareRepository.unshareContent(userId, "video", videoId)
-                    }
-
-                    if (shareResult.isFailure) {
-                        // Revert on failure
-                        _uiState.value = currentState.copy(video = video.copy(sharedByMe = wasShared))
-                        _shareCount.value = if (wasShared) (newShareCount + 1) else maxOf(0, newShareCount - 1)
-                        return@launch
-                    }
-
                     val countResult = videoRepository.incrementShareCount(
                         videoId = videoId,
                         delta = if (newSharedState) 1 else -1
@@ -511,6 +545,22 @@ class VideoPlayerViewModel @Inject constructor(
                         // Revert on failure
                         _uiState.value = currentState.copy(video = video.copy(sharedByMe = wasShared))
                         _shareCount.value = if (wasShared) (newShareCount + 1) else maxOf(0, newShareCount - 1)
+                    } else {
+                        videoRepository.getVideoById(videoId).onSuccess { refreshed ->
+                            val latestState = _uiState.value
+                            if (latestState is VideoPlayerUiState.Success) {
+                                val merged = refreshed.copy(
+                                    views = maxOf(latestState.video.views, refreshed.views),
+                                    likeCount = maxOf(latestState.video.likeCount, refreshed.likeCount),
+                                    commentCount = maxOf(latestState.video.commentCount, refreshed.commentCount),
+                                    shareCount = maxOf(newShareCount, refreshed.shareCount),
+                                    likedByMe = latestState.video.likedByMe || refreshed.likedByMe,
+                                    sharedByMe = newSharedState
+                                )
+                                _uiState.value = latestState.copy(video = merged)
+                                _shareCount.value = merged.shareCount
+                            }
+                        }
                     }
                 }
             } finally {
@@ -576,7 +626,7 @@ fun VideoPlayerScreen(
         if (uiState is VideoPlayerUiState.Success) {
             val state = uiState as VideoPlayerUiState.Success
             if (exoPlayer.mediaItemCount == 0) {
-                exoPlayer.setMediaItem(MediaItem.fromUri(state.video.videoUrl))
+                exoPlayer.setMediaItem(UbuntuMedia.mediaItem(state.video.videoUrl))
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
             }
@@ -786,11 +836,11 @@ fun VideoPlayerScreen(
 
             is VideoPlayerUiState.Success -> {
                 val topLevelComments = remember(state.comments) {
-                    state.comments.filter { it.parentId == null }
+                    state.comments.filter { it.parentId.isRootVideoCommentParent() }
                 }
                 val repliesByParent = remember(state.comments) {
                     state.comments
-                        .filter { it.parentId != null }
+                        .filter { !it.parentId.isRootVideoCommentParent() }
                         .groupBy { it.parentId }
                 }
                 val focusParentId = remember(focusCommentId, state.comments) {
@@ -830,6 +880,7 @@ fun VideoPlayerScreen(
                                         PlayerView(ctx).apply {
                                             player = exoPlayer
                                             useController = true
+                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         }
                                     },
                                     modifier = Modifier
@@ -1294,9 +1345,9 @@ private fun formatDate(date: Date?): String {
     val diff = now.time - date.time
 
     return when {
-        diff < 60000 -> "Hace un momento"
-        diff < 3600000 -> "Hace ${diff / 60000} min"
-        diff < 86400000 -> "Hace ${diff / 3600000}h"
+        diff < 60000 -> "hace ${(diff / 1000).coerceAtLeast(0)} s"
+        diff < 3600000 -> "hace ${diff / 60000} min"
+        diff < 86400000 -> "hace ${diff / 3600000} h"
         diff < 604800000 -> SimpleDateFormat("EEE", Locale.getDefault()).format(date)
         else -> SimpleDateFormat("dd MMM", Locale.getDefault()).format(date)
     }
@@ -1310,4 +1361,9 @@ private fun replaceActiveMention(currentText: String, username: String): String 
     if (suffix.any { it.isWhitespace() }) return "$currentText@$username "
 
     return currentText.substring(0, atIndex + 1) + username + " "
+}
+
+private fun String?.isRootVideoCommentParent(): Boolean {
+    val clean = this?.trim()?.lowercase()
+    return clean.isNullOrBlank() || clean == "0" || clean == "null" || clean == "undefined" || clean == "none"
 }

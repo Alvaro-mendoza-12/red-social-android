@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.ActiveChallenge
 import conectate.com.data.model.Challenge
 import conectate.com.data.supabase.AuthService
@@ -36,6 +38,7 @@ class ChallengeRepository @Inject constructor(
     private val authService: AuthService,
     private val storageService: StorageService,
     private val notificationRepository: NotificationRepository,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     @ApplicationContext private val context: Context
 ) {
 
@@ -51,7 +54,15 @@ class ChallengeRepository @Inject constructor(
         var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType)
 
         if (uploadResult.isSuccess) {
-            var url = storageService.getPublicUrl(bucketName, storagePath)
+            var url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, storagePath)).orEmpty()
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.submitChallenge(
+                    accessToken = accessToken,
+                    activeChallenge = activeChallenge,
+                    contentUrl = url
+                ).map { Unit }
+            }
 
             var submissionData = mapOf(
                 "challenge_id" to activeChallenge.challengeId,
@@ -91,6 +102,10 @@ class ChallengeRepository @Inject constructor(
             
             var userId = authService.getCurrentUserId() ?: ""
             android.util.Log.d("ChallengeRepository", "Current UserId: $userId")
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.loadChallengeSubmissions(accessToken, activeChallengeId)
+            }
             
             // Using RPC for reliability and bypassing RLS for user names
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/rpc/get_challenge_submissions_voted") {
@@ -133,7 +148,7 @@ class ChallengeRepository @Inject constructor(
                                                  ?: getSafe("username")
                                                  ?: getSafe("name")
                                                  ?: "Usuario"
-                                 val avatarUrl = getSafe("avatar_url") ?: getSafe("avatarUrl")
+                                 val avatarUrl = UbuntuStorageUrl.rewrite(getSafe("avatar_url") ?: getSafe("avatarUrl"))
                                  
                                  conectate.com.data.model.User(
                                      id = id,
@@ -166,7 +181,7 @@ class ChallengeRepository @Inject constructor(
                             challengeId = json["challenge_id"]?.toString()?.removeSurrounding("\"") ?: "",
                             activeChallengeId = json["active_challenge_id"]?.toString()?.removeSurrounding("\"") ?: "",
                             userId = json["user_id"]?.toString()?.removeSurrounding("\"") ?: "",
-                            contentUrl = json["content_url"]?.toString()?.let { if (it == "null") null else it.removeSurrounding("\"") },
+                            contentUrl = json["content_url"]?.toString()?.let { if (it == "null") null else UbuntuStorageUrl.rewrite(it.removeSurrounding("\"")) },
                             textContent = json["text_content"]?.toString()?.let { if (it == "null") null else it.removeSurrounding("\"") },
                             voteCount = json["vote_count"]?.toString()?.toIntOrNull() ?: 0,
                             votedByMe = votedByMe,
@@ -195,8 +210,12 @@ class ChallengeRepository @Inject constructor(
 
     suspend fun toggleVote(activeChallengeId: String, submissionId: String): Result<Pair<Int, Boolean>> = withContext(Dispatchers.IO) {
         try {
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            var accessToken = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Not authenticated"))
             
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.toggleChallengeVote(accessToken, submissionId)
+            }
+
             android.util.Log.d("ChallengeRepository", "Calling v2026_challenge_vote RPC for submission: $submissionId")
             
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/v2026_challenge_vote") {
@@ -228,8 +247,14 @@ class ChallengeRepository @Inject constructor(
 
     suspend fun getMySubmission(activeChallengeId: String, userId: String): Result<conectate.com.data.model.ChallengeSubmission?> = withContext(Dispatchers.IO) {
         try {
+            val token = authService.getAccessToken()
+                ?: return@withContext Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.loadMyChallengeSubmission(token, activeChallengeId)
+            }
+
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
-                header("Authorization", "Bearer ${authService.getAccessToken()}")
+                header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("active_challenge_id", "eq.$activeChallengeId")
                 parameter("user_id", "eq.$userId")
@@ -247,7 +272,7 @@ class ChallengeRepository @Inject constructor(
                         challengeId = json["challenge_id"]?.toString()?.removeSurrounding("\"") ?: "",
                         activeChallengeId = json["active_challenge_id"]?.toString()?.removeSurrounding("\"") ?: "",
                         userId = json["user_id"]?.toString()?.removeSurrounding("\"") ?: "",
-                        contentUrl = json["content_url"]?.toString()?.let { if (it == "null") null else it.removeSurrounding("\"") },
+                        contentUrl = json["content_url"]?.toString()?.let { if (it == "null") null else UbuntuStorageUrl.rewrite(it.removeSurrounding("\"")) },
                         textContent = json["text_content"]?.toString()?.let { if (it == "null") null else it.removeSurrounding("\"") },
                         voteCount = 0, // Placeholder
                         votedByMe = false, // Placeholder
@@ -271,6 +296,14 @@ class ChallengeRepository @Inject constructor(
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.submitChallenge(
+                    accessToken = accessToken,
+                    activeChallenge = activeChallenge,
+                    textContent = text
+                ).map { Unit }
+            }
 
             var submissionData = mapOf(
                 "challenge_id" to activeChallenge.challengeId,
@@ -296,6 +329,9 @@ class ChallengeRepository @Inject constructor(
     suspend fun getActiveChallenge(): Result<ActiveChallenge> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.loadActiveChallenge(accessToken)
+            }
             var url = supabaseConfig.supabaseUrl
             val key = supabaseConfig.supabaseAnonKey
             
@@ -356,6 +392,16 @@ class ChallengeRepository @Inject constructor(
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.createChallengeMaster(
+                    accessToken,
+                    title,
+                    description,
+                    type,
+                    difficulty
+                ).map { Unit }
+            }
             
             var data = mapOf(
                 "title" to title,
@@ -387,6 +433,10 @@ class ChallengeRepository @Inject constructor(
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.loadMyChallengeMasters(accessToken)
+            }
             
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
                 header("Authorization", "Bearer $accessToken")
@@ -407,6 +457,10 @@ class ChallengeRepository @Inject constructor(
     suspend fun deleteChallengeMaster(id: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.deleteChallengeMaster(accessToken, id)
+            }
             
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
                 header("Authorization", "Bearer $accessToken")
@@ -435,7 +489,15 @@ class ChallengeRepository @Inject constructor(
             var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png")
             
             if (uploadResult.isSuccess) {
-                var url = storageService.getPublicUrl(bucketName, storagePath)
+                var url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, storagePath)).orEmpty()
+
+                if (supabaseConfig.isLocalFallbackPrimary) {
+                    return@withContext localFallbackApiClient.submitChallenge(
+                        accessToken = accessToken,
+                        activeChallenge = activeChallenge,
+                        contentUrl = url
+                    ).map { Unit }
+                }
                 
                 // 3. Guardar en DB
                 var submissionData = mapOf(
@@ -500,6 +562,10 @@ class ChallengeRepository @Inject constructor(
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext localFallbackApiClient.hasChallengeParticipation(accessToken, activeChallengeId)
+            }
+
             // FIXED: Filter by Master Challenge ID to allow participation in new contents even if active_id is reused
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer $accessToken")
@@ -542,6 +608,13 @@ class ChallengeRepository @Inject constructor(
 
     fun observeActiveChallenge(): Flow<ActiveChallenge> = flow {
         try {
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                while (true) {
+                    getActiveChallenge().onSuccess { emit(it) }
+                    delay(15_000)
+                }
+            }
+
             var channel = supabaseConfig.client.realtime.channel("active-challenges-realtime")
             var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                 table = "active_challenges"
@@ -564,6 +637,14 @@ class ChallengeRepository @Inject constructor(
     }
 
     fun observeSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Flow<List<conectate.com.data.model.ChallengeSubmission>> = flow {
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            while (true) {
+                emit(getSubmissions(activeChallengeId, minCreatedAt).getOrNull().orEmpty())
+                delay(5_000)
+            }
+            return@flow
+        }
+
         val channelId = "subs-${activeChallengeId}-${System.currentTimeMillis()}"
         var channel = supabaseConfig.client.realtime.channel(channelId)
         

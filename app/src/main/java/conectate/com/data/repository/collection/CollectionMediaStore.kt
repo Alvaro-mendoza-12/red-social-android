@@ -1,5 +1,6 @@
 package conectate.com.data.repository.collection
 
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.StorageService
 import conectate.com.util.inferMimeTypeFromBytes
 import conectate.com.util.resolveMediaMeta
@@ -106,7 +107,7 @@ internal class CollectionMediaStore(
             contentType = contentType
         )
         if (primary.isSuccess) {
-            return Result.success(storageService.getPublicUrl(primaryBucket, fileName))
+            return Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(primaryBucket, fileName)).orEmpty())
         }
 
         if (fallbackBucket.isNullOrBlank() || fallbackBucket == primaryBucket) {
@@ -120,7 +121,7 @@ internal class CollectionMediaStore(
             contentType = contentType
         )
         return if (fallback.isSuccess) {
-            Result.success(storageService.getPublicUrl(fallbackBucket, fileName))
+            Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(fallbackBucket, fileName)).orEmpty())
         } else {
             Result.failure(fallback.exceptionOrNull() ?: primary.exceptionOrNull() ?: Exception("Upload failed"))
         }

@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.repository.VoiceRoomRepository
+import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.webrtc.EglBase
 import org.webrtc.VideoTrack
@@ -18,7 +20,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class VoiceRoomActiveViewModel @Inject constructor(
-    private val voiceRoomRepository: VoiceRoomRepository
+    private val voiceRoomRepository: VoiceRoomRepository,
+    private val authService: AuthService
 ) : ViewModel() {
 
     private val _room = MutableStateFlow<VoiceRoom?>(null)
@@ -100,6 +103,102 @@ class VoiceRoomActiveViewModel @Inject constructor(
     val isSearchingInvites: StateFlow<Boolean> = _isSearchingInvites.asStateFlow()
 
     private var eglBase: EglBase? = null
+    private var joinedRoomId: String? = null
+
+    init {
+        viewModelScope.launch {
+            voiceRoomRepository.currentRoom.collectLatest { room ->
+                if (room != null) {
+                    _room.value = room
+                }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.currentParticipants.collectLatest { participants ->
+                _participants.value = participants
+                val selfId = _currentUserId.value?.trim()?.lowercase().orEmpty()
+                if (selfId.isNotBlank()) {
+                    _isMuted.value = participants.firstOrNull {
+                        it.id.trim().lowercase() == selfId
+                    }?.isMuted ?: _isMuted.value
+                }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.currentVideoMode.collectLatest { mode ->
+                _videoMode.value = mode
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.remoteVideoTracks.collectLatest { tracks ->
+                _remoteVideoTracks.value = tracks
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.localVideoTrack.collectLatest { track ->
+                _localVideoTrack.value = track
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.peerConnectionStates.collectLatest { states ->
+                _peerConnectionStates.value = states.mapValues { it.value.name }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.signalingStates.collectLatest { states ->
+                _signalingStates.value = states.mapValues { it.value.name }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.sharingStates.collectLatest { states ->
+                _sharingStates.value = states.mapValues { it.value.first || it.value.second }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.debugInfo.collectLatest { info ->
+                _debugInfo.value = info.entries
+                    .take(6)
+                    .joinToString("\n") { "${it.key}: ${it.value}" }
+                    .ifBlank { null }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.sessionState.collectLatest { session ->
+                _isJoined.value = session.isConnected
+                _videoMode.value = session.videoMode
+                _isMuted.value = session.isMuted
+                session.room?.let { _room.value = it }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.cinemaState.collectLatest { state ->
+                _cinemaState.value = state?.let {
+                    CinemaState(
+                        isCinemaMode = it.isCinemaMode,
+                        videoUrl = it.videoUrl.orEmpty(),
+                        videoTitle = it.videoTitle.orEmpty(),
+                        isPlaying = it.isPlaying,
+                        currentPosition = it.currentPosition
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.incomingMessages.collectLatest { message ->
+                _messages.value = (_messages.value + message).distinctBy { it.id }
+                _unreadChatCount.value += 1
+            }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.incomingReactions.collectLatest { reaction ->
+                _activeReactions.value = _activeReactions.value + reaction
+                launch {
+                    kotlinx.coroutines.delay(3000)
+                    _activeReactions.value = _activeReactions.value.filterNot { it.id == reaction.id }
+                }
+            }
+        }
+    }
 
     fun getEglBaseContext(): org.webrtc.EglBase.Context {
         if (eglBase == null) {
@@ -110,49 +209,73 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     fun joinRoom(roomId: String) {
         viewModelScope.launch {
-            _currentUserId.value = voiceRoomRepository.getCurrentUserId()
+            val seed = authService.getCurrentUserProfileSeed()
+            val userId = voiceRoomRepository.getCurrentUserId()
+                ?: seed?.id
+                ?: return@launch
+            _currentUserId.value = userId
             try {
                 val roomResult = voiceRoomRepository.getRoomById(roomId)
-                _room.value = roomResult.getOrNull()
-                _isJoined.value = true
+                val resolvedRoom = roomResult.getOrThrow()
+                _room.value = resolvedRoom
+                if (joinedRoomId == resolvedRoom.id && _isJoined.value) return@launch
+                joinedRoomId = resolvedRoom.id
+
+                val displayName = seed?.displayName
+                    ?: seed?.fullName
+                    ?: seed?.email?.substringBefore("@")
+                    ?: "Usuario"
+                voiceRoomRepository.joinRoom(
+                    roomId = resolvedRoom.id,
+                    userId = userId,
+                    displayName = displayName,
+                    avatarUrl = seed?.avatarUrl,
+                    signalingRoomId = roomId
+                )
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomActiveVM", "Error joining room", e)
+                _isJoined.value = false
             }
         }
     }
 
     fun toggleMute() {
-        _isMuted.value = !_isMuted.value
+        val next = !_isMuted.value
+        _isMuted.value = next
+        voiceRoomRepository.toggleMute(next)
     }
 
     fun toggleSpeaker() {
-        _isSpeaker.value = !_isSpeaker.value
+        val next = !_isSpeaker.value
+        _isSpeaker.value = next
+        voiceRoomRepository.toggleSpeaker(next)
     }
 
     fun toggleCamera() {
-        viewModelScope.launch {
-            if (_videoMode.value == VoiceRoomRepository.VideoMode.NONE) {
-                _videoMode.value = VoiceRoomRepository.VideoMode.CAMERA
-            } else {
-                _videoMode.value = VoiceRoomRepository.VideoMode.NONE
-            }
+        if (_videoMode.value == VoiceRoomRepository.VideoMode.NONE) {
+            voiceRoomRepository.startCameraCapture()
+        } else {
+            voiceRoomRepository.stopVideo()
         }
     }
 
     fun toggleScreenShare(data: Intent) {
-        viewModelScope.launch {
-            _videoMode.value = VoiceRoomRepository.VideoMode.SCREEN
+        if (_videoMode.value == VoiceRoomRepository.VideoMode.SCREEN) {
+            voiceRoomRepository.stopVideo()
+        } else {
+            voiceRoomRepository.startScreenCapture(data)
         }
     }
 
     fun stopVideo() {
-        _videoMode.value = VoiceRoomRepository.VideoMode.NONE
+        voiceRoomRepository.stopVideo()
     }
 
     fun leaveRoom() {
         viewModelScope.launch {
             voiceRoomRepository.leaveRoom()
             _isJoined.value = false
+            joinedRoomId = null
             eglBase?.release()
             eglBase = null
         }
@@ -165,17 +288,30 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun setParticipantVolume(participantId: String, volume: Float) {
-        // Volume control via WebRTC
+        voiceRoomRepository.setParticipantVolume(participantId, volume.toDouble())
     }
 
     fun selectVideo(url: String, title: String) {
-        _cinemaState.value = CinemaState(
+        val state = CinemaState(
             isCinemaMode = true,
             videoUrl = url,
             videoTitle = title,
             isPlaying = true,
             currentPosition = 0L
         )
+        _cinemaState.value = state
+        _room.value?.id?.let { roomId ->
+            voiceRoomRepository.emitCinemaState(
+                roomId,
+                conectate.com.data.repository.CinemaState(
+                    isCinemaMode = true,
+                    videoUrl = url,
+                    videoTitle = title,
+                    isPlaying = true,
+                    currentPosition = 0L
+                )
+            )
+        }
     }
 
     fun resolveUniversalLink(url: String): VoiceRoomRepository.CinemaResolvedItem? {
@@ -191,6 +327,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
         val current = _activeReactions.value.toMutableList()
         current.add(reaction)
         _activeReactions.value = current
+        _room.value?.id?.let { roomId -> voiceRoomRepository.sendReaction(roomId, emoji) }
         // Remove after animation
         viewModelScope.launch {
             kotlinx.coroutines.delay(3000)
@@ -201,10 +338,17 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     fun exitCinemaMode() {
         _cinemaState.value = null
+        _room.value?.id?.let { roomId ->
+            voiceRoomRepository.emitCinemaState(
+                roomId,
+                conectate.com.data.repository.CinemaState(isCinemaMode = false)
+            )
+        }
     }
 
     fun syncCinema(playing: Boolean, position: Long) {
         _cinemaState.value = _cinemaState.value?.copy(isPlaying = playing, currentPosition = position)
+        _room.value?.id?.let { roomId -> voiceRoomRepository.emitCinemaSync(roomId, playing, position) }
     }
 
     fun controlCinema(action: String, position: Long) {
@@ -213,10 +357,14 @@ class VoiceRoomActiveViewModel @Inject constructor(
             "pause" -> _cinemaState.value = _cinemaState.value?.copy(isPlaying = false)
             "seek" -> _cinemaState.value = _cinemaState.value?.copy(currentPosition = position)
         }
+        _room.value?.id?.let { roomId -> voiceRoomRepository.emitCinemaControl(roomId, action, position) }
     }
 
     fun updateRoom(name: String, isPublic: Boolean, password: String?) {
         viewModelScope.launch {
+            _room.value?.id?.let { roomId ->
+                voiceRoomRepository.updateRoom(roomId, name, isPublic, password)
+            }
             _room.value = _room.value?.copy(name = name, isPublic = isPublic, password = password)
         }
     }
@@ -240,6 +388,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
             val current = _messages.value.toMutableList()
             current.add(msg)
             _messages.value = current
+            _room.value?.id?.let { roomId -> voiceRoomRepository.sendMessage(roomId, text) }
         }
     }
 

@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import conectate.com.util.ChatContactPayload
+import conectate.com.util.UbuntuMedia
 import conectate.com.util.encodeContactPayload
 
 sealed class GroupChatUiState {
@@ -963,7 +964,7 @@ class GroupChatViewModel @Inject constructor(
                             .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                     )
-                    setDataSource(url)
+                    UbuntuMedia.setDataSource(this, url)
                     prepareAsync()
                     setOnPreparedListener {
                         _currentPlayingAudioId.value = id

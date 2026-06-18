@@ -9,6 +9,7 @@ import conectate.com.core.moderation.ModerationVerdict
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.cache.UpstashCacheService
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Post
 import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
@@ -538,7 +539,8 @@ class PostRepository @Inject constructor(
                                 else -> "file"
                             }
                         }
-                        storageService.getPublicUrl("post-media", fileName).let { mediaUrls.add(it) }
+                        UbuntuStorageUrl.rewrite(storageService.getPublicUrl("post-media", fileName))
+                            ?.let { mediaUrls.add(it) }
                     } else {
                         val error = uploadResult.exceptionOrNull()
                         appMetrics.recordFailure(
@@ -564,7 +566,7 @@ class PostRepository @Inject constructor(
                     ?.substringBefore("@")
                     ?.takeIf { it.isNotBlank() }
                 ?: "Usuario"
-            val userImage: String? = currentProfile?.avatar_url
+            val userImage: String? = UbuntuStorageUrl.rewrite(currentProfile?.avatar_url)
             var isVerified = currentProfile?.is_verified ?: false
 
             if (supabaseConfig.isLocalFallbackPrimary) {
@@ -1072,7 +1074,7 @@ class PostRepository @Inject constructor(
             var uploadResult = storageService.uploadFile("post-comments-media", fileName, bytes, "audio/mp4")
             
             if (uploadResult.isSuccess) {
-                 val publicUrl = storageService.getPublicUrl("post-comments-media", fileName)
+                 val publicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("post-comments-media", fileName)).orEmpty()
                  
                  // add_audio_to_post_comments.sql is part of the release manifest, so audio comments
                  // store both a stable text marker and the media metadata columns.
@@ -1195,13 +1197,13 @@ class PostRepository @Inject constructor(
                         var createdAt = getSafeString("created_at") ?: ""
                         var cUserId = getSafeString("user_id") ?: ""
                         var parentId = getSafeString("parent_id")
-                        var audioUrl = getSafeString("media_url")
+                        var audioUrl = UbuntuStorageUrl.rewrite(getSafeString("media_url"))
                         
                         // Fallback: If content starts with [Audio] and contains a URL, and audioUrl is null
                         if (audioUrl == null && content.startsWith("[Audio]")) {
                             val possibleUrl = content.removePrefix("[Audio]").trim()
                             if (possibleUrl.startsWith("http")) {
-                                audioUrl = possibleUrl
+                                audioUrl = UbuntuStorageUrl.rewrite(possibleUrl)
                                 content = "[Audio]" // Clean up content for UI
                             }
                         }
@@ -1217,7 +1219,7 @@ class PostRepository @Inject constructor(
                         var userName = getSafeString("username", profileJson ?: JsonObject(emptyMap())) 
                             ?: getSafeString("full_name", profileJson ?: JsonObject(emptyMap())) 
                             ?: "Usuario"
-                        var userAvatar = getSafeString("avatar_url", profileJson ?: JsonObject(emptyMap()))
+                        var userAvatar = UbuntuStorageUrl.rewrite(getSafeString("avatar_url", profileJson ?: JsonObject(emptyMap())))
                         
                         var isVerified = try {
                             profileJson?.get("is_verified")?.jsonPrimitive?.booleanOrNull ?: false

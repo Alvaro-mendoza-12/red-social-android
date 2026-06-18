@@ -31,8 +31,8 @@ fun CreateVoiceRoomScreen(
     var description by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
     var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var isCreating by remember { mutableStateOf(false) }
+    val error by viewModel.error.collectAsState()
+    val isCreating by viewModel.isCreating.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Scaffold(

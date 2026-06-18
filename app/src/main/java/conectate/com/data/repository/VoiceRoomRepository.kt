@@ -7,6 +7,7 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
@@ -61,6 +62,7 @@ class VoiceRoomRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val appMetrics: AppMetrics,
     private val crashReporter: CrashReporter
 ) {
@@ -1775,6 +1777,10 @@ class VoiceRoomRepository @Inject constructor(
             
             // 4. Release Audio with Safety Delay
             releaseVoiceAudioSession()
+
+            runCatching { refreshRooms() }.onFailure {
+                android.util.Log.w("VoiceRoomRepository", "Could not refresh lobby after leaving room", it)
+            }
             
             android.util.Log.w("VoiceRoomRepository", "📍 leaveRoom END: Cleanup complete")
         } catch (e: Exception) {
@@ -1848,6 +1854,20 @@ class VoiceRoomRepository @Inject constructor(
             _activeRooms.update { current ->
                 current.filterNot { it.id.trim().lowercase() == normalizedRoomId }
             }
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                if (token == null) {
+                    _activeRooms.value = previousRooms
+                    return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                }
+                localFallbackApiClient.deleteVoiceRoom(token, roomId).getOrThrow()
+                if (activeRoomId?.trim()?.lowercase() == normalizedRoomId) {
+                    leaveRoom(roomId)
+                } else {
+                    scope.launch { refreshRooms() }
+                }
+                return@withContext Result.success(Unit)
+            }
             supabaseConfig.client.postgrest["voice_rooms"].delete {
                 filter { eq("id", roomId) }
             }
@@ -1868,7 +1888,27 @@ class VoiceRoomRepository @Inject constructor(
 
     private suspend fun subscribeToVoiceRooms() {
         if (authService.isLocalFallbackModeEnabled()) {
-            android.util.Log.d("VoiceRoomRepository", "Ubuntu mode: Supabase voice realtime disabled; lobby refresh uses local API.")
+            android.util.Log.d("VoiceRoomRepository", "Ubuntu mode: subscribing to voice-rooms:live with polling fallback.")
+            val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+            if (token.isNotBlank()) {
+                ubuntuRealtimeClient.updateAccessToken(token)
+                ubuntuRealtimeClient.subscribe("voice-rooms:live")
+            }
+            coroutineScope {
+                launch {
+                    ubuntuRealtimeClient.events.collect { envelope ->
+                        if (envelope.channel == "voice-rooms:live") {
+                            refreshRooms()
+                        }
+                    }
+                }
+                launch {
+                    while (isActive) {
+                        delay(SYNC_PULSE_INTERVAL)
+                        refreshRooms()
+                    }
+                }
+            }
             return
         }
         var retryDelayMs = SUBSCRIPTION_RETRY_INITIAL_MS

@@ -42,20 +42,25 @@ Required environment:
   SUPABASE_URL or SUPABASE_STORAGE_SOURCE_BASE_URLS
 
 Optional environment:
-  SUPABASE_STORAGE_REWRITE_APPLY=true`)
+  SUPABASE_STORAGE_REWRITE_APPLY=true
+  SUPABASE_STORAGE_REWRITE_SCHEMAS=public,supabase_import`)
 }
 
-async function getCandidateColumns(pool) {
+async function getCandidateColumns(pool, schemas) {
   const { rows } = await pool.query(`
-    SELECT table_schema, table_name, column_name, data_type, udt_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
+    SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.udt_name
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema
+     AND t.table_name = c.table_name
+     AND t.table_type = 'BASE TABLE'
+    WHERE c.table_schema = ANY($1::text[])
       AND (
-        data_type IN ('text', 'character varying', 'character')
-        OR udt_name IN ('citext', 'jsonb', 'json')
+        c.data_type IN ('text', 'character varying', 'character')
+        OR c.udt_name IN ('citext', 'jsonb', 'json')
       )
-    ORDER BY table_schema, table_name, ordinal_position
-  `)
+    ORDER BY c.table_schema, c.table_name, c.ordinal_position
+  `, [schemas])
   return rows
 }
 
@@ -101,6 +106,7 @@ const apply = args.has('--apply') || boolEnv('SUPABASE_STORAGE_REWRITE_APPLY', f
 const dryRun = args.has('--dry-run') || !apply
 const databaseUrl = String(process.env.DATABASE_URL || '').trim()
 const publicBaseUrl = trimTrailingSlash(process.env.PUBLIC_BASE_URL || process.env.LOCAL_PUBLIC_BASE_URL)
+const rewriteSchemas = splitList(process.env.SUPABASE_STORAGE_REWRITE_SCHEMAS || 'public,supabase_import')
 const sourceBases = splitList(process.env.SUPABASE_STORAGE_SOURCE_BASE_URLS)
 const supabaseUrl = trimTrailingSlash(process.env.SUPABASE_URL)
 if (supabaseUrl && !sourceBases.includes(supabaseUrl)) sourceBases.push(supabaseUrl)
@@ -120,13 +126,14 @@ async function main() {
   const targetPrefix = `${publicBaseUrl}/storage/v1/object/public/`
 
   console.log(`Supabase storage URL rewrite ${dryRun ? '(dry-run)' : '(apply)'}`)
+  console.log(`Schemas: ${rewriteSchemas.join(', ')}`)
   console.log(`Target: ${targetPrefix}`)
 
   const pool = new Pool({ connectionString: databaseUrl })
   const summary = []
 
   try {
-    const columns = await getCandidateColumns(pool)
+    const columns = await getCandidateColumns(pool, rewriteSchemas)
 
     for (const sourcePrefix of sourcePrefixes) {
       console.log(`Source: ${sourcePrefix}`)

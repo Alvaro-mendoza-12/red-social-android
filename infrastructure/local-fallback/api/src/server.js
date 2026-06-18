@@ -72,6 +72,7 @@ const userSelectColumns = `
   password_changed_by_user_at,
   supabase_synced_at,
   created_at,
+  updated_at,
   last_login_at
 `
 
@@ -238,12 +239,27 @@ function adminRequired(req, res, next) {
   return next()
 }
 
-function signUserToken(user) {
+function isUuidText(value) {
+  const text = String(value || '').trim().toLowerCase()
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)
+}
+
+function signUserToken(user, options = {}) {
+  const sessionId = String(options.sessionId || '').trim()
+  const client = cleanText(options.client || '', 40)
+  const payload = {
+    email: user.email,
+    provider: 'local-fallback',
+  }
+  if (sessionId) {
+    payload.sid = sessionId
+  }
+  if (client) {
+    payload.client = client
+  }
+
   return jwt.sign(
-    {
-      email: user.email,
-      provider: 'local-fallback',
-    },
+    payload,
     jwtSecret,
     {
       subject: user.id,
@@ -309,7 +325,37 @@ async function deliverPasswordResetToken(user, token) {
   return { delivery: 'console' }
 }
 
-function authRequired(req, res, next) {
+function requestIpAddress(req) {
+  const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+  return cleanText(forwardedFor || req.ip || req.socket?.remoteAddress || '', 120) || null
+}
+
+function requestUserAgent(req) {
+  return cleanText(req.headers['user-agent'] || '', 500) || null
+}
+
+async function touchWebSessionForAuth(auth, req) {
+  const sessionId = String(auth?.sid || '').trim()
+  if (!sessionId) return true
+  if (!isUuidText(sessionId) || !isUuidText(auth?.sub)) return false
+
+  const { rows } = await pool.query(
+    `UPDATE fallback_web_sessions
+     SET last_seen_at = NOW(),
+         ip_address = COALESCE($3, ip_address),
+         user_agent = COALESCE($4, user_agent),
+         updated_at = NOW()
+     WHERE id = $1
+       AND user_id = $2
+       AND revoked_at IS NULL
+     RETURNING id`,
+    [sessionId, auth.sub, requestIpAddress(req), requestUserAgent(req)],
+  )
+
+  return Boolean(rows[0])
+}
+
+async function authRequired(req, res, next) {
   const authorization = String(req.headers.authorization || '')
   const token = authorization.replace(/^Bearer\s+/i, '').trim()
 
@@ -322,10 +368,48 @@ function authRequired(req, res, next) {
       issuer: serviceName,
       audience: 'conectate-clients',
     })
+    const activeSession = await touchWebSessionForAuth(req.auth, req)
+    if (!activeSession) {
+      return res.status(401).json({ error: 'WEB_SESSION_REVOKED' })
+    }
     return next()
-  } catch {
-    return res.status(401).json({ error: 'INVALID_TOKEN' })
+  } catch (error) {
+    if (error?.name && String(error.name).includes('JsonWebToken')) {
+      return res.status(401).json({ error: 'INVALID_TOKEN' })
+    }
+    if (error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'INVALID_TOKEN' })
+    }
+    return next(error)
   }
+}
+
+function serializeWebSession(row) {
+  return {
+    sessionId: row.id,
+    deviceLabel: row.device_label || 'Conectate Web',
+    ipAddress: row.ip_address || null,
+    userAgent: row.user_agent || null,
+    createdAt: row.created_at || null,
+    lastSeenAt: row.last_seen_at || null,
+    revokedAt: row.revoked_at || null,
+  }
+}
+
+async function createWebSessionForPairing(user, pairing, req) {
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_web_sessions(user_id, pairing_id, device_label, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [
+      user.id,
+      pairing.id,
+      cleanText(pairing.device_label || 'Conectate Web', 120),
+      requestIpAddress(req),
+      requestUserAgent(req),
+    ],
+  )
+  return rows[0]
 }
 
 function authOptional(req, _res, next) {
@@ -509,6 +593,29 @@ async function ensureAuthMetadataColumns() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_web_login_pairings_created
     ON fallback_web_login_pairings(created_at DESC)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_web_sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      pairing_id UUID REFERENCES fallback_web_login_pairings(id) ON DELETE SET NULL,
+      device_label TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_web_sessions_user_active
+    ON fallback_web_sessions(user_id, last_seen_at DESC)
+    WHERE revoked_at IS NULL
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_web_sessions_pairing
+    ON fallback_web_sessions(pairing_id)
   `)
 }
 
@@ -1417,15 +1524,18 @@ async function handleWebLoginPairing(req, res, next) {
 
       const user = sanitizeUser(await hydrateUserRow(userResult.rows[0]))
       await pool.query('UPDATE fallback_users SET last_login_at = NOW() WHERE id = $1', [user.id])
+      const webSession = await createWebSessionForPairing(user, updateResult.rows[0], req)
+      const webAccessToken = signUserToken(user, { sessionId: webSession.id, client: 'web' })
       await recordAudit('auth_web_login_pairing_consumed', user.id, { pairId: pairing.id })
 
       return res.json(
         serializePairing(updateResult.rows[0], {
           user,
-          accessToken: signUserToken(user),
-          refreshToken: signUserToken(user),
+          accessToken: webAccessToken,
+          refreshToken: webAccessToken,
           tokenType: 'Bearer',
           expiresIn: jwtExpiresIn,
+          webSession: serializeWebSession(webSession),
         }),
       )
     }
@@ -1441,6 +1551,69 @@ async function handleWebLoginPairing(req, res, next) {
 
 app.post('/v1/auth/web-login-pairing', handleWebLoginPairing)
 app.post('/functions/v1/web-login-pairing', handleWebLoginPairing)
+
+app.get('/v1/auth/web-sessions', authRequired, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM fallback_web_sessions
+       WHERE user_id = $1
+         AND revoked_at IS NULL
+       ORDER BY last_seen_at DESC, created_at DESC
+       LIMIT 50`,
+      [req.auth.sub],
+    )
+    return res.json({ sessions: rows.map(serializeWebSession) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.delete('/v1/auth/web-sessions', authRequired, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE fallback_web_sessions
+       SET revoked_at = NOW(),
+           updated_at = NOW()
+       WHERE user_id = $1
+         AND revoked_at IS NULL
+       RETURNING *`,
+      [req.auth.sub],
+    )
+    await recordAudit('auth_web_sessions_revoked_all', req.auth.sub, { count: rows.length })
+    return res.json({ ok: true, revoked: rows.length, sessions: rows.map(serializeWebSession) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.delete('/v1/auth/web-sessions/:sessionId', authRequired, async (req, res, next) => {
+  try {
+    const sessionId = String(req.params.sessionId || '').trim()
+    if (!isUuidText(sessionId)) {
+      return res.status(400).json({ error: 'WEB_SESSION_ID_REQUIRED' })
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE fallback_web_sessions
+       SET revoked_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+       RETURNING *`,
+      [sessionId, req.auth.sub],
+    )
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'WEB_SESSION_NOT_FOUND' })
+    }
+
+    await recordAudit('auth_web_session_revoked', req.auth.sub, { sessionId })
+    return res.json({ ok: true, session: serializeWebSession(rows[0]) })
+  } catch (error) {
+    return next(error)
+  }
+})
 
 app.post('/v1/auth/activate-local-password', async (req, res, next) => {
   try {

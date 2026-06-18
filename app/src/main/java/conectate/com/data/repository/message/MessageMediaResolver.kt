@@ -1,6 +1,7 @@
 package conectate.com.data.repository.message
 
 import android.net.Uri
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -37,7 +38,7 @@ internal class MessageMediaResolver(
     suspend fun getPlayableUrl(path: String): Result<String> {
         var trimmed = path.trim()
         if (trimmed.contains("/storage/v1/object/public/")) {
-            return Result.success(trimmed)
+            return Result.success(UbuntuStorageUrl.rewrite(trimmed) ?: trimmed)
         }
 
         var location = resolveStorageLocation(trimmed)
@@ -51,7 +52,8 @@ internal class MessageMediaResolver(
         val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
         if (signed.isSuccess) {
             android.util.Log.d("MessageMediaResolver", "getPlayableUrl SIGNED OK")
-            return signed
+            val signedUrl = signed.getOrThrow()
+            return Result.success(UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl)
         }
 
         android.util.Log.w(
@@ -60,9 +62,9 @@ internal class MessageMediaResolver(
         )
 
         return if (trimmed.startsWith("http", ignoreCase = true)) {
-            Result.success(trimmed)
+            Result.success(UbuntuStorageUrl.rewrite(trimmed) ?: trimmed)
         } else {
-            Result.success(storageService.getPublicUrl(location.bucket, location.objectPath))
+            Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(location.bucket, location.objectPath)).orEmpty())
         }
     }
 
@@ -72,13 +74,13 @@ internal class MessageMediaResolver(
             return Result.failure(Exception("Ruta multimedia invalida"))
         }
         if (trimmed.startsWith("http", ignoreCase = true)) {
-            return Result.success(trimmed)
+            return Result.success(UbuntuStorageUrl.rewrite(trimmed) ?: trimmed)
         }
 
         var location = resolveStorageLocation(trimmed)
             ?: return Result.failure(Exception("Ruta multimedia invalida"))
 
-        return Result.success(storageService.getPublicUrl(location.bucket, location.objectPath))
+        return Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(location.bucket, location.objectPath)).orEmpty())
     }
 
     suspend fun consumeViewOnceMedia(

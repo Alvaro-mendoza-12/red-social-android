@@ -7,6 +7,7 @@ import android.net.Uri
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackProfileResponse
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.User
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.repository.user.UserLocalStateStore
@@ -80,6 +81,10 @@ class UserRepository @Inject constructor(
     private val avatarMaxBytes = 50L * 1024 * 1024
     private val localStateStore = UserLocalStateStore(context)
 
+    private fun shouldUseUbuntuBackend(): Boolean =
+        localFallbackApiClient.isConfigured &&
+            (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
+
     private fun normalizePrivacyUserId(userId: String): String = localStateStore.normalizeUserId(userId)
 
     private fun sanitizeProfileText(value: String?): String? {
@@ -145,10 +150,7 @@ class UserRepository @Inject constructor(
 
     private fun sanitizeLocalFallbackAssetUrl(value: String?): String? {
         val clean = sanitizeProfileText(value) ?: return null
-        return clean.takeUnless {
-            it.contains(".supabase.co/storage/", ignoreCase = true) ||
-                it.contains(".supabase.in/storage/", ignoreCase = true)
-        }
+        return UbuntuStorageUrl.rewrite(clean)
     }
 
     private fun mapLocalFallbackProfile(
@@ -158,7 +160,7 @@ class UserRepository @Inject constructor(
     ): User? {
         val profile = response.profile ?: return null
         val normalizedId = normalizePrivacyUserId(
-            profile.stringValue("id", "user_id", "profile_id", "supabase_user_id")
+            profile.stringValue("supabase_user_id", "supabaseUserId", "id", "user_id", "profile_id")
                 ?: fallbackId
         )
         val email = sanitizeProfileText(profile.stringValue("email"))
@@ -490,7 +492,7 @@ class UserRepository @Inject constructor(
             return Result.success(fakeUser)
         }
 
-        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+        if (shouldUseUbuntuBackend()) {
             return loadCurrentLocalFallbackProfile()
                 .mapCatching { user ->
                     user ?: throw IllegalStateException("No se pudo cargar el perfil desde Ubuntu")
@@ -586,9 +588,9 @@ class UserRepository @Inject constructor(
             var remoteFailure: Throwable? = null
 
             if (
-                authService.isLocalFallbackSession() &&
-                localFallbackApiClient.isConfigured &&
-                (currentUserId == null || normalizedUserId == currentUserId)
+                shouldUseUbuntuBackend() &&
+                currentUserId != null &&
+                normalizedUserId == currentUserId
             ) {
                 val localResult = loadCurrentLocalFallbackProfile()
                 localResult.onSuccess { localUser -> return Result.success(localUser) }
@@ -603,6 +605,22 @@ class UserRepository @Inject constructor(
                 return Result.failure(
                     localResult.exceptionOrNull()
                         ?: Exception("No se pudo cargar el perfil desde Ubuntu")
+                )
+            }
+
+            if (shouldUseUbuntuBackend()) {
+                if (token == null) {
+                    return Result.failure(Exception("No hay token local para cargar el perfil desde Ubuntu"))
+                }
+                localFallbackApiClient.loadProfileUser(token, normalizedUserId)
+                    .onSuccess { remoteUser -> return Result.success(remoteUser) }
+                    .onFailure { throwable -> remoteFailure = throwable }
+
+                userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
+                    return Result.success(applyLocalUserOverrides(cachedUser))
+                }
+                return Result.failure(
+                    remoteFailure ?: Exception("No se pudo cargar el perfil desde Ubuntu")
                 )
             }
 
@@ -1315,7 +1333,7 @@ class UserRepository @Inject constructor(
                 )
             }
 
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            if (shouldUseUbuntuBackend()) {
                 val response = localFallbackApiClient.updateCurrentProfile(
                     accessToken = token,
                     displayName = request.display_name,
@@ -1599,7 +1617,7 @@ class UserRepository @Inject constructor(
             )
 
             if (upload.isSuccess) {
-                Result.success(storageService.getPublicUrl(bucket, fileName))
+                Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucket, fileName)).orEmpty())
             } else {
                 Result.failure(upload.exceptionOrNull() ?: Exception("Upload failed"))
             }
@@ -1792,6 +1810,16 @@ class UserRepository @Inject constructor(
             val sanitizedQuery = query.trim()
             if (sanitizedQuery.isEmpty()) return@withContext Result.success(emptyList())
 
+            if (shouldUseUbuntuBackend()) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("No access token"))
+                return@withContext localFallbackApiClient.searchProfileUsers(
+                    accessToken = token,
+                    query = sanitizedQuery,
+                    limit = 20
+                ).map { users -> users.deduplicatedForSearch() }
+            }
+
             // 1. If it's a numeric ID, try exact match and also partial matches
             val numericId = sanitizedQuery.toLongOrNull()
 
@@ -1816,11 +1844,47 @@ class UserRepository @Inject constructor(
             }.decodeList<User>()
 
             android.util.Log.d("UserRepository", "✅ Search successful: ${response.size} users found")
-            Result.success(response)
+            Result.success(response.deduplicatedForSearch())
         } catch (e: Exception) {
             android.util.Log.e("UserRepository", "❌ Search failed: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    private fun List<User>.deduplicatedForSearch(): List<User> {
+        val indexByKey = LinkedHashMap<String, Int>()
+        val users = mutableListOf<User>()
+        for (user in this) {
+            val keys = listOf(
+                user.email,
+                user.username.orEmpty(),
+                user.display_name.orEmpty(),
+                user.full_name.orEmpty(),
+                user.id
+            )
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() && it != "null" }
+                .distinct()
+            if (keys.isEmpty()) continue
+
+            val existingIndex = keys.firstNotNullOfOrNull { indexByKey[it] }
+            if (existingIndex == null) {
+                val newIndex = users.size
+                users += user
+                keys.forEach { indexByKey[it] = newIndex }
+                continue
+            }
+
+            val existing = users[existingIndex]
+            val chosen = when {
+                existing.avatar_url.isNullOrBlank() && !user.avatar_url.isNullOrBlank() -> user
+                existing.email.isBlank() && user.email.isNotBlank() -> user
+                else -> existing
+            }
+            users[existingIndex] = chosen
+            keys.forEach { indexByKey[it] = existingIndex }
+        }
+        return users
     }
 
     suspend fun searchMentionCandidates(
@@ -2068,6 +2132,10 @@ class UserRepository @Inject constructor(
     suspend fun getFollowers(userId: String): Result<List<User>> {
         return try {
             var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.loadFollowUsers(accessToken, userId, "followers")
+            }
             
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"
@@ -2094,6 +2162,10 @@ class UserRepository @Inject constructor(
     suspend fun getFollowing(userId: String): Result<List<User>> {
          return try {
             var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.loadFollowUsers(accessToken, userId, "following")
+            }
             
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"

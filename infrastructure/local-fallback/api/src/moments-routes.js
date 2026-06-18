@@ -27,6 +27,43 @@ function boolOf(row, keys, fallback = false) {
   return fallback
 }
 
+function toMillis(value) {
+  const text = String(value || '').trim()
+  if (!text) return 0
+  const millis = Date.parse(text)
+  return Number.isFinite(millis) ? millis : 0
+}
+
+function versionedAssetUrl(url, versionSource) {
+  const cleanUrl = String(url || '').trim()
+  if (!cleanUrl || cleanUrl.startsWith('data:')) return cleanUrl
+  const versionMs = toMillis(versionSource)
+  const version = versionMs > 0 ? String(versionMs) : String(versionSource || '').trim()
+  if (!version) return cleanUrl
+  const [base, hash = ''] = cleanUrl.split('#', 2)
+  const stripped = base
+    .replace(/([?&])v=[^&#]*&?/g, '$1')
+    .replace(/[?&]$/, '')
+  const separator = stripped.includes('?') ? '&' : '?'
+  return `${stripped}${separator}v=${encodeURIComponent(version)}${hash ? `#${hash}` : ''}`
+}
+
+function normalizeMomentMediaType(rawType, mediaUrl = '') {
+  const type = String(rawType || '').trim().toLowerCase()
+  const url = String(mediaUrl || '').split('?')[0].toLowerCase()
+  if (
+    type === 'video' ||
+    type.startsWith('video/') ||
+    url.endsWith('.mp4') ||
+    url.endsWith('.mov') ||
+    url.endsWith('.m4v') ||
+    url.endsWith('.webm')
+  ) {
+    return 'video'
+  }
+  return 'image'
+}
+
 async function ensureMomentsTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_moments (
@@ -55,6 +92,13 @@ async function ensureMomentsTables(pool) {
       PRIMARY KEY (moment_id, user_id)
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_moment_deletions (
+      moment_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
+      deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
 }
 
 async function importedRows(pool, tableName, limit = 2000) {
@@ -72,13 +116,38 @@ async function importedRows(pool, tableName, limit = 2000) {
   return data.map((entry) => entry.row || {})
 }
 
-async function profileNameFor(pool, userId, profilesById) {
-  if (profilesById?.has(userId)) return profilesById.get(userId)
-  const profiles = await importedRows(pool, 'profiles', 5000)
-  const profile = profiles.find((row) => normalizeId(textOf(row, ['id'], '')) === userId)
-  const name = textOf(profile, ['display_name', 'displayName', 'full_name', 'username'], 'Usuario')
-  profilesById?.set(userId, name)
-  return name
+function profileAliases(row) {
+  return new Set([
+    textOf(row, ['id'], ''),
+    textOf(row, ['user_id', 'userId'], ''),
+    textOf(row, ['profile_id', 'profileId'], ''),
+    textOf(row, ['supabase_user_id', 'supabaseUserId'], ''),
+    textOf(row, ['email'], ''),
+    textOf(row, ['username', 'handle'], ''),
+  ].map(normalizeId).filter(Boolean))
+}
+
+async function profileFor(pool, userId, profilesById) {
+  const cleanUserId = normalizeId(userId)
+  if (profilesById?.has(cleanUserId)) return profilesById.get(cleanUserId)
+  const [profiles, localUsers] = await Promise.all([
+    importedRows(pool, 'profiles', 5000),
+    pool.query(
+      `SELECT id, email, display_name, avatar_url, supabase_user_id, created_at, updated_at, last_login_at
+       FROM fallback_users
+       LIMIT 10000`,
+    ).then((result) => result.rows),
+  ])
+  const profile = [...profiles, ...localUsers].find((row) => profileAliases(row).has(cleanUserId)) || {}
+  const normalized = {
+    name: textOf(profile, ['display_name', 'displayName', 'full_name', 'username', 'email'], 'Usuario'),
+    avatarUrl: versionedAssetUrl(
+      textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image', 'picture', 'image'], ''),
+      textOf(profile, ['updated_at', 'updatedAt', 'created_at', 'createdAt'], ''),
+    ),
+  }
+  profilesById?.set(cleanUserId, normalized)
+  return normalized
 }
 
 async function buildMomentsFeed(pool, identity) {
@@ -91,6 +160,10 @@ async function buildMomentsFeed(pool, identity) {
      LIMIT 300`,
   )
   const imported = await importedRows(pool, 'moments', 500)
+  const { rows: deletedRows } = await pool.query(
+    `SELECT lower(moment_id) AS moment_id FROM fallback_moment_deletions`,
+  )
+  const deletedIds = new Set(deletedRows.map((row) => row.moment_id).filter(Boolean))
   const merged = [...localRows.map((row) => ({ ...row, id: textOf(row, ['id'], '') })), ...imported]
   const byId = new Map()
   merged.forEach((row) => {
@@ -99,6 +172,7 @@ async function buildMomentsFeed(pool, identity) {
     byId.set(id, { ...row, id })
   })
   const moments = Array.from(byId.values())
+    .filter((row) => !deletedIds.has(normalizeId(textOf(row, ['id'], ''))))
 
   const momentIds = moments.map((row) => textOf(row, ['id'], '')).filter(Boolean)
   const viewsByMoment = new Map()
@@ -148,21 +222,22 @@ async function buildMomentsFeed(pool, identity) {
       const expiresMs = Date.parse(expiresAt)
       if (!Number.isNaN(expiresMs) && expiresMs <= now) continue
     }
-    const ownerName = await profileNameFor(pool, ownerId, profilesById)
+    const ownerProfile = await profileFor(pool, ownerId, profilesById)
     const viewerPreview = Array.from(
       new Set(
         (viewersByMoment.get(id) || [])
           .filter((entry) => entry.userId !== ownerId)
           .slice(0, 5)
-          .map((entry) => profilesById.get(entry.userId) || entry.userId),
+          .map((entry) => profilesById.get(entry.userId)?.name || entry.userId),
       ),
     )
     items.push({
       id,
       user_id: ownerId,
-      owner_name: ownerName,
+      owner_name: ownerProfile.name,
+      owner_avatar_url: ownerProfile.avatarUrl,
       media_url: textOf(row, ['media_url'], ''),
-      media_type: textOf(row, ['media_type'], 'image'),
+      media_type: normalizeMomentMediaType(textOf(row, ['media_type'], 'image'), textOf(row, ['media_url'], '')),
       caption: textOf(row, ['caption'], ''),
       visibility: textOf(row, ['visibility'], 'all'),
       allow_replies: boolOf(row, ['allow_replies'], true),
@@ -178,7 +253,32 @@ async function buildMomentsFeed(pool, identity) {
   return items
 }
 
-function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
+async function momentFollowerRecipientIds(pool, ownerId) {
+  const cleanOwnerId = normalizeId(ownerId)
+  if (!cleanOwnerId) return []
+  const { rows: localRows } = await pool.query(
+    `SELECT follower_id
+     FROM fallback_follows
+     WHERE lower(following_id) = $1
+     LIMIT 2000`,
+    [cleanOwnerId],
+  )
+  const importedRowsForFollows = await importedRows(pool, 'follows', 20_000)
+  const recipients = new Set(
+    localRows
+      .map((row) => normalizeId(textOf(row, ['follower_id'], '')))
+      .filter(Boolean),
+  )
+  importedRowsForFollows.forEach((row) => {
+    const following = normalizeId(textOf(row, ['following_id', 'target_user_id'], ''))
+    const follower = normalizeId(textOf(row, ['follower_id', 'user_id'], ''))
+    if (following === cleanOwnerId && follower) recipients.add(follower)
+  })
+  recipients.delete(cleanOwnerId)
+  return Array.from(recipients)
+}
+
+function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, createLocalNotification }) {
   app.get('/v1/data/moments/feed', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -198,11 +298,19 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
       const identity = userIdentity(user)
       const mediaUrl = textOf(req.body, ['mediaUrl', 'media_url'], '')
       if (!mediaUrl) return res.status(400).json({ error: 'MEDIA_URL_REQUIRED' })
+      const mediaType = normalizeMomentMediaType(textOf(req.body, ['mediaType', 'media_type'], 'image'), mediaUrl)
 
       const durationHours = Math.max(1, Math.min(Number(req.body?.durationHours || req.body?.duration_hours || 24), 168))
       const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
       const visibility = textOf(req.body, ['visibility'], 'all')
-      const visibilityType = visibility === 'private' ? 'private' : visibility === 'silent' ? 'silent' : 'public'
+      const requestedVisibilityType = textOf(req.body, ['visibilityType', 'visibility_type'], '')
+      const visibilityType = ['private', 'silent', 'public'].includes(requestedVisibilityType)
+        ? requestedVisibilityType
+        : visibility === 'private'
+          ? 'private'
+          : visibility === 'silent'
+            ? 'silent'
+            : 'public'
 
       const { rows } = await pool.query(
         `INSERT INTO fallback_moments(
@@ -215,7 +323,7 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
         [
           identity.displayUserId,
           mediaUrl,
-          textOf(req.body, ['mediaType', 'media_type'], 'image'),
+          mediaType,
           textOf(req.body, ['thumbnailUrl', 'thumbnail_url'], '') || null,
           textOf(req.body, ['caption'], '') || null,
           visibility,
@@ -226,6 +334,25 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
           expiresAt,
         ],
       )
+
+      if (typeof createLocalNotification === 'function') {
+        const recipients = await momentFollowerRecipientIds(pool, identity.displayUserId)
+        await Promise.all(
+          recipients.map((recipientId) =>
+            createLocalNotification(pool, {
+              recipientId,
+              actorId: identity.displayUserId,
+              actorName: user.display_name || user.email || 'Usuario',
+              actorAvatarUrl: user.avatar_url || '',
+              type: 'new_moment',
+              targetId: rows[0]?.id,
+              targetType: 'moment',
+              content: 'Subió un nuevo momento.',
+              extraData: { moment_id: rows[0]?.id },
+            }),
+          ),
+        )
+      }
 
       void publishRealtimeEvent('moments:live', { event: 'moment', action: 'created', momentId: rows[0]?.id })
       res.status(201).json({ moment: rows[0] })
@@ -242,6 +369,22 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
       const momentId = textOf(req.params, ['momentId'], '')
       if (!momentId) return res.status(400).json({ error: 'MOMENT_ID_REQUIRED' })
 
+      const { rows: momentRows } = await pool.query(
+        `SELECT id::text, user_id
+         FROM fallback_moments
+         WHERE lower(id::text) = $1
+         LIMIT 1`,
+        [normalizeId(momentId)],
+      )
+      const ownerId = normalizeId(textOf(momentRows[0] || {}, ['user_id'], ''))
+      const alreadyViewed = await pool.query(
+        `SELECT 1
+         FROM fallback_moment_views
+         WHERE lower(moment_id::text) = $1 AND lower(user_id) = $2
+         LIMIT 1`,
+        [normalizeId(momentId), identity.displayUserId],
+      )
+
       await pool.query(
         `INSERT INTO fallback_moment_views(moment_id, user_id, viewed_at)
          VALUES ($1::uuid, $2, NOW())
@@ -249,8 +392,138 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
          DO UPDATE SET viewed_at = NOW()`,
         [momentId, identity.displayUserId],
       )
+      if (
+        typeof createLocalNotification === 'function' &&
+        alreadyViewed.rows.length === 0 &&
+        ownerId &&
+        ownerId !== identity.displayUserId
+      ) {
+        await createLocalNotification(pool, {
+          recipientId: ownerId,
+          actorId: identity.displayUserId,
+          actorName: user.display_name || user.email || 'Usuario',
+          actorAvatarUrl: user.avatar_url || '',
+          type: 'view_moment',
+          targetId: momentId,
+          targetType: 'moment',
+          content: 'Vio tu momento.',
+          extraData: { moment_id: momentId },
+        })
+      }
       void publishRealtimeEvent('moments:live', { event: 'moment', action: 'view', momentId })
       res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/moments/:momentId/viewers', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const momentId = normalizeId(req.params.momentId)
+      if (!momentId) return res.status(400).json({ error: 'MOMENT_ID_REQUIRED' })
+
+      const { rows: localRows } = await pool.query(
+        `SELECT id::text, user_id
+         FROM fallback_moments
+         WHERE lower(id::text) = $1
+         LIMIT 1`,
+        [momentId],
+      )
+      let ownerId = normalizeId(textOf(localRows[0] || {}, ['user_id'], ''))
+      if (!ownerId) {
+        const imported = await importedRows(pool, 'moments', 5000)
+        const importedRow = imported.find((row) => normalizeId(textOf(row, ['id'], '')) === momentId)
+        ownerId = normalizeId(textOf(importedRow || {}, ['user_id', 'userId', 'owner_id', 'profile_id', 'author_id'], ''))
+      }
+      if (!ownerId) return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
+      if (!identity.ids.has(ownerId) && ownerId !== identity.email) return res.status(403).json({ error: 'MOMENT_NOT_OWNED' })
+
+      const { rows: viewRows } = await pool.query(
+        `SELECT moment_id::text, user_id, viewed_at
+         FROM fallback_moment_views
+         WHERE lower(moment_id::text) = $1
+         ORDER BY viewed_at DESC
+         LIMIT 500`,
+        [momentId],
+      )
+      const importedViews = (await importedRows(pool, 'moment_views', 5000))
+        .filter((row) => normalizeId(textOf(row, ['moment_id'], '')) === momentId)
+        .map((row) => ({
+          moment_id: textOf(row, ['moment_id'], ''),
+          user_id: textOf(row, ['user_id'], ''),
+          viewed_at: textOf(row, ['viewed_at'], ''),
+        }))
+      const seen = new Set()
+      const profilesById = new Map()
+      const items = []
+
+      for (const row of [...viewRows, ...importedViews]) {
+        const viewerId = normalizeId(textOf(row, ['user_id'], ''))
+        if (!viewerId || seen.has(viewerId)) continue
+        seen.add(viewerId)
+        const profile = await profileFor(pool, viewerId, profilesById)
+        items.push({
+          id: `${momentId}:${viewerId}`,
+          moment_id: momentId,
+          user_id: viewerId,
+          viewed_at: textOf(row, ['viewed_at'], ''),
+          username: profile.name,
+          display_name: profile.name,
+          user_display_name: profile.name,
+          avatar_url: profile.avatarUrl,
+          user_avatar_url: profile.avatarUrl,
+        })
+      }
+
+      res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/moments/:momentId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const momentId = normalizeId(req.params.momentId)
+      if (!momentId) return res.status(400).json({ error: 'MOMENT_ID_REQUIRED' })
+
+      const { rows: localRows } = await pool.query(
+        `SELECT id::text, user_id
+         FROM fallback_moments
+         WHERE lower(id::text) = $1
+         LIMIT 1`,
+        [momentId],
+      )
+      let ownerId = normalizeId(textOf(localRows[0] || {}, ['user_id'], ''))
+      if (!ownerId) {
+        const imported = await importedRows(pool, 'moments', 5000)
+        const importedRow = imported.find((row) => normalizeId(textOf(row, ['id'], '')) === momentId)
+        ownerId = normalizeId(textOf(importedRow || {}, ['user_id', 'userId', 'owner_id', 'profile_id', 'author_id'], ''))
+      }
+      if (!ownerId) return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
+      if (!identity.ids.has(ownerId) && ownerId !== identity.email) return res.status(403).json({ error: 'MOMENT_NOT_OWNED' })
+
+      await pool.query(
+        `DELETE FROM fallback_moments
+         WHERE lower(id::text) = $1`,
+        [momentId],
+      )
+      await pool.query(
+        `INSERT INTO fallback_moment_deletions(moment_id, user_id, deleted_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (moment_id)
+         DO UPDATE SET user_id = EXCLUDED.user_id, deleted_at = NOW()`,
+        [momentId, identity.displayUserId],
+      )
+      await pool.query(`DELETE FROM fallback_moment_views WHERE lower(moment_id::text) = $1`, [momentId])
+
+      void publishRealtimeEvent('moments:live', { event: 'moment', action: 'deleted', momentId })
+      res.json({ ok: true, deleted: true })
     } catch (error) {
       next(error)
     }

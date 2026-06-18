@@ -719,25 +719,36 @@ class ProfileViewModel @Inject constructor(
             try {
                 val userId = authService.getCurrentUserId() ?: return@launch
                 val wasShared = video.sharedByMe
+                val delta = if (wasShared) -1 else 1
+                val userVideosSnapshot = _userVideos.value
+                val sharedVideosSnapshot = _sharedVideos.value
                 
                 // Optimistic Update
                 fun updateList(list: List<Video>): List<Video> {
                     return list.map { 
-                        if (it.id == video.id) it.copy(sharedByMe = !wasShared) else it 
+                        if (it.id == video.id) {
+                            val newShareCount = if (wasShared) maxOf(0, it.shareCount - 1) else it.shareCount + 1
+                            it.copy(sharedByMe = !wasShared, shareCount = newShareCount)
+                        } else it
                     }
                 }
                 _userVideos.value = updateList(_userVideos.value)
-                _sharedVideos.value = if (wasShared) _sharedVideos.value.filter { it.id != video.id } else _sharedVideos.value + video.copy(sharedByMe = true)
-
-                val result = if (wasShared) {
-                    shareRepository.unshareContent(userId, "video", video.id)
+                _sharedVideos.value = if (wasShared) {
+                    _sharedVideos.value.filter { it.id != video.id }
                 } else {
-                    shareRepository.shareContent(userId, "video", video.id)
+                    (_sharedVideos.value.filterNot { it.id == video.id } + video.copy(
+                        sharedByMe = true,
+                        shareCount = video.shareCount + 1
+                    ))
                 }
+
+                val result = videoRepository.incrementShareCount(video.id, delta)
 
                 if (result.isFailure) {
                     // Revert on failure
-                    _userVideos.value = updateList(_userVideos.value)
+                    _userVideos.value = userVideosSnapshot
+                    _sharedVideos.value = sharedVideosSnapshot
+                } else {
                     loadSharedContent(userId)
                 }
             } catch (e: Exception) {

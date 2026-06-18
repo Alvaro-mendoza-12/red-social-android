@@ -6,14 +6,23 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.presentation.navigation.Screen
@@ -25,10 +34,15 @@ import conectate.com.presentation.navigation.Screen
 // 4 Tabs: Chats · Grupos · Comunidades · Voz
 // ──────────────────────────────────────────────────────────────────────────────
 
+private val InboxBackground = Color(0xFF050505)
+private val InboxSurface = Color(0xFF111111)
+private val InboxChip = Color(0xFF171717)
+private val InboxRed = Color(0xFFE53935)
+
 private enum class MessagesTab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
-    CHATS("Chats", Icons.Outlined.ChatBubbleOutline, Icons.Filled.Chat),
+    CHATS("Mensajes", Icons.Outlined.ChatBubbleOutline, Icons.Filled.Chat),
     GROUPS("Grupos", Icons.Default.Group, Icons.Default.Group),
-    COMMUNITIES("Comunidades", Icons.Default.Public, Icons.Default.Public),
+    COMMUNITIES("Canales", Icons.Default.Public, Icons.Default.Public),
     VOICE("Voz", Icons.Default.Mic, Icons.Default.Mic),
 }
 
@@ -45,6 +59,7 @@ fun MessagesScreen(
     var activeFilter by remember { mutableStateOf(ChatFilter.ALL) }
 
     Scaffold(
+        containerColor = InboxBackground,
         topBar = {
             MessagesTopBar(
                 onSettingsClick = {
@@ -75,33 +90,45 @@ fun MessagesScreen(
                 MessagesTab.CHATS -> {
                     FloatingActionButton(
                         onClick = { navController.navigate(Screen.SearchUsers.route) },
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
                     ) {
-                        Icon(Icons.Default.EditNote, contentDescription = "Nuevo chat")
+                        Icon(Icons.Default.Add, contentDescription = "Nuevo chat", modifier = Modifier.size(34.dp))
                     }
                 }
                 MessagesTab.GROUPS -> {
                     FloatingActionButton(
                         onClick = { navController.navigate(Screen.CreateGroup.route) },
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
                     ) {
-                        Icon(Icons.Default.GroupAdd, contentDescription = "Crear grupo")
+                        Icon(Icons.Default.Add, contentDescription = "Crear grupo", modifier = Modifier.size(34.dp))
                     }
                 }
                 MessagesTab.COMMUNITIES -> {
                     FloatingActionButton(
                         onClick = { navController.navigate(Screen.CreateCommunity.route) },
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Crear comunidad")
+                        Icon(Icons.Default.Add, contentDescription = "Crear comunidad", modifier = Modifier.size(34.dp))
                     }
                 }
                 MessagesTab.VOICE -> {
                     FloatingActionButton(
                         onClick = { navController.navigate(Screen.CreateVoiceRoom.route) },
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Crear sala de voz")
+                        Icon(Icons.Default.Add, contentDescription = "Crear sala de voz", modifier = Modifier.size(34.dp))
                     }
                 }
             }
@@ -110,32 +137,40 @@ fun MessagesScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .background(InboxBackground),
         ) {
             // ── Tab Row ──────────────────────────────────────────────────────
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab.ordinal,
-                edgePadding = androidx.compose.ui.unit.Dp(0f),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                divider = {},
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(InboxSurface)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 MessagesTab.entries.forEach { tab ->
                     val selected = selectedTab == tab
-                    Tab(
-                        selected = selected,
+                    Surface(
                         onClick = { selectedTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = if (selected) tab.selectedIcon else tab.icon,
-                                contentDescription = tab.label,
+                        shape = CircleShape,
+                        color = if (selected) Color.White else InboxChip,
+                        contentColor = if (selected) Color.Black else Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = tab.label,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                             )
-                        },
-                        text = { Text(tab.label) },
-                    )
+                        }
+                    }
                 }
             }
-                    Divider()
 
             // ── Content ──────────────────────────────────────────────────────
             AnimatedContent(
@@ -205,52 +240,53 @@ private fun MessagesTopBar(
     onFilterSelected: (ChatFilter) -> Unit,
     onFilterMenuDismiss: () -> Unit,
 ) {
-    TopAppBar(
-        title = {
-            Text(
-                text = "Mensajes",
-                style = MaterialTheme.typography.titleLarge,
-            )
-        },
-        actions = {
-            // 1. Ícono de registro de llamadas
-            IconButton(onClick = onCallHistoryClick) {
-                Icon(
-                    imageVector = Icons.Default.CallEnd,
-                    contentDescription = "Registro de llamadas",
-                )
-            }
-
-            // 2. Lupa — búsqueda global
-            IconButton(onClick = onSearchClick) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Buscar",
-                )
-            }
-
-            // 3. Cambio de cuenta
+    Surface(color = InboxSurface) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(86.dp)
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onSwitchAccountClick) {
                 Icon(
                     imageVector = Icons.Default.ManageAccounts,
                     contentDescription = "Cambiar cuenta",
+                    tint = Color.White,
+                    modifier = Modifier.size(30.dp),
                 )
             }
 
-            // 4. Ajustes de mensajes
-            IconButton(onClick = onSettingsClick) {
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Bandeja de entrada",
+                    color = Color.White,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+
+            IconButton(onClick = onSearchClick) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Ajustes",
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Buscar",
+                    tint = Color(0xFFCED0D7),
+                    modifier = Modifier.size(30.dp),
                 )
             }
 
-            // 5. Menú 3 puntos — filtros
             Box {
                 IconButton(onClick = onFilterMenuClick) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Más opciones",
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Filtros",
+                        tint = Color(0xFFCED0D7),
+                        modifier = Modifier.size(30.dp),
                     )
                 }
                 DropdownMenu(
@@ -282,24 +318,27 @@ private fun MessagesTopBar(
                     }
                     Divider()
                     DropdownMenuItem(
-                        text = { Text("Nueva transmisión") },
-                        onClick = onFilterMenuDismiss,
+                        text = { Text("Ajustes de mensajes") },
+                        onClick = {
+                            onFilterMenuDismiss()
+                            onSettingsClick()
+                        },
                         leadingIcon = {
-                            Icon(Icons.Default.Campaign, contentDescription = null)
+                            Icon(Icons.Default.Settings, contentDescription = null)
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Mensajes de IA") },
-                        onClick = onFilterMenuDismiss,
+                        text = { Text("Registro de llamadas") },
+                        onClick = {
+                            onFilterMenuDismiss()
+                            onCallHistoryClick()
+                        },
                         leadingIcon = {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                            Icon(Icons.Default.CallEnd, contentDescription = null)
                         },
                     )
                 }
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    )
+        }
+    }
 }

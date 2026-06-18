@@ -1,5 +1,7 @@
 # Conectate Ubuntu Backend
 
+Fecha de ultima revision documental: 2026-06-18.
+
 Servidor local para mantener Conectate operando desde infraestructura propia
 Ubuntu. Originalmente nacio como fallback ante restricciones de Supabase, pero
 ahora tambien puede usarse como backend principal para autenticacion, datos
@@ -87,6 +89,71 @@ bash scripts/diagnose-api.sh
 El diagnostico valida si quedo codigo viejo con rutas incompatibles de Express,
 revisa sintaxis dentro de Docker, imprime estado de Postgres y muestra los logs
 exactos del contenedor `api`.
+
+## Verificar modulos principales
+
+Despues de copiar los cambios a la VM y levantar servicios, ejecuta esta prueba
+de humo completa:
+
+```bash
+cd ~/conectate-local-fallback
+API_URL="http://127.0.0.1:3080" bash scripts/verify-ubuntu-modules.sh
+API_URL="http://127.0.0.1:3080" STRICT_PRODUCTION=true bash scripts/verify-ubuntu-production.sh
+PUBLIC_BASE_URL="https://tu-dominio.ngrok-free.dev" bash scripts/verify-ubuntu-storage.sh
+docker compose ps
+docker compose logs --tail=120 api edge signaling realtime-gateway
+```
+
+`verify-ubuntu-modules.sh` valida en una sola pasada:
+
+- registro/login local y sesion JWT;
+- subida a storage local de avatar, audio y video;
+- perfil, editar perfil y busqueda de personas;
+- publicaciones, comentarios y comentario con audio;
+- subida/listado/busqueda de videos, reproduccion por URL, vistas y comentario
+  de video con audio;
+- momentos y feed de momentos;
+- reto activo, participacion, voto y listado de submissions.
+
+`verify-ubuntu-production.sh` es mas estricto: valida Docker, puertos, logs,
+Postgres, permisos de storage, proxy, realtime/signaling, dos usuarios de
+prueba, notificaciones, FCM tokens, DM privado local, grupos, comunidades,
+videos, momentos, retos, rankings y genera `production-readiness-report.md` con
+la matriz endpoint/Android/Postgres/storage.
+
+Resultado esperado:
+
+```text
+LISTO: smoke test Ubuntu completo.
+```
+
+Si falla, el mensaje incluye el endpoint exacto, codigo HTTP y respuesta del
+servidor. Revisa inmediatamente:
+
+```bash
+cd ~/conectate-local-fallback
+docker compose ps
+docker compose logs --tail=200 api
+docker compose logs --tail=120 edge
+docker compose exec -T db psql -U conectate -d conectate_fallback -c "\dt"
+docker compose exec -T api node --check src/data-routes.js
+```
+
+Antes de produccion no uses los secretos de ejemplo:
+
+```bash
+openssl rand -hex 32
+nano ~/conectate-local-fallback/.env
+docker compose up -d --build
+```
+
+Cambia `POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_SYNC_TOKEN` y
+`PUBLIC_BASE_URL`. El resultado esperado es que `docker compose ps` muestre los
+servicios estables y `GET /ready` responda correctamente:
+
+```bash
+curl -sS http://127.0.0.1:3080/ready
+```
 
 ## Probar login local
 
@@ -244,6 +311,11 @@ Notas:
 - `POST /v1/auth/register`: crea usuario local de respaldo.
 - `POST /v1/auth/login`: inicia sesion local de respaldo.
 - `GET /v1/auth/me`: valida token local.
+- `POST /v1/auth/web-login-pairing`: crea, consulta, aprueba, rechaza y
+  consume login web por QR.
+- `GET /v1/auth/web-sessions`: lista sesiones web activas del usuario.
+- `DELETE /v1/auth/web-sessions/:sessionId`: revoca una sesion web especifica.
+- `DELETE /v1/auth/web-sessions`: revoca todas las sesiones web activas.
 - `POST /v1/auth/change-password`: cambia password con sesion local.
 - `POST /v1/auth/password-reset/request`: genera token local de recuperacion.
 - `POST /v1/auth/password-reset/confirm`: confirma token y crea password nueva.
@@ -276,3 +348,5 @@ No uses `response` en produccion publica.
 - No guardes `.env` en Git.
 - Cambia `POSTGRES_PASSWORD` si este servidor va a quedar prendido mucho tiempo.
 - La base persiste en el volumen Docker `conectate-fallback-db`.
+- Documentacion oficial de operacion: `docs/CONECTATE_UBUNTU_OFFICIAL_RUNBOOK_2026.md`.
+- Handoff para equipo nuevo: `docs/TEAM_HANDOFF_UBUNTU_2026.md`.

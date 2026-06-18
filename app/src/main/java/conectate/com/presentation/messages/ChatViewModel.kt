@@ -23,6 +23,7 @@ import conectate.com.data.repository.TypingRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.util.ChatContactPayload
+import conectate.com.util.UbuntuMedia
 import conectate.com.util.encodeContactPayload
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -52,6 +53,9 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -643,6 +647,12 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    private fun showCreateChatError(error: Throwable?) {
+        val message = normalizeSendError(error?.message.orEmpty())
+        android.util.Log.e("ChatViewModel", "Create chat failed: $message", error)
+        Toast.makeText(context, "Error al crear chat: $message", Toast.LENGTH_LONG).show()
+    }
+
     fun updateMessageText(text: String) {
         _messageText.value = text
         syncTypingPresence(text)
@@ -660,7 +670,7 @@ class ChatViewModel @Inject constructor(
             try {
                 // 1. Create chat if it's a placeholder
                 if (isPlaceholder) {
-                    val targetId = otherUserId 
+                    val targetId = resolvedTargetUserId ?: otherUserId
                     val createResult = messageRepository.getOrCreateChat(targetId)
                     if (createResult.isSuccess) {
                         val newChat = createResult.getOrThrow()
@@ -670,7 +680,7 @@ class ChatViewModel @Inject constructor(
                         // Restart observation so we get real-time messages for the now-valid chat
                         startObservingMessages(newChat.id, newChat)
                     } else {
-                        Toast.makeText(context, "Error al crear chat", Toast.LENGTH_SHORT).show()
+                        showCreateChatError(createResult.exceptionOrNull())
                         return@launch
                     }
                 }
@@ -705,7 +715,7 @@ class ChatViewModel @Inject constructor(
             _isSending.value = true
             try {
                 if (isPlaceholder) {
-                    val targetId = otherUserId
+                    val targetId = resolvedTargetUserId ?: otherUserId
                     val createResult = messageRepository.getOrCreateChat(targetId)
                     if (createResult.isSuccess) {
                         val newChat = createResult.getOrThrow()
@@ -714,7 +724,7 @@ class ChatViewModel @Inject constructor(
                         isPlaceholder = false
                         startObservingMessages(newChat.id, newChat)
                     } else {
-                        Toast.makeText(context, "Error al crear chat", Toast.LENGTH_SHORT).show()
+                        showCreateChatError(createResult.exceptionOrNull())
                         return@launch
                     }
                 }
@@ -730,6 +740,12 @@ class ChatViewModel @Inject constructor(
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
                     Toast.makeText(context, "No se pudo enviar archivo: $error", Toast.LENGTH_LONG).show()
+                } else if (messageType == "audio") {
+                    val sent = result.getOrNull()
+                    val mediaUrl = sent?.media_url?.trim().orEmpty()
+                    if (mediaUrl.startsWith("http", ignoreCase = true)) {
+                        cacheAudioFromUri(mediaUrl, uri)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Media send error", e)
@@ -772,7 +788,7 @@ class ChatViewModel @Inject constructor(
             _isSending.value = true
             try {
                 if (isPlaceholder) {
-                    val createResult = messageRepository.getOrCreateChat(otherUserId)
+                    val createResult = messageRepository.getOrCreateChat(resolvedTargetUserId ?: otherUserId)
                     if (createResult.isSuccess) {
                         val newChat = createResult.getOrThrow()
                         chatId = newChat.id
@@ -780,7 +796,7 @@ class ChatViewModel @Inject constructor(
                         isPlaceholder = false
                         startObservingMessages(newChat.id, newChat)
                     } else {
-                        Toast.makeText(context, "Error al crear chat", Toast.LENGTH_SHORT).show()
+                        showCreateChatError(createResult.exceptionOrNull())
                         return@launch
                     }
                 }
@@ -982,7 +998,7 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             if (isPlaceholder) {
-                val createResult = messageRepository.getOrCreateChat(otherUserId)
+                val createResult = messageRepository.getOrCreateChat(resolvedTargetUserId ?: otherUserId)
                 if (createResult.isFailure) {
                     _advancedMessage.value = "No se pudo crear chat para programar multimedia."
                     return@launch
@@ -1072,7 +1088,7 @@ class ChatViewModel @Inject constructor(
             _isSending.value = true
             try {
                 if (isPlaceholder) {
-                    val targetId = otherUserId
+                    val targetId = resolvedTargetUserId ?: otherUserId
                     val createResult = messageRepository.getOrCreateChat(targetId)
                     if (createResult.isSuccess) {
                         val newChat = createResult.getOrThrow()
@@ -1081,7 +1097,7 @@ class ChatViewModel @Inject constructor(
                         isPlaceholder = false
                         startObservingMessages(newChat.id, newChat)
                     } else {
-                        Toast.makeText(context, "Error al crear chat", Toast.LENGTH_SHORT).show()
+                        showCreateChatError(createResult.exceptionOrNull())
                         return@launch
                     }
                 }
@@ -1206,7 +1222,42 @@ class ChatViewModel @Inject constructor(
     }
     
     private fun playUrl(url: String, id: String) {
+        viewModelScope.launch {
+            val source = resolveAudioPlaybackSource(url)
+            playResolvedAudioSource(source, id)
+        }
+    }
+
+    private suspend fun resolveAudioPlaybackSource(url: String): String = withContext(Dispatchers.IO) {
+        val cleanUrl = UbuntuMedia.resolveUrl(url) ?: url
+        if (!cleanUrl.startsWith("http", ignoreCase = true)) return@withContext cleanUrl
+
+        val cached = audioCacheFile(cleanUrl)
+        if (cached.exists() && cached.length() > 0L) return@withContext cached.absolutePath
+
+        runCatching {
+            cached.parentFile?.mkdirs()
+            val connection = (URL(cleanUrl).openConnection() as HttpURLConnection).apply {
+                conectate.com.data.localfallback.UbuntuStorageUrl.publicRequestHeaders.forEach { (key, value) ->
+                    setRequestProperty(key, value)
+                }
+                connectTimeout = 5000
+                readTimeout = 15000
+            }
+            connection.inputStream.use { input ->
+                FileOutputStream(cached).use { output -> input.copyTo(output) }
+            }
+            connection.disconnect()
+            cached.absolutePath
+        }.getOrElse {
+            android.util.Log.w("ChatViewModel", "Audio cache miss/download failed, streaming remote URL", it)
+            cleanUrl
+        }
+    }
+
+    private fun playResolvedAudioSource(source: String, id: String) {
         try {
+            stopAudio()
             mediaPlayer = android.media.MediaPlayer().apply {
                 setAudioAttributes(
                     android.media.AudioAttributes.Builder()
@@ -1214,8 +1265,13 @@ class ChatViewModel @Inject constructor(
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
-                setDataSource(url)
-                prepareAsync()
+                if (source.startsWith("http", ignoreCase = true)) {
+                    UbuntuMedia.setDataSource(this, source)
+                    prepareAsync()
+                } else {
+                    setDataSource(source)
+                    prepare()
+                }
                 setOnPreparedListener {
                     _currentPlayingAudioId.value = id
                     _audioDuration.value = duration
@@ -1229,10 +1285,37 @@ class ChatViewModel @Inject constructor(
                     stopAudio()
                     false
                 }
+                if (!source.startsWith("http", ignoreCase = true)) {
+                    _currentPlayingAudioId.value = id
+                    _audioDuration.value = duration
+                    start()
+                    startProgressTracker()
+                }
             }
         } catch(e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private fun cacheAudioFromUri(mediaUrl: String, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val target = audioCacheFile(UbuntuMedia.resolveUrl(mediaUrl) ?: mediaUrl)
+                target.parentFile?.mkdirs()
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(target).use { output -> input.copyTo(output) }
+                }
+            }.onFailure {
+                android.util.Log.w("ChatViewModel", "Could not cache sent audio", it)
+            }
+        }
+    }
+
+    private fun audioCacheFile(url: String): File {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(url.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return File(File(context.cacheDir, "audio_messages").apply { mkdirs() }, "$digest.m4a")
     }
 
     private fun startProgressTracker() {
@@ -1689,7 +1772,7 @@ class ChatViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             if (isPlaceholder) {
-                val createResult = messageRepository.getOrCreateChat(otherUserId)
+                val createResult = messageRepository.getOrCreateChat(resolvedTargetUserId ?: otherUserId)
                 if (createResult.isFailure) {
                     _advancedMessage.value = "No se pudo crear chat para programar mensaje."
                     return@launch

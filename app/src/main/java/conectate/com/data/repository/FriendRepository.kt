@@ -1,6 +1,8 @@
 package conectate.com.data.repository
 
 import conectate.com.data.model.User
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.LocalFallbackFriendRequest
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.call.*
@@ -38,12 +40,65 @@ enum class FriendStatus {
 class FriendRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
-    private val notificationRepository: NotificationRepository
+    private val notificationRepository: NotificationRepository,
+    private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+    private suspend fun ubuntuToken(): String? {
+        if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) return null
+        return authService.getAccessTokenAwait()?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun LocalFallbackFriendRequest.otherUserId(currentUserId: String): String {
+        return if (senderId.equals(currentUserId, ignoreCase = true)) receiverId else senderId
+    }
+
+    private suspend fun findUbuntuFriendRequest(
+        token: String,
+        targetUserId: String,
+        vararg tabs: String
+    ): LocalFallbackFriendRequest? {
+        val cleanTarget = targetUserId.trim().lowercase()
+        if (cleanTarget.isBlank()) return null
+        return tabs.firstNotNullOfOrNull { tab ->
+            localFallbackApiClient.loadFriendRequests(token, tab).getOrNull()
+                ?.firstOrNull { request ->
+                    request.senderId.equals(cleanTarget, ignoreCase = true) ||
+                        request.receiverId.equals(cleanTarget, ignoreCase = true)
+                }
+        }
+    }
+
+    private suspend fun loadUbuntuUsers(token: String, userIds: List<String>): List<User> {
+        return userIds.distinct()
+            .mapNotNull { id ->
+                localFallbackApiClient.loadProfileUser(token, id).getOrNull()
+            }
+    }
 
     suspend fun getFriendStatus(targetUserId: String): Result<FriendStatus> {
         return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val cleanCurrentUserId = currentUserId.trim().lowercase()
+                findUbuntuFriendRequest(token, targetUserId, "accepted")?.let {
+                    return Result.success(FriendStatus.FRIENDS)
+                }
+                findUbuntuFriendRequest(token, targetUserId, "outgoing")?.let { request ->
+                    return Result.success(
+                        if (request.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_SENT
+                    )
+                }
+                localFallbackApiClient.loadFriendRequests(token, "incoming").getOrThrow()
+                    .firstOrNull { request ->
+                        request.senderId.equals(targetUserId, ignoreCase = true) &&
+                            request.receiverId.equals(cleanCurrentUserId, ignoreCase = true)
+                    }?.let { request ->
+                        return Result.success(
+                            if (request.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_RECEIVED
+                        )
+                    }
+                return Result.success(FriendStatus.NONE)
+            }
             
             // Check if I sent a request or we are friends
             var sentResponse = supabaseConfig.httpClient.get(
@@ -92,6 +147,15 @@ class FriendRepository @Inject constructor(
     suspend fun sendFriendRequest(targetUserId: String): Result<Unit> {
         return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                localFallbackApiClient.sendFriendRequest(token, targetUserId).getOrThrow()
+                notificationRepository.sendNotification(
+                    recipientId = targetUserId,
+                    type = "friend_request",
+                    targetId = currentUserId
+                )
+                return Result.success(Unit)
+            }
             
             val requestData = CreateFriendRequest(
                 senderId = currentUserId,
@@ -127,6 +191,23 @@ class FriendRepository @Inject constructor(
     suspend fun acceptFriendRequest(senderId: String): Result<Unit> {
          return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val request = findUbuntuFriendRequest(token, senderId, "incoming")
+                    ?: return Result.failure(Exception("Solicitud no encontrada en Ubuntu"))
+                localFallbackApiClient.updateFriendRequest(token, request.id, "accepted").getOrThrow()
+                notificationRepository.sendNotification(
+                    recipientId = senderId,
+                    type = "friend_request_accepted",
+                    targetId = currentUserId
+                ).onFailure { error ->
+                    android.util.Log.w(
+                        "FriendRepository",
+                        "Friend request accepted but acceptance notification failed",
+                        error
+                    )
+                }
+                return Result.success(Unit)
+            }
             
             var response = supabaseConfig.httpClient.patch(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
@@ -163,6 +244,21 @@ class FriendRepository @Inject constructor(
     suspend fun getRecentFriends(limit: Int = 10): Result<List<Pair<User, String>>> {
          return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val accepted = localFallbackApiClient.loadFriendRequests(token, "accepted").getOrThrow()
+                val cleanCurrentUserId = currentUserId.trim().lowercase()
+                val datedIds = accepted
+                    .map { request -> request.otherUserId(cleanCurrentUserId) to request.createdAt }
+                    .filter { (id, _) -> id.isNotBlank() }
+                    .sortedByDescending { it.second }
+                    .take(limit)
+                val usersById = loadUbuntuUsers(token, datedIds.map { it.first }).associateBy { it.id.lowercase() }
+                return Result.success(
+                    datedIds.mapNotNull { (id, date) ->
+                        usersById[id.lowercase()]?.let { user -> user to date }
+                    }
+                )
+            }
             
             // Fetch friends sorted by updated_at desc
             // We need to fetch relationships first
@@ -245,6 +341,12 @@ class FriendRepository @Inject constructor(
     suspend fun rejectFriendRequest(senderId: String): Result<Unit> {
          return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val request = findUbuntuFriendRequest(token, senderId, "incoming")
+                    ?: return Result.failure(Exception("Solicitud no encontrada en Ubuntu"))
+                localFallbackApiClient.deleteFriendRequest(token, request.id).getOrThrow()
+                return Result.success(Unit)
+            }
             
             var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
@@ -268,6 +370,10 @@ class FriendRepository @Inject constructor(
     suspend fun unfriendUser(targetUserId: String): Result<Unit> {
         return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                localFallbackApiClient.deleteFriendRelationship(token, targetUserId).getOrThrow()
+                return Result.success(Unit)
+            }
             
             // Delete calls where I am sender or receiver
             // Supabase DELETE with OR condition is tricky without RPC, but RLS allows user to delete ANY row they are part of.
@@ -306,6 +412,12 @@ class FriendRepository @Inject constructor(
     suspend fun cancelFriendRequest(targetUserId: String): Result<Unit> {
          return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val request = findUbuntuFriendRequest(token, targetUserId, "outgoing")
+                    ?: return Result.failure(Exception("Solicitud no encontrada en Ubuntu"))
+                localFallbackApiClient.deleteFriendRequest(token, request.id).getOrThrow()
+                return Result.success(Unit)
+            }
             
             var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/friends"
@@ -330,6 +442,10 @@ class FriendRepository @Inject constructor(
     suspend fun getPendingRequests(): Result<List<User>> {
         return try {
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            ubuntuToken()?.let { token ->
+                val incoming = localFallbackApiClient.loadFriendRequests(token, "incoming").getOrThrow()
+                return Result.success(loadUbuntuUsers(token, incoming.map { it.senderId }))
+            }
             
             // 1. Get sender_ids from pending requests
             var response = supabaseConfig.httpClient.get(
@@ -370,6 +486,20 @@ class FriendRepository @Inject constructor(
 
     suspend fun getFriends(userId: String): Result<List<User>> {
         return try {
+            ubuntuToken()?.let { token ->
+                val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                val accepted = if (currentUserId != null && userId.equals(currentUserId, ignoreCase = true)) {
+                    localFallbackApiClient.loadFriendRequests(token, "accepted").getOrThrow()
+                } else {
+                    localFallbackApiClient.loadFriendRequests(token, "accepted").getOrThrow()
+                        .filter { request ->
+                            request.senderId.equals(userId, ignoreCase = true) ||
+                                request.receiverId.equals(userId, ignoreCase = true)
+                        }
+                }
+                val cleanUserId = userId.trim().lowercase()
+                return Result.success(loadUbuntuUsers(token, accepted.map { it.otherUserId(cleanUserId) }))
+            }
             // Friends are where (sender=userId AND status=accepted) OR (receiver=userId AND status=accepted)
             
             // 1. Where I am sender

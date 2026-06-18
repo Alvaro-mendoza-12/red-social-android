@@ -21,6 +21,8 @@ class MessagesPreferences @Inject constructor(
         private const val KEY_ENTER_TO_SEND = "enter_to_send_enabled"
         private const val KEY_MEDIA_AUTO_DOWNLOAD = "media_auto_download_enabled"
         private const val KEY_READ_RECEIPTS = "read_receipts_enabled"
+        private const val KEY_CHAT_ACCENT = "chat_accent"
+        private const val KEY_CHAT_BACKGROUND = "chat_background"
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -61,6 +63,16 @@ class MessagesPreferences @Inject constructor(
     )
     val readReceiptsEnabled: StateFlow<Boolean> = _readReceiptsEnabled
 
+    private val _chatAccent = MutableStateFlow(
+        prefs.getString(KEY_CHAT_ACCENT, "conectate_red") ?: "conectate_red"
+    )
+    val chatAccent: StateFlow<String> = _chatAccent
+
+    private val _chatBackground = MutableStateFlow(
+        prefs.getString(KEY_CHAT_BACKGROUND, "deep_black") ?: "deep_black"
+    )
+    val chatBackground: StateFlow<String> = _chatBackground
+
     fun setCompactMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_COMPACT_MODE, enabled).apply()
         _compactMode.value = enabled
@@ -99,6 +111,16 @@ class MessagesPreferences @Inject constructor(
     fun setReadReceiptsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_READ_RECEIPTS, enabled).apply()
         _readReceiptsEnabled.value = enabled
+    }
+
+    fun setChatAccent(value: String) {
+        prefs.edit().putString(KEY_CHAT_ACCENT, value).apply()
+        _chatAccent.value = value
+    }
+
+    fun setChatBackground(value: String) {
+        prefs.edit().putString(KEY_CHAT_BACKGROUND, value).apply()
+        _chatBackground.value = value
     }
 }
 

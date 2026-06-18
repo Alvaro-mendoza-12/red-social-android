@@ -98,6 +98,7 @@ export async function fallbackApiJson<T>(
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
+  const requiresAuth = init?.auth !== false
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const headers = new Headers(init?.headers)
   headers.set('ngrok-skip-browser-warning', 'true')
@@ -106,7 +107,7 @@ export async function fallbackApiJson<T>(
     headers.set('Content-Type', 'application/json')
   }
 
-  if (init?.auth !== false) {
+  if (requiresAuth) {
     const token = readFallbackSession()?.accessToken?.trim()
     if (!token) throw new Error('No hay una sesión de Ubuntu activa.')
     headers.set('Authorization', `Bearer ${token}`)
@@ -119,6 +120,12 @@ export async function fallbackApiJson<T>(
   const payload = await parseFallbackResponse(response)
   if (!response.ok) {
     const code = String(payload.error || payload.message || '').trim()
+    if (requiresAuth && (code === 'WEB_SESSION_REVOKED' || code === 'INVALID_TOKEN')) {
+      clearFallbackSession()
+    }
+    if (code === 'WEB_SESSION_REVOKED') {
+      throw new Error('Tu sesión web fue cerrada desde la APK móvil por seguridad.')
+    }
     throw new Error(code || 'No se pudo consultar el servidor Ubuntu.')
   }
   return payload as T

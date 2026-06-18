@@ -1,6 +1,8 @@
 # 🔴 Conéctate - Red Social Móvil
 
-Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y **Supabase** como backend.
+Fecha de ultima revision documental: 2026-06-18.
+
+Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
 
 ## 📱 Características
 
@@ -17,7 +19,8 @@ Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose
 - **UI**: Jetpack Compose
 - **Navegación**: Jetpack Navigation Compose
 - **Inyección de Dependencias**: Hilt
-- **Backend**: Supabase (Auth, PostgREST, Storage, Realtime)
+- **Backend principal**: Ubuntu local/server (`infrastructure/local-fallback`) con Auth, Postgres, storage, realtime, signaling y proxy edge.
+- **Backend legacy**: Supabase solo para migracion/importacion mientras se termina la limpieza controlada.
 - **Comunicación de Voz**: WebRTC Native SDK + Custom Node.js Signaling
 
 ## 🚀 Configuración Inicial
@@ -26,27 +29,27 @@ Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose
 
 1. **Android Studio** (Hedgehog o superior recomendado)
 2. **JDK 17**
-3. **Cuenta de Supabase** (necesaria para backend)
+3. **VM/servidor Ubuntu** con Docker y Docker Compose para backend principal.
 
 ### Paso 1: Clonar el Proyecto
 
 El proyecto ya está en `d:\RED SOCIAL`
 
-### Paso 2: Configurar Supabase
+### Paso 2: Configurar Ubuntu como backend principal
 
-El proyecto usa Supabase para autenticación, base de datos (Postgres/PostgREST), almacenamiento y realtime.
+1. Entra a la VM/servidor Ubuntu.
+2. Copia `infrastructure/local-fallback`.
+3. Configura `.env` con `POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_SYNC_TOKEN` y `PUBLIC_BASE_URL`.
+4. Levanta servicios con Docker Compose.
+5. En Android configura `secrets.properties`:
 
-1. Crear un proyecto en https://app.supabase.com
-2. En `Project Settings > API` copia la `URL` y la `anon key` y colócalas en `secrets.properties`:
-
+```properties
+FALLBACK_API_URL=https://tu-url-ngrok-o-dominio
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
 ```
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-```
 
-3. Crea las tablas necesarias: `profiles`, `videos`, `video_comments`, `video_likes`, `messages`, `chats`, `voice_rooms`, etc. Algunas funciones RPC esperadas por la app son `get_or_create_chat`, `get_user_chats_with_last_message`, `get_unread_messages_count`, etc.
-
-4. Configura reglas de RLS (Row Level Security) y políticas para `profiles`, `messages` y `videos` según la lógica de la aplicación.
+Guia oficial: `docs/CONECTATE_UBUNTU_OFFICIAL_RUNBOOK_2026.md`.
 
 ### Paso 3: Configurar Servidor de Señalización de Voz
 
@@ -114,14 +117,18 @@ python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app
 ```
 
 Documentación adicional:
+- `docs/TEAM_HANDOFF_UBUNTU_2026.md`
+- `docs/CONECTATE_UBUNTU_OFFICIAL_RUNBOOK_2026.md`
+- `docs/UBUNTU_PRODUCTION_READINESS.md`
 - `docs/SECURITY_AUDIT_CHECKLIST_2026.md`
 - `docs/PERFORMANCE_BUDGETS_2026.md`
 
-Para que funcione en tu repositorio remoto, configura estos secretos en GitHub:
+Para que funcione en tu repositorio remoto con Ubuntu primario, configura estos secretos/variables segun tu pipeline:
 
 ```
-SUPABASE_URL
-SUPABASE_ANON_KEY
+FALLBACK_API_URL
+LOCAL_FALLBACK_API_URL
+VITE_FALLBACK_API_URL
 ```
 
 ## 📁 Estructura del Proyecto
@@ -156,40 +163,28 @@ app/src/main/java/conectate/com/
     └── Constants.kt                # Constantes de la app
 ```
 
-## 🔐 Seguridad (Supabase + RLS)
+## 🔐 Seguridad (Ubuntu principal)
 
-Este proyecto utiliza Supabase (Postgres) y Row Level Security (RLS). Recomendaciones rápidas:
+El contrato actual de seguridad se apoya en Ubuntu:
 
-- Habilita RLS para tablas sensibles (`profiles`, `messages`, `videos`, `chat_participants`).
-- Ejemplo de políticas para `profiles`:
+- JWT local firmado con `JWT_SECRET`.
+- Login web por QR con pairings temporales.
+- Sesiones web revocables desde la APK movil.
+- Storage servido por Ubuntu y proxy `edge`.
+- Supabase solo se habilita con `LEGACY_SUPABASE_IMPORT_ENABLED=true` durante migraciones puntuales.
 
-```sql
-CREATE POLICY "profiles_select_own" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+No comitees `secrets.properties`, `.env` ni llaves de migracion.
 
-CREATE POLICY "profiles_update_own" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
-```
+### Storage (Ubuntu)
 
-- Para mensajes, restringe inserción a `from_user_id = auth.uid()` y lectura al participante del chat.
-- Revisa RPCs y funciones para asegurarte de que no exponen datos: usa `SECURITY DEFINER` con cuidado.
-
-No comitees `secrets.properties`. Si `secrets.properties` fue expuesto, rota las claves en Supabase.
-
-### Storage (Supabase)
-
-Supabase Storage se usa para buckets (videos, avatars, images, audios). Recomendaciones:
-
-- Crea buckets con políticas públicas/privadas según necesidad. Por ejemplo, avatars pueden ser públicos, videos privados con URLs firmadas.
-- Verifica permisos de objetos y la generación de URLs públicas/firma (presigned URLs).
-
-Ejemplo: permitir lectura pública en un bucket `avatars` y control de escritura por usuario mediante RLS en metadatos.
+El storage de produccion se sirve desde `conectate-fallback-storage` y las rutas compatibles `/storage/v1/object/...`.
 
 ## 🛠️ Tecnologías Utilizadas
 
 - **Kotlin** 1.9.20
 - **Jetpack Compose** BOM 2023.10.01
-- **Supabase** (gotrue, postgrest, realtime, storage)
+- **Ubuntu backend** (Node/Express, Postgres, storage local, realtime gateway, nginx edge)
+- **Supabase legacy** solo para migracion temporal
 - **Hilt** 2.51
 - **Navigation Compose** 2.7.5
 - **Coil** 2.5.0 (carga de imágenes)
@@ -201,7 +196,7 @@ Ejemplo: permitir lectura pública en un bucket `avatars` y control de escritura
 
 El proyecto ya no está en estado inicial. Hoy cuenta con:
 
-- autenticación y perfil sobre Supabase;
+- autenticación, perfil y storage sobre Ubuntu;
 - mensajería, grupos, comunidades y salas de voz con Android nativo;
 - feed de video, perfil y social en producción de desarrollo;
 - Hilt, Compose, navegación y repositorios ya integrados;
@@ -209,7 +204,8 @@ El proyecto ya no está en estado inicial. Hoy cuenta con:
 
 Puntos importantes sobre el estado real:
 
-- La app usa **Supabase como backend principal**, pero todavía existen piezas Android ligadas a **Firebase Cloud Messaging** para push/notificaciones.
+- La app usa **Ubuntu como backend principal** cuando `FALLBACK_API_URL` esta configurado.
+- Todavia existen piezas legacy de Supabase en Android/web que deben limpiarse solo cuando cada modulo tenga equivalente Ubuntu probado.
 - El contrato activo de push quedó centralizado en `conectate.com.data.service.MyFirebaseMessagingService`; la implementación legacy ya no forma parte de la superficie principal.
 - `wallet` y el descubrimiento público por hashtags quedaron **feature-gateados** para evitar rutas rotas mientras se terminan sus contratos reales.
 - La base ya es funcional, pero todavía sigue en fase de **saneamiento estructural**: repositorios grandes, tests insuficientes y deuda SQL/RLS todavía abierta.

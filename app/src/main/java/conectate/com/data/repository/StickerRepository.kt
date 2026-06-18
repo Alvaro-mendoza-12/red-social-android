@@ -2,6 +2,7 @@ package conectate.com.data.repository
 
 import android.content.Context
 import android.net.Uri
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.StickerItem
 import conectate.com.data.model.StickerPack
 import conectate.com.data.supabase.AuthService
@@ -156,10 +157,10 @@ class StickerRepository @Inject constructor(
     }
 
     fun isFavoriteMediaUrl(mediaUrl: String?): Boolean {
-        var cleanUrl = mediaUrl?.trim().orEmpty()
+        var cleanUrl = UbuntuStorageUrl.rewrite(mediaUrl)?.trim().orEmpty()
         if (cleanUrl.isBlank()) return false
         val stickerId = _catalog.value.firstOrNull {
-            it.media_url?.trim()?.equals(cleanUrl, ignoreCase = true) == true
+            UbuntuStorageUrl.rewrite(it.media_url)?.trim()?.equals(cleanUrl, ignoreCase = true) == true
         }?.id ?: return false
         return _favorites.value.contains(stickerId)
     }
@@ -296,7 +297,7 @@ class StickerRepository @Inject constructor(
             return@withContext Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir sticker"))
         }
 
-        val mediaUrl = storageService.getPublicUrl("chat-media", remotePath)
+        val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", remotePath)).orEmpty()
         if (mediaUrl.isBlank()) {
             return@withContext Result.failure(Exception("No se pudo generar URL del sticker"))
         }
@@ -472,7 +473,9 @@ class StickerRepository @Inject constructor(
                 })
             }
             if (response.status.isSuccess()) {
-                var parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrDefault(emptyList())
+                var parsed = runCatching {
+                    json.decodeFromString<List<StickerItem>>(response.bodyAsText()).map { it.normalizedStorageUrls() }
+                }.getOrDefault(emptyList())
                 var merged = (parsed + _catalog.value).distinctBy { it.id }
                 _catalog.value = merged
                 persistItems(merged)
@@ -511,11 +514,11 @@ class StickerRepository @Inject constructor(
     }
 
     private fun ensureStickerForMedia(mediaUrl: String, title: String): StickerItem? {
-        var cleanUrl = mediaUrl.trim()
+        var cleanUrl = UbuntuStorageUrl.rewrite(mediaUrl)?.trim().orEmpty()
         if (cleanUrl.isBlank()) return null
 
         _catalog.value.firstOrNull {
-            it.media_url?.trim()?.equals(cleanUrl, ignoreCase = true) == true
+            UbuntuStorageUrl.rewrite(it.media_url)?.trim()?.equals(cleanUrl, ignoreCase = true) == true
         }?.let { return it }
 
         val generated = StickerItem(
@@ -548,7 +551,9 @@ class StickerRepository @Inject constructor(
         }
         if (!response.status.isSuccess()) return
 
-        var parsed = runCatching { json.decodeFromString<List<StickerItem>>(response.bodyAsText()) }.getOrNull() ?: return
+        var parsed = runCatching {
+            json.decodeFromString<List<StickerItem>>(response.bodyAsText()).map { it.normalizedStorageUrls() }
+        }.getOrNull() ?: return
         if (parsed.isEmpty()) return
 
         var merged = (parsed + _catalog.value).distinctBy { it.id }
@@ -624,7 +629,7 @@ class StickerRepository @Inject constructor(
 
     private fun loadLocalItems(): List<StickerItem> {
         var raw = prefs.getString(KEY_LOCAL_ITEMS, null) ?: return emptyList()
-        return runCatching { json.decodeFromString<List<StickerItem>>(raw) }.getOrDefault(emptyList())
+        return runCatching { json.decodeFromString<List<StickerItem>>(raw).map { it.normalizedStorageUrls() } }.getOrDefault(emptyList())
     }
 
     private fun loadLocalPacks(): List<StickerPack> {
@@ -682,7 +687,7 @@ class StickerRepository @Inject constructor(
     }
 
     private fun extractStorageObjectPathFromPublicUrl(urlOrPath: String?, bucket: String): String? {
-        var raw = urlOrPath?.trim().orEmpty()
+        var raw = UbuntuStorageUrl.rewrite(urlOrPath)?.trim().orEmpty()
         if (raw.isBlank()) return null
 
         if (!raw.startsWith("http", ignoreCase = true)) {
@@ -703,6 +708,11 @@ class StickerRepository @Inject constructor(
 
         return runCatching { URLDecoder.decode(candidate, "UTF-8") }.getOrDefault(candidate)
     }
+
+    private fun StickerItem.normalizedStorageUrls(): StickerItem = copy(
+        media_url = UbuntuStorageUrl.rewrite(media_url),
+        thumbnail_url = UbuntuStorageUrl.rewrite(thumbnail_url)
+    )
 }
 
 

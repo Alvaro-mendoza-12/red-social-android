@@ -85,6 +85,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.draw.blur
 import coil.compose.rememberAsyncImagePainter
+import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.media3.common.MediaItem
@@ -1493,7 +1494,7 @@ fun ChallengeAudioPlayer(url: String) {
                                      .build()
                              )
                              // Use context and Uri to avoid error -38
-                             setDataSource(context, android.net.Uri.parse(url))
+                             UbuntuMedia.setDataSource(context, this, url)
                              prepareAsync()
                              setOnPreparedListener { 
                                  isLoading = false
@@ -1567,7 +1568,7 @@ fun ChallengeVideoPlayer(url: String) {
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
+            setMediaItem(UbuntuMedia.mediaItem(url))
             prepare()
             repeatMode = Player.REPEAT_MODE_ONE
         }

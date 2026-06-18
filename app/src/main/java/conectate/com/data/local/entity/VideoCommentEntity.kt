@@ -53,13 +53,18 @@ data class VideoCommentEntity(
                 userName = liveUserName,
                 userAvatarUrl = liveAvatarUrl,
                 content = domain.content,
-                parentId = domain.parentId,
+                parentId = normalizeParentId(domain.parentId),
                 likeCount = domain.likes,
                 createdAt = domain.created_at,
                 isPosted = true,
                 contentType = domain.contentType,
                 mediaUrl = domain.mediaUrl
             )
+        }
+
+        private fun normalizeParentId(value: String?): String? {
+            val clean = value?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+            return clean.takeUnless { it == "0" || it == "null" || it == "undefined" || it == "none" }
         }
     }
 }

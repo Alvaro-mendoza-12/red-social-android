@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,10 +19,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.ChatWithLastMessage
+
+private val InboxBackground = Color(0xFF050505)
+private val InboxPanel = Color(0xFF101010)
+private val InboxDivider = Color(0xFF34343A)
+private val InboxRed = Color(0xFFE53935)
+private val InboxMuted = Color(0xFF9FA0A8)
 
 /**
  * Tab de Chats Privados (1:1)
@@ -52,7 +62,11 @@ fun PrivateChatsTab(
         viewModel.consumeUiMessage()
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(InboxBackground)
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
         // Barra de búsqueda
         OutlinedTextField(
@@ -60,52 +74,91 @@ fun PrivateChatsTab(
             onValueChange = { viewModel.updateSearchQuery(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            placeholder = { Text("Buscar conversaciones") },
+                .padding(horizontal = 14.dp, vertical = 16.dp)
+                .height(54.dp),
+            placeholder = {
+                Text(
+                    "Buscar conversaciones",
+                    color = InboxMuted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp
+                )
+            },
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            ),
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
-                    contentDescription = "Buscar"
+                    contentDescription = "Buscar",
+                    tint = Color(0xFFE1E2EA),
+                    modifier = Modifier.size(25.dp)
                 )
             },
             singleLine = true,
-            shape = CircleShape
+            shape = CircleShape,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color.White,
+                focusedBorderColor = Color(0xFF777986),
+                unfocusedBorderColor = Color(0xFF777986),
+                focusedContainerColor = InboxBackground,
+                unfocusedContainerColor = InboxBackground,
+            )
         )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(start = 14.dp, end = 14.dp, bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FilterChip(
+            InboxFilterPill(
                 selected = selectedFolderId == null,
                 onClick = { viewModel.selectFolder(null) },
-                label = { Text("Todas") }
+                label = "Todas",
+            )
+            InboxFilterPill(
+                selected = false,
+                onClick = { },
+                label = "Favoritos",
+                icon = Icons.Default.Star,
+                outlined = true,
+            )
+            InboxFilterPill(
+                selected = false,
+                onClick = { },
+                label = "Archivados",
+                icon = Icons.Default.Archive,
+                outlined = true,
+            )
+            InboxFilterPill(
+                onClick = { showCreateFolderDialog = true },
+                label = "Nueva carpeta",
+                icon = Icons.Default.CreateNewFolder,
+                outlined = true,
             )
             folders.forEach { folder ->
-                FilterChip(
+                InboxFilterPill(
                     selected = selectedFolderId == folder.id,
                     onClick = { viewModel.selectFolder(folder.id) },
-                    label = { Text(folder.name) }
+                    label = folder.name,
+                    icon = Icons.Default.Folder,
+                    outlined = selectedFolderId != folder.id,
                 )
             }
-            AssistChip(
-                onClick = { showCreateFolderDialog = true },
-                label = { Text("Nueva carpeta") },
-                leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) }
-            )
             if (folders.isNotEmpty()) {
-                AssistChip(
+                InboxFilterPill(
                     onClick = { showManageFoldersDialog = true },
-                    label = { Text("Gestionar") },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                    label = "Gestionar",
+                    icon = Icons.Default.Delete,
+                    outlined = true,
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
 
         // Contenido según estado
         when (val state = conversationsState) {
@@ -115,7 +168,7 @@ fun PrivateChatsTab(
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary
+                        color = InboxRed
                     )
                 }
             }
@@ -143,13 +196,15 @@ fun PrivateChatsTab(
                                         "No se encontraron conversaciones"
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                                color = InboxMuted
                             )
                             
                             OutlinedButton(
                                 onClick = onNavigateToSearch,
                                 shape = CircleShape,
-                                modifier = Modifier.height(48.dp)
+                                modifier = Modifier.height(48.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF777986))
                             ) {
                                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
@@ -161,7 +216,11 @@ fun PrivateChatsTab(
                     var showReportDialog by remember { mutableStateOf(false) }
                     var selectedConversation by remember { mutableStateOf<ChatWithLastMessage?>(null) }
                     
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(InboxPanel)
+                    ) {
                         items(
                             items = privateChats,
                             key = { it.chat.id }
@@ -185,7 +244,7 @@ fun PrivateChatsTab(
                                     showReportDialog = true
                                 }
                             )
-                            Divider()
+                            Divider(color = InboxDivider)
                         }
                     }
 
@@ -209,7 +268,7 @@ fun PrivateChatsTab(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                    Text(text = state.message, color = InboxRed)
                 }
             }
         }
@@ -368,6 +427,53 @@ fun PrivateChatsTab(
                         }
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun InboxFilterPill(
+    selected: Boolean = false,
+    onClick: () -> Unit,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    outlined: Boolean = false,
+    height: Dp = 36.dp,
+) {
+    val background = when {
+        selected -> InboxRed
+        outlined -> Color.Transparent
+        else -> Color(0xFF181818)
+    }
+    val borderColor = if (selected) InboxRed else Color(0xFF777986)
+    Surface(
+        onClick = onClick,
+        color = background,
+        contentColor = if (selected) Color.White else Color(0xFFE7E7EC),
+        shape = RoundedCornerShape(12.dp),
+        border = if (outlined || !selected) androidx.compose.foundation.BorderStroke(1.dp, borderColor) else null,
+        modifier = Modifier.height(height)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (selected) Color.White else InboxRed,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+            Text(
+                text = label,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                maxLines = 1,
             )
         }
     }

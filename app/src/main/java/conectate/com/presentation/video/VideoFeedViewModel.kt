@@ -15,6 +15,7 @@ import java.io.File
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import android.net.Uri
+import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -238,7 +239,15 @@ class VideoFeedViewModel @Inject constructor(
 
     fun incrementVideoViews(videoId: String) {
         viewModelScope.launch {
+            _forYouVideos.value = incrementViewInList(_forYouVideos.value, videoId)
+            _followingVideos.value = incrementViewInList(_followingVideos.value, videoId)
+            _searchResults.value = incrementViewInList(_searchResults.value, videoId)
+
             videoRepository.incrementViews(videoId)
+                .onSuccess { reloadVideo(videoId) }
+                .onFailure { error ->
+                    android.util.Log.e("VideoFeedVM", "Failed to increment video views for $videoId", error)
+                }
         }
     }
 
@@ -283,7 +292,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun toggleShare(video: Video) {
-        val currentId = currentUserId ?: return
+        currentUserId ?: return
         val videoId = video.id
         if (!shareRequestsInFlight.add(videoId)) return
 
@@ -301,20 +310,11 @@ class VideoFeedViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val shareResult = if (newSharedState) {
-                    shareRepository.shareContent(currentId, "video", videoId)
-                } else {
-                    shareRepository.unshareContent(currentId, "video", videoId)
-                }
-
-                if (shareResult.isFailure) {
-                    restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch)
-                    return@launch
-                }
-
                 val countResult = videoRepository.incrementShareCount(videoId, delta)
                 if (countResult.isFailure) {
                     restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch)
+                } else {
+                    reloadVideo(videoId)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Share toggle failed", e)
@@ -360,6 +360,12 @@ class VideoFeedViewModel @Inject constructor(
             }
         }
     }
+
+    private fun incrementViewInList(list: List<Video>, videoId: String): List<Video> {
+        return list.map { item ->
+            if (item.id == videoId) item.copy(views = item.views + 1) else item
+        }
+    }
     
     fun openComments(video: Video) {
         _selectedVideoForComments.value = video
@@ -372,6 +378,7 @@ class VideoFeedViewModel @Inject constructor(
         _commentsSheetOpen.value = false
         _selectedVideoForComments.value = null
         _comments.value = emptyList()
+        cancelReply()
         clearMentionSuggestions()
         stopAudio()
         voiceMessageManager.reset() // Reset recording/preview on close
@@ -380,20 +387,15 @@ class VideoFeedViewModel @Inject constructor(
     private fun fetchComments(videoId: String) {
         commentsJob?.cancel()
         commentsJob = viewModelScope.launch {
-            videoRepository.getCommentsFlow(videoId).collect { comments ->
-                _comments.value = comments
-                // CRITICAL: Manually update the video's comment count in the list to match reality
-                // This fixes the issue where Server (31) != Real (5)
-                val count = comments.size
-                
-                fun updateCount(list: List<Video>): List<Video> {
-                    return list.map { 
-                        if (it.id == videoId) it.copy(commentCount = count) else it 
-                    }
+            videoRepository.loadVideoCommentsNow(videoId)
+                .onSuccess { comments ->
+                    val merged = mergeComments(_comments.value, comments)
+                    _comments.value = merged
+                    updateCommentCount(videoId, merged.size)
                 }
-                _forYouVideos.value = updateCount(_forYouVideos.value)
-                _followingVideos.value = updateCount(_followingVideos.value)
-            }
+                .onFailure { error ->
+                    android.util.Log.e("VideoFeedVM", "Failed to load comments for $videoId", error)
+                }
         }
     }
     
@@ -416,11 +418,14 @@ class VideoFeedViewModel @Inject constructor(
          viewModelScope.launch {
              android.util.Log.d("VideoFeedVM", "addComment called for videoId: $videoId, parentId: $parentId")
              videoRepository.addComment(videoId, content, parentId = parentId)
-                 .onSuccess { 
+                 .onSuccess { insertedComment ->
                      android.util.Log.d("VideoFeedVM", "Comment added successfully")
+                     val merged = mergeComment(_comments.value, insertedComment)
+                     _comments.value = merged
+                     updateCommentCount(videoId, merged.size)
                      cancelReply() 
                      clearMentionSuggestions()
-                     fetchComments(videoId)
+                     refreshCommentsAfterWrite(videoId)
                      // Reload video to get accurate server-side count
                      reloadVideo(videoId)
                  }
@@ -518,14 +523,68 @@ class VideoFeedViewModel @Inject constructor(
             videoRepository.getVideo(videoId).onSuccess { updatedVideo ->
                 // Update lists with new video data (including counts)
                 fun updateList(list: List<Video>): List<Video> {
-                    return list.map { if (it.id == videoId) updatedVideo else it }
+                    return list.map { current ->
+                        if (current.id != videoId) current
+                        else updatedVideo.copy(
+                            views = maxOf(current.views, updatedVideo.views),
+                            likeCount = maxOf(current.likeCount, updatedVideo.likeCount),
+                            commentCount = maxOf(current.commentCount, updatedVideo.commentCount),
+                            shareCount = maxOf(current.shareCount, updatedVideo.shareCount),
+                            likedByMe = updatedVideo.likedByMe,
+                            sharedByMe = updatedVideo.sharedByMe
+                        )
+                    }
                 }
                 _forYouVideos.value = updateList(_forYouVideos.value)
                 _followingVideos.value = updateList(_followingVideos.value)
+                _searchResults.value = updateList(_searchResults.value)
             }.onFailure {
                 android.util.Log.e("VideoFeedVM", "Failed to reload video after comment update")
             }
         }
+    }
+
+    private fun refreshCommentsAfterWrite(videoId: String) {
+        viewModelScope.launch {
+            delay(250)
+            videoRepository.loadVideoCommentsNow(videoId)
+                .onSuccess { comments ->
+                    val merged = mergeComments(_comments.value, comments)
+                    _comments.value = merged
+                    updateCommentCount(videoId, merged.size)
+                }
+                .onFailure { error ->
+                    android.util.Log.w("VideoFeedVM", "Post-write comments refresh failed for $videoId", error)
+                }
+        }
+    }
+
+    private fun updateCommentCount(videoId: String, count: Int) {
+        fun updateCount(list: List<Video>): List<Video> {
+            return list.map {
+                if (it.id == videoId) it.copy(commentCount = count) else it
+            }
+        }
+        _forYouVideos.value = updateCount(_forYouVideos.value)
+        _followingVideos.value = updateCount(_followingVideos.value)
+        _searchResults.value = updateCount(_searchResults.value)
+    }
+
+    private fun mergeComment(
+        current: List<conectate.com.data.model.VideoComment>,
+        comment: conectate.com.data.model.VideoComment
+    ): List<conectate.com.data.model.VideoComment> {
+        if (current.any { it.id.equals(comment.id, ignoreCase = true) }) return current
+        return listOf(comment) + current
+    }
+
+    private fun mergeComments(
+        current: List<conectate.com.data.model.VideoComment>,
+        incoming: List<conectate.com.data.model.VideoComment>
+    ): List<conectate.com.data.model.VideoComment> {
+        return (current + incoming)
+            .filter { it.id.isNotBlank() }
+            .distinctBy { it.id.trim().lowercase() }
     }
 
     // Audio Comment Actions
@@ -590,7 +649,7 @@ class VideoFeedViewModel @Inject constructor(
                      videoRepository.sendAudioComment(videoId, fileToSend)
                          .onSuccess { 
                              reloadVideo(videoId)
-                             fetchComments(videoId) 
+                             refreshCommentsAfterWrite(videoId)
                              cancelReply()
                          }
                          .onFailure { e ->
@@ -616,7 +675,7 @@ class VideoFeedViewModel @Inject constructor(
         _currentPlayingCommentId.value = comment.id
         
         mediaPlayer = MediaPlayer().apply {
-            setDataSource(url)
+            UbuntuMedia.setDataSource(this, url)
             prepareAsync()
             setOnPreparedListener { 
                 start()

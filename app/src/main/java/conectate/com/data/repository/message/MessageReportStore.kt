@@ -10,6 +10,7 @@ import conectate.com.core.security.GuardedAction
 import conectate.com.core.security.GuardOutcome
 import conectate.com.core.security.InputSecurityPolicy
 import conectate.com.core.security.OperationGuard
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Report
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
@@ -97,7 +98,7 @@ internal class MessageReportStore(
                         val fileName = "reports/$currentUserId/${UUID.randomUUID()}.jpg"
                         val uploadResult = storageService.uploadFile("avatars", fileName, bytes, "image/jpeg")
                         if (uploadResult.isSuccess) {
-                            evidenceUrl = storageService.getPublicUrl("avatars", fileName)
+                            evidenceUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("avatars", fileName))
                         }
                     }
                 } catch (e: Exception) {

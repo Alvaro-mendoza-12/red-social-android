@@ -10,6 +10,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.io.File
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -43,6 +44,7 @@ object VideoCache {
     fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(UbuntuStorageUrl.publicRequestHeaders)
 
         var cache = getOrCreateCache(context)
         return if (cache != null) {

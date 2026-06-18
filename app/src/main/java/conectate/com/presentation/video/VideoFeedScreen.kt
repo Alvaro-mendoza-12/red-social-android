@@ -44,6 +44,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import conectate.com.data.model.Video
 import conectate.com.data.repository.VideoRepository
+import conectate.com.util.UbuntuMedia
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -285,11 +286,12 @@ fun VideoFeedScreen(
     // 🚀 RESTORED & STABLE: Synchronize Playlist when videos change
     LaunchedEffect(currentVideos) {
         if (currentVideos.isNotEmpty()) {
-            val mediaItems = currentVideos.map { MediaItem.fromUri(it.videoUrl) }
+            val resolvedVideoUrls = currentVideos.map { UbuntuMedia.resolveUrl(it.videoUrl) ?: it.videoUrl }
+            val mediaItems = resolvedVideoUrls.map { UbuntuMedia.mediaItem(it) }
             
             // Basic check: if count and first/last URL matches, avoid resetting
             val shouldUpdate = exoPlayer.mediaItemCount != mediaItems.size || 
-                             (mediaItems.isNotEmpty() && exoPlayer.getMediaItemAt(0).localConfiguration?.uri?.toString() != currentVideos[0].videoUrl)
+                             (mediaItems.isNotEmpty() && exoPlayer.getMediaItemAt(0).localConfiguration?.uri?.toString() != resolvedVideoUrls[0])
 
             if (shouldUpdate) {
                 android.util.Log.d("VideoFeedScreen", "Updating media items (stable)...")
@@ -729,9 +731,9 @@ fun VideoItem(
         currentStats?.likeCount ?: video.likeCount
     }
     
-    val commentCount = currentStats?.commentCount ?: video.commentCount
-    val viewCount = currentStats?.viewCount ?: video.views
-    val shareCount = currentStats?.shareCount ?: video.shareCount
+    val commentCount = maxOf(video.commentCount, currentStats?.commentCount ?: 0)
+    val viewCount = maxOf(video.views, currentStats?.viewCount ?: 0)
+    val shareCount = maxOf(video.shareCount, currentStats?.shareCount ?: 0)
 
     // Only attach player if selected. Otherwise show thumbnail.
     // This effectively manages the player view binding.
@@ -818,7 +820,7 @@ fun VideoItem(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                         // Important: Keep screen on while playing
                         keepScreenOn = true
                     }
@@ -839,7 +841,7 @@ fun VideoItem(
                 model = video.thumbnailUrl,
                 contentDescription = null,
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
         }

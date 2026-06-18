@@ -7,8 +7,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.compose.ui.platform.LocalContext
+import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.launch
@@ -36,6 +40,9 @@ fun SettingsScreen(
     val emailSettingsMessage by viewModel.emailSettingsMessage.collectAsState()
     val privacyAccepted by viewModel.privacyAccepted.collectAsState()
     val privacyMessage by viewModel.privacyMessage.collectAsState()
+    val webSessions by viewModel.webSessions.collectAsState()
+    val webSessionsLoading by viewModel.webSessionsLoading.collectAsState()
+    val webSessionMessage by viewModel.webSessionMessage.collectAsState()
     val storedAccounts by authViewModel.storedAccounts.collectAsState()
     val accountSwitchMessage by authViewModel.accountSwitchMessage.collectAsState()
     
@@ -44,6 +51,7 @@ fun SettingsScreen(
     var visibility by remember { mutableStateOf("everyone") }
     var initialized by remember { mutableStateOf(false) }
     var newAdditionalEmail by remember { mutableStateOf("") }
+    var showCloseAllWebSessionsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(settingsState) {
         if (!initialized && settingsState is SettingsUiState.Success) {
@@ -364,6 +372,17 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                WebSessionsPanel(
+                    sessions = webSessions,
+                    isLoading = webSessionsLoading,
+                    message = webSessionMessage,
+                    onRefresh = viewModel::loadWebSessions,
+                    onRevokeSession = viewModel::revokeWebSession,
+                    onRevokeAll = { showCloseAllWebSessionsDialog = true }
+                )
             }
 
             Divider()
@@ -460,6 +479,154 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (showCloseAllWebSessionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showCloseAllWebSessionsDialog = false },
+            title = { Text("Cerrar sesiones web") },
+            text = {
+                Text("Se cerrarán todas las sesiones activas de Conectate Web vinculadas a tu cuenta.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCloseAllWebSessionsDialog = false
+                        viewModel.revokeAllWebSessions()
+                    }
+                ) {
+                    Text("Cerrar todas", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCloseAllWebSessionsDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun WebSessionsPanel(
+    sessions: List<WebLoginManagedSession>,
+    isLoading: Boolean,
+    message: String?,
+    onRefresh: () -> Unit,
+    onRevokeSession: (String) -> Unit,
+    onRevokeAll: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Sesiones web activas", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Cierra desde tu móvil cualquier navegador que ya no uses.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+        }
+        IconButton(onClick = onRefresh, enabled = !isLoading) {
+            Icon(Icons.Default.Refresh, contentDescription = "Actualizar sesiones web")
+        }
+    }
+
+    if (isLoading) {
+        Spacer(modifier = Modifier.height(8.dp))
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+
+    if (!message.isNullOrBlank()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    if (sessions.isEmpty() && !isLoading) {
+        Text(
+            "No hay sesiones web activas registradas en Ubuntu.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+    } else {
+        sessions.forEach { session ->
+            Surface(
+                tonalElevation = 1.dp,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Computer, contentDescription = null)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = session.deviceLabel?.takeIf { it.isNotBlank() } ?: "Conectate Web",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Última actividad: ${formatWebSessionTime(session.lastSeenAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        session.ipAddress?.takeIf { it.isNotBlank() }?.let { ip ->
+                            Text(
+                                text = "IP: $ip",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { onRevokeSession(session.sessionId) },
+                        enabled = !isLoading
+                    ) {
+                        Icon(
+                            Icons.Default.Logout,
+                            contentDescription = "Cerrar esta sesión web",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = onRevokeAll,
+            enabled = sessions.isNotEmpty() && !isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Logout, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Cerrar todas las sesiones web")
+        }
+    }
+}
+
+private fun formatWebSessionTime(value: String?): String {
+    val clean = value?.trim().orEmpty()
+    if (clean.isBlank()) return "sin datos"
+    return clean
+        .replace("T", " ")
+        .replace(Regex("\\.\\d+Z$"), " UTC")
+        .replace(Regex("Z$"), " UTC")
+        .take(24)
 }
 
 @Composable

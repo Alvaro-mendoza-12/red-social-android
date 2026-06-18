@@ -25,8 +25,6 @@ import androidx.navigation.NavController
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import conectate.com.presentation.voicerooms.VoiceRoomsViewModel
-import conectate.com.presentation.voicerooms.VoiceRoomsUiState
 import conectate.com.presentation.voicerooms.RestrictedAccessScreen
 
 /**
@@ -186,8 +184,7 @@ fun VoiceRoomsTab(
             // Handle Search result within the UI
             LaunchedEffect(uiState) {
                 if (uiState is VoiceRoomsUiState.SearchResult) {
-                    val rooms = (uiState as VoiceRoomsUiState.SearchResult).rooms
-                    val room = rooms.firstOrNull()
+                    val room = (uiState as VoiceRoomsUiState.SearchResult).room
                     if (room != null) {
                         // Check password if private
                         if (room.isPublic || room.password == searchPassword) {

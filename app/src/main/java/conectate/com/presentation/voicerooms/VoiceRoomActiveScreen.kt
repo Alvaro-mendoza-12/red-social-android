@@ -63,10 +63,10 @@ fun VoiceRoomActiveScreen(
     roomId: String,
     viewModel: VoiceRoomActiveViewModel = hiltViewModel()
 ) {
-    // Request audio and camera permissions
+    // Las salas de voz solo necesitan micrófono para entrar. La cámara se pide
+    // cuando el usuario decide activarla.
     val permissionsToRequest = listOf(
-        Manifest.permission.RECORD_AUDIO,
-        Manifest.permission.CAMERA
+        Manifest.permission.RECORD_AUDIO
     )
     val context = LocalContext.current
     

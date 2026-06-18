@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.repository.WebLoginManagedSession
+import conectate.com.data.repository.WebLoginPairingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +28,8 @@ class SettingsViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val authRepository: AuthRepository,
     private val messageRepository: conectate.com.data.repository.MessageRepository,
-    private val themePreferences: conectate.com.data.local.prefs.ThemePreferences
+    private val themePreferences: conectate.com.data.local.prefs.ThemePreferences,
+    private val webLoginPairingRepository: WebLoginPairingRepository
 ) : ViewModel() {
 
     val isDarkMode: StateFlow<Boolean> = themePreferences.isDarkMode
@@ -45,12 +48,19 @@ class SettingsViewModel @Inject constructor(
     val privacyAccepted: StateFlow<Boolean> = _privacyAccepted.asStateFlow()
     private val _privacyMessage = MutableStateFlow<String?>(null)
     val privacyMessage: StateFlow<String?> = _privacyMessage.asStateFlow()
+    private val _webSessions = MutableStateFlow<List<WebLoginManagedSession>>(emptyList())
+    val webSessions: StateFlow<List<WebLoginManagedSession>> = _webSessions.asStateFlow()
+    private val _webSessionsLoading = MutableStateFlow(false)
+    val webSessionsLoading: StateFlow<Boolean> = _webSessionsLoading.asStateFlow()
+    private val _webSessionMessage = MutableStateFlow<String?>(null)
+    val webSessionMessage: StateFlow<String?> = _webSessionMessage.asStateFlow()
     
     private var currentUser: User? = null
 
     init {
         loadUserSettings()
         loadAdditionalLoginEmails()
+        loadWebSessions()
         resolveAdminIds()
     }
 
@@ -157,6 +167,70 @@ class SettingsViewModel @Inject constructor(
 
     fun clearPrivacyMessage() {
         _privacyMessage.value = null
+    }
+
+    fun loadWebSessions() {
+        viewModelScope.launch {
+            _webSessionsLoading.value = true
+            _webSessionMessage.value = null
+            try {
+                val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+                if (accessToken.isBlank()) {
+                    _webSessions.value = emptyList()
+                    _webSessionMessage.value = "Inicia sesión nuevamente para revisar tus sesiones web."
+                    return@launch
+                }
+                val result = webLoginPairingRepository.listActiveWebSessions(accessToken)
+                if (result.isSuccess) {
+                    _webSessions.value = result.getOrDefault(emptyList())
+                } else {
+                    _webSessionMessage.value =
+                        result.exceptionOrNull()?.message ?: "No se pudieron cargar las sesiones web."
+                }
+            } finally {
+                _webSessionsLoading.value = false
+            }
+        }
+    }
+
+    fun revokeWebSession(sessionId: String) {
+        viewModelScope.launch {
+            val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+            if (accessToken.isBlank()) {
+                _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
+                return@launch
+            }
+            _webSessionsLoading.value = true
+            val result = webLoginPairingRepository.revokeWebSession(sessionId, accessToken)
+            if (result.isSuccess) {
+                _webSessionMessage.value = "Sesión web cerrada."
+                loadWebSessions()
+            } else {
+                _webSessionsLoading.value = false
+                _webSessionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo cerrar la sesión web."
+            }
+        }
+    }
+
+    fun revokeAllWebSessions() {
+        viewModelScope.launch {
+            val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+            if (accessToken.isBlank()) {
+                _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
+                return@launch
+            }
+            _webSessionsLoading.value = true
+            val result = webLoginPairingRepository.revokeAllWebSessions(accessToken)
+            if (result.isSuccess) {
+                val count = result.getOrDefault(0)
+                _webSessionMessage.value =
+                    if (count == 1) "Se cerró 1 sesión web." else "Se cerraron $count sesiones web."
+                loadWebSessions()
+            } else {
+                _webSessionsLoading.value = false
+                _webSessionMessage.value = result.exceptionOrNull()?.message ?: "No se pudieron cerrar las sesiones web."
+            }
+        }
     }
 
     fun loadAdditionalLoginEmails() {

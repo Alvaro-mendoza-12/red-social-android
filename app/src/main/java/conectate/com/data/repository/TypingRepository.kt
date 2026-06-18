@@ -1,6 +1,8 @@
 package conectate.com.data.repository
 
 import android.util.Log
+import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.model.TypingConversationScope
 import conectate.com.data.model.TypingParticipant
 import conectate.com.data.supabase.AuthService
@@ -25,6 +27,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,7 +38,9 @@ import javax.inject.Singleton
 @Singleton
 class TypingRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient
 ) {
     @Serializable
     private data class TypingBroadcastPayload(
@@ -71,6 +79,10 @@ class TypingRepository @Inject constructor(
         }
 
         var channelName = "${scopeType.channelPrefix}:$cleanConversationId"
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            emitAll(observeUbuntuTyping(channelName))
+            return@flow
+        }
         val typingState = MutableStateFlow<List<TypingParticipant>>(emptyList())
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         var channel = acquireSharedChannel(channelName)
@@ -150,6 +162,21 @@ class TypingRepository @Inject constructor(
         if (cleanConversationId.isBlank()) return
 
         var channelName = "${scopeType.channelPrefix}:$cleanConversationId"
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+            if (token.isBlank()) return
+            ubuntuRealtimeClient.updateAccessToken(token)
+            localFallbackApiClient.publishTyping(
+                accessToken = token,
+                conversationId = cleanConversationId,
+                targetType = scopeType.targetType,
+                isTyping = isTyping,
+                displayName = displayName
+            ).onFailure { error ->
+                Log.w(TAG, "Failed to send Ubuntu typing event for $channelName", error)
+            }
+            return
+        }
         var channel = acquireSharedChannel(channelName)
 
         try {
@@ -175,6 +202,74 @@ class TypingRepository @Inject constructor(
 
     private fun channelMutex(channelName: String): Mutex {
         return channelMutexes.getOrPut(channelName) { Mutex() }
+    }
+
+    private fun observeUbuntuTyping(channelName: String): Flow<List<TypingParticipant>> = flow {
+        val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+        if (token.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        val typingState = MutableStateFlow<List<TypingParticipant>>(emptyList())
+        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+        ubuntuRealtimeClient.updateAccessToken(token)
+        ubuntuRealtimeClient.subscribe(channelName)
+
+        coroutineScope {
+            val realtimeJob = launch(Dispatchers.IO) {
+                ubuntuRealtimeClient.events.collect { envelope ->
+                    if (envelope.channel != channelName || envelope.event != TYPING_EVENT) return@collect
+                    val payload = envelope.payload
+                    val senderId = payload["userId"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase().orEmpty()
+                    if (senderId.isBlank() || senderId == currentUserId) return@collect
+
+                    val isTyping = payload["isTyping"]?.jsonPrimitive?.booleanOrNull ?: false
+                    val displayName = payload["displayName"]?.jsonPrimitive?.contentOrNull
+                        ?.trim()
+                        ?.ifBlank { null }
+                        ?: "Alguien"
+                    val updatedAtMs = payload["timestamp"]?.jsonPrimitive?.longOrNull
+                        ?.takeIf { it > 0L }
+                        ?: System.currentTimeMillis()
+
+                    typingState.update { current ->
+                        val withoutSender = current.filterNot {
+                            it.userId.equals(senderId, ignoreCase = true)
+                        }
+                        if (!isTyping) {
+                            withoutSender.pruneExpired(updatedAtMs)
+                        } else {
+                            (withoutSender + TypingParticipant(
+                                userId = senderId,
+                                displayName = displayName,
+                                updatedAtMs = updatedAtMs
+                            )).pruneExpired(updatedAtMs)
+                        }
+                    }
+                }
+            }
+
+            val pruneJob = launch(Dispatchers.IO) {
+                while (isActive) {
+                    delay(PRUNE_INTERVAL_MS)
+                    typingState.update { it.pruneExpired() }
+                }
+            }
+
+            try {
+                emitAll(
+                    typingState
+                        .map { it.pruneExpired() }
+                        .distinctUntilChanged()
+                )
+            } finally {
+                realtimeJob.cancel()
+                pruneJob.cancel()
+                typingState.value = emptyList()
+                ubuntuRealtimeClient.unsubscribe(channelName)
+            }
+        }
     }
 
     private suspend fun acquireSharedChannel(channelName: String): RealtimeChannel {

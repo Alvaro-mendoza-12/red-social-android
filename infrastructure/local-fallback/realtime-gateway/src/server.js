@@ -120,8 +120,13 @@ wss.on('connection', (ws, req) => {
       const isChallengeRoom = channel === 'challenge:live'
       const isFeedRoom = channel === 'feed:live'
       const isMomentsRoom = channel === 'moments:live'
+      const isVoiceRoomsRoom = channel === 'voice-rooms:live'
       const isAdminRoom = channel === 'admin:live'
-      if (!isUserRoom && !isChatRoom && !isRoomChannel && !isChallengeRoom && !isFeedRoom && !isMomentsRoom && !isAdminRoom) {
+      const isTypingRoom =
+        channel.startsWith('typing-chat:') ||
+        channel.startsWith('typing-group:') ||
+        channel.startsWith('typing-community:')
+      if (!isUserRoom && !isChatRoom && !isRoomChannel && !isChallengeRoom && !isFeedRoom && !isMomentsRoom && !isVoiceRoomsRoom && !isAdminRoom && !isTypingRoom) {
         return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL' })
       }
 

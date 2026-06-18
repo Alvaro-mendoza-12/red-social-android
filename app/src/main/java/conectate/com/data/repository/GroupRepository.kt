@@ -2406,6 +2406,19 @@ class GroupRepository @Inject constructor(
             var group = getGroupById(cleanId)
             var privileges = group?.let { resolveGroupGovernancePrivileges(it, userId) }
             val isAuthorized = privileges?.canManageCollection == true
+
+            if (authService.isLocalFallbackModeEnabled() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                if (isAuthorized) {
+                    localFallbackApiClient.deleteCollection(token, "groups", cleanId).getOrThrow()
+                } else {
+                    localFallbackApiClient.leaveCollection(token, "groups", cleanId).getOrThrow()
+                }
+                groupDao.deleteGroup(cleanId)
+                scope.launch { syncGroups() }
+                return@withContext Result.success(Unit)
+            }
             
             if (isAuthorized) {
                 collectionAdminRemoteStore.softDeleteCollection(

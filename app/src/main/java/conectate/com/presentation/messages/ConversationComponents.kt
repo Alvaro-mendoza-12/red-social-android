@@ -13,14 +13,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.isUserAdmin
 import java.util.*
+
+private val InboxRow = Color(0xFF111111)
+private val InboxText = Color(0xFFF6F6F8)
+private val InboxMuted = Color(0xFF9FA0A8)
+private val InboxRed = Color(0xFFE53935)
 
 @Composable
 fun ConversationItem(
@@ -56,19 +63,19 @@ fun ConversationItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(InboxRow)
             .clickable { onClick() }
-            .padding(16.dp),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CircularProfileImage(
             imageUrl = otherUserProfileImage,
-            size = 52.dp,
+            size = 54.dp,
             showBorder = false,
             isVerified = if (conversation.chat.is_group) false else conversation.otherUserVerified
         )
         
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -82,8 +89,10 @@ fun ConversationItem(
                 ) {
                     Text(
                         text = otherUserName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        color = InboxText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -97,7 +106,7 @@ fun ConversationItem(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Verificado",
                             tint = Color(0xFF1DA1F2),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
@@ -109,15 +118,16 @@ fun ConversationItem(
                         Icon(
                             imageVector = Icons.Default.PushPin,
                             contentDescription = "Chat fijado",
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            modifier = Modifier.size(16.dp),
+                            tint = InboxRed
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
                         text = formattedTime,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (unreadCount > 0) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (unreadCount > 0) InboxRed else InboxMuted,
                         fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -159,23 +169,24 @@ fun ConversationItem(
                             imageVector = typeIcon,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            tint = InboxMuted
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                 }
 
                 val displayText = when(lastMessage?.content_type) {
-                    "image" -> "Foto"
-                    "video" -> "Video"
+                    "image" -> "image.png"
+                    "video" -> "video.mp4"
                     "audio" -> "Audio"
-                    else -> lastMessage?.content ?: ""
+                    else -> lastMessage?.content ?: "Sin actividad reciente"
                 }
                 
                 Text(
                     text = displayText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = InboxMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -187,7 +198,7 @@ fun ConversationItem(
                         imageVector = Icons.Default.VolumeOff,
                         contentDescription = "Chat silenciado",
                         modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                        tint = InboxMuted
                     )
                 }
                 
@@ -217,7 +228,7 @@ fun ConversationItem(
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "Opciones",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = Color(0xFFD8D8DE)
                 )
             }
             DropdownMenu(

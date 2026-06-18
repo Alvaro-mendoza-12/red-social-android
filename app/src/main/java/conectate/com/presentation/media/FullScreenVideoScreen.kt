@@ -19,6 +19,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
+import conectate.com.util.UbuntuMedia
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +54,7 @@ fun FullScreenVideoScreen(
         ) {
             val exoPlayer = remember {
                 ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(MediaItem.fromUri(videoUrl))
+                    setMediaItem(UbuntuMedia.mediaItem(videoUrl))
                     prepare()
                     playWhenReady = true
                 }
@@ -70,6 +71,7 @@ fun FullScreenVideoScreen(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = true
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
                 modifier = Modifier.fillMaxSize()

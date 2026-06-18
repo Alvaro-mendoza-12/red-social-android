@@ -84,12 +84,36 @@ fun CommentSheet(
     cancelReply: () -> Unit = {}
 ) {
     var newCommentText by remember { mutableStateOf("") }
+    var pendingSentText by remember { mutableStateOf<String?>(null) }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     
     // Group comments
-    val topLevelComments = remember(comments) { comments.filter { it.parentId == null } }
-    val replies = remember(comments) { comments.filter { it.parentId != null }.groupBy { it.parentId } }
+    val commentIds = remember(comments) { comments.map { it.id.trim().lowercase() }.toSet() }
+    val topLevelComments = remember(comments, commentIds) {
+        comments.filter { comment ->
+            val parent = comment.parentId.normalizedCommentParent()
+            parent == null || parent !in commentIds
+        }
+    }
+    val replies = remember(comments) {
+        val ids = comments.map { it.id.trim().lowercase() }.toSet()
+        comments
+            .mapNotNull { comment ->
+                val parent = comment.parentId.normalizedCommentParent()
+                if (parent != null && parent in ids) parent to comment else null
+            }
+            .groupBy({ it.first }, { it.second })
+    }
+
+    LaunchedEffect(comments, pendingSentText) {
+        val pending = pendingSentText?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (comments.any { it.content.trim() == pending }) {
+            newCommentText = ""
+            pendingSentText = null
+            onClearMentionSuggestions()
+        }
+    }
     
     val recordPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -162,7 +186,7 @@ fun CommentSheet(
                     items(topLevelComments) { comment ->
                         CommentThreadItem(
                             comment = comment,
-                            replies = replies[comment.id] ?: emptyList(),
+                            replies = replies[comment.id.trim().lowercase()] ?: emptyList(),
                             onPlayAudio = onPlayAudio,
                             isPlaying = currentPlayingCommentId == comment.id,
                             progress = if (currentPlayingCommentId == comment.id) audioProgress else 0f,
@@ -361,9 +385,9 @@ fun CommentSheet(
                             IconButton(
                                 onClick = {
                                     if (newCommentText.isNotBlank()) {
-                                        onAddComment(newCommentText)
-                                        newCommentText = ""
-                                        onClearMentionSuggestions()
+                                        val textToSend = newCommentText.trim()
+                                        pendingSentText = textToSend
+                                        onAddComment(textToSend)
                                     }
                                 },
                                 colors = IconButtonDefaults.iconButtonColors(
@@ -389,6 +413,15 @@ private fun replaceActiveMention(currentText: String, username: String): String 
     if (suffix.any { it.isWhitespace() }) return "$currentText@$username "
 
     return currentText.substring(0, atIndex + 1) + username + " "
+}
+
+private fun String?.isRootCommentParent(): Boolean {
+    return normalizedCommentParent() == null
+}
+
+private fun String?.normalizedCommentParent(): String? {
+    val clean = this?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+    return clean.takeUnless { it == "0" || it == "null" || it == "undefined" || it == "none" }
 }
 
 @Composable

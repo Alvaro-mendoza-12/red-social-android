@@ -24,6 +24,7 @@ import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackInboxItem
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
 import conectate.com.core.messaging.UnreadPolicy
 import conectate.com.core.moderation.ContentModerationService
@@ -149,6 +150,10 @@ class MessageRepository @Inject constructor(
     )
     private var sessionStatusJob: Job? = null
     private var globalListenerJob: Job? = null
+
+    private fun shouldUseUbuntuBackend(): Boolean =
+        localFallbackApiClient.isConfigured &&
+            (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
 
     private fun currentSessionUserId(): String? =
         SessionWriteGuard.normalizeAccountId(authService.getCurrentUserId())
@@ -705,7 +710,7 @@ class MessageRepository @Inject constructor(
                 android.util.Log.d("MessageRepository", "📦 Pre-loaded ${preLoad.size} chats from Room")
             }
 
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            if (shouldUseUbuntuBackend()) {
                 val localInbox = localFallbackApiClient.loadMessagesInbox(accessToken, "chats")
                     .getOrElse { error ->
                         android.util.Log.w("MessageRepository", "Local fallback inbox failed", error)
@@ -1592,6 +1597,23 @@ class MessageRepository @Inject constructor(
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.setNickname(token, targetUserId, nickname)
+                if (result.isFailure) return@withContext result
+
+                val chat = chatDao.getChatByOtherUserId(targetUserId)
+                if (chat != null) {
+                    chatDao.updateNickname(chat.id, nickname)
+                    val currentChats = _userChats.value.toMutableList()
+                    val idx = currentChats.indexOfFirst { it.chat.id == chat.id }
+                    if (idx != -1) {
+                        currentChats[idx] = currentChats[idx].copy(nickname = nickname)
+                        _userChats.value = currentChats
+                    }
+                }
+                return@withContext Result.success(Unit)
+            }
             
             var payload = buildJsonObject {
                 put("user_id", currentUserId)
@@ -1796,7 +1818,7 @@ class MessageRepository @Inject constructor(
             var sessionSnapshot = captureSessionSnapshot(sessionUserId)
             if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-start:$chatId")) return
             var accessToken = authService.ensureValidAccessToken().getOrElse { return }
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            if (shouldUseUbuntuBackend()) {
                 val localChat = localFallbackApiClient.loadChat(accessToken, chatId)
                     .getOrElse { error ->
                         android.util.Log.w("MessageRepository", "Local fallback chat history failed for $chatId", error)
@@ -2057,8 +2079,8 @@ class MessageRepository @Inject constructor(
                 var path = "chat-media/$filename"
                 var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
                 if (upload.isSuccess) {
-                    mediaUrl = if (authService.isLocalFallbackSession()) {
-                        storageService.getPublicUrl("chat-media", filename)
+                    mediaUrl = if (shouldUseUbuntuBackend()) {
+                        UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", filename))
                     } else {
                         path
                     }
@@ -2268,8 +2290,8 @@ class MessageRepository @Inject constructor(
                 var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
                 if (upload.isSuccess) {
                     Result.success(
-                        if (authService.isLocalFallbackSession()) {
-                            storageService.getPublicUrl("chat-media", filename)
+                        if (shouldUseUbuntuBackend()) {
+                            UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", filename)).orEmpty()
                         } else {
                             "chat-media/$filename"
                         }
@@ -2294,13 +2316,13 @@ class MessageRepository @Inject constructor(
         token: String,
         msg: Message
     ): BackendSendResult {
-        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+        if (shouldUseUbuntuBackend()) {
             return localFallbackApiClient.sendChatMessage(
                 accessToken = token,
                 chatId = msg.chat_id,
                 content = msg.content,
                 contentType = msg.content_type,
-                mediaUrl = msg.media_url,
+                mediaUrl = UbuntuStorageUrl.rewrite(msg.media_url),
                 mediaSize = msg.media_size,
                 replyToId = msg.reply_to_id,
                 messageId = msg.id
@@ -2454,8 +2476,17 @@ class MessageRepository @Inject constructor(
             
             var now = java.time.Instant.now().toString()
             
-            // 1. Sync global state in 'messages' table (prefer secure RPC, fallback to PATCH)
-            if (!token.isNullOrBlank()) {
+            // 1. Sync global read state. Ubuntu is authoritative in local fallback sessions.
+            if (shouldUseUbuntuBackend()) {
+                if (!token.isNullOrBlank()) {
+                    localFallbackApiClient.markChatAsRead(token, cleanId)
+                        .onFailure { e ->
+                            android.util.Log.w("MessageRepository", "Ubuntu markChatAsRead failed for $cleanId", e)
+                        }
+                } else {
+                    android.util.Log.w("MessageRepository", "markChatAsRead: no Ubuntu token available for $cleanId")
+                }
+            } else if (!token.isNullOrBlank()) {
                 var remoteReadSynced = false
                 runCatching {
                     supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_read") {
@@ -2885,6 +2916,22 @@ class MessageRepository @Inject constructor(
         return try {
             var token = authService.getAccessToken() 
                 ?: return Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend()) {
+                val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                    ?: return Result.failure(Exception("No user"))
+                val targetUserId = normalizedParticipants
+                    .map { it.trim().lowercase() }
+                    .firstOrNull { it.isNotBlank() && it != currentUserId }
+                    ?: return Result.failure(Exception("No target user"))
+
+                val result = localFallbackApiClient.createDirectChat(token, targetUserId)
+                result.getOrNull()?.let { chat ->
+                    cacheChat(chat)
+                    getUserChats()
+                }
+                return result
+            }
             
             // Query for chats that contain these exact 2 participants
             // Query for chats that contain these exact 2 participants (using contains filter)
@@ -2986,6 +3033,31 @@ class MessageRepository @Inject constructor(
     suspend fun getOrCreateChat(targetUserId: String): Result<Chat> {
         var userId = authService.getCurrentUserId() 
             ?: return Result.failure(Exception("No user"))
+        val cleanTargetUserId = targetUserId.trim().lowercase()
+        if (cleanTargetUserId.isBlank() || cleanTargetUserId.startsWith("placeholder_")) {
+            return Result.failure(Exception("Usuario destino invalido"))
+        }
+
+        if (shouldUseUbuntuBackend()) {
+            val token = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            val canonicalTargetId = userRepository.getUserById(cleanTargetUserId)
+                .getOrNull()
+                ?.id
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+                ?: cleanTargetUserId
+            if (canonicalTargetId == userId.trim().lowercase()) {
+                return Result.failure(Exception("No puedes crear un chat contigo mismo"))
+            }
+            val result = localFallbackApiClient.createDirectChat(token, canonicalTargetId)
+            result.getOrNull()?.let { chat ->
+                cacheChat(chat)
+                getUserChats()
+            }
+            return result
+        }
         
         // CRITICAL: Normalize participants to ensure same chat is found regardless of who initiates
         val normalizedParticipants = listOf(userId, targetUserId)
@@ -3024,6 +3096,19 @@ class MessageRepository @Inject constructor(
         return try {
              var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
              var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+
+             if (!isGroup && shouldUseUbuntuBackend()) {
+                 val targetUserId = participants
+                     .map { it.trim().lowercase() }
+                     .firstOrNull { it.isNotBlank() && it != userId.trim().lowercase() }
+                     ?: return Result.failure(Exception("No target user"))
+                 val result = localFallbackApiClient.createDirectChat(token, targetUserId)
+                 result.getOrNull()?.let { chat ->
+                     cacheChat(chat)
+                     getUserChats()
+                 }
+                 return result
+             }
              
              // Ensure unique and inclusive (Strict normalization for filtering)
              val allParticipants = (participants + userId)

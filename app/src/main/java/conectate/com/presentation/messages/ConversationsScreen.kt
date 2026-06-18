@@ -2,32 +2,34 @@ package conectate.com.presentation.messages
 
 import androidx.compose.runtime.Composable
 
-import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
-import conectate.com.data.model.ChatWithLastMessage
-import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
+
+private val InboxBackground = Color(0xFF050505)
+private val InboxHeader = Color(0xFF101010)
+private val InboxChip = Color(0xFF1A1A1A)
+private val InboxMutedIcon = Color(0xFFCED0D7)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,9 +47,6 @@ fun ConversationsScreen(
     onNavigateToRoomDetail: (String) -> Unit
 ) {
     val selectedTab by viewModel.selectedTabIndex.collectAsState()
-    val unreadDms by viewModel.unreadDmsCount.collectAsState()
-    val unreadGroups by viewModel.unreadGroupsCount.collectAsState()
-    val unreadCommunities by viewModel.unreadCommunitiesCount.collectAsState()
     val activeRoom by voiceRoomsViewModel.currentRoom.collectAsState()
     val participants by voiceRoomsViewModel.currentParticipants.collectAsState()
     val currentUserKey = viewModel.currentUserId?.trim()?.lowercase()
@@ -55,7 +54,7 @@ fun ConversationsScreen(
         currentUserKey != null && participant.id.trim().lowercase() == currentUserKey
     }?.isMuted ?: false
     
-    val tabs = listOf("Chats", "Grupos", "Comunidad", "Voz")
+    val tabs = listOf("Mensajes", "Grupos", "Canales", "Voz")
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -70,166 +69,182 @@ fun ConversationsScreen(
         }
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            Column(
-                modifier = Modifier.background(MaterialTheme.colorScheme.primary)
-            ) {
-                // Auto-height TopAppBar with system insets support
-                // Custom Compact Header (48dp) instead of TopAppBar (64dp)
-                Row(
-                    modifier = Modifier
-                        .background(Color.Transparent)
-                        .statusBarsPadding()
-                        .height(48.dp)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Mensajes",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    IconButton(onClick = onNavigateToSearch) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Buscar conversación",
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
-
-                conectate.com.presentation.components.ActiveVoiceBar(
-                    activeRoom = activeRoom,
-                    isMuted = localIsMuted,
-                    modifier = Modifier.fillMaxWidth(),
-                    onReEnter = onNavigateToRoomDetail,
-                    onToggleMute = {
-                        voiceRoomsViewModel.toggleMute(!localIsMuted)
-                    },
-                    onHangUp = {
-                        voiceRoomsViewModel.leaveCurrentRoom()
-                    }
-                )
-                
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.Indicator(
-                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                ) {
-                    tabs.forEachIndexed { index, title ->
-                        val unreadCount = when(index) {
-                            0 -> unreadDms
-                            1 -> unreadGroups
-                            2 -> unreadCommunities
-                            else -> 0
-                        }
-                        
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { viewModel.onTabSelected(index) },
-                            selectedContentColor = Color.White,
-                            unselectedContentColor = Color.White.copy(alpha = 0.7f)
+    val baseDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(baseDensity.density, fontScale = 1f)
+    ) {
+        Scaffold(
+            containerColor = InboxBackground,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                Column(modifier = Modifier.background(InboxHeader)) {
+                    Box(
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .height(56.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp)
+                    ) {
+                        IconButton(
+                            onClick = { navController.navigate(Screen.Settings.route) },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .size(38.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                            Icon(
+                                imageVector = Icons.Default.ManageAccounts,
+                                contentDescription = "Cambiar cuenta",
+                                tint = Color.White,
+                                modifier = Modifier.size(25.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Bandeja  de entrada",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 19.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+
+                        Row(
+                            modifier = Modifier.align(Alignment.CenterEnd),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = onNavigateToSearch,
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Visible // We use Visible to avoid clipping issues
-                                ) 
-                                
-                                if (unreadCount > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .background(Color.White, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (unreadCount > 9) "9+" else unreadCount.toString(),
-                                            color = Color(0xFFE53935),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                    }
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Buscar",
+                                    tint = InboxMutedIcon,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { navController.navigate(Screen.ChatSettings.route) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Filtros",
+                                    tint = InboxMutedIcon,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    conectate.com.presentation.components.ActiveVoiceBar(
+                        activeRoom = activeRoom,
+                        isMuted = localIsMuted,
+                        modifier = Modifier.fillMaxWidth(),
+                        onReEnter = onNavigateToRoomDetail,
+                        onToggleMute = {
+                            voiceRoomsViewModel.toggleMute(!localIsMuted)
+                        },
+                        onHangUp = {
+                            voiceRoomsViewModel.leaveCurrentRoom()
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 17.dp, end = 17.dp, top = 2.dp, bottom = 17.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            val selected = selectedTab == index
+                            Surface(
+                                onClick = { viewModel.onTabSelected(index) },
+                                shape = CircleShape,
+                                color = if (selected) Color.White else InboxChip,
+                                contentColor = if (selected) Color.Black else Color.White,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = title,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Clip
+                                    )
                                 }
                             }
                         }
                     }
                 }
-            }
-        },
-        floatingActionButton = {
-            val fabAction = when (selectedTab) {
-                0 -> onNavigateToSearch
-                1 -> onNavigateToCreateGroup
-                2 -> onNavigateToCreateCommunity
-                3 -> onNavigateToCreateVoiceRoom
-                else -> { { } }
-            }
-            
-            val fabDescription = when (selectedTab) {
-                0 -> "Nuevo mensaje"
-                1 -> "Crear grupo"
-                2 -> "Crear comunidad"
-                3 -> "Crear sala de voz"
-                else -> ""
-            }
+            },
+            floatingActionButton = {
+                val fabAction = when (selectedTab) {
+                    0 -> onNavigateToSearch
+                    1 -> onNavigateToCreateGroup
+                    2 -> onNavigateToCreateCommunity
+                    3 -> onNavigateToCreateVoiceRoom
+                    else -> { { } }
+                }
 
-            FloatingActionButton(
-                onClick = fabAction,
-                containerColor = MaterialTheme.colorScheme.primary,
-                shape = CircleShape
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = fabDescription,
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
+                val fabDescription = when (selectedTab) {
+                    0 -> "Nuevo mensaje"
+                    1 -> "Crear grupo"
+                    2 -> "Crear comunidad"
+                    3 -> "Crear sala de voz"
+                    else -> ""
+                }
+
+                FloatingActionButton(
+                    onClick = fabAction,
+                    modifier = Modifier.size(56.dp),
+                    containerColor = Color.White,
+                    contentColor = Color.Black,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = fabDescription,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
             }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            when (selectedTab) {
-                0 -> PrivateChatsTab(
-                    onNavigateToSearch = onNavigateToSearch,
-                    viewModel = viewModel,
-                    onNavigateToChat = onNavigateToChat
-                )
-                1 -> GroupsTab(
-                    navController = navController,
-                    onNavigateToGroupChat = onNavigateToGroupChat
-                )
-                2 -> CommunitiesTab(
-                    navController = navController,
-                    onNavigateToCommunityChat = onNavigateToCommunityChat
-                )
-                3 -> VoiceRoomsTab(
-                    navController = navController,
-                    onNavigateToCreateRoom = onNavigateToCreateVoiceRoom,
-                    onNavigateToRoomDetail = onNavigateToRoomDetail
-                )
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(InboxBackground)
+                    .padding(padding)
+            ) {
+                when (selectedTab) {
+                    0 -> PrivateChatsTab(
+                        onNavigateToSearch = onNavigateToSearch,
+                        viewModel = viewModel,
+                        onNavigateToChat = onNavigateToChat
+                    )
+                    1 -> GroupsTab(
+                        navController = navController,
+                        onNavigateToGroupChat = onNavigateToGroupChat
+                    )
+                    2 -> CommunitiesTab(
+                        navController = navController,
+                        onNavigateToCommunityChat = onNavigateToCommunityChat
+                    )
+                    3 -> VoiceRoomsTab(
+                        navController = navController,
+                        onNavigateToCreateRoom = onNavigateToCreateVoiceRoom,
+                        onNavigateToRoomDetail = onNavigateToRoomDetail
+                    )
+                }
             }
         }
     }

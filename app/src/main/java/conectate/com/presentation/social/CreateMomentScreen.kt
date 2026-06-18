@@ -36,6 +36,8 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import conectate.com.presentation.components.CircularProfileImage
 import java.util.Locale
 
+private const val MAX_MOMENT_VIDEO_DURATION_MS = 25_000L
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun CreateMomentScreen(
@@ -181,7 +183,7 @@ fun CreateMomentScreen(
                         mediaList = galleryMedia,
                         onMediaSelected = { media ->
                             selectedMedia = media
-                            if (media.type == MediaType.VIDEO && media.duration > 16000) { // 16s buffer
+                            if (media.type == MediaType.VIDEO && media.duration > MAX_MOMENT_VIDEO_DURATION_MS + 1_000L) {
                                 currentStep = "TRIMMER"
                             } else {
                                 finalUri = media.uri
@@ -329,14 +331,12 @@ fun VideoTrimmerView(
     onTrim: (Long, Long) -> Unit
 ) {
     var startPercentage by remember { mutableStateOf(0f) }
-    var rangePercentage by remember { mutableStateOf(0.2f) } // approx 15s of a 60s video, will adjust
     val videoDurationMs = media.duration.coerceAtLeast(1)
     
-    // Calculate 15s percentage
-    val maxSegmentPercentage = (15000f / videoDurationMs).coerceAtMost(1f)
+    val maxSegmentPercentage = (MAX_MOMENT_VIDEO_DURATION_MS.toFloat() / videoDurationMs).coerceAtMost(1f)
     
     // Determine the actual selected range
-    // Simplified UI: A slider that selects the START point. The END point is fixed to start + 15s
+    // Simplified UI: A slider selects the start; the end is capped at the moment limit.
     
     Column(
         modifier = Modifier
@@ -345,13 +345,13 @@ fun VideoTrimmerView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Selecciona 15 segundos", style = MaterialTheme.typography.titleMedium)
+        Text("Selecciona hasta 25 segundos", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(24.dp))
         
         // Preview with Video Player
         if (trimmingState !is TrimmingState.Trimming) {
             val startMs = (startPercentage * videoDurationMs).toLong()
-            val endMs = (startMs + 15000).coerceAtMost(videoDurationMs)
+            val endMs = (startMs + MAX_MOMENT_VIDEO_DURATION_MS).coerceAtMost(videoDurationMs)
             
             MomentVideoPlayer(
                 uri = media.uri,
@@ -385,7 +385,7 @@ fun VideoTrimmerView(
         )
         
         val startMs = (startPercentage * videoDurationMs).toLong()
-        val endMs = (startMs + 15000).coerceAtMost(videoDurationMs)
+        val endMs = (startMs + MAX_MOMENT_VIDEO_DURATION_MS).coerceAtMost(videoDurationMs)
         
         Text("${formatDuration(startMs)} - ${formatDuration(endMs)}")
         

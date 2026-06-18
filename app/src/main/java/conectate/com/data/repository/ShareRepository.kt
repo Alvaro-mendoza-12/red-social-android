@@ -15,6 +15,7 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import conectate.com.data.localfallback.LocalFallbackApiClient
 
 @Serializable
 data class Share(
@@ -28,14 +29,23 @@ data class Share(
 @Singleton
 class ShareRepository @Inject constructor(
     private val supabase: SupabaseConfig,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+
+    private fun shouldUseUbuntuBackend(): Boolean =
+        localFallbackApiClient.isConfigured &&
+            (supabase.isLocalFallbackPrimary || authService.isLocalFallbackSession())
 
 
     suspend fun shareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend() && contentType == "video") {
+                return@withContext localFallbackApiClient.shareVideo(accessToken, targetId).map { Unit }
+            }
             
             val shareData = buildJsonObject {
                 put("user_id", userId)
@@ -75,6 +85,10 @@ class ShareRepository @Inject constructor(
         try {
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+
+            if (shouldUseUbuntuBackend() && contentType == "video") {
+                return@withContext localFallbackApiClient.unshareVideo(accessToken, targetId).map { Unit }
+            }
             
             var response = supabase.httpClient.delete("${supabase.supabaseUrl}/rest/v1/shares") {
                 header("Authorization", "Bearer $accessToken")

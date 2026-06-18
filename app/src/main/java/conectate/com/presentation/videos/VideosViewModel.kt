@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import android.media.MediaPlayer
 import conectate.com.util.AudioRecorder
+import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.serialization.builtins.ListSerializer
@@ -198,9 +199,13 @@ class VideosViewModel @Inject constructor(
     private fun loadComments(videoId: String) {
         commentsJob?.cancel()
         commentsJob = viewModelScope.launch {
-            videoRepository.getCommentsFlow(videoId).collect { comments ->
-                _commentsState.value = comments
-            }
+            videoRepository.loadVideoCommentsNow(videoId)
+                .onSuccess { comments ->
+                    _commentsState.value = mergeComments(_commentsState.value, comments)
+                }
+                .onFailure { error ->
+                    android.util.Log.e("VideosViewModel", "Failed loading comments", error)
+                }
         }
     }
 
@@ -267,6 +272,7 @@ class VideosViewModel @Inject constructor(
                  val videoId = _selectedVideoForComments.value ?: return
                  viewModelScope.launch {
                      videoRepository.sendAudioComment(videoId, fileToSend)
+                         .onSuccess { refreshCommentsAfterWrite(videoId) }
                  }
             } else {
                 voiceMessageManager.reset()
@@ -284,7 +290,8 @@ class VideosViewModel @Inject constructor(
         
         mediaPlayer = MediaPlayer().apply {
             try {
-                setDataSource(comment.mediaUrl)
+                val audioUrl = comment.mediaUrl ?: return
+                UbuntuMedia.setDataSource(this, audioUrl)
                 prepareAsync()
                 setOnPreparedListener { 
                     start()
@@ -358,13 +365,27 @@ class VideosViewModel @Inject constructor(
         viewModelScope.launch {
             videoRepository.addComment(videoId, content, parentId = parentId).onFailure { e ->
                 android.util.Log.e("VideosViewModel", "Error adding comment", e)
-            }.onSuccess {
+            }.onSuccess { insertedComment ->
                 android.util.Log.d("VideosViewModel", "Comment added successfully")
+                _commentsState.value = mergeComment(_commentsState.value, insertedComment)
                 cancelReply()
                 clearMentionSuggestions()
-                loadComments(videoId)
+                refreshCommentsAfterWrite(videoId)
                 reloadVideo(videoId)
             }
+        }
+    }
+
+    private fun refreshCommentsAfterWrite(videoId: String) {
+        viewModelScope.launch {
+            delay(250)
+            videoRepository.loadVideoCommentsNow(videoId)
+                .onSuccess { comments ->
+                    _commentsState.value = mergeComments(_commentsState.value, comments)
+                }
+                .onFailure { error ->
+                    android.util.Log.w("VideosViewModel", "Post-write comments refresh failed", error)
+                }
         }
     }
 
@@ -440,7 +461,17 @@ class VideosViewModel @Inject constructor(
             videoRepository.getVideo(videoId).onSuccess { updatedVideo ->
                 val currentState = _videosState.value
                 if (currentState is VideosUiState.Success) {
-                     val updatedList = currentState.videos.map { if (it.id == videoId) updatedVideo else it }
+                     val updatedList = currentState.videos.map { current ->
+                         if (current.id != videoId) current
+                         else updatedVideo.copy(
+                             views = maxOf(current.views, updatedVideo.views),
+                             likeCount = maxOf(current.likeCount, updatedVideo.likeCount),
+                             commentCount = maxOf(current.commentCount, updatedVideo.commentCount),
+                             shareCount = maxOf(current.shareCount, updatedVideo.shareCount),
+                             likedByMe = updatedVideo.likedByMe,
+                             sharedByMe = updatedVideo.sharedByMe
+                         )
+                     }
                      _videosState.value = VideosUiState.Success(updatedList)
                 }
             }.onFailure {
@@ -453,7 +484,7 @@ class VideosViewModel @Inject constructor(
         if (!shareRequestsInFlight.add(video.id)) return
         viewModelScope.launch {
             try {
-                val userId = authService.getCurrentUserId() ?: return@launch
+                authService.getCurrentUserId() ?: return@launch
                 val wasShared = video.sharedByMe
                 val delta = if (wasShared) -1 else 1
                 
@@ -469,27 +500,6 @@ class VideosViewModel @Inject constructor(
                     _videosState.value = VideosUiState.Success(updatedVideos)
                 }
 
-                val shareResult = if (wasShared) {
-                    shareRepository.unshareContent(userId, "video", video.id)
-                } else {
-                    shareRepository.shareContent(userId, "video", video.id)
-                }
-
-                if (shareResult.isFailure) {
-                    // Revert on failure
-                    val failedState = _videosState.value
-                    if (failedState is VideosUiState.Success) {
-                        val revertedVideos = failedState.videos.map { v ->
-                            if (v.id == video.id) {
-                                val restoredShareCount = if (wasShared) v.shareCount + 1 else maxOf(0, v.shareCount - 1)
-                                v.copy(sharedByMe = wasShared, shareCount = restoredShareCount)
-                            } else v
-                        }
-                        _videosState.value = VideosUiState.Success(revertedVideos)
-                    }
-                    return@launch
-                }
-
                 val countResult = videoRepository.incrementShareCount(video.id, delta)
                 if (countResult.isFailure) {
                     val failedState = _videosState.value
@@ -502,6 +512,8 @@ class VideosViewModel @Inject constructor(
                         }
                         _videosState.value = VideosUiState.Success(revertedVideos)
                     }
+                } else {
+                    reloadVideo(video.id)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideosViewModel", "Error toggling video share", e)
@@ -520,6 +532,23 @@ class VideosViewModel @Inject constructor(
         if (mentionCandidate.length > 30) return null
 
         return mentionCandidate.trim()
+    }
+
+    private fun mergeComment(
+        current: List<conectate.com.data.model.VideoComment>,
+        comment: conectate.com.data.model.VideoComment
+    ): List<conectate.com.data.model.VideoComment> {
+        if (current.any { it.id.equals(comment.id, ignoreCase = true) }) return current
+        return listOf(comment) + current
+    }
+
+    private fun mergeComments(
+        current: List<conectate.com.data.model.VideoComment>,
+        incoming: List<conectate.com.data.model.VideoComment>
+    ): List<conectate.com.data.model.VideoComment> {
+        return (current + incoming)
+            .filter { it.id.isNotBlank() }
+            .distinctBy { it.id.trim().lowercase() }
     }
 
     private fun saveVideosCache(videos: List<Video>) {

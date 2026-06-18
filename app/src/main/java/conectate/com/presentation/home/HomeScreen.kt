@@ -223,6 +223,14 @@ fun HomeScreen(
                     }
                 )
             }
+
+            composable(Screen.AccountSettings.route) {
+                conectate.com.presentation.profile.EditProfileScreen(navController = navController)
+            }
+
+            composable(Screen.ChatSettings.route) {
+                conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
+            }
             
             // ✅ FIX: Add FollowList route to HomeScreen NavHost to prevent crash
             composable(

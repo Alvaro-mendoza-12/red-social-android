@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.imageLoader
@@ -86,6 +89,7 @@ fun ProfileScreen(
     val scope = rememberCoroutineScope() // Moved scope here to survive dialog dismissal
     var isPosting by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     // ... (existing code)
 
@@ -154,6 +158,18 @@ fun ProfileScreen(
     // Load profile on first composition
     LaunchedEffect(userId) {
         viewModel.loadUserProfile(userId)
+    }
+
+    DisposableEffect(lifecycleOwner, userId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadUserProfile(userId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     Scaffold(

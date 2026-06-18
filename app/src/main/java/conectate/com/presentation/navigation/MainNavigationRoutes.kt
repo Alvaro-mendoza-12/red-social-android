@@ -188,6 +188,18 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.AccountSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.EditProfileScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.ChatSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
+        }
+    }
+
     composable(Screen.MyReports.route) {
         android.util.Log.d("MainActivity", "ENTERING MyReports Route")
         conectate.com.presentation.profile.MyReportsScreen(navController = navController)
