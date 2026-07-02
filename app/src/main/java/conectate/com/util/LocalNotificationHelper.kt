@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.RingtoneManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -75,17 +76,19 @@ class LocalNotificationHelper(private val context: Context) {
         val channelName = if (normalizedType in socialTypes) "Interacciones Sociales" else "Sistema"
         val channelDesc = if (normalizedType in socialTypes) "Likes, Comentarios y Seguidores" else "Alertas del sistema"
 
-        val channel = NotificationChannel(
-            channelId,
-            channelName,
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = channelDesc
-            enableVibration(true)
-            enableLights(true)
-            setShowBadge(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                channelName,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = channelDesc
+                enableVibration(true)
+                enableLights(true)
+                setShowBadge(true)
+            }
+            notificationManager.createNotificationChannel(channel)
         }
-        notificationManager.createNotificationChannel(channel)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)

@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync Conectate backups to external disks every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=conectate-sync-external-backups.service
+
+[Install]
+WantedBy=timers.target

@@ -41,6 +41,7 @@ private val InboxMuted = Color(0xFF9FA0A8)
 @Composable
 fun PrivateChatsTab(
     onNavigateToSearch: () -> Unit,
+    onNavigateToCallHistory: () -> Unit,
     viewModel: MessagingViewModel = hiltViewModel(),
     onNavigateToChat: (String) -> Unit
 ) {
@@ -48,6 +49,7 @@ fun PrivateChatsTab(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val folders by viewModel.chatFolders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+    val selectedListFilter by viewModel.selectedListFilter.collectAsState()
     val uiMessage by viewModel.uiMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -68,46 +70,67 @@ fun PrivateChatsTab(
             .background(InboxBackground)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-        // Barra de búsqueda
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { viewModel.updateSearchQuery(it) },
+        // Search and call history have independent, non-overlapping targets.
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 16.dp)
-                .height(54.dp),
-            placeholder = {
-                Text(
-                    "Buscar conversaciones",
-                    color = InboxMuted,
+                .padding(horizontal = 14.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { viewModel.updateSearchQuery(it) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(54.dp),
+                placeholder = {
+                    Text(
+                        "Buscar conversaciones",
+                        color = InboxMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 14.sp
+                ),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Buscar",
+                        tint = Color(0xFFE1E2EA),
+                        modifier = Modifier.size(25.dp)
+                    )
+                },
+                singleLine = true,
+                shape = CircleShape,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Color.White,
+                    focusedBorderColor = Color(0xFF777986),
+                    unfocusedBorderColor = Color(0xFF777986),
+                    focusedContainerColor = InboxBackground,
+                    unfocusedContainerColor = InboxBackground,
                 )
-            },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp
-            ),
-            leadingIcon = {
+            )
+            FilledTonalIconButton(
+                onClick = onNavigateToCallHistory,
+                modifier = Modifier.size(54.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = InboxRed,
+                    contentColor = Color.White
+                )
+            ) {
                 Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Buscar",
-                    tint = Color(0xFFE1E2EA),
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Abrir historial de llamadas",
                     modifier = Modifier.size(25.dp)
                 )
-            },
-            singleLine = true,
-            shape = CircleShape,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = Color.White,
-                focusedBorderColor = Color(0xFF777986),
-                unfocusedBorderColor = Color(0xFF777986),
-                focusedContainerColor = InboxBackground,
-                unfocusedContainerColor = InboxBackground,
-            )
-        )
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -117,23 +140,23 @@ fun PrivateChatsTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             InboxFilterPill(
-                selected = selectedFolderId == null,
-                onClick = { viewModel.selectFolder(null) },
+                selected = selectedFolderId == null && selectedListFilter == ChatListFilter.ALL,
+                onClick = { viewModel.selectListFilter(ChatListFilter.ALL) },
                 label = "Todas",
             )
             InboxFilterPill(
-                selected = false,
-                onClick = { },
+                selected = selectedListFilter == ChatListFilter.FAVORITES,
+                onClick = { viewModel.selectListFilter(ChatListFilter.FAVORITES) },
                 label = "Favoritos",
                 icon = Icons.Default.Star,
-                outlined = true,
+                outlined = selectedListFilter != ChatListFilter.FAVORITES,
             )
             InboxFilterPill(
-                selected = false,
-                onClick = { },
+                selected = selectedListFilter == ChatListFilter.ARCHIVED,
+                onClick = { viewModel.selectListFilter(ChatListFilter.ARCHIVED) },
                 label = "Archivados",
                 icon = Icons.Default.Archive,
-                outlined = true,
+                outlined = selectedListFilter != ChatListFilter.ARCHIVED,
             )
             InboxFilterPill(
                 onClick = { showCreateFolderDialog = true },
@@ -190,6 +213,10 @@ fun PrivateChatsTab(
                                 text = when {
                                     selectedFolderId != null && searchQuery.isEmpty() ->
                                         "Esta carpeta está vacía. Agrega chats desde \"Todas\"."
+                                    selectedListFilter == ChatListFilter.FAVORITES && searchQuery.isEmpty() ->
+                                        "No tienes chats favoritos"
+                                    selectedListFilter == ChatListFilter.ARCHIVED && searchQuery.isEmpty() ->
+                                        "No tienes chats archivados"
                                     searchQuery.isEmpty() ->
                                         "No tienes conversaciones"
                                     else ->
@@ -232,10 +259,12 @@ fun PrivateChatsTab(
                                 conversation = conversation,
                                 currentUserId = viewModel.currentUserId ?: "",
                                 onClick = {
-                                    onNavigateToChat(conversation.chat.id)
+                                onNavigateToChat(conversation.chat.id)
                                 },
                                 onMute = { viewModel.muteChat(conversation.chat.id, !conversation.chat.is_muted) },
                                 onPin = { viewModel.pinChat(conversation.chat.id, !conversation.chat.is_pinned) },
+                                onFavorite = { viewModel.favoriteChat(conversation.chat.id, !conversation.chat.is_favorite) },
+                                onArchive = { viewModel.archiveChat(conversation.chat.id, !conversation.chat.is_archived) },
                                 onBlock = { viewModel.blockUser(otherUserId) },
                                 onManageFolders = { folderTargetConversation = conversation },
                                 onDelete = { viewModel.deleteChat(conversation.chat.id) },

@@ -42,6 +42,8 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import conectate.com.data.model.Video
 import conectate.com.data.repository.VideoRepository
 import conectate.com.util.UbuntuMedia
@@ -51,6 +53,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import javax.inject.Inject
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -219,6 +222,8 @@ fun VideoFeedScreen(
     // 1️⃣ SINGLE EXO PLAYER INSTANCE
     // ════════════════════════════════════════════════════════
     val lifecycleOwner = LocalLifecycleOwner.current
+    val latestCommentsSheetOpen by rememberUpdatedState(commentsSheetOpen)
+    val latestShareDialogOpen by rememberUpdatedState(showInternalShareDialog)
     
     // We remember the player across recompositions. 
     val exoPlayer = remember {
@@ -270,7 +275,7 @@ fun VideoFeedScreen(
                 viewModel.refreshFollowStatus()
                 
                 // Only auto-resume if NOT in comments mode
-                if (!commentsSheetOpen) {
+                if (!latestCommentsSheetOpen && !latestShareDialogOpen) {
                     exoPlayer.play()
                 }
             }
@@ -284,56 +289,73 @@ fun VideoFeedScreen(
     }
     
     // 🚀 RESTORED & STABLE: Synchronize Playlist when videos change
-    LaunchedEffect(currentVideos) {
+    val playlistSignature = remember(currentVideos) {
+        currentVideos.map { video -> video.id to video.videoUrl }
+    }
+
+    LaunchedEffect(playlistSignature) {
         if (currentVideos.isNotEmpty()) {
             val resolvedVideoUrls = currentVideos.map { UbuntuMedia.resolveUrl(it.videoUrl) ?: it.videoUrl }
             val mediaItems = resolvedVideoUrls.map { UbuntuMedia.mediaItem(it) }
-            
-            // Basic check: if count and first/last URL matches, avoid resetting
-            val shouldUpdate = exoPlayer.mediaItemCount != mediaItems.size || 
-                             (mediaItems.isNotEmpty() && exoPlayer.getMediaItemAt(0).localConfiguration?.uri?.toString() != resolvedVideoUrls[0])
+
+            val existingUrls = (0 until exoPlayer.mediaItemCount).map { index ->
+                exoPlayer.getMediaItemAt(index).localConfiguration?.uri?.toString().orEmpty()
+            }
+            val shouldUpdate = existingUrls != resolvedVideoUrls
 
             if (shouldUpdate) {
                 android.util.Log.d("VideoFeedScreen", "Updating media items (stable)...")
-                exoPlayer.setMediaItems(mediaItems)
+                val targetPage = pagerState.settledPage.coerceIn(0, mediaItems.lastIndex)
+                exoPlayer.setMediaItems(mediaItems, targetPage, 0L)
                 exoPlayer.prepare()
             }
+        } else {
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
         }
     }
 
-    // Effect: Handle Page Changes -> Minimal actions (Seek & Play)
-    LaunchedEffect(pagerState.currentPage) {
+    // Count views and paginate only after a swipe has settled on one video.
+    LaunchedEffect(pagerState.settledPage, playlistSignature) {
         if (sidePanelState != VideoSidePanel.VIDEO) {
             switchToVideoPanel()
         }
-        if (currentVideos.isNotEmpty() && pagerState.currentPage < currentVideos.size) {
-            val video = currentVideos[pagerState.currentPage]
-            
-            // Sync player index with pager index
-            if (exoPlayer.currentMediaItemIndex != pagerState.currentPage) {
-                exoPlayer.seekTo(pagerState.currentPage, 0)
-            }
-            
-            if (!commentsSheetOpen) {
-                exoPlayer.play()
-            }
-            
+        if (currentVideos.isNotEmpty() && pagerState.settledPage < currentVideos.size) {
+            val video = currentVideos[pagerState.settledPage]
             viewModel.incrementVideoViews(video.id)
-            
-            // Infinite scroll trigger
-            if (pagerState.currentPage >= currentVideos.size - 3) {
+            if (pagerState.settledPage >= currentVideos.size - 3) {
                 viewModel.loadMoreVideos()
             }
-        } else {
-            exoPlayer.pause()
         }
     }
 
-    // Effect: Pause when Comments or Share Dialog Open
-    LaunchedEffect(commentsSheetOpen, showInternalShareDialog) {
-        if (commentsSheetOpen || showInternalShareDialog) {
+    // Exactly one settled page owns playback. Pause while swiping or while an
+    // overlay is open, then resume automatically when it closes.
+    LaunchedEffect(
+        pagerState.settledPage,
+        pagerState.isScrollInProgress,
+        commentsSheetOpen,
+        showInternalShareDialog,
+        sidePanelState,
+        playlistSignature
+    ) {
+        val page = pagerState.settledPage
+        val canPlay = currentVideos.isNotEmpty() &&
+            page in currentVideos.indices &&
+            !pagerState.isScrollInProgress &&
+            !commentsSheetOpen &&
+            !showInternalShareDialog &&
+            sidePanelState == VideoSidePanel.VIDEO
+
+        if (!canPlay) {
             exoPlayer.pause()
-        } 
+        } else {
+            if (exoPlayer.currentMediaItemIndex != page) {
+                exoPlayer.seekTo(page, 0L)
+            }
+            exoPlayer.playWhenReady = true
+            exoPlayer.play()
+        }
     }
 
     // 🚀 NEW: State-Driven Navigation Logic (The "Freeze" Fix)
@@ -527,7 +549,7 @@ fun VideoFeedScreen(
                         VideoItem(
                             video = currentVideos[page],
                             exoPlayer = exoPlayer, // Pass the SINGLE player
-                            isSelected = pagerState.currentPage == page && !isSystemBusy,
+                            isSelected = pagerState.settledPage == page && !isSystemBusy,
                             onLikeClick = { viewModel.toggleLike(currentVideos[page]) },
                             onCommentClick = { 
                                 switchToCommentsPanel(currentVideos[page])
@@ -772,6 +794,9 @@ fun VideoItem(
         // PAUSE ICON OVERLAY
         // We only observe isPlaying state if this item is selected
         var isPlaying by remember { mutableStateOf(true) }
+        var playbackProgress by remember(video.id) { mutableFloatStateOf(0f) }
+        var playbackDurationMs by remember(video.id) { mutableLongStateOf(0L) }
+        var isUserSeeking by remember(video.id) { mutableStateOf(false) }
         
         // 🚀 SMART TRANSITION STATE
         // Keep thumbnail visible until the FIRST FRAME is actually rendered by the player.
@@ -807,7 +832,15 @@ fun VideoItem(
                 isPlaying = exoPlayer.isPlaying
                 
                 try {
-                    kotlinx.coroutines.awaitCancellation()
+                    while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+                        val duration = exoPlayer.duration.takeIf { it > 0L } ?: 0L
+                        playbackDurationMs = duration
+                        if (!isUserSeeking && duration > 0L) {
+                            playbackProgress = (exoPlayer.currentPosition.toFloat() / duration.toFloat())
+                                .coerceIn(0f, 1f)
+                        }
+                        delay(200)
+                    }
                 } finally {
                     exoPlayer.removeListener(listener)
                 }
@@ -821,6 +854,9 @@ fun VideoItem(
                         player = exoPlayer
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setKeepContentOnPlayerReset(true)
+                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                         // Important: Keep screen on while playing
                         keepScreenOn = true
                     }
@@ -837,8 +873,19 @@ fun VideoItem(
             visible = !isSelected || !isFirstFrameRendered,
             exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(50))
         ) {
+            val thumbnailRequest = remember(video.thumbnailUrl) {
+                ImageRequest.Builder(context)
+                    .data(UbuntuMedia.resolveUrl(video.thumbnailUrl) ?: video.thumbnailUrl)
+                    .memoryCacheKey(conectate.com.data.localfallback.UbuntuStorageUrl.stableCacheKey(video.thumbnailUrl))
+                    .diskCacheKey(conectate.com.data.localfallback.UbuntuStorageUrl.stableCacheKey(video.thumbnailUrl))
+                    .size(720, 1280)
+                    .crossfade(false)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .build()
+            }
             AsyncImage(
-                model = video.thumbnailUrl,
+                model = thumbnailRequest,
                 contentDescription = null,
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
                 contentScale = ContentScale.Fit,
@@ -853,6 +900,28 @@ fun VideoItem(
                  tint = Color.White.copy(alpha = 0.7f),
                  modifier = Modifier.align(Alignment.Center).size(64.dp)
              )
+        }
+
+        if (isSelected && playbackDurationMs > 0L) {
+            Slider(
+                value = playbackProgress,
+                onValueChange = { value ->
+                    isUserSeeking = true
+                    playbackProgress = value.coerceIn(0f, 1f)
+                    exoPlayer.seekTo((playbackDurationMs * playbackProgress).toLong())
+                },
+                onValueChangeFinished = { isUserSeeking = false },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(22.dp)
+                    .padding(horizontal = 2.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                )
+            )
         }
 
         // Right Sidebar (Interactions)

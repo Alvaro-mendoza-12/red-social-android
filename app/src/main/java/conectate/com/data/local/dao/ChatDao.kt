@@ -48,8 +48,25 @@ interface ChatDao {
         markAsRead(chatId)
     }
 
-    @Query("UPDATE chats SET last_message_preview = :content, last_message_timestamp = :timestamp, last_message_at = :timestamp, is_deleted = 0 WHERE id = :chatId")
-    suspend fun updateLastMessage(chatId: String, content: String, timestamp: String)
+    @Query(
+        """
+        UPDATE chats
+        SET last_message_preview = :content,
+            last_message_timestamp = :timestamp,
+            last_message_at = :timestamp,
+            last_message_id = :messageId,
+            last_message_sender_id = :senderId,
+            is_deleted = 0
+        WHERE id = :chatId
+        """
+    )
+    suspend fun updateLastMessage(
+        chatId: String,
+        content: String,
+        timestamp: String,
+        messageId: String?,
+        senderId: String?
+    )
 
     suspend fun updateChat(chat: ChatEntity) {
         insertChat(chat)
@@ -66,8 +83,8 @@ interface ChatDao {
     suspend fun getAllChatsSync(): List<ChatEntity>
 
     // SOFT DELETE: Hide from UI immediately
-    @Query("UPDATE chats SET is_deleted = 1 WHERE id = :chatId")
-    suspend fun deleteChat(chatId: String)
+    @Query("UPDATE chats SET is_deleted = 1, cleared_at = :deletedAt, unread_count = 0 WHERE id = :chatId")
+    suspend fun deleteChat(chatId: String, deletedAt: String)
 
     // HARD DELETE: For repairing corrupted data
     @Query("DELETE FROM chats WHERE id = :chatId")

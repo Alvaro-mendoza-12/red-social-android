@@ -165,23 +165,12 @@ class AuthViewModel @Inject constructor(
                                 migrationToken = it.migrationToken
                             )
                         else -> {
-                            var message = mapAuthError(it)
-                            if (looksLikeMigratedPasswordSetupMessage(message)) {
-                                AuthState.MigratedPasswordSetupRequired(email = email.trim().lowercase())
-                            } else {
-                                AuthState.Error(message)
-                            }
+                            AuthState.Error(mapAuthError(it))
                         }
                     }
                 }
             )
         }
-    }
-
-    private fun looksLikeMigratedPasswordSetupMessage(message: String): Boolean {
-        val normalized = message.lowercase()
-        return "migraci" in normalized &&
-            ("contrase" in normalized || "ubuntu" in normalized || "supabase" in normalized)
     }
 
     private fun mapAuthError(throwable: Throwable): String {

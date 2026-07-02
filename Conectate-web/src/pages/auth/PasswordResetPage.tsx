@@ -1,6 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { StatusView } from '../../components/StatusView'
+import { useState, type FormEvent } from 'react'
 import {
   completeMigratedPasswordReset,
   confirmFallbackPasswordReset,
@@ -24,7 +22,6 @@ export function PasswordResetPage({
   onCancel,
   onSuccess,
 }: PasswordResetProps) {
-  const navigate = useNavigate()
   const [step, setStep] = useState<'request' | 'confirm' | 'success'>('request')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -174,7 +171,8 @@ export function PasswordResetPage({
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="password-toggle"
-                  tabIndex={-1}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPassword}
                 >
                   {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>

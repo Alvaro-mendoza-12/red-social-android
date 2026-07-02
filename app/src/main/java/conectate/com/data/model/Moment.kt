@@ -10,6 +10,7 @@ data class Moment(
     @SerialName("media_url") val mediaUrl: String,
     @SerialName("media_type") val mediaType: String, // 'image', 'video'
     @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerialName("display_duration_ms") val displayDurationMs: Long? = null,
     @SerialName("duration_hours") val durationHours: Int = 24,
     @SerialName("duration_type") val durationType: String = "24h",
     val visibility: String = "all", // legacy field

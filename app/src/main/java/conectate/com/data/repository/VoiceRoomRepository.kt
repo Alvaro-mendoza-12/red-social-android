@@ -159,10 +159,20 @@ class VoiceRoomRepository @Inject constructor(
     private val _sharingStates = MutableStateFlow<Map<String, Pair<Boolean, Boolean>>>(emptyMap())
     var sharingStates = _sharingStates.asStateFlow()
 
+    private val _videoError = MutableStateFlow<String?>(null)
+    val videoError = _videoError.asStateFlow()
+
+    fun clearVideoError() {
+        _videoError.value = null
+    }
+
     private val _incomingMessages = MutableSharedFlow<conectate.com.presentation.voicerooms.ChatMessage>()
     val incomingMessages = _incomingMessages.asSharedFlow()
 
-    private val _incomingReactions = MutableSharedFlow<conectate.com.presentation.voicerooms.ReactionEvent>()
+    private val _incomingReactions = MutableSharedFlow<conectate.com.presentation.voicerooms.ReactionEvent>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val incomingReactions = _incomingReactions.asSharedFlow()
 
     private val _connectionState = MutableStateFlow(VoiceConnectionState.IDLE)
@@ -241,7 +251,7 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
-    private fun updateVoiceForegroundService() {
+    private fun updateVoiceForegroundService(videoMode: String? = null) {
         val session = sessionState.value
         val roomId = session.roomId ?: activeRoomId ?: return
         val intent = Intent(context, VoiceForegroundService::class.java).apply {
@@ -251,6 +261,9 @@ class VoiceRoomRepository @Inject constructor(
             putExtra(VoiceForegroundService.EXTRA_READABLE_ID, session.readableId)
             putExtra(VoiceForegroundService.EXTRA_PARTICIPANT_COUNT, session.participantCount)
             putExtra(VoiceForegroundService.EXTRA_IS_MUTED, session.isMuted)
+            if (videoMode != null) {
+                putExtra(VoiceForegroundService.EXTRA_VIDEO_MODE, videoMode)
+            }
         }
         runCatching {
             ContextCompat.startForegroundService(context, intent)
@@ -1166,21 +1179,55 @@ class VoiceRoomRepository @Inject constructor(
                 android.util.Log.w("VoiceRoomRepository", "✅ SIGNALING CONNECTED: $sid. Joining room: $roomId")
                 reconnectFailureCount = 0
                 updateConnectionState(VoiceConnectionState.CONNECTED)
-                pendingConnectStartedAtMs?.let { startedAt ->
-                    appMetrics.recordLatency(
-                        metric = pendingConnectMetricName ?: "voice_room_connect",
-                        durationMs = System.currentTimeMillis() - startedAt,
-                        attributes = currentMetricAttributes(roomId = roomId)
+
+                // IDENTITY DIAGNOSTIC: Verify userId matches current authenticated user
+                val authCurrentId = authService.getCurrentUserId().orEmpty()
+                val authToken = authService.getAccessToken().orEmpty()
+                android.util.Log.w("IDENTITY", "=== VOICE JOIN-ROOM IDENTITY CHECK ===")
+                android.util.Log.w("IDENTITY", "  socketId       = $sid")
+                android.util.Log.w("IDENTITY", "  roomId         = $roomId")
+                android.util.Log.w("IDENTITY", "  claimedUserId  = ${userId.trim()} (param passed to connectSocket)")
+                android.util.Log.w("IDENTITY", "  authCurrentId  = $authCurrentId (from authService.getCurrentUserId)")
+                android.util.Log.w("IDENTITY", "  tokenPrefix    = ${authToken.take(20).ifBlank { "EMPTY" }}...")
+                if (userId.trim() != authCurrentId && authCurrentId.isNotBlank()) {
+                    android.util.Log.e("IDENTITY", "⚠️ VOICE MISMATCH! claimedUserId != authCurrentId. Possible stale session. Clear app data and re-login!")
+                }
+
+                // *** CRITICAL: Emit join-room FIRST before any WebRTC/audio setup ***
+                // If WebRTC setup throws, join-room must have already been sent,
+                // otherwise the server rejects ALL subsequent events (media-status, chat, etc.)
+                socket?.emit("join-room", org.json.JSONObject().apply {
+                    put("roomId", roomId.trim())
+                    put("userId", userId.trim())
+                    put("name", name)
+                    put("avatarUrl", avatarUrl ?: "")
+                })
+                android.util.Log.i("VoiceRoomRepository", "📤 join-room EMITTED for room=$roomId sid=$sid")
+
+                // Now do WebRTC/audio setup in a protected block
+                try {
+                    pendingConnectStartedAtMs?.let { startedAt ->
+                        appMetrics.recordLatency(
+                            metric = pendingConnectMetricName ?: "voice_room_connect",
+                            durationMs = System.currentTimeMillis() - startedAt,
+                            attributes = currentMetricAttributes(roomId = roomId)
+                        )
+                    }
+                    pendingConnectMetricName = null
+                    pendingConnectStartedAtMs = null
+
+                    webRTCManager?.setCurrentUser(userId, sid)
+                    webRTCManager?.refreshManagedIceServers(force = true)
+                    webRTCManager?.ensureLocalTracks()
+                    webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+                    prepareVoiceAudioSession(forceMicUnmute = true)
+                } catch (e: Exception) {
+                    android.util.Log.e("VoiceRoomRepository", "❌ WebRTC/audio setup failed AFTER join-room was sent", e)
+                    crashReporter.recordException(
+                        throwable = e,
+                        extra = currentMetricAttributes(roomId = roomId)
                     )
                 }
-                pendingConnectMetricName = null
-                pendingConnectStartedAtMs = null
-
-                webRTCManager?.setCurrentUser(userId, sid)
-                webRTCManager?.refreshManagedIceServers(force = true)
-                webRTCManager?.ensureLocalTracks()
-                webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-                prepareVoiceAudioSession(forceMicUnmute = true)
                 
                 // Merge self with updated Socket ID
                 _currentParticipants.update { current ->
@@ -1204,13 +1251,6 @@ class VoiceRoomRepository @Inject constructor(
                         }
                     }
                 }
-                
-                socket?.emit("join-room", org.json.JSONObject().apply {
-                    put("roomId", roomId.trim())
-                    put("userId", userId.trim())
-                    put("name", name)
-                    put("avatarUrl", avatarUrl ?: "")
-                })
 
                 scope.launch {
                     delay(275)
@@ -1658,11 +1698,14 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun startScreenCapture(intent: android.content.Intent) {
+        if (!hasActiveSessionFor(activeRoomId ?: "")) return
+        updateSharingState(socketId = currentSocketId(), userId = authService.getCurrentUserId(), isCameraSharing = false, isScreenSharing = true)
         appMetrics.incrementCounter(
             metric = "voice_video_transition",
             attributes = currentMetricAttributes(reason = "screen_share_start") + ("targetMode" to "screen")
         )
         prepareVoiceAudioSession(forceMicUnmute = true)
+        updateVoiceForegroundService("screen")
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setAudioEnabled(!isSelfMuted())
         webRTCManager?.startVideo(
@@ -1688,6 +1731,7 @@ class VoiceRoomRepository @Inject constructor(
             attributes = currentMetricAttributes(reason = "camera_start") + ("targetMode" to "camera")
         )
         prepareVoiceAudioSession(forceMicUnmute = true)
+        updateVoiceForegroundService("camera")
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setAudioEnabled(!isSelfMuted())
         webRTCManager?.startVideo(
@@ -2186,6 +2230,13 @@ class VoiceRoomRepository @Inject constructor(
                     put("emoji", emoji)
                     put("reactionId", UUID.randomUUID().toString())
                 }
+                _incomingReactions.tryEmit(
+                    conectate.com.presentation.voicerooms.ReactionEvent(
+                        userId = userId,
+                        emoji = emoji,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepo", "Failed to send reaction", e)
             }

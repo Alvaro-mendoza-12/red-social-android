@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import conectate.com.data.repository.MessageRepository
+import conectate.com.data.repository.StickerRepository
+import conectate.com.data.repository.ChatBackgroundSettings
+import conectate.com.data.repository.ChatSettingsRepository
 import java.io.File
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -56,7 +59,9 @@ class CommunityChatViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val authService: AuthService,
     private val voiceMessageManager: VoiceMessageManager,
-    private val messageRepository: MessageRepository
+    private val messageRepository: MessageRepository,
+    private val stickerRepository: StickerRepository,
+    private val chatSettingsRepository: ChatSettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<CommunityChatUiState>(CommunityChatUiState.Loading)
@@ -95,6 +100,9 @@ class CommunityChatViewModel @Inject constructor(
     private val _isForwarding = MutableStateFlow(false)
     val isForwarding: StateFlow<Boolean> = _isForwarding.asStateFlow()
     private val _activeCommunityId = MutableStateFlow<String?>(null)
+    private val _chatBackgroundSettings = MutableStateFlow(ChatBackgroundSettings())
+    val chatBackgroundSettings = _chatBackgroundSettings.asStateFlow()
+    private var chatBackgroundJob: kotlinx.coroutines.Job? = null
 
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var progressJob: kotlinx.coroutines.Job? = null
@@ -156,6 +164,7 @@ class CommunityChatViewModel @Inject constructor(
         if (cleanId.isBlank()) return
         this.communityId = cleanId
         _activeCommunityId.value = cleanId
+        observeChatBackground(cleanId)
         // Voice Manager
         voiceMessageManager.setScope(viewModelScope)
         voiceMessageManager.reset()
@@ -166,6 +175,27 @@ class CommunityChatViewModel @Inject constructor(
             communityRepository.markMessagesAsDelivered(cleanId)
             communityRepository.markAsRead(cleanId)
         }
+    }
+
+    private fun backgroundKey(id: String) = "community:${id.trim().lowercase()}"
+
+    private fun observeChatBackground(id: String) {
+        chatBackgroundJob?.cancel()
+        chatBackgroundJob = viewModelScope.launch {
+            chatSettingsRepository.observeChatBackground(backgroundKey(id)).collectLatest {
+                _chatBackgroundSettings.value = it
+            }
+        }
+    }
+
+    fun setChatBackground(type: String, uri: String? = null) {
+        val id = communityId.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch { chatSettingsRepository.setChatBackground(backgroundKey(id), type, uri) }
+    }
+
+    fun clearChatBackground() {
+        val id = communityId.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch { chatSettingsRepository.clearChatBackground(backgroundKey(id)) }
     }
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
@@ -247,7 +277,21 @@ class CommunityChatViewModel @Inject constructor(
             // 2. Fetch User profiles for members to get names/emails
             val userIds = members.map { it.user_id }
             val memberIds = userIds
-            val memberProfiles = userRepository.getUsersByIds(userIds).getOrNull()?.associateBy { it.id } ?: emptyMap()
+            val fetchedProfiles = userRepository.getUsersByIds(userIds).getOrNull()
+                ?.associateBy { it.id.trim().lowercase() }
+                ?: emptyMap()
+            val memberProfiles = members.associate { member ->
+                val cleanMemberId = member.user_id.trim().lowercase()
+                val fallbackName = member.userName?.takeIf { it.isNotBlank() }
+                val fallbackImage = member.userImage?.takeIf { it.isNotBlank() }
+                cleanMemberId to (fetchedProfiles[cleanMemberId] ?: User(
+                    id = cleanMemberId,
+                    username = fallbackName,
+                    full_name = fallbackName,
+                    display_name = fallbackName,
+                    avatar_url = fallbackImage
+                ))
+            }
             
             // 3. Observe Messages (Directly, more stable)
             val messagesFlow = communityRepository.getCommunityMessagesFlow(communityId)
@@ -762,6 +806,29 @@ class CommunityChatViewModel @Inject constructor(
         if (message.deleted_for_all) return
         _forwardPickerMessage.value = message
         _selectedMessage.value = null
+    }
+
+    fun isStickerFavorite(mediaUrl: String?): Boolean = stickerRepository.isFavoriteMediaUrl(mediaUrl)
+
+    fun toggleStickerFavorite(message: conectate.com.data.model.Message) {
+        val url = message.media_url?.trim().orEmpty()
+        if (url.isBlank()) {
+            _errorMessage.value = "Sticker sin archivo para guardar."
+            _selectedMessage.value = null
+            return
+        }
+        viewModelScope.launch {
+            val isFavorite = stickerRepository.toggleFavoriteByMedia(
+                mediaUrl = url,
+                title = message.content.ifBlank { "Sticker personalizado" }
+            )
+            _errorMessage.value = if (isFavorite) {
+                "Sticker añadido a favoritos"
+            } else {
+                "Sticker eliminado de favoritos"
+            }
+            _selectedMessage.value = null
+        }
     }
 
     fun dismissForwardPicker() {

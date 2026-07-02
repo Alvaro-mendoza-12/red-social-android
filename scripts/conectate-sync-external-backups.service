@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync Conectate verified backups to external disks
+
+[Service]
+Type=oneshot
+Environment=BACKUP_ROOT=%h/conectate-backups
+ExecStart=%h/bin/conectate-sync-external-backups
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

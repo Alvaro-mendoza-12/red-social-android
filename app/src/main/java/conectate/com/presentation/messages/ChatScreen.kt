@@ -118,7 +118,6 @@ fun ChatScreen(
     val forwardUserSearchQuery by viewModel.forwardUserSearchQuery.collectAsState()
     val forwardUserTargets by viewModel.forwardUserTargets.collectAsState()
     val isForwarding by viewModel.isForwarding.collectAsState()
-    val typingParticipants by viewModel.typingParticipants.collectAsState()
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     
@@ -127,7 +126,6 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     
     var showStorageDisabledDialog by remember { mutableStateOf(false) }
-    var storageDisabledMessage by remember { mutableStateOf("") }
     
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
@@ -148,7 +146,6 @@ fun ChatScreen(
     // Audio Playback State
     val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
-    val audioDuration by viewModel.audioDuration.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
     
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -484,6 +481,27 @@ fun ChatScreen(
                 }
 
                 if (selectedMessage?.deleted_for_all != true) {
+                    if (selectedMessage?.content_type == "sticker") {
+                        val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedMessage?.let { viewModel.toggleStickerFavorite(it) }
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (stickerIsFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(if (stickerIsFavorite) "Eliminar de favoritos" else "Añadir a favoritos")
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -864,13 +882,15 @@ fun ChatScreen(
                                 val currentOtherUser = otherUserReactive ?: otherUser
                                 
                                 if (chat?.is_group != true && currentOtherUser != null) {
-                                    val statusText = if (currentOtherUser.is_online) {
-                                        "Conectado"
+                                    val isActuallyOnline = currentOtherUser.is_online &&
+                                        TimeUtils.isRecentlyOnline(currentOtherUser.lastSeen)
+                                    val statusText = if (isActuallyOnline) {
+                                        "Activo ahora"
                                     } else {
                                         TimeUtils.getRelativeTimeSpanString(currentOtherUser.lastSeen)
                                     }
                                     
-                                    val statusColor = if (currentOtherUser.is_online) {
+                                    val statusColor = if (isActuallyOnline) {
                                         Color(0xFF4CAF50) // Green
                                     } else {
                                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
@@ -880,7 +900,7 @@ fun ChatScreen(
                                         text = statusText,
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 11.sp,
-                                            fontWeight = if (currentOtherUser.is_online) FontWeight.Bold else FontWeight.Medium
+                                            fontWeight = if (isActuallyOnline) FontWeight.Bold else FontWeight.Medium
                                         ),
                                         color = statusColor,
                                         maxLines = 1,
@@ -898,6 +918,14 @@ fun ChatScreen(
                     actions = {
                         var showMenu by remember { mutableStateOf(false) }
                         var showReportDialog by remember { mutableStateOf(false) }
+
+                        conectate.com.presentation.calls.CallActionButtons(
+                            navController = navController,
+                            title = chatName,
+                            invitedUserIds = listOfNotNull(otherUser?.id),
+                            contextType = "dm",
+                            contextId = chat?.id
+                        )
 
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Opciones")
@@ -1550,76 +1578,21 @@ fun ChatScreen(
     }
 
     if (showBackgroundSheet) {
-        ModalBottomSheet(onDismissRequest = { showBackgroundSheet = false }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text("Fondo de chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            viewModel.setChatBackground("pattern_doodles")
-                            showBackgroundSheet = false
-                        }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Patrón doodles")
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            viewModel.setChatBackground("pattern_grid")
-                            showBackgroundSheet = false
-                        }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.GridOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Patrón cuadrícula")
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showBackgroundSheet = false
-                            backgroundImagePickerLauncher.launch("image/*")
-                        }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Elegir de galería")
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            viewModel.clearChatBackground()
-                            showBackgroundSheet = false
-                        }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Quitar fondo", color = MaterialTheme.colorScheme.error)
-                }
+        ChatBackgroundPickerSheet(
+            onDismiss = { showBackgroundSheet = false },
+            onSelectPattern = { type ->
+                viewModel.setChatBackground(type)
+                showBackgroundSheet = false
+            },
+            onSelectGallery = {
+                showBackgroundSheet = false
+                backgroundImagePickerLauncher.launch("image/*")
+            },
+            onClear = {
+                viewModel.clearChatBackground()
+                showBackgroundSheet = false
             }
-        }
+        )
     }
 
     if (showAttachmentSheet) {

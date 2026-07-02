@@ -8,6 +8,7 @@ const { Pool } = require('pg')
 const { ensureLocalDataTables, registerDataRoutes } = require('./data-routes')
 const { ensurePostgrestCompatTables, registerPostgrestCompatRoutes } = require('./postgrest-compat-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
+const { pushNotificationsStatus } = require('./push-notifications')
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
@@ -803,13 +804,25 @@ app.get('/', (_req, res) => {
 })
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: serviceName, version, time: new Date().toISOString() })
+  res.json({
+    ok: true,
+    service: serviceName,
+    version,
+    time: new Date().toISOString(),
+    pushNotifications: pushNotificationsStatus(),
+  })
 })
 
 app.get('/ready', async (_req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT NOW() AS now')
-    res.json({ ok: true, service: serviceName, version, databaseTime: rows[0].now })
+    res.json({
+      ok: true,
+      service: serviceName,
+      version,
+      databaseTime: rows[0].now,
+      pushNotifications: pushNotificationsStatus(),
+    })
   } catch (error) {
     next(error)
   }
@@ -1077,7 +1090,10 @@ app.post('/v1/auth/login', async (req, res, next) => {
 
     let row = rows[0]
     if (!row) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+      return res.status(404).json({
+        error: 'ACCOUNT_NOT_FOUND',
+        message: 'No existe una cuenta con ese correo. Regístrate para crear una cuenta.',
+      })
     }
 
     const hasLocalPassword = Boolean(row.password_enabled && row.password_hash)
@@ -1108,7 +1124,10 @@ app.post('/v1/auth/login', async (req, res, next) => {
     }
 
     if (!(await bcrypt.compare(password, row.password_hash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+      return res.status(401).json({
+        error: 'INVALID_PASSWORD',
+        message: 'Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.',
+      })
     }
 
     const updated = await pool.query(
@@ -1157,7 +1176,10 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
       return res.status(404).json({ error: 'USER_NOT_FOUND' })
     }
     if (!row.password_enabled || !row.password_hash || !(await bcrypt.compare(currentPassword, row.password_hash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+      return res.status(401).json({
+        error: 'INVALID_PASSWORD',
+        message: 'La contraseña actual es incorrecta.',
+      })
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12)
@@ -1709,7 +1731,10 @@ app.post('/v1/auth/sync-to-supabase', authRequired, async (req, res, next) => {
 
     const row = rows[0]
     if (!row.password_hash || !(await bcrypt.compare(password, row.password_hash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+      return res.status(401).json({
+        error: 'INVALID_PASSWORD',
+        message: 'Contraseña incorrecta.',
+      })
     }
 
     const sync = await syncLocalUserToSupabase(sanitizeUser(row), password)

@@ -582,7 +582,7 @@ class MessageRepository @Inject constructor(
         // Persist immediately so Room emits the reordered list without waiting on a nested launch.
         var chatId = msg.chat_id.trim().lowercase()
         try {
-            chatDao.updateLastMessage(chatId, preview, msg.safeCreatedAt)
+            chatDao.updateLastMessage(chatId, preview, msg.safeCreatedAt, msg.id, msg.sender_id)
             if (shouldIncrementUnread) {
                 chatDao.incrementUnreadCount(chatId)
             } else if (sessionStateStore.isActiveChatVisible(chatId)) {
@@ -724,9 +724,14 @@ class MessageRepository @Inject constructor(
                         return Result.success(localOnly)
                     }
 
+                val existingLocalChats = allLocalChatsDomain.associateBy { it.id }
                 val mappedChats = localInbox.items
                     .filter { it.kind == "chat" }
-                    .map { item -> mapLocalFallbackInboxItem(item, cleanUserId) }
+                    .map { item -> 
+                        val mapped = mapLocalFallbackInboxItem(item, cleanUserId)
+                        val existing = existingLocalChats[mapped.chat.id]
+                        mapped.copy(clearedAt = existing?.cleared_at)
+                    }
                     .let(::sortChatsByPriority)
 
                 if (isSessionSnapshotValid(sessionSnapshot, "local-fallback-inbox-result")) {
@@ -1080,6 +1085,18 @@ class MessageRepository @Inject constructor(
                 var cached = currentMap[fetched.chat.id]
                 val cachedTime = cached?.lastMessage?.safeCreatedAt
                 val fetchedTime = fetched.lastMessage?.safeCreatedAt
+                val cachedClearedAt = cached?.clearedAt
+
+                if (cachedClearedAt != null && fetchedTime != null && cachedClearedAt > fetchedTime) {
+                    return@map fetched.copy(
+                        lastMessage = null,
+                        chat = fetched.chat.copy(
+                            last_message = null,
+                            last_message_at = cachedClearedAt,
+                            last_message_id = null
+                        )
+                    )
+                }
                 
                 val useCached = (cached != null && cached.lastMessage != null) && (
                     fetched.lastMessage == null || 
@@ -1139,7 +1156,7 @@ class MessageRepository @Inject constructor(
                          if (remoteChat == null) return@filter false
                          
                          val remoteAt = normalizeDate(remoteChat.lastMessage?.safeCreatedAt ?: remoteChat.chat.safeLastMessageAt)
-                         val localAt = normalizeDate(local.last_message_at ?: "")
+                         val localAt = normalizeDate(local.cleared_at ?: local.last_message_at ?: "")
                          
                          // Resurrection criteria: Server has a message newer than what we had when deleted
                          // String comparison is now safe because normalizeDate handles formats
@@ -1661,48 +1678,53 @@ class MessageRepository @Inject constructor(
     suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             var cleanId = chatId.trim().lowercase()
             var now = java.time.Instant.now().toString()
-            
-            var payload = buildJsonObject {
-                put("cleared_at", now)
-            }
-            
-            var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                parameter("chat_id", "eq.$cleanId")
-                parameter("user_id", "eq.$currentUserId")
-                setBody(payload)
-            }
-            
-            if (response.status.isSuccess()) {
-                // Update Local Room
-                chatDao.updateClearedAt(cleanId, now)
-                
-                // Nuclear local message delete for this chat to sync with server's "cleared" state
-                messageDao.deleteMessagesByChatId(cleanId)
-                
-                // Clear In-Memory Flow
-                _activeChatMessages[cleanId]?.value = emptyList()
-                
-                // Update Chat List Metadata
-                var currentChats = _userChats.value.toMutableList()
-                var idx = currentChats.indexOfFirst { it.chat.id == cleanId }
-                if (idx != -1) {
-                    currentChats[idx] = currentChats[idx].copy(
-                        clearedAt = now,
-                        lastMessage = null
-                    )
-                    _userChats.value = currentChats
-                }
-                
-                Result.success(Unit)
+
+            if (shouldUseUbuntuBackend()) {
+                val token = authService.ensureValidAccessToken()
+                    .getOrElse { return@withContext Result.failure(it) }
+                localFallbackApiClient.clearChat(token, cleanId)
+                    .getOrElse { e ->
+                        android.util.Log.w("MessageRepository", "clearChat ubuntu failed, still clearing locally", e)
+                    }
             } else {
-                Result.failure(Exception("Error clearing chat: ${response.status}"))
+                var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+                var payload = buildJsonObject { put("cleared_at", now) }
+                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+                    header("Authorization", "Bearer $token")
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Content-Type", "application/json")
+                    parameter("chat_id", "eq.$cleanId")
+                    parameter("user_id", "eq.$currentUserId")
+                    setBody(payload)
+                }
+                if (!response.status.isSuccess()) {
+                    return@withContext Result.failure(Exception("Error clearing chat: ${response.status}"))
+                }
             }
+
+            // Update Local Room DB
+            chatDao.updateClearedAt(cleanId, now)
+
+            // Nuclear local message delete for this chat
+            messageDao.deleteMessagesByChatId(cleanId)
+
+            // Clear In-Memory Flow
+            _activeChatMessages[cleanId]?.value = emptyList()
+
+            // Update Chat List Metadata
+            var currentChats = _userChats.value.toMutableList()
+            var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
+            if (idx != -1) {
+                currentChats[idx] = currentChats[idx].copy(
+                    clearedAt = now,
+                    lastMessage = null
+                )
+                _userChats.value = currentChats
+            }
+
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1818,6 +1840,9 @@ class MessageRepository @Inject constructor(
             var sessionSnapshot = captureSessionSnapshot(sessionUserId)
             if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-start:$chatId")) return
             var accessToken = authService.ensureValidAccessToken().getOrElse { return }
+            val localChatEntity = chatDao.getChatById(chatId)
+            val clearedAt = localChatEntity?.cleared_at
+            
             if (shouldUseUbuntuBackend()) {
                 val localChat = localFallbackApiClient.loadChat(accessToken, chatId)
                     .getOrElse { error ->
@@ -1829,12 +1854,16 @@ class MessageRepository @Inject constructor(
                         runCatching { json.decodeFromJsonElement<Message>(messageJson) }.getOrNull()
                     }
                     .map { it.copy(chat_id = chatId).withNormalizedStatus() }
+                    
+                val filteredRawMsgs = if (clearedAt != null) {
+                    rawMsgs.filter { (it.created_at ?: "") > clearedAt }
+                } else rawMsgs
 
                 scope.launch {
                     if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-cache:$chatId")) return@launch
                     runCatching {
                         messageDao.insertMessages(
-                            rawMsgs.map { conectate.com.data.local.entity.MessageEntity.fromDomain(it, isSynced = true) }
+                            filteredRawMsgs.map { conectate.com.data.local.entity.MessageEntity.fromDomain(it, isSynced = true) }
                         )
                     }.onFailure {
                         android.util.Log.w("MessageRepository", "Could not cache local fallback messages", it)
@@ -1843,7 +1872,7 @@ class MessageRepository @Inject constructor(
 
                 _activeChatMessages[chatId]?.let { flow ->
                     if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-flow:$chatId")) return
-                    flow.update { current -> unifyMessageList(current + rawMsgs) }
+                    flow.update { current -> unifyMessageList(current + filteredRawMsgs) }
                 }
                 return
             }
@@ -1894,13 +1923,17 @@ class MessageRepository @Inject constructor(
                     }
                 }
                 
+                val filteredHydratedMsgs = if (clearedAt != null) {
+                    hydratedMsgs.filter { (it.created_at ?: "") > clearedAt }
+                } else hydratedMsgs
+
                 // PERSISTENCE: Save all fetched (and hydrated) messages to Room
                 scope.launch {
                     if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-cache:$chatId")) return@launch
                     try {
                         // CRITICAL FIX: Force the message to belong to the Chat ID we are currently looking at.
                         // This prevents messages from being lost in "sibling" silos and ensures Room always returns them.
-                        val entities = hydratedMsgs.map { 
+                        val entities = filteredHydratedMsgs.map { 
                             conectate.com.data.local.entity.MessageEntity.fromDomain(it.copy(chat_id = chatId), isSynced = true) 
                         }
                         messageDao.insertMessages(entities)
@@ -1914,7 +1947,7 @@ class MessageRepository @Inject constructor(
                 _activeChatMessages[chatId]?.let { flow ->
                     if (!isSessionSnapshotValid(sessionSnapshot, "fetch-history-flow:$chatId")) return
                     flow.update { current ->
-                        unifyMessageList(current + hydratedMsgs)
+                        unifyMessageList(current + filteredHydratedMsgs)
                     }
                     android.util.Log.d("MessageRepository", "✅ History merge complete for $chatId. Total: ${flow.value.size}")
                 }
@@ -2877,7 +2910,13 @@ class MessageRepository @Inject constructor(
 
         messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(optimistic, isSynced = false, pendingAction = "send"))
         addMessageToFlow(cleanId, optimistic)
-        chatDao.updateLastMessage(cleanId, "📊 $sanitizedQuestion", now)
+        chatDao.updateLastMessage(
+            chatId = cleanId,
+            content = "📊 $sanitizedQuestion",
+            timestamp = now,
+            messageId = msgId,
+            senderId = userId
+        )
 
         var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
         
@@ -3956,7 +3995,9 @@ class MessageRepository @Inject constructor(
             var cleanId = chatId.trim().lowercase()
             sessionStateStore.clearLocalReadOverride(cleanId)
             // Soft delete from Room (marks as deleted, hidden from UI)
-            chatDao.deleteChat(cleanId)
+            chatDao.deleteChat(cleanId, java.time.Instant.now().toString())
+            // Hard delete messages locally to free space and prevent old messages showing up
+            messageDao.deleteMessagesByChatId(cleanId)
             
             // Remove from in-memory cache
             var currentChats = _userChats.value.toMutableList()

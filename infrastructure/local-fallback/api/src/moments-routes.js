@@ -1,12 +1,25 @@
 const crypto = require('crypto')
 const { publishRealtimeEvent } = require('./realtime-publish')
 
+const IMAGE_MOMENT_DISPLAY_DURATION_MS = 6000
+const MAX_VIDEO_MOMENT_DURATION_MS = 25000
+
 function textOf(row, keys, fallback = '') {
   for (const key of keys) {
     const value = row?.[key]
     if (value !== undefined && value !== null && String(value).trim() !== '') {
       return String(value).trim()
     }
+  }
+  return fallback
+}
+
+function numberOf(row, keys, fallback = 0) {
+  for (const key of keys) {
+    const value = row?.[key]
+    if (value === undefined || value === null || value === '') continue
+    const number = Number(value)
+    if (Number.isFinite(number)) return number
   }
   return fallback
 }
@@ -64,6 +77,26 @@ function normalizeMomentMediaType(rawType, mediaUrl = '') {
   return 'image'
 }
 
+function normalizedMomentDisplayDurationMs(row, mediaType) {
+  const direct = numberOf(row, [
+    'displayDurationMs',
+    'display_duration_ms',
+    'durationMs',
+    'duration_ms',
+    'duration_milliseconds',
+  ])
+  if (direct > 0) {
+    return Math.max(1000, Math.min(Math.round(direct), mediaType === 'video' ? MAX_VIDEO_MOMENT_DURATION_MS : 60000))
+  }
+
+  const seconds = numberOf(row, ['durationSeconds', 'duration_seconds'])
+  if (seconds > 0) {
+    return Math.max(1000, Math.min(Math.round(seconds * 1000), mediaType === 'video' ? MAX_VIDEO_MOMENT_DURATION_MS : 60000))
+  }
+
+  return mediaType === 'video' ? MAX_VIDEO_MOMENT_DURATION_MS : IMAGE_MOMENT_DISPLAY_DURATION_MS
+}
+
 async function ensureMomentsTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_moments (
@@ -72,6 +105,7 @@ async function ensureMomentsTables(pool) {
       media_url TEXT NOT NULL DEFAULT '',
       media_type TEXT NOT NULL DEFAULT 'image',
       thumbnail_url TEXT,
+      display_duration_ms INT,
       caption TEXT,
       visibility TEXT NOT NULL DEFAULT 'all',
       visibility_type TEXT NOT NULL DEFAULT 'public',
@@ -91,6 +125,10 @@ async function ensureMomentsTables(pool) {
       viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (moment_id, user_id)
     )
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_moments
+    ADD COLUMN IF NOT EXISTS display_duration_ms INT
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_moment_deletions (
@@ -154,7 +192,7 @@ async function buildMomentsFeed(pool, identity) {
   const now = Date.now()
   const { rows: localRows } = await pool.query(
     `SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility, visibility_type,
-            allow_replies, duration_hours, duration_type, excluded_ids, expires_at, created_at, updated_at
+            allow_replies, display_duration_ms, duration_hours, duration_type, excluded_ids, expires_at, created_at, updated_at
      FROM fallback_moments
      ORDER BY created_at DESC
      LIMIT 300`,
@@ -214,6 +252,7 @@ async function buildMomentsFeed(pool, identity) {
   for (const row of moments) {
     const id = textOf(row, ['id'], '')
     const ownerId = normalizeId(textOf(row, ['user_id'], ''))
+    const mediaType = normalizeMomentMediaType(textOf(row, ['media_type'], 'image'), textOf(row, ['media_url'], ''))
     const visibilityType = textOf(row, ['visibility_type'], 'public')
     if (visibilityType === 'private' && !identity.ids.has(ownerId)) continue
     if (visibilityType === 'silent' && !identity.ids.has(ownerId)) continue
@@ -237,7 +276,8 @@ async function buildMomentsFeed(pool, identity) {
       owner_name: ownerProfile.name,
       owner_avatar_url: ownerProfile.avatarUrl,
       media_url: textOf(row, ['media_url'], ''),
-      media_type: normalizeMomentMediaType(textOf(row, ['media_type'], 'image'), textOf(row, ['media_url'], '')),
+      media_type: mediaType,
+      display_duration_ms: normalizedMomentDisplayDurationMs(row, mediaType),
       caption: textOf(row, ['caption'], ''),
       visibility: textOf(row, ['visibility'], 'all'),
       allow_replies: boolOf(row, ['allow_replies'], true),
@@ -299,6 +339,7 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
       const mediaUrl = textOf(req.body, ['mediaUrl', 'media_url'], '')
       if (!mediaUrl) return res.status(400).json({ error: 'MEDIA_URL_REQUIRED' })
       const mediaType = normalizeMomentMediaType(textOf(req.body, ['mediaType', 'media_type'], 'image'), mediaUrl)
+      const displayDurationMs = normalizedMomentDisplayDurationMs(req.body, mediaType)
 
       const durationHours = Math.max(1, Math.min(Number(req.body?.durationHours || req.body?.duration_hours || 24), 168))
       const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
@@ -315,11 +356,11 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
       const { rows } = await pool.query(
         `INSERT INTO fallback_moments(
             user_id, media_url, media_type, thumbnail_url, caption, visibility, visibility_type,
-            allow_replies, duration_hours, duration_type, expires_at
+            allow_replies, display_duration_ms, duration_hours, duration_type, expires_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility, visibility_type,
-                   allow_replies, duration_hours, duration_type, excluded_ids, expires_at, created_at, updated_at`,
+                   allow_replies, display_duration_ms, duration_hours, duration_type, excluded_ids, expires_at, created_at, updated_at`,
         [
           identity.displayUserId,
           mediaUrl,
@@ -329,6 +370,7 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
           visibility,
           visibilityType,
           req.body?.allowReplies !== false && req.body?.allow_replies !== false,
+          displayDurationMs,
           durationHours,
           textOf(req.body, ['durationType', 'duration_type'], '24h'),
           expiresAt,

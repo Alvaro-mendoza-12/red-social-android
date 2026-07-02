@@ -86,6 +86,7 @@ fun GroupChatScreen(
     val messageInfoReceipts by viewModel.messageInfoReceipts.collectAsState()
     val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsState()
     val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
+    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
     var focusAttempts by remember(focusMessageId) { mutableStateOf(0) }
 
@@ -96,6 +97,11 @@ fun GroupChatScreen(
     var pendingMediaUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingMediaType by remember { mutableStateOf<String?>(null) }
     var pendingMediaCaption by remember { mutableStateOf("") }
+    var showBackgroundSheet by remember { mutableStateOf(false) }
+    var showHeaderMenu by remember { mutableStateOf(false) }
+    val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { viewModel.setChatBackground("custom", it.toString()) }
+    }
 
     // FULL SCREEN MEDIA VIEWER STATE
     val messages = (uiState as? GroupChatUiState.Success)?.messages ?: emptyList()
@@ -313,20 +319,28 @@ fun GroupChatScreen(
                     else visible.joinToString(", ")
                 }
             }
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            navController.navigate(conectate.com.presentation.navigation.Screen.GroupDetail.createRoute(groupId))
-                        }
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                navController.navigate(conectate.com.presentation.navigation.Screen.GroupDetail.createRoute(groupId))
+                            }
                     ) {
                         state?.group?.image?.let {
                             CircularProfileImage(imageUrl = it, size = 32.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        Column {
-                            Text(state?.group?.name ?: "Grupo")
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
+                            Text(
+                                text = state?.group?.name ?: "Grupo",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                             membersSubtitle?.let { subtitle ->
                                 Text(
                                     text = subtitle,
@@ -343,6 +357,31 @@ fun GroupChatScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Volver")
                     }
+                },
+                actions = {
+                    val invitedIds = state?.memberIds.orEmpty().filterNot {
+                        it.equals(currentUserId, ignoreCase = true)
+                    }
+                    conectate.com.presentation.calls.CallActionButtons(
+                        navController = navController,
+                        title = state?.group?.name ?: "Grupo",
+                        invitedUserIds = invitedIds,
+                        contextType = "group",
+                        contextId = groupId
+                    )
+                    IconButton(onClick = { showHeaderMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Opciones del grupo")
+                    }
+                    DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Fondo") },
+                            leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
+                            onClick = {
+                                showHeaderMenu = false
+                                showBackgroundSheet = true
+                            }
+                        )
+                    }
                 }
             )
         }
@@ -353,6 +392,11 @@ fun GroupChatScreen(
                 .padding(padding)
         ) {
             Box(modifier = Modifier.weight(1f)) {
+                ChatBackgroundLayer(
+                    backgroundType = chatBackgroundSettings.backgroundType,
+                    backgroundUri = chatBackgroundSettings.backgroundUri,
+                    modifier = Modifier.fillMaxSize()
+                )
                 when (val state = uiState) {
                     is GroupChatUiState.Loading -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -742,6 +786,24 @@ fun GroupChatScreen(
         }
     }
 
+    if (showBackgroundSheet) {
+        ChatBackgroundPickerSheet(
+            onDismiss = { showBackgroundSheet = false },
+            onSelectPattern = { type ->
+                viewModel.setChatBackground(type)
+                showBackgroundSheet = false
+            },
+            onSelectGallery = {
+                showBackgroundSheet = false
+                backgroundPickerLauncher.launch("image/*")
+            },
+            onClear = {
+                viewModel.clearChatBackground()
+                showBackgroundSheet = false
+            }
+        )
+    }
+
     if (fullScreenImageInitialIndex != null) {
         val activeMediaItems = if (oneTimeMediaItems.isNotEmpty()) oneTimeMediaItems else fullScreenMediaItems
         FullScreenImageDialog(
@@ -846,6 +908,27 @@ fun GroupChatScreen(
                 }
 
                 if (selectedMessage?.deleted_for_all != true) {
+                    if (selectedMessage?.content_type == "sticker") {
+                        val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedMessage?.let { viewModel.toggleStickerFavorite(it) }
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (stickerIsFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(if (stickerIsFavorite) "Eliminar de favoritos" else "Añadir a favoritos")
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

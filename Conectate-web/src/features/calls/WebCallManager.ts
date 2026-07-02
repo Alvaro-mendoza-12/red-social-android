@@ -74,11 +74,11 @@ type IcePayload = {
   candidate: RTCIceCandidateInit
 }
 
-const fallbackSignalingUrl = 'https://voice.srv1495648.hstgr.cloud'
+import { getRuntimeBackendUrl } from '../core/runtimeBackend'
 
 function normalizeBaseUrl(value?: string): string {
   const clean = String(value ?? '').trim().replace(/\/+$/, '')
-  return clean || fallbackSignalingUrl
+  return clean || getRuntimeBackendUrl()
 }
 
 function toCallNamespaceUrl(value?: string): string {

@@ -1,7 +1,7 @@
 # Conectate Ubuntu - Documentacion oficial de produccion
 
 Fecha de creacion: 2026-06-18
-Fecha de ultima revision: 2026-06-18
+Fecha de ultima revision: 2026-06-19
 Estado: Ubuntu es backend primario operativo para los flujos migrados. Supabase queda permitido solo como fuente temporal de migracion/importacion.
 
 ## 0. Como usar esta documentacion
@@ -12,6 +12,13 @@ despliegues, validar modulos y revisar contratos de produccion.
 
 Convencion de fechas: todos los documentos oficiales llevan fecha de creacion o
 fecha de ultima revision en formato `YYYY-MM-DD`.
+
+Para exponer la VM Ubuntu o la futura mini PC gratis con dominio HTTPS estable,
+usar `docs/HOME_SERVER_PUBLIC_ACCESS_UBUNTU_2026.md`. Esa guia cubre DuckDNS,
+Caddy, puertos del router, CGNAT, Android `FALLBACK_API_URL` y migracion a mini PC.
+
+Para backups verificados, timers, watchdog, restauracion aislada y endpoint dinamico,
+usar `docs/UBUNTU_OPERATIONS_BACKUP_RUNBOOK_2026.md`.
 
 ## 1. Objetivo
 

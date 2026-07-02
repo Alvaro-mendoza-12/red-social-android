@@ -36,9 +36,9 @@ private val InboxMutedIcon = Color(0xFFCED0D7)
 fun ConversationsScreen(
     navController: NavController,
     viewModel: MessagingViewModel = hiltViewModel(),
-    voiceRoomsViewModel: VoiceRoomsViewModel = hiltViewModel(),
     onNavigateToChat: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
+    onNavigateToCallHistory: () -> Unit,
     onNavigateToCreateGroup: () -> Unit,
     onNavigateToCreateCommunity: () -> Unit,
     onNavigateToCreateVoiceRoom: () -> Unit,
@@ -47,14 +47,12 @@ fun ConversationsScreen(
     onNavigateToRoomDetail: (String) -> Unit
 ) {
     val selectedTab by viewModel.selectedTabIndex.collectAsState()
-    val activeRoom by voiceRoomsViewModel.currentRoom.collectAsState()
-    val participants by voiceRoomsViewModel.currentParticipants.collectAsState()
-    val currentUserKey = viewModel.currentUserId?.trim()?.lowercase()
-    val localIsMuted = participants.firstOrNull { participant ->
-        currentUserKey != null && participant.id.trim().lowercase() == currentUserKey
-    }?.isMuted ?: false
+    val unreadDmsCount by viewModel.unreadDmsCount.collectAsState()
+    val unreadGroupsCount by viewModel.unreadGroupsCount.collectAsState()
+    val unreadCommunitiesCount by viewModel.unreadCommunitiesCount.collectAsState()
     
-    val tabs = listOf("Mensajes", "Grupos", "Canales", "Voz")
+    val tabs = listOf("Mensajes", "Grupos", "Comunidades", "Voz")
+    val tabBadges = listOf(unreadDmsCount, unreadGroupsCount, unreadCommunitiesCount, 0)
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -141,23 +139,10 @@ fun ConversationsScreen(
                         }
                     }
 
-                    conectate.com.presentation.components.ActiveVoiceBar(
-                        activeRoom = activeRoom,
-                        isMuted = localIsMuted,
-                        modifier = Modifier.fillMaxWidth(),
-                        onReEnter = onNavigateToRoomDetail,
-                        onToggleMute = {
-                            voiceRoomsViewModel.toggleMute(!localIsMuted)
-                        },
-                        onHangUp = {
-                            voiceRoomsViewModel.leaveCurrentRoom()
-                        }
-                    )
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 17.dp, end = 17.dp, top = 2.dp, bottom = 17.dp),
+                            .padding(start = 17.dp, end = 17.dp, top = 2.dp, bottom = 15.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -170,17 +155,48 @@ fun ConversationsScreen(
                                 contentColor = if (selected) Color.Black else Color.White,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp)
+                                    .height(38.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val count = tabBadges.getOrNull(index) ?: 0
                                     Text(
                                         text = title,
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 13.sp,
+                                        fontSize = if (title.length > 9) 11.sp else 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Clip
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = if (count > 0) 8.dp else 0.dp)
                                     )
+                                    if (count > 0) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 2.dp, y = 2.dp)
+                                                .height(17.dp)
+                                                .widthIn(min = 17.dp),
+                                            shape = CircleShape,
+                                            color = Color(0xFFE53935),
+                                            contentColor = Color.White
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = if (count > 99) "99+" else count.toString(),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -228,6 +244,7 @@ fun ConversationsScreen(
                 when (selectedTab) {
                     0 -> PrivateChatsTab(
                         onNavigateToSearch = onNavigateToSearch,
+                        onNavigateToCallHistory = onNavigateToCallHistory,
                         viewModel = viewModel,
                         onNavigateToChat = onNavigateToChat
                     )

@@ -10,7 +10,7 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
 import androidx.work.Configuration
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.FirebaseApp
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import conectate.com.core.concurrency.newSafeScope
@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import conectate.com.util.AppDeviceTier
 import conectate.com.util.AppPerformanceProfiles
+import conectate.com.data.localfallback.RuntimeBackendEndpoint
 
 @HiltAndroidApp
 class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
@@ -61,6 +62,8 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+
+        RuntimeBackendEndpoint.initialize(this)
         
         // 🔥 INICIALIZAR OPTIMIZADOR DE PRODUCCIÓN
         productionOptimizer = ProductionReadyOptimizer(this)
@@ -69,10 +72,15 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         // Initialize Coil with optimized settings
         Coil.setImageLoader(newImageLoader())
         
-        // Initialize crash reporting
-        Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG) // ⚠️ Falta FirebaseApp.initializeApp()
-        Firebase.crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
-        Firebase.crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
+        // Initialize crash reporting. Telemetry must never prevent the app from opening.
+        runCatching {
+            FirebaseApp.initializeApp(this)
+            Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+            Firebase.crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
+            Firebase.crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
+        }.onFailure {
+            android.util.Log.w("SocialApp", "Firebase/Crashlytics init skipped; app continues.", it)
+        }
 
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SocialApp", "APP_START: Conectate Social App initializing...")
@@ -82,9 +90,10 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                // Not using logger here to avoid potential DI dependencies crashing if they are corrupted
                 android.util.Log.e("SocialApp", "FATAL CRASH in thread ${thread.name}: ${throwable.message}", throwable)
-                crashReporter.recordFatalException(threadName = thread.name, throwable = throwable)
+                if (::crashReporter.isInitialized) {
+                    crashReporter.recordFatalException(threadName = thread.name, throwable = throwable)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -101,6 +110,9 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         // Initialize background tasks safely - NO BLOQUEAR MAIN THREAD
         appScope.launch {
             try {
+                launch {
+                    RuntimeBackendEndpoint.refresh(this@SocialApp)
+                }
                 // Monitor Metrics Alerts - Delay slightly to allow UI to settle
                 launch {
                     try {
@@ -145,7 +157,25 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun newImageLoader(): ImageLoader {
         val performanceProfile = AppPerformanceProfiles.detect(this)
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val host = request.url.host
+                val needsTunnelHeader = host.contains("ngrok", ignoreCase = true) ||
+                    host.contains("trycloudflare.com", ignoreCase = true)
+                if (!needsTunnelHeader) {
+                    chain.proceed(request)
+                } else {
+                    chain.proceed(
+                        request.newBuilder()
+                            .header("ngrok-skip-browser-warning", "1")
+                            .build()
+                    )
+                }
+            }
+            .build()
         return ImageLoader.Builder(this)
+            .okHttpClient(okHttpClient)
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(performanceProfile.memoryCachePercent)
@@ -172,19 +202,35 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         runCatching { productionOptimizer.onTrimMemory(level) }
-            .onFailure { logger.w("SocialApp", "Production optimizer trim hook failed", it) }
+            .onFailure {
+                if (::logger.isInitialized) {
+                    logger.w("SocialApp", "Production optimizer trim hook failed", it)
+                }
+            }
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             runCatching { Coil.imageLoader(this).memoryCache?.clear() }
-                .onFailure { logger.w("SocialApp", "Image cache trim failed", it) }
+                .onFailure {
+                    if (::logger.isInitialized) {
+                        logger.w("SocialApp", "Image cache trim failed", it)
+                    }
+                }
         }
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
         runCatching { productionOptimizer.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
-            .onFailure { logger.w("SocialApp", "Production optimizer low memory hook failed", it) }
+            .onFailure {
+                if (::logger.isInitialized) {
+                    logger.w("SocialApp", "Production optimizer low memory hook failed", it)
+                }
+            }
         runCatching { Coil.imageLoader(this).memoryCache?.clear() }
-            .onFailure { logger.w("SocialApp", "Image cache clear failed", it) }
+            .onFailure {
+                if (::logger.isInitialized) {
+                    logger.w("SocialApp", "Image cache clear failed", it)
+                }
+            }
     }
 }
 

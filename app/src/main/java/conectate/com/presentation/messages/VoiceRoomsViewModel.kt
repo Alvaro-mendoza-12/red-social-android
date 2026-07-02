@@ -24,6 +24,7 @@ sealed class VoiceRoomsUiState {
 class VoiceRoomsViewModel @Inject constructor(
     private val voiceRoomRepository: VoiceRoomRepository
 ) : ViewModel() {
+    private var hasCompletedInitialLoad = false
 
     private val _uiState = MutableStateFlow<VoiceRoomsUiState>(VoiceRoomsUiState.Loading)
     val uiState: StateFlow<VoiceRoomsUiState> = _uiState.asStateFlow()
@@ -39,7 +40,9 @@ class VoiceRoomsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             voiceRoomRepository.activeRooms.collect { rooms ->
-                _uiState.value = VoiceRoomsUiState.Success(rooms)
+                if (rooms.isNotEmpty() || hasCompletedInitialLoad) {
+                    _uiState.value = VoiceRoomsUiState.Success(rooms)
+                }
             }
         }
         refreshRooms()
@@ -49,9 +52,18 @@ class VoiceRoomsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = VoiceRoomsUiState.Loading
             voiceRoomRepository.refreshRooms()
+                .onSuccess { rooms ->
+                    hasCompletedInitialLoad = true
+                    _uiState.value = VoiceRoomsUiState.Success(rooms)
+                }
                 .onFailure { error ->
                     val message = error.message ?: "No se pudieron cargar las salas de voz"
-                    _uiState.value = VoiceRoomsUiState.Error(message)
+                    val cachedRooms = voiceRoomRepository.activeRooms.value
+                    _uiState.value = if (cachedRooms.isNotEmpty()) {
+                        VoiceRoomsUiState.Success(cachedRooms)
+                    } else {
+                        VoiceRoomsUiState.Error(message)
+                    }
                     _errorEvents.trySend(message)
                 }
         }

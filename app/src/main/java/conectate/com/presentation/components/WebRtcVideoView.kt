@@ -28,9 +28,9 @@ fun WebRtcVideoView(
         return
     }
 
-    var renderer by remember(sharedEglContext) { mutableStateOf<SurfaceViewRenderer?>(null) }
+    var renderer by remember(sharedEglContext, videoTrack?.id()) { mutableStateOf<SurfaceViewRenderer?>(null) }
 
-    key(sharedEglContext) {
+    key(sharedEglContext, videoTrack?.id()) {
         AndroidView(
             factory = { ctx ->
                 SurfaceViewRenderer(ctx).also { view ->
@@ -63,8 +63,8 @@ fun WebRtcVideoView(
     DisposableEffect(renderer, videoTrack) {
         val sink = renderer
         if (sink != null && videoTrack != null) {
-            videoTrack.setEnabled(true)
-            videoTrack.addSink(sink)
+            runCatching { videoTrack.setEnabled(true) }
+            runCatching { videoTrack.addSink(sink) }
         }
 
         onDispose {

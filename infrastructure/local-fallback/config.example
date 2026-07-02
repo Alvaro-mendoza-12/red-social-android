@@ -11,6 +11,26 @@ JWT_ISSUER=conectate-local-fallback
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=*
 SIGNALING_ALLOWED_ORIGINS=*
+# TURN/Coturn autoalojado (configúralo con scripts/configure-mini-pc-turn.sh)
+# Bajo CGNAT, Cloudflare Tunnel sólo expone API/signaling HTTP+WebSocket:
+# el audio/video/screen share necesita TURN público aparte (VPS/servicio TURN).
+TURN_HOST=
+TURN_PORT=3478
+TURN_TLS_PORT=5349
+TURN_SECRET=
+TURN_REALM=
+TURN_EXTERNAL_IP=
+TURN_MIN_PORT=49160
+TURN_MAX_PORT=49200
+TURN_TTL_SECONDS=3600
+TURN_ENABLE_UDP=true
+TURN_ENABLE_TCP=true
+TURN_ENABLE_TLS=false
+# Alternativa para CGNAT puro o mientras no haya VPS/puertos públicos:
+# STUN_STATIC_URLS=stun:turn.example.com:3478
+# TURN_STATIC_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
+# TURN_STATIC_USERNAME=
+# TURN_STATIC_CREDENTIAL=
 PASSWORD_RESET_DELIVERY=console
 PASSWORD_RESET_TOKEN_TTL_MINUTES=30
 LEGACY_SUPABASE_IMPORT_ENABLED=false

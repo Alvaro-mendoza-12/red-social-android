@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import coil.compose.SubcomposeAsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 fun ChatBackgroundLayer(
@@ -38,6 +39,7 @@ fun ChatBackgroundLayer(
                         modifier = Modifier
                             .fillMaxSize()
                             .alpha(0.25f),
+                        contentScale = ContentScale.Fit,
                         loading = {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator()
@@ -110,6 +112,22 @@ fun ChatBackgroundLayer(
                 }
             }
 
+            "preset_ocean" -> PresetGradient(
+                colors = listOf(Color(0xFF071B26), Color(0xFF0B3948), Color(0xFF10242D))
+            )
+
+            "preset_lavender" -> PresetGradient(
+                colors = listOf(Color(0xFF21182F), Color(0xFF3B2A4D), Color(0xFF191521))
+            )
+
+            "preset_warm" -> PresetGradient(
+                colors = listOf(Color(0xFF2B1814), Color(0xFF4A2920), Color(0xFF211410))
+            )
+
+            "preset_graphite" -> PresetGradient(
+                colors = listOf(Color(0xFF101214), Color(0xFF25292E), Color(0xFF111214))
+            )
+
             else -> {
                 Box(
                     modifier = Modifier
@@ -127,5 +145,14 @@ fun ChatBackgroundLayer(
             }
         }
     }
+}
+
+@Composable
+private fun PresetGradient(colors: List<Color>) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(colors))
+    )
 }
 

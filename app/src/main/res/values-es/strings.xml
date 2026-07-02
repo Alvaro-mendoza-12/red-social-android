@@ -4,7 +4,6 @@
 
     <!-- Auth Strings -->
     <string name="sign_in_email">Iniciar sesión con Email</string>
-    <string name="sign_in_phone">Iniciar sesión con Teléfono</string>
     <string name="email">Email</string>
     <string name="password">Contraseña</string>
     <string name="login">Iniciar Sesión</string>
@@ -12,7 +11,6 @@
     <string name="register">Registrarse</string>
     <string name="name">Nombre</string>
     <string name="country">País</string>
-    <string name="city">Ciudad</string>
     <string name="already_have_account">¿Ya tienes cuenta?</string>
     <string name="live_overlay_title">Chat en vivo</string>
     <string name="live_overlay_title_default">Live activo</string>
@@ -26,19 +24,4 @@
     <string name="live_overlay_empty">Sin mensajes aún</string>
     <string name="live_overlay_user_fallback">Usuario</string>
     <string name="live_overlay_comment_format">%1$s: %2$s</string>
-    <string name="message_attachment_share">Compartir</string>
-    <string name="message_attachment_image">Imagen</string>
-    <string name="message_attachment_video">Video</string>
-    <string name="message_attachment_audio">Audio</string>
-    <string name="message_attachment_audio_file">Audio (Archivo)</string>
-    <string name="message_attachment_document">Documento</string>
-    <string name="message_attachment_gif">GIF</string>
-    <string name="message_attachment_sticker">Sticker</string>
-    <string name="message_attachment_sticker_packs">Sticker Pro (packs)</string>
-    <string name="message_attachment_view_once_image">Foto ver una vez</string>
-    <string name="message_attachment_view_once_video">Video ver una vez</string>
-    <string name="message_attachment_contact">Contacto</string>
-    <string name="message_attachment_location">Ubicación</string>
-    <string name="message_attachment_schedule_text">Programar texto</string>
-    <string name="message_attachment_poll">Encuesta</string>
 </resources>

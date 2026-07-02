@@ -14,7 +14,7 @@ import java.util.Properties
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    FileInputStream(keystorePropertiesFile).use(keystoreProperties::load)
 }
 
 fun Properties.getNonBlank(key: String): String? = getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
@@ -35,15 +35,15 @@ android {
 
     defaultConfig {
         applicationId = "conectate.com"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
-        versionCode = 27
-        versionName = "2.1.7"
+        versionCode = 39
+        versionName = "2.2.9"
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
         if (secretsFile.exists()) {
-            props.load(FileInputStream(secretsFile))
+            FileInputStream(secretsFile).use(props::load)
             val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
             val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
             val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
@@ -53,9 +53,15 @@ android {
                 ?: throw GradleException(
                     "FALLBACK_API_URL or LOCAL_FALLBACK_API_URL is required in secrets.properties for Ubuntu backend builds."
                 )
+            val backendConfigUrl = props.getNonBlank("BACKEND_CONFIG_URL")
+                ?: ""
+            val backendDiscoveryHost = props.getNonBlank("BACKEND_DISCOVERY_HOST")
+                ?: "conectate-alvaro.duckdns.org"
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
             buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
+            buildConfigField("String", "BACKEND_CONFIG_URL", backendConfigUrl.asBuildConfigString())
+            buildConfigField("String", "BACKEND_DISCOVERY_HOST", backendDiscoveryHost.asBuildConfigString())
             buildConfigField("String", "UPSTASH_REST_URL", upstashRestUrl.asBuildConfigString())
             buildConfigField("String", "UPSTASH_TOKEN", upstashToken.asBuildConfigString())
             buildConfigField("String", "TMDB_API_KEY", tmdbApiKey.asBuildConfigString())
@@ -75,11 +81,15 @@ android {
 
     splits {
         abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = false
+            // Play App Bundle handles ABI splits; local APK splits stay disabled for release bundles.
+            isEnable = false
         }
+    }
+
+    bundle {
+        abi { enableSplit = true }
+        density { enableSplit = true }
+        language { enableSplit = false }
     }
 
     signingConfigs {
@@ -108,12 +118,12 @@ android {
         }
 
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             isDebuggable = false
 
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
+                getDefaultProguardFile("proguard-android.txt"),
                 "proguard-rules.pro"
             )
 
@@ -126,6 +136,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -185,6 +196,8 @@ tasks.register("qualityGateDebug") {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.android.desugar.jdk.libs)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

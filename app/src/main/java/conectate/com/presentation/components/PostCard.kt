@@ -26,6 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import conectate.com.data.model.Post
@@ -50,6 +53,7 @@ fun PostCard(
     onPostClick: () -> Unit = {},
     onSendToFriend: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showFullScreenImage by remember { mutableStateOf<String?>(null) }
 
     if (showFullScreenImage != null) {
@@ -170,8 +174,19 @@ fun PostCard(
             if (images.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (images.size == 1) {
+                    val image = images.first()
+                    val request = remember(image) {
+                        ImageRequest.Builder(context)
+                            .data(UbuntuStorageUrl.rewrite(image))
+                            .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(image))
+                            .diskCacheKey(UbuntuStorageUrl.stableCacheKey(image))
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .crossfade(false)
+                            .build()
+                    }
                     AsyncImage(
-                        model = images.first(),
+                        model = request,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -186,8 +201,19 @@ fun PostCard(
                             state = pagerState,
                             modifier = Modifier.fillMaxSize()
                         ) { page ->
+                            val image = images[page]
+                            val request = remember(image) {
+                                ImageRequest.Builder(context)
+                                    .data(UbuntuStorageUrl.rewrite(image))
+                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(image))
+                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(image))
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .crossfade(false)
+                                    .build()
+                            }
                             AsyncImage(
-                                model = images[page],
+                                model = request,
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize().clickable { showFullScreenImage = images[page] },
                                 contentScale = ContentScale.Crop

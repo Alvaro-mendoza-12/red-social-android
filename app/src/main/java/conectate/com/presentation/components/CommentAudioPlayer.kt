@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 fun CommentAudioPlayer(
@@ -29,8 +28,6 @@ fun CommentAudioPlayer(
     var isPlaying by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    val scope = rememberCoroutineScope()
-
     DisposableEffect(audioUrl) {
         onDispose {
             mediaPlayer?.release()

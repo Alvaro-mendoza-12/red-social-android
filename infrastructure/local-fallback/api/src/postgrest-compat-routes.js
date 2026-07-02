@@ -123,7 +123,7 @@ async function readCompatRows(pool, tableName) {
   return rows.map((entry) => entry.row || {})
 }
 
-async function readSpecificRows(pool, tableName) {
+async function readSpecificRows(pool, tableName, auth) {
   switch (tableName) {
     case 'profiles':
     case 'users': {
@@ -210,14 +210,18 @@ async function readSpecificRows(pool, tableName) {
       return rows
     }
     case 'messages': {
+      const displayUserId = req.auth?.supabase_user_id || req.auth?.sub || ''
       const { rows } = await pool.query(`
-        SELECT id::text, chat_id, sender_id, content, content_type AS message_type,
-               content_type, media_url, media_size, status, reply_to_id,
-               '{}'::jsonb AS metadata, created_at, updated_at
-        FROM fallback_messages
-        ORDER BY created_at DESC
+        SELECT m.id::text, m.chat_id, m.sender_id, m.content, m.content_type AS message_type,
+               m.content_type, m.media_url, m.media_size, m.status, m.reply_to_id,
+               '{}'::jsonb AS metadata, m.created_at, m.updated_at
+        FROM fallback_messages m
+        LEFT JOIN fallback_chat_participants cp 
+          ON lower(cp.chat_id::text) = lower(m.chat_id) AND lower(cp.user_id) = lower($2)
+        WHERE (cp.cleared_at IS NULL OR m.created_at > cp.cleared_at)
+        ORDER BY m.created_at DESC
         LIMIT $1
-      `, [MAX_READ_ROWS])
+      `, [MAX_READ_ROWS, displayUserId])
       return rows
     }
     case 'moments': {
@@ -280,16 +284,31 @@ async function readSpecificRows(pool, tableName) {
     case 'groups':
     case 'communities': {
       const collectionType = tableName === 'groups' ? 'group' : 'community'
-      const { rows } = await pool.query(`
-        SELECT id::text, creator_id AS owner_id, creator_id, name, description,
-               image AS avatar_url, image, category, is_public, only_admins_can_talk,
-               '{}'::jsonb AS metadata, created_at, updated_at
-        FROM fallback_collection_rooms
-        WHERE room_kind = $1 AND is_deleted = FALSE
-        ORDER BY updated_at DESC
-        LIMIT $2
-      `, [collectionType, MAX_READ_ROWS])
-      return rows
+      if (collectionType === 'group') {
+        const userId = auth?.sub || ''
+        const { rows } = await pool.query(`
+          SELECT r.id::text, r.creator_id AS owner_id, r.creator_id, r.name, r.description,
+                 r.image AS avatar_url, r.image, r.category, r.is_public, r.only_admins_can_talk,
+                 '{}'::jsonb AS metadata, r.created_at, r.updated_at
+          FROM fallback_collection_rooms r
+          INNER JOIN fallback_collection_members m ON m.room_id = r.id AND m.room_kind = 'group'
+          WHERE r.room_kind = $1 AND r.is_deleted = FALSE AND m.user_id = $3
+          ORDER BY r.updated_at DESC
+          LIMIT $2
+        `, [collectionType, MAX_READ_ROWS, userId])
+        return rows
+      } else {
+        const { rows } = await pool.query(`
+          SELECT id::text, creator_id AS owner_id, creator_id, name, description,
+                 image AS avatar_url, image, category, is_public, only_admins_can_talk,
+                 '{}'::jsonb AS metadata, created_at, updated_at
+          FROM fallback_collection_rooms
+          WHERE room_kind = $1 AND is_deleted = FALSE
+          ORDER BY updated_at DESC
+          LIMIT $2
+        `, [collectionType, MAX_READ_ROWS])
+        return rows
+      }
     }
     case 'group_members':
     case 'community_members': {
@@ -499,10 +518,10 @@ function sendPostgrestRows(req, res, rows, status = 200, headOnly = false) {
   return res.json(ranged)
 }
 
-async function readTableRows(pool, tableName, query) {
+async function readTableRows(pool, tableName, query, auth) {
   const [importedRows, specificRows, compatRows] = await Promise.all([
     readImportedRows(pool, tableName),
-    readSpecificRows(pool, tableName),
+    readSpecificRows(pool, tableName, auth),
     readCompatRows(pool, tableName),
   ])
   const merged = mergeRows([importedRows, specificRows, compatRows])
@@ -906,7 +925,6 @@ async function handleRpc(pool, req, rpcName) {
       return { poll: null, options: [], votes: [] }
     case 'secure_vote_poll_option':
     case 'secure_toggle_message_reaction':
-    case 'secure_set_chat_preferences':
     case 'secure_set_chat_translation_settings':
     case 'secure_schedule_message_job':
     case 'send_virtual_gift':
@@ -917,6 +935,83 @@ async function handleRpc(pool, req, rpcName) {
     case 'increment_share_count':
     case 'register_media_object':
       return { ok: true }
+    case 'secure_set_chat_preferences': {
+      const authenticatedUserId = String(auth?.sub || '').trim()
+      const chatId = String(body.p_chat_id || body.chat_id || '').trim().toLowerCase()
+      if (!authenticatedUserId) throw new Error('AUTH_REQUIRED')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(chatId)) {
+        throw new Error('INVALID_CHAT_ID')
+      }
+
+      const { rows: userRows } = await pool.query(
+        `SELECT id::text AS local_id, NULLIF(supabase_user_id::text, '') AS public_id
+         FROM fallback_users
+         WHERE lower(id::text) = lower($1)
+            OR lower(COALESCE(supabase_user_id::text, '')) = lower($1)
+         LIMIT 1`,
+        [authenticatedUserId],
+      )
+      const userRow = userRows[0] || {}
+      const aliases = [...new Set([
+        authenticatedUserId,
+        userRow.local_id,
+        userRow.public_id,
+      ].map((value) => String(value || '').trim()).filter(Boolean))]
+
+      const { rows: chatRows } = await pool.query(
+        `SELECT id::text, participants
+         FROM fallback_chats
+         WHERE id = $1::uuid
+         LIMIT 1`,
+        [chatId],
+      )
+      const chat = chatRows[0]
+      if (!chat) throw new Error('CHAT_NOT_FOUND')
+
+      const { rows: existingParticipantRows } = await pool.query(
+        `SELECT user_id
+         FROM fallback_chat_participants
+         WHERE chat_id = $1::uuid
+           AND lower(user_id) = ANY($2::text[])
+         LIMIT 1`,
+        [chatId, aliases.map((value) => value.toLowerCase())],
+      )
+      const participantFromChat = (chat.participants || []).find((participantId) =>
+        aliases.some((alias) => alias.toLowerCase() === String(participantId || '').trim().toLowerCase()),
+      )
+      if (!existingParticipantRows[0] && !participantFromChat) throw new Error('CHAT_ACCESS_DENIED')
+
+      const participantId = existingParticipantRows[0]?.user_id || participantFromChat || userRow.public_id || authenticatedUserId
+      const supplied = (name) => Object.prototype.hasOwnProperty.call(body, name)
+      const boolOrNull = (name) => {
+        if (!supplied(name) || body[name] === null) return null
+        if (body[name] === true || body[name] === 'true') return true
+        if (body[name] === false || body[name] === 'false') return false
+        throw new Error(`INVALID_BOOLEAN_${name.toUpperCase()}`)
+      }
+      const { rows: preferenceRows } = await pool.query(
+        `INSERT INTO fallback_chat_participants(
+           chat_id, user_id, is_muted, is_pinned, is_archived, is_favorite
+         )
+         VALUES ($1::uuid, $2, COALESCE($3::boolean, FALSE), COALESCE($4::boolean, FALSE),
+                 COALESCE($5::boolean, FALSE), COALESCE($6::boolean, FALSE))
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET
+           is_muted = COALESCE($3::boolean, fallback_chat_participants.is_muted),
+           is_pinned = COALESCE($4::boolean, fallback_chat_participants.is_pinned),
+           is_archived = COALESCE($5::boolean, fallback_chat_participants.is_archived),
+           is_favorite = COALESCE($6::boolean, fallback_chat_participants.is_favorite)
+         RETURNING is_muted, is_pinned, is_archived, is_favorite`,
+        [
+          chatId,
+          participantId,
+          boolOrNull('p_is_muted'),
+          boolOrNull('p_is_pinned'),
+          boolOrNull('p_is_archived'),
+          boolOrNull('p_is_favorite'),
+        ],
+      )
+      return { ok: true, chat_id: chatId, ...(preferenceRows[0] || {}) }
+    }
     case 'secure_search_stickers':
       return []
     default:
@@ -949,7 +1044,7 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
     try {
       const tableName = normalizeTableName(req.params[0])
       if (!tableName) return res.status(404).json({ error: 'NOT_FOUND' })
-      const rows = await readTableRows(pool, tableName, req.query)
+      const rows = await readTableRows(pool, tableName, req.query, req.auth)
       sendPostgrestRows(req, res, rows)
     } catch (error) {
       next(error)
@@ -960,7 +1055,7 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
     try {
       const tableName = normalizeTableName(req.params[0])
       if (!tableName) return res.status(404).end()
-      const rows = await readTableRows(pool, tableName, req.query)
+      const rows = await readTableRows(pool, tableName, req.query, req.auth)
       sendPostgrestRows(req, res, rows, 200, true)
     } catch (error) {
       next(error)

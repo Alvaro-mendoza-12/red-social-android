@@ -15,7 +15,7 @@ const fallbackApiUrl = normalizeBaseUrl(
 const ubuntuApiEnabled = Boolean(fallbackApiUrl);
 
 if (!ubuntuApiEnabled) {
-    console.warn('[WARN] FALLBACK_API_URL is not set. Signaling auth will reject clients until the Ubuntu API URL is configured.');
+    console.warn('[SOCKET_DEBUG] [WARN] FALLBACK_API_URL is not set. Signaling auth will reject clients until the Ubuntu API URL is configured.');
 }
 
 const turnHost = process.env.TURN_HOST?.toString().trim() || '';
@@ -27,14 +27,21 @@ const turnTtlSeconds = clampInt(process.env.TURN_TTL_SECONDS, 3600, 60, 24 * 60 
 const turnEnableUdp = parseBooleanEnv(process.env.TURN_ENABLE_UDP, true);
 const turnEnableTcp = parseBooleanEnv(process.env.TURN_ENABLE_TCP, true);
 const turnEnableTls = parseBooleanEnv(process.env.TURN_ENABLE_TLS, false);
-const turnConfigured = Boolean(turnHost && turnSecret);
+const turnExternalIp = process.env.TURN_EXTERNAL_IP?.toString().trim() || '';
+const staticTurnUrls = parseCsvEnv(process.env.TURN_STATIC_URLS || process.env.TURN_URLS);
+const staticTurnUsername = process.env.TURN_STATIC_USERNAME?.toString().trim() || '';
+const staticTurnCredential = process.env.TURN_STATIC_CREDENTIAL?.toString().trim() || '';
+const staticStunUrls = parseCsvEnv(process.env.STUN_STATIC_URLS || process.env.STUN_URLS);
+const hasStaticTurnConfigured = Boolean(staticTurnUrls.length > 0 && staticTurnUsername && staticTurnCredential);
+const hasCoturnRestConfigured = Boolean(turnHost && turnSecret);
+const turnConfigured = hasCoturnRestConfigured || hasStaticTurnConfigured;
 const httpRateLimitPerMinute = clampInt(process.env.HTTP_RATE_LIMIT_PER_MINUTE, 180, 20, 5000);
 const socketRateLimitPerMinute = clampInt(process.env.SOCKET_RATE_LIMIT_PER_MINUTE, 90, 10, 2000);
 const allowedOrigins = parseAllowedOrigins(process.env.SIGNALING_ALLOWED_ORIGINS);
 const rateLimitBuckets = new Map();
 
 if (allowedOrigins.size === 0) {
-    console.warn('[WARN] SIGNALING_ALLOWED_ORIGINS not set. Only local browser origins and native clients without Origin header will be allowed.');
+    console.warn('[SOCKET_DEBUG] [WARN] SIGNALING_ALLOWED_ORIGINS not set. Only local browser origins and native clients without Origin header will be allowed.');
 }
 
 function parseBooleanEnv(value, defaultValue) {
@@ -61,6 +68,14 @@ function parseAllowedOrigins(rawValue) {
         .map((value) => value.trim())
         .filter((value) => value.length > 0);
     return new Set(normalized);
+}
+
+function parseCsvEnv(rawValue) {
+    return (rawValue || '')
+        .toString()
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
 }
 
 function isOriginAllowed(origin) {
@@ -237,9 +252,15 @@ async function resolveUbuntuUser(accessToken) {
         if (!user?.id) {
             return { error: 'Invalid Ubuntu auth response', status: 401 };
         }
-        return { user };
+        // CRITICAL FIX: Android uses displayUserId = supabaseUserId || localId.
+        // The signaling server must resolve the same canonical userId so that
+        // claimedUserId (from Android) matches authUserId (from server).
+        // user.id = local fallback ID (from fallback_users.id, used as JWT sub)
+        // user.supabaseUserId = UUID from Supabase (preferred as canonical ID)
+        const canonicalId = (user.supabaseUserId || user.id).toString().trim();
+        return { user: { ...user, canonicalId } };
     } catch (error) {
-        console.error('[AUTH] Failed to validate bearer token with Ubuntu API:', error);
+        console.error('[SOCKET_DEBUG] [AUTH] Failed to validate bearer token with Ubuntu API:', error);
         return {
             error: error.status === 503 ? error.message : 'Invalid or expired bearer token',
             status: error.status || 401
@@ -274,25 +295,40 @@ async function authenticateSocketConnection(socket, next) {
 
     try {
         socket.data.authToken = accessToken;
-        socket.data.authUserId = authResult.user.id.toString().trim();
+        // Use canonicalId = supabaseUserId || localId, matching Android's displayUserId resolution
+        socket.data.authUserId = authResult.user.canonicalId || authResult.user.id.toString().trim();
+        socket.data.authLocalId = authResult.user.id.toString().trim();
         socket.data.authEmail = authResult.user.email?.toString().trim().toLowerCase() || '';
+        socket.data.authDisplayName = authResult.user.displayName?.toString().trim() || '';
+        console.log(`[IDENTITY] Socket connected: socketId=${socket.id} | canonicalUserId=${socket.data.authUserId} | localId=${socket.data.authLocalId} | email=${socket.data.authEmail} | ip=${getClientIp(socket)}`);
         next();
     } catch (error) {
-        console.error('[AUTH] Failed to authenticate socket connection:', error);
+        console.error('[SOCKET_DEBUG] [AUTH] Failed to authenticate socket connection:', error);
         next(new Error('Token validation failed'));
     }
 }
 
 function requireSocketUser(socket, claimedUserId) {
     const authenticatedUserId = socket.data.authUserId?.toString().trim();
+    const localId = socket.data.authLocalId?.toString().trim();
     const normalizedClaim = claimedUserId?.toString().trim();
     if (!authenticatedUserId) {
         socket.emit('auth-error', { error: 'Socket is not authenticated' });
         return null;
     }
     if (normalizedClaim && normalizedClaim !== authenticatedUserId) {
-        socket.emit('auth-error', { error: 'Authenticated user does not match requested userId' });
-        return null;
+        // Secondary check: claim may match the raw local fallback ID (JWT sub)
+        if (localId && normalizedClaim === localId) {
+            // Android is sending the local ID but server resolved supabaseUserId as canonical.
+            // This is safe: return canonical ID so all routing uses the consistent display ID.
+            console.warn(`[IDENTITY] [AUTH] Claim matches localId (${localId}) but canonicalId is (${authenticatedUserId}). Using canonical ID for routing. Socket=${socket.id}`);
+            return authenticatedUserId;
+        }
+        // True mismatch: different account or stale session
+        console.error(`[IDENTITY] [AUTH] MISMATCH - socketId=${socket.id} | claimedUserId=${normalizedClaim} | canonicalUserId=${authenticatedUserId} | localId=${localId} | email=${socket.data.authEmail}`);
+        console.error(`[IDENTITY] [AUTH] This likely means the Android app is using a cached/stale userId. The user must clear app data and re-login.`);
+        // Still trust canonical for now but log clearly
+        return authenticatedUserId;
     }
     return authenticatedUserId;
 }
@@ -306,8 +342,7 @@ function requireJoinedScope(socket, membershipKey, rawScopeId, scopeLabel, event
 
     const joinedScopes = socket.data[membershipKey];
     if (!(joinedScopes instanceof Set) || !joinedScopes.has(scopeId)) {
-        console.warn(
-            `[AUTH] Rejected ${eventLabel} from ${socket.id}; socket is not joined to ${scopeLabel} ${scopeId}`
+        console.warn(`[SOCKET_DEBUG] [AUTH] Rejected ${eventLabel} from ${socket.id}; socket is not joined to ${scopeLabel} ${scopeId}`
         );
         socket.emit('auth-error', { error: `Socket is not joined to requested ${scopeLabel}` });
         return null;
@@ -316,14 +351,25 @@ function requireJoinedScope(socket, membershipKey, rawScopeId, scopeLabel, event
     return scopeId;
 }
 
-function sharesScopeWithTarget(scopeMap, joinedScopes, targetSocketId) {
+function defaultScopeContainsTarget(scope, targetId) {
+    return Boolean(scope?.has?.(targetId));
+}
+
+function liveScopeContainsTarget(session, targetId) {
+    return Boolean(
+        session?.host?.socketId === targetId ||
+        session?.viewers?.has?.(targetId)
+    );
+}
+
+function sharesScopeWithTarget(scopeMap, joinedScopes, targetSocketId, containsTarget = defaultScopeContainsTarget) {
     if (!(joinedScopes instanceof Set) || joinedScopes.size === 0) return false;
     const targetId = targetSocketId?.toString().trim();
     if (!targetId) return false;
 
     for (const scopeId of joinedScopes) {
-        const participants = scopeMap.get(scopeId);
-        if (participants?.has?.(targetId)) {
+        const scope = scopeMap.get(scopeId);
+        if (containsTarget(scope, targetId)) {
             return true;
         }
     }
@@ -331,7 +377,77 @@ function sharesScopeWithTarget(scopeMap, joinedScopes, targetSocketId) {
     return false;
 }
 
+function summarizeTurnHealth() {
+    const mode = hasStaticTurnConfigured
+        ? 'static-turn'
+        : hasCoturnRestConfigured
+            ? 'coturn-rest'
+            : 'none';
+    const relayUrls = [];
+
+    if (hasStaticTurnConfigured) {
+        relayUrls.push(...staticTurnUrls);
+    } else if (hasCoturnRestConfigured) {
+        if (turnEnableTls) relayUrls.push(`turns:${turnHost}:${turnTlsPort}?transport=tcp`);
+        if (turnEnableTcp) relayUrls.push(`turn:${turnHost}:${turnPort}?transport=tcp`);
+        if (turnEnableUdp) relayUrls.push(`turn:${turnHost}:${turnPort}?transport=udp`);
+    }
+
+    return {
+        configured: turnConfigured,
+        mode,
+        host: turnHost || null,
+        realm: turnRealm || null,
+        externalIpConfigured: Boolean(turnExternalIp),
+        transports: {
+            udp: turnConfigured && (hasStaticTurnConfigured || turnEnableUdp),
+            tcp: turnConfigured && (hasStaticTurnConfigured || turnEnableTcp),
+            tls: turnConfigured && (hasStaticTurnConfigured || turnEnableTls)
+        },
+        relayUrls,
+        note: 'Cloudflare Tunnel only carries HTTP/WebSocket signaling. Public WebRTC media across CGNAT still requires a publicly reachable TURN/SFU relay.'
+    };
+}
+
+function buildServiceHealthPayload() {
+    return {
+        ok: true,
+        service: 'webrtc-signaling-server',
+        ubuntuApiEnabled,
+        turnConfigured,
+        turn: summarizeTurnHealth(),
+        namespaces: {
+            voice: '/',
+            call: '/call',
+            live: '/live'
+        },
+        activeSessions: {
+            voiceRooms: rooms.size,
+            calls: calls.size,
+            lives: lives.size
+        }
+    };
+}
+
 function buildTurnCredentials(userId) {
+    if (hasStaticTurnConfigured) {
+        const stunUrls = staticStunUrls.length > 0 ? staticStunUrls : ['stun:stun.l.google.com:19302'];
+        return {
+            provider: 'static-turn',
+            realm: turnRealm || 'external-turn',
+            ttlSeconds: null,
+            expiresAtEpochSeconds: null,
+            iceServers: [
+                ...stunUrls.map((url) => ({ urls: [url] })),
+                ...staticTurnUrls.map((url) => ({
+                    urls: [url],
+                    username: staticTurnUsername,
+                    credential: staticTurnCredential
+                }))
+            ]
+        };
+    }
+
     const expiresAt = Math.floor(Date.now() / 1000) + turnTtlSeconds;
     const username = `${expiresAt}:${userId}`;
     const credential = crypto
@@ -387,21 +503,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
-        sendJson(req, res, 200, {
-            ok: true,
-            ubuntuApiEnabled,
-            turnConfigured
-        });
+        sendJson(req, res, 200, buildServiceHealthPayload());
         return;
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/') {
-        sendJson(req, res, 200, {
-            ok: true,
-            service: 'webrtc-signaling-server',
-            ubuntuApiEnabled,
-            turnConfigured
-        });
+        sendJson(req, res, 200, buildServiceHealthPayload());
         return;
     }
 
@@ -507,12 +614,12 @@ const unsupportedUbuntuPersistenceWarnings = new Set();
 function warnUnsupportedUbuntuPersistence(feature) {
     if (unsupportedUbuntuPersistenceWarnings.has(feature)) return;
     unsupportedUbuntuPersistenceWarnings.add(feature);
-    console.warn(`[WARN] ${feature} persistence is not implemented in the Ubuntu API yet. Realtime signaling will continue in memory.`);
+    console.warn(`[SOCKET_DEBUG] [WARN] ${feature} persistence is not implemented in the Ubuntu API yet. Realtime signaling will continue in memory.`);
 }
 
 async function setParticipantCount(roomId, participantCount) {
     const normalizedCount = Math.max(0, Number(participantCount || 0));
-    console.log(`[DB] Voice room ${roomId} presence is ${normalizedCount}; Ubuntu API derives the persisted count from participant rows.`);
+    console.log(`[SOCKET_DEBUG] [DB] Voice room ${roomId} presence is ${normalizedCount}; Ubuntu API derives the persisted count from participant rows.`);
 }
 
 async function syncVoiceRoomJoin(socket, roomId, participant) {
@@ -528,7 +635,7 @@ async function syncVoiceRoomJoin(socket, roomId, participant) {
             }
         });
     } catch (error) {
-        console.error(`[DB] Error syncing voice room join for ${roomId}:`, error);
+        console.error(`[SOCKET_DEBUG] [DB] Error syncing voice room join for ${roomId}:`, error);
         socket.emit('room-sync-warning', {
             roomId,
             error: error.message || 'VOICE_ROOM_JOIN_SYNC_FAILED'
@@ -543,23 +650,23 @@ async function syncVoiceRoomLeave(socket, roomId) {
             accessToken: socket.data.authToken
         });
     } catch (error) {
-        console.error(`[DB] Error syncing voice room leave for ${roomId}:`, error);
+        console.error(`[SOCKET_DEBUG] [DB] Error syncing voice room leave for ${roomId}:`, error);
     }
 }
 
 async function setLiveViewerCount(liveId, viewerCount) {
     warnUnsupportedUbuntuPersistence('Live viewer_count');
-    console.log(`[LIVE][DB] ${liveId} viewer_count=${Math.max(0, Number(viewerCount || 0))}`);
+    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} viewer_count=${Math.max(0, Number(viewerCount || 0))}`);
 }
 
 async function setLiveStreamActive(liveId) {
     warnUnsupportedUbuntuPersistence('Live active-state');
-    console.log(`[LIVE][DB] ${liveId} active=true`);
+    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} active=true`);
 }
 
 async function endLiveStream(liveId) {
     warnUnsupportedUbuntuPersistence('Live active-state');
-    console.log(`[LIVE][DB] ${liveId} active=false viewer_count=0`);
+    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} active=false viewer_count=0`);
 }
 
 async function getLiveStreamMeta(liveId) {
@@ -571,11 +678,23 @@ async function getLiveStreamMeta(liveId) {
     };
 }
 
-// Track active rooms and their participants
-// room_id -> Set(socket_id)
+// Track active voice rooms and their participants
+// room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing, isScreenSharing })
 const rooms = new Map();
 const voiceRoomCleanupTimers = new Map();
 const VOICE_EMPTY_ROOM_GRACE_MS = clampInt(process.env.VOICE_EMPTY_ROOM_GRACE_MS, 15 * 1000, 3 * 1000, 5 * 60 * 1000);
+const VOICE_PRESENCE_HEARTBEAT_MS = clampInt(process.env.VOICE_PRESENCE_HEARTBEAT_MS, 30 * 1000, 15 * 1000, 2 * 60 * 1000);
+
+const voicePresenceHeartbeat = setInterval(() => {
+    rooms.forEach((participants, roomId) => {
+        participants.forEach((participant, socketId) => {
+            const activeSocket = io.sockets.sockets.get(socketId);
+            if (!activeSocket?.connected) return;
+            void syncVoiceRoomJoin(activeSocket, roomId, participant);
+        });
+    });
+}, VOICE_PRESENCE_HEARTBEAT_MS);
+voicePresenceHeartbeat.unref?.();
 
 function clearPendingVoiceRoomCleanup(roomId) {
     const timer = voiceRoomCleanupTimers.get(roomId);
@@ -588,7 +707,7 @@ function clearPendingVoiceRoomCleanup(roomId) {
 async function finalizeEmptyVoiceRoom(roomId) {
     clearPendingVoiceRoomCleanup(roomId);
     rooms.delete(roomId);
-    console.log(`[ROOM] ${roomId} finalized in signaling memory. Ubuntu API participant rows are synced through join/leave.`);
+    console.log(`[SOCKET_DEBUG] [ROOM] ${roomId} finalized in signaling memory. Ubuntu API participant rows are synced through join/leave.`);
 }
 
 function scheduleEmptyVoiceRoomCleanup(roomId) {
@@ -598,7 +717,7 @@ function scheduleEmptyVoiceRoomCleanup(roomId) {
         voiceRoomCleanupTimers.delete(roomId);
         const participants = rooms.get(roomId);
         if (participants && participants.size > 0) {
-            console.log(`[ROOM] ${roomId} recovered before cleanup timeout`);
+            console.log(`[SOCKET_DEBUG] [ROOM] ${roomId} recovered before cleanup timeout`);
             return;
         }
 
@@ -610,7 +729,7 @@ function scheduleEmptyVoiceRoomCleanup(roomId) {
 
 io.on('connection', (socket) => {
     socket.data.joinedRoomIds = new Set();
-    console.log(`User connected: ${socket.id} user=${socket.data.authUserId}`);
+    console.log(`[IDENTITY] [VOICE] Socket connected: socketId=${socket.id} | userId=${socket.data.authUserId} | localId=${socket.data.authLocalId || 'n/a'} | email=${socket.data.authEmail}`);
 
     socket.on('join-room', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
@@ -632,7 +751,7 @@ io.on('connection', (socket) => {
         const currentRoomParticipants = rooms.get(roomId);
         currentRoomParticipants.forEach((val, sid) => {
             if (val.userId === userId) {
-                console.log(`[CLEANUP] Removing ghost for user ${userId} (old SID: ${sid})`);
+                console.log(`[SOCKET_DEBUG] [CLEANUP] Removing ghost for user ${userId} (old SID: ${sid})`);
                 currentRoomParticipants.delete(sid);
                 socket.to(roomId).emit('user-left', sid);
             }
@@ -647,8 +766,16 @@ io.on('connection', (socket) => {
         });
         socket.data.joinedRoomIds.add(roomId);
 
-        console.log(`[JOIN] User ${userId} joined room ${roomId}. Room population: ${currentRoomParticipants.size}`);
-        console.log(`[ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
+        // Confirm membership before any slow database synchronization. Clients must
+        // not publish media/chat events until this acknowledgement arrives.
+        socket.emit('room-joined', {
+            roomId,
+            socketId: socket.id,
+            participantCount: currentRoomParticipants.size
+        });
+
+        console.log(`[IDENTITY] [VOICE] JOIN-ROOM | socketId=${socket.id} | resolvedUserId=${userId} | claimedUserId=${data.userId} | canonicalUserId=${socket.data.authUserId} | roomId=${roomId} | name=${name} | population=${currentRoomParticipants.size}`);
+        console.log(`[SOCKET_DEBUG] [ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
         await syncVoiceRoomJoin(socket, roomId, {
             name,
             avatarUrl,
@@ -707,7 +834,7 @@ io.on('connection', (socket) => {
             socket.emit("link-resolved", { requestId: requestId || "", error: "Missing url or requestId" });
             return;
         }
-        console.log(`[RESOLVE] Request from ${socket.id} for ${url}`);
+        console.log(`[SOCKET_DEBUG] [RESOLVE] Request from ${socket.id} for ${url}`);
 
         const result = await resolveLink(url);
 
@@ -729,7 +856,12 @@ io.on('connection', (socket) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
-        socket.to(roomId).emit('reaction', { ...data, userId });
+        io.to(roomId).emit('reaction', {
+            ...data,
+            userId,
+            reactionId: data?.reactionId || crypto.randomUUID(),
+            timestamp: Number(data?.timestamp) || Date.now()
+        });
     });
 
     socket.on('speaking-status', (data) => {
@@ -776,7 +908,7 @@ io.on('connection', (socket) => {
             return;
         }
         const sdpPreview = offer.sdp ? offer.sdp.substring(0, 50).replace(/\n/g, "") : "no sdp";
-        console.log(`[SIGNAL] Forwarding offer from ${socket.id} to ${target}. SDP: ${sdpPreview}...`);
+        console.log(`[SOCKET_DEBUG] [SIGNAL] Forwarding offer from ${socket.id} to ${target}. SDP: ${sdpPreview}...`);
         io.to(target).emit('offer', {
             sender: socket.id,
             offer: offer,
@@ -795,7 +927,7 @@ io.on('connection', (socket) => {
             return;
         }
         const sdpPreview = answer.sdp ? answer.sdp.substring(0, 50).replace(/\n/g, "") : "no sdp";
-        console.log(`[SIGNAL] Forwarding answer from ${socket.id} to ${target}. SDP: ${sdpPreview}...`);
+        console.log(`[SOCKET_DEBUG] [SIGNAL] Forwarding answer from ${socket.id} to ${target}. SDP: ${sdpPreview}...`);
         io.to(target).emit('answer', {
             sender: socket.id,
             answer: answer,
@@ -813,7 +945,7 @@ io.on('connection', (socket) => {
             socket.emit('auth-error', { error: 'ICE target is not in a shared room' });
             return;
         }
-        console.log(`[SIGNAL] Forwarding ice-candidate from ${socket.id} to ${target}. Type: ${candidate.candidate ? candidate.candidate.split(' ')[7] : 'unknown'}`);
+        console.log(`[SOCKET_DEBUG] [SIGNAL] Forwarding ice-candidate from ${socket.id} to ${target}. Type: ${candidate.candidate ? candidate.candidate.split(' ')[7] : 'unknown'}`);
         io.to(target).emit('ice-candidate', {
             sender: socket.id,
             candidate: candidate,
@@ -832,13 +964,13 @@ io.on('connection', (socket) => {
             const wasParticipant = participants.delete(socket.id);
             if (!wasParticipant) continue;
 
-            console.log(`[LEAVE] User disconnected from room ${roomId}. Population: ${participants.size}`);
+            console.log(`[SOCKET_DEBUG] [LEAVE] User disconnected from room ${roomId}. Population: ${participants.size}`);
             socket.to(roomId).emit('user-left', socket.id);
             await syncVoiceRoomLeave(socket, roomId);
             await setParticipantCount(roomId, participants.size);
 
             if (participants.size === 0) {
-                console.log(`[ROOM] ${roomId} is empty. Waiting ${VOICE_EMPTY_ROOM_GRACE_MS}ms before cleanup`);
+                console.log(`[SOCKET_DEBUG] [ROOM] ${roomId} is empty. Waiting ${VOICE_EMPTY_ROOM_GRACE_MS}ms before cleanup`);
                 scheduleEmptyVoiceRoomCleanup(roomId);
             }
         }
@@ -847,7 +979,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
+        console.log(`[SOCKET_DEBUG] User disconnected: ${socket.id}`);
     });
 });
 
@@ -857,7 +989,7 @@ const calls = new Map();
 
 callIo.on('connection', (socket) => {
     socket.data.joinedCallIds = new Set();
-    console.log(`[CALL] User connected: ${socket.id} user=${socket.data.authUserId}`);
+    console.log(`[IDENTITY] [CALL] Socket connected: socketId=${socket.id} | userId=${socket.data.authUserId} | localId=${socket.data.authLocalId || 'n/a'} | email=${socket.data.authEmail}`);
 
     socket.on('join-call', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
@@ -878,7 +1010,7 @@ callIo.on('connection', (socket) => {
         // Ghost prevention: same userId, old socket -> remove
         currentCallParticipants.forEach((val, sid) => {
             if (val.userId === userId) {
-                console.log(`[CALL][CLEANUP] Removing ghost for user ${userId} (old SID: ${sid})`);
+                console.log(`[SOCKET_DEBUG] [CALL][CLEANUP] Removing ghost for user ${userId} (old SID: ${sid})`);
                 currentCallParticipants.delete(sid);
                 socket.to(callId).emit('user-left', sid);
             }
@@ -891,7 +1023,13 @@ callIo.on('connection', (socket) => {
         });
         socket.data.joinedCallIds.add(callId);
 
-        console.log(`[CALL][JOIN] ${userId} joined ${callId}. Population: ${currentCallParticipants.size}`);
+        socket.emit('call-joined', {
+            callId,
+            socketId: socket.id,
+            participantCount: currentCallParticipants.size
+        });
+
+        console.log(`[IDENTITY] [CALL] JOIN-CALL | socketId=${socket.id} | resolvedUserId=${userId} | claimedUserId=${data.userId} | canonicalUserId=${socket.data.authUserId} | callId=${callId} | name=${name} | population=${currentCallParticipants.size}`);
 
         socket.to(callId).emit('user-joined', {
             socketId: socket.id,
@@ -990,7 +1128,7 @@ callIo.on('connection', (socket) => {
             const wasParticipant = participants.delete(socket.id);
             if (!wasParticipant) continue;
 
-            console.log(`[CALL][LEAVE] Socket left ${callId}. Population: ${participants.size}`);
+            console.log(`[SOCKET_DEBUG] [CALL][LEAVE] Socket left ${callId}. Population: ${participants.size}`);
             socket.to(callId).emit('user-left', socket.id);
 
             if (participants.size === 0) {
@@ -1002,7 +1140,7 @@ callIo.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`[CALL] User disconnected: ${socket.id}`);
+        console.log(`[SOCKET_DEBUG] [CALL] User disconnected: ${socket.id}`);
     });
 });
 
@@ -1032,7 +1170,7 @@ async function finalizeLiveTermination(liveId, reason = 'ended') {
         return;
     }
 
-    console.log(`[LIVE][END] ${reason}: ${liveId}`);
+    console.log(`[SOCKET_DEBUG] [LIVE][END] ${reason}: ${liveId}`);
     liveIo.to(liveId).emit('live-ended');
     lives.delete(liveId);
     await endLiveStream(liveId);
@@ -1047,12 +1185,11 @@ function scheduleHostTerminationGrace(liveId, hostSnapshot) {
         if (!session) return;
 
         if (session.host?.userId === hostSnapshot.userId) {
-            console.log(`[LIVE][HOST] ${hostSnapshot.userId} reconnected to ${liveId} before grace timeout`);
+            console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${hostSnapshot.userId} reconnected to ${liveId} before grace timeout`);
             return;
         }
 
-        console.log(
-            `[LIVE][HOST] ${hostSnapshot.userId} did not reconnect within ${HOST_DISCONNECT_GRACE_MS}ms. Ending ${liveId}`
+        console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${hostSnapshot.userId} did not reconnect within ${HOST_DISCONNECT_GRACE_MS}ms. Ending ${liveId}`
         );
         await finalizeLiveTermination(liveId, 'host-disconnect-timeout');
     }, HOST_DISCONNECT_GRACE_MS);
@@ -1065,7 +1202,7 @@ liveIo.on('connection', (socket) => {
     socket.data.liveRole = null;
     socket.data.liveId = null;
 
-    console.log(`[LIVE] User connected: ${socket.id} user=${socket.data.authUserId}`);
+    console.log(`[SOCKET_DEBUG] [LIVE] User connected: ${socket.id} user=${socket.data.authUserId}`);
 
     socket.on('join-live', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
@@ -1076,36 +1213,29 @@ liveIo.on('connection', (socket) => {
 
         if (!liveId || !userId || (role !== 'host' && role !== 'viewer')) return;
 
-        socket.join(liveId);
-        socket.data.joinedLiveIds.add(liveId);
-        socket.data.liveRole = role;
-        socket.data.liveId = liveId;
-
         if (!lives.has(liveId)) {
             const liveMeta = await getLiveStreamMeta(liveId);
             if (!liveMeta.exists) {
-                console.warn(`[LIVE][JOIN] Rejected ${role} ${userId} because live ${liveId} does not exist`);
+                console.warn(`[SOCKET_DEBUG] [LIVE][JOIN] Rejected ${role} ${userId} because live ${liveId} does not exist`);
                 socket.emit('live-ended');
                 return;
             }
 
             if (role === 'host' && liveMeta.hostUserId && liveMeta.hostUserId !== userId) {
-                console.warn(
-                    `[LIVE][JOIN] Rejected host ${userId} for ${liveId} because owner is ${liveMeta.hostUserId}`
+                console.warn(`[SOCKET_DEBUG] [LIVE][JOIN] Rejected host ${userId} for ${liveId} because owner is ${liveMeta.hostUserId}`
                 );
                 socket.emit('live-ended');
                 return;
             }
 
             if (role !== 'host' && !liveMeta.isActive) {
-                console.warn(`[LIVE][JOIN] Rejected ${role} ${userId} for inactive live ${liveId}`);
+                console.warn(`[SOCKET_DEBUG] [LIVE][JOIN] Rejected ${role} ${userId} for inactive live ${liveId}`);
                 socket.emit('live-ended');
                 return;
             }
 
             if (role !== 'host') {
-                console.warn(
-                    `[LIVE][JOIN] Rejected viewer ${userId} for ${liveId} because there is no active host session`
+                console.warn(`[SOCKET_DEBUG] [LIVE][JOIN] Rejected viewer ${userId} for ${liveId} because there is no active host session`
                 );
                 socket.emit('live-ended');
                 return;
@@ -1124,6 +1254,10 @@ liveIo.on('connection', (socket) => {
         }
 
         const session = lives.get(liveId);
+        socket.join(liveId);
+        socket.data.joinedLiveIds.add(liveId);
+        socket.data.liveRole = role;
+        socket.data.liveId = liveId;
 
         if (role === 'host') {
             clearPendingLiveTermination(liveId);
@@ -1134,7 +1268,7 @@ liveIo.on('connection', (socket) => {
                 videoEnabled: data.videoEnabled !== false,
                 micEnabled: data.micEnabled !== false
             };
-            console.log(`[LIVE][HOST] ${userId} is hosting ${liveId}`);
+            console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${userId} is hosting ${liveId}`);
 
             // Send existing viewers to host
             const currentViewers = [];
@@ -1164,7 +1298,7 @@ liveIo.on('connection', (socket) => {
 
         // Viewer join
         session.viewers.set(socket.id, { userId, name, avatarUrl });
-        console.log(`[LIVE][VIEWER] ${userId} joined ${liveId}. Viewers: ${session.viewers.size}`);
+        console.log(`[SOCKET_DEBUG] [LIVE][VIEWER] ${userId} joined ${liveId}. Viewers: ${session.viewers.size}`);
 
         // Notify host and provide host info to viewer
         if (session.host?.socketId) {
@@ -1249,7 +1383,7 @@ liveIo.on('connection', (socket) => {
         const { target, offer, userId, name } = data;
         const authenticatedUserId = requireSocketUser(socket, userId);
         if (!authenticatedUserId) return;
-        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target)) {
+        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target, liveScopeContainsTarget)) {
             socket.emit('auth-error', { error: 'Offer target is not in a shared live session' });
             return;
         }
@@ -1266,7 +1400,7 @@ liveIo.on('connection', (socket) => {
         const { target, answer, userId, name } = data;
         const authenticatedUserId = requireSocketUser(socket, userId);
         if (!authenticatedUserId) return;
-        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target)) {
+        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target, liveScopeContainsTarget)) {
             socket.emit('auth-error', { error: 'Answer target is not in a shared live session' });
             return;
         }
@@ -1283,7 +1417,7 @@ liveIo.on('connection', (socket) => {
         const { target, candidate, userId, name } = data;
         const authenticatedUserId = requireSocketUser(socket, userId);
         if (!authenticatedUserId) return;
-        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target)) {
+        if (!sharesScopeWithTarget(lives, socket.data.joinedLiveIds, target, liveScopeContainsTarget)) {
             socket.emit('auth-error', { error: 'ICE target is not in a shared live session' });
             return;
         }
@@ -1306,8 +1440,7 @@ liveIo.on('connection', (socket) => {
             if (session.host?.socketId === socket.id) {
                 const disconnectedHost = session.host;
                 session.host = null;
-                console.log(
-                    `[LIVE][HOST] ${disconnectedHost.userId} disconnected from ${liveId}. Waiting ${HOST_DISCONNECT_GRACE_MS}ms for reconnection`
+                console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${disconnectedHost.userId} disconnected from ${liveId}. Waiting ${HOST_DISCONNECT_GRACE_MS}ms for reconnection`
                 );
                 scheduleHostTerminationGrace(liveId, disconnectedHost);
                 continue;
@@ -1336,15 +1469,15 @@ liveIo.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`[LIVE] User disconnected: ${socket.id}`);
+        console.log(`[SOCKET_DEBUG] [LIVE] User disconnected: ${socket.id}`);
     });
 });
 
 server.on('error', (error) => {
-    console.error('[FATAL] HTTP server error:', error);
+    console.error('[SOCKET_DEBUG] [FATAL] HTTP server error:', error);
     process.exit(1);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Signaling server running on port ${PORT}`);
+    console.log(`[SOCKET_DEBUG] Signaling server running on port ${PORT}`);
 });

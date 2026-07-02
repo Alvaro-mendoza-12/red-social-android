@@ -53,6 +53,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.StorageService
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 import conectate.com.data.local.dao.VideoStatsDao
 import conectate.com.util.VideoUtils
@@ -226,9 +227,9 @@ class VideoRepository @Inject constructor(
 
     private fun formatUploadBytes(bytes: Long): String {
         return when {
-            bytes >= 1024L * 1024L * 1024L -> String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-            bytes >= 1024L * 1024L -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
-            bytes >= 1024L -> String.format("%.1f KB", bytes / 1024.0)
+            bytes >= 1024L * 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+            bytes >= 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes >= 1024L -> String.format(Locale.getDefault(), "%.1f KB", bytes / 1024.0)
             else -> "$bytes bytes"
         }
     }

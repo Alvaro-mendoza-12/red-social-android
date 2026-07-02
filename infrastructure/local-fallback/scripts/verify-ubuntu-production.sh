@@ -9,6 +9,8 @@ PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 STRICT_PRODUCTION="${STRICT_PRODUCTION:-false}"
 REPORT_PATH="${REPORT_PATH:-$ROOT_DIR/production-readiness-report.md}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d%H%M%S)}"
+COMMAND_TIMEOUT_SECONDS="${COMMAND_TIMEOUT_SECONDS:-120}"
+MODULE_TIMEOUT_SECONDS="${MODULE_TIMEOUT_SECONDS:-600}"
 TEST_PASSWORD="${TEST_PASSWORD:-Conectate123!}"
 TEST_PASSWORD_NEXT="${TEST_PASSWORD_NEXT:-Conectate123!!}"
 
@@ -17,8 +19,98 @@ WARN_COUNT=0
 FAIL_COUNT=0
 
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
 MODULE_REPORT="$tmp_dir/module-report.json"
+NODE_CMD=(node)
+NODE_RUNNER="host"
+
+cleanup_test_run() {
+  [[ "$RUN_ID" =~ ^[0-9]+$ ]] || return 0
+  docker compose exec -T db psql -U conectate -d conectate_fallback -v ON_ERROR_STOP=1 >/dev/null <<SQL || true
+BEGIN;
+CREATE TEMP TABLE fixture_users AS
+  SELECT id::text AS id
+  FROM fallback_users
+  WHERE email IN ('prod.actor.${RUN_ID}@example.local', 'prod.recipient.${RUN_ID}@example.local');
+
+CREATE TEMP TABLE fixture_posts AS
+  SELECT id::text AS id FROM fallback_posts WHERE content = 'Prod post ${RUN_ID}';
+DELETE FROM fallback_post_comments WHERE lower(post_id) IN (SELECT lower(id) FROM fixture_posts);
+DELETE FROM fallback_post_reactions WHERE lower(post_id) IN (SELECT lower(id) FROM fixture_posts);
+DELETE FROM fallback_shares WHERE content_type = 'post' AND lower(post_id) IN (SELECT lower(id) FROM fixture_posts);
+DELETE FROM fallback_posts WHERE lower(id::text) IN (SELECT lower(id) FROM fixture_posts);
+
+CREATE TEMP TABLE fixture_videos AS
+  SELECT id::text AS id FROM fallback_videos WHERE title = 'Prod video ${RUN_ID}';
+DELETE FROM fallback_video_comments WHERE lower(video_id) IN (SELECT lower(id) FROM fixture_videos);
+DELETE FROM fallback_video_likes WHERE lower(video_id) IN (SELECT lower(id) FROM fixture_videos);
+DELETE FROM fallback_video_metrics WHERE lower(video_id) IN (SELECT lower(id) FROM fixture_videos);
+DELETE FROM fallback_shares WHERE content_type = 'video' AND lower(post_id) IN (SELECT lower(id) FROM fixture_videos);
+DELETE FROM fallback_videos WHERE lower(id::text) IN (SELECT lower(id) FROM fixture_videos);
+
+DELETE FROM fallback_moment_views
+WHERE moment_id IN (SELECT id FROM fallback_moments WHERE caption = 'Prod moment ${RUN_ID}');
+DELETE FROM fallback_moments WHERE caption = 'Prod moment ${RUN_ID}';
+
+DELETE FROM fallback_voice_room_participants
+WHERE lower(room_id) IN (SELECT lower(id::text) FROM fallback_voice_rooms WHERE name = 'Prod Voice ${RUN_ID}');
+DELETE FROM fallback_voice_rooms WHERE name = 'Prod Voice ${RUN_ID}';
+
+CREATE TEMP TABLE fixture_rooms AS
+  SELECT id::text AS id FROM fallback_collection_rooms
+  WHERE name IN ('Prod Group ${RUN_ID}', 'Prod Community ${RUN_ID}');
+DELETE FROM fallback_room_messages WHERE lower(room_id) IN (SELECT lower(id) FROM fixture_rooms);
+DELETE FROM fallback_collection_members WHERE lower(room_id) IN (SELECT lower(id) FROM fixture_rooms);
+DELETE FROM fallback_collection_rooms WHERE lower(id::text) IN (SELECT lower(id) FROM fixture_rooms);
+
+DELETE FROM fallback_challenge_votes
+WHERE lower(voter_id) IN (SELECT lower(id) FROM fixture_users)
+   OR submission_id::text IN (
+     SELECT id::text FROM fallback_challenge_submissions WHERE text_content = 'Reto production ${RUN_ID}'
+   );
+DELETE FROM fallback_challenge_submissions
+WHERE text_content = 'Reto production ${RUN_ID}'
+   OR lower(user_id) IN (SELECT lower(id) FROM fixture_users);
+
+CREATE TEMP TABLE fixture_chats AS
+  SELECT DISTINCT chat_id::text AS id
+  FROM fallback_chat_participants
+  WHERE lower(user_id) IN (SELECT lower(id) FROM fixture_users);
+DELETE FROM fallback_messages WHERE lower(chat_id::text) IN (SELECT lower(id) FROM fixture_chats);
+DELETE FROM fallback_chat_participants WHERE lower(chat_id::text) IN (SELECT lower(id) FROM fixture_chats);
+DELETE FROM fallback_chats WHERE lower(id::text) IN (SELECT lower(id) FROM fixture_chats);
+
+DELETE FROM fallback_follows
+WHERE lower(follower_id) IN (SELECT lower(id) FROM fixture_users)
+   OR lower(following_id) IN (SELECT lower(id) FROM fixture_users);
+DELETE FROM fallback_friends
+WHERE lower(sender_id) IN (SELECT lower(id) FROM fixture_users)
+   OR lower(receiver_id) IN (SELECT lower(id) FROM fixture_users);
+DELETE FROM fallback_fcm_tokens WHERE lower(user_id) IN (SELECT lower(id) FROM fixture_users);
+DELETE FROM fallback_notifications
+WHERE lower(recipient_id) IN (SELECT lower(id) FROM fixture_users)
+   OR lower(actor_id) IN (SELECT lower(id) FROM fixture_users);
+DELETE FROM fallback_storage_objects
+WHERE name LIKE 'production/${RUN_ID}/%'
+   OR owner_id::text IN (SELECT id FROM fixture_users);
+DELETE FROM fallback_users WHERE id::text IN (SELECT id FROM fixture_users);
+COMMIT;
+SQL
+  docker compose exec -T -e TEST_RUN_ID="$RUN_ID" api sh -lc '
+    for root in /data/storage/*/production; do
+      target="$root/$TEST_RUN_ID"
+      [ ! -d "$target" ] || rm -rf -- "$target"
+    done
+  ' >/dev/null 2>&1 || true
+}
+
+on_exit() {
+  local status=$?
+  trap - EXIT
+  cleanup_test_run
+  rm -rf "$tmp_dir"
+  exit "$status"
+}
+trap on_exit EXIT
 
 line() {
   printf '%s\n' "$*" | tee -a "$REPORT_PATH" >/dev/null
@@ -46,7 +138,7 @@ run_capture() {
   line ""
   line "### $title"
   line '```text'
-  if "$@" >>"$REPORT_PATH" 2>&1; then
+  if timeout "$COMMAND_TIMEOUT_SECONDS" "$@" >>"$REPORT_PATH" 2>&1; then
     line '```'
     status_line PASS "$title"
   else
@@ -84,7 +176,7 @@ require_env_ready() {
 
 curl_status() {
   local url="$1"
-  curl -sS -o "$tmp_dir/curl-body.txt" -w '%{http_code}' \
+  curl --connect-timeout 8 --max-time 20 -sS -o "$tmp_dir/curl-body.txt" -w '%{http_code}' \
     -H 'ngrok-skip-browser-warning: 1' "$url" || true
 }
 
@@ -111,9 +203,28 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
+  NODE_CMD=(node)
+  NODE_RUNNER="host"
   status_line PASS "node disponible: $(node --version)"
+elif docker image inspect conectate-local-fallback-api >/dev/null 2>&1; then
+  NODE_CMD=(
+    docker run --rm -i
+    -e MODULE_REPORT
+    -e API_URL
+    -e RUN_ID
+    -e TEST_PASSWORD
+    -e TEST_PASSWORD_NEXT
+    -e REQUEST_TIMEOUT_MS
+    -v "$tmp_dir:$tmp_dir"
+    -v "$ROOT_DIR:$ROOT_DIR"
+    -w "$ROOT_DIR"
+    conectate-local-fallback-api
+    node
+  )
+  NODE_RUNNER="docker:conectate-local-fallback-api"
+  status_line PASS "node disponible via imagen Docker conectate-local-fallback-api"
 else
-  status_line FAIL "node no esta instalado; instala Node.js LTS para ejecutar pruebas HTTP"
+  status_line FAIL "node no esta instalado y no existe la imagen Docker conectate-local-fallback-api para ejecutar pruebas HTTP"
 fi
 
 if [ -f .env ]; then
@@ -134,6 +245,12 @@ else
   status_line PASS "LEGACY_SUPABASE_IMPORT_ENABLED no esta activo"
 fi
 
+if [ -s secrets/firebase-service-account.json ]; then
+  status_line PASS "cuenta Firebase Admin presente para FCM remoto"
+else
+  status_line FAIL "falta secrets/firebase-service-account.json; las notificaciones con la app cerrada no funcionaran"
+fi
+
 if [ "$STRICT_PRODUCTION" = "true" ]; then
   for key in POSTGRES_PASSWORD JWT_SECRET ADMIN_SYNC_TOKEN PUBLIC_BASE_URL; do
     value="$(env_value "$key")"
@@ -147,6 +264,13 @@ section "Docker, puertos y logs"
 run_capture "docker compose ps" docker compose ps
 run_capture "puertos TCP locales" bash -lc "ss -ltnp 2>/dev/null | grep -E ':(3001|3002|3003|3080|5433)\\b' || true"
 run_capture "logs api edge signaling realtime-gateway" docker compose logs --tail=120 api edge signaling realtime-gateway
+
+ready_payload="$(curl -fsS --max-time 10 http://127.0.0.1:${FALLBACK_EDGE_PORT:-3080}/ready 2>/dev/null || true)"
+if printf '%s' "$ready_payload" | grep -q '"configured":true'; then
+  status_line PASS "Firebase Admin inicializado: pushNotifications.configured=true"
+else
+  status_line FAIL "Firebase Admin no esta listo en /ready"
+fi
 
 section "Postgres y storage local"
 run_capture "Postgres ready" docker compose exec -T db pg_isready -U conectate -d conectate_fallback
@@ -177,8 +301,14 @@ section "Proxy y health endpoints"
 for path in /health /ready /realtime/health /turn-credentials; do
   code="$(curl_status "${API_URL}${path}")"
   if [ "$path" = "/turn-credentials" ]; then
-    if [ "$code" = "200" ] || [ "$code" = "401" ] || [ "$code" = "503" ]; then
+    if [ "$code" = "200" ] || [ "$code" = "401" ]; then
       status_line PASS "$path responde HTTP $code"
+    elif [ "$code" = "503" ]; then
+      if [ "$STRICT_PRODUCTION" = "true" ]; then
+        status_line FAIL "$path responde HTTP 503; TURN no esta configurado"
+      else
+        status_line WARN "$path responde HTTP 503; llamadas entre NAT restrictivos no estan garantizadas"
+      fi
     else
       status_line FAIL "$path responde HTTP $code"
       line '```text'
@@ -202,7 +332,7 @@ API_URL="$API_URL" \
 RUN_ID="$RUN_ID" \
 TEST_PASSWORD="$TEST_PASSWORD" \
 TEST_PASSWORD_NEXT="$TEST_PASSWORD_NEXT" \
-node <<'NODE'
+timeout "$MODULE_TIMEOUT_SECONDS" "${NODE_CMD[@]}" <<'NODE'
 const fs = require('fs')
 
 const apiUrl = String(process.env.API_URL || '').replace(/\/+$/, '')
@@ -210,6 +340,7 @@ const runId = process.env.RUN_ID || Date.now().toString()
 const password = process.env.TEST_PASSWORD || 'Conectate123!'
 const passwordNext = process.env.TEST_PASSWORD_NEXT || 'Conectate123!!'
 const moduleReportPath = process.env.MODULE_REPORT
+const requestTimeoutMs = Number(process.env.REQUEST_TIMEOUT_MS || 20_000)
 
 const rows = []
 let failures = 0
@@ -228,6 +359,7 @@ function assert(condition, message) {
 async function request(pathname, options = {}) {
   const response = await fetch(`${apiUrl}${pathname}`, {
     ...options,
+    signal: AbortSignal.timeout(requestTimeoutMs),
     headers: {
       'content-type': 'application/json',
       'ngrok-skip-browser-warning': '1',
@@ -253,6 +385,30 @@ function auth(token) {
   return { authorization: `Bearer ${token}` }
 }
 
+const onePixelPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+
+function silentWav() {
+  const sampleCount = 800
+  const buffer = Buffer.alloc(44 + sampleCount)
+  buffer.write('RIFF', 0)
+  buffer.writeUInt32LE(36 + sampleCount, 4)
+  buffer.write('WAVEfmt ', 8)
+  buffer.writeUInt32LE(16, 16)
+  buffer.writeUInt16LE(1, 20)
+  buffer.writeUInt16LE(1, 22)
+  buffer.writeUInt32LE(8000, 24)
+  buffer.writeUInt32LE(8000, 28)
+  buffer.writeUInt16LE(1, 32)
+  buffer.writeUInt16LE(8, 34)
+  buffer.write('data', 36)
+  buffer.writeUInt32LE(sampleCount, 40)
+  buffer.fill(128, 44)
+  return buffer
+}
+
 async function step(module, endpoint, android, postgres, storage, fn) {
   try {
     const detail = await fn()
@@ -271,6 +427,7 @@ async function upload(token, bucket, objectName, content, type) {
   form.append('file', new Blob([content], { type }), objectName)
   const response = await fetch(`${apiUrl}/v1/storage/upload`, {
     method: 'POST',
+    signal: AbortSignal.timeout(requestTimeoutMs),
     headers: {
       authorization: `Bearer ${token}`,
       'ngrok-skip-browser-warning': '1',
@@ -284,7 +441,10 @@ async function upload(token, bucket, objectName, content, type) {
   assert(object?.publicUrl || object?.url, 'upload sin publicUrl')
 
   const readUrl = object.publicUrl || object.url
-  const readResponse = await fetch(readUrl, { headers: { 'ngrok-skip-browser-warning': '1' } })
+  const readResponse = await fetch(readUrl, {
+    signal: AbortSignal.timeout(requestTimeoutMs),
+    headers: { 'ngrok-skip-browser-warning': '1' },
+  })
   if (!readResponse.ok) throw new Error(`lectura publica ${readUrl} -> ${readResponse.status}`)
   return object
 }
@@ -342,7 +502,7 @@ async function main() {
   })
 
   await step('perfil ver/editar/buscar', 'GET/PATCH /v1/data/profile/me + GET /v1/data/profiles/search', 'UserRepository + ProfileViewModel', 'fallback_profile_overrides/fallback_users', 'avatars', async () => {
-    const avatar = await upload(actorToken, 'avatars', 'avatar.txt', 'avatar-production', 'text/plain')
+    const avatar = await upload(actorToken, 'avatars', 'avatar.png', onePixelPng, 'image/png')
     await request('/v1/data/profile/me', { headers: auth(actorToken) })
     await request('/v1/data/profile/me', {
       method: 'PATCH',
@@ -354,24 +514,27 @@ async function main() {
     return `avatar=${avatar.bucket}/${avatar.path}; search=${search.items.length}`
   })
 
-  const audio = await step('storage audio', 'POST /v1/storage/upload + GET public object', 'StorageService + audio players', 'fallback_storage_objects', 'chat-media', async () => {
-    const object = await upload(actorToken, 'chat-media', 'audio.txt', 'audio-production', 'text/plain')
-    return `${object.bucket}/${object.path}`
+  let audio
+  await step('storage audio', 'POST /v1/storage/upload + GET public object', 'StorageService + audio players', 'fallback_storage_objects', 'chat-media', async () => {
+    audio = await upload(actorToken, 'chat-media', 'audio.wav', silentWav(), 'audio/wav')
+    return `${audio.bucket}/${audio.path}`
   })
-  const videoFile = await step('storage video', 'POST /v1/storage/upload + GET public object', 'StorageService + VideoRepository', 'fallback_storage_objects', 'videos', async () => {
-    const object = await upload(actorToken, 'videos', 'video.txt', 'video-production', 'text/plain')
-    return `${object.bucket}/${object.path}`
+  let videoFile
+  await step('storage video', 'POST /v1/storage/upload + GET public object', 'StorageService + VideoRepository', 'fallback_storage_objects', 'videos', async () => {
+    videoFile = await upload(actorToken, 'videos', 'video.txt', 'video-production', 'text/plain')
+    return `${videoFile.bucket}/${videoFile.path}`
   })
-  const image = await step('storage imagen', 'POST /v1/storage/upload + GET public object', 'StorageService + Post/Moment/Profile', 'fallback_storage_objects', 'post-media/moment-media', async () => {
-    const object = await upload(actorToken, 'post-media', 'image.txt', 'image-production', 'text/plain')
-    return `${object.bucket}/${object.path}`
+  let image
+  await step('storage imagen', 'POST /v1/storage/upload + GET public object', 'StorageService + Post/Moment/Profile', 'fallback_storage_objects', 'post-media/moment-media', async () => {
+    image = await upload(actorToken, 'post-media', 'image.png', onePixelPng, 'image/png')
+    return `${image.bucket}/${image.path}`
   })
 
   const post = await step('publicaciones/comentarios/social', 'POST /v1/data/feed/posts + comments/reaction/share/detail', 'PostRepository + SocialScreen', 'fallback_posts + fallback_post_comments + fallback_post_reactions + fallback_post_shares', 'post-media + chat-media', async () => {
     const created = await request('/v1/data/feed/posts', {
       method: 'POST',
       headers: auth(actorToken),
-      body: JSON.stringify({ content: `Prod post ${runId}`, mediaUrl: image.publicUrl, mediaUrls: [image.publicUrl], mediaType: 'image', visibility: 'public' }),
+      body: JSON.stringify({ content: `Prod post ${runId}`, mediaUrl: image.publicUrl, mediaUrls: [image.publicUrl], mediaType: 'image', visibility: 'private' }),
     })
     assert(created.post?.id, 'post sin id')
     await request(`/v1/data/feed/posts/${encodeURIComponent(created.post.id)}/comments`, {
@@ -461,7 +624,7 @@ async function main() {
     const created = await request('/v1/data/videos', {
       method: 'POST',
       headers: auth(actorToken),
-      body: JSON.stringify({ title: `Prod video ${runId}`, description: 'Ubuntu production video', videoUrl: videoFile.publicUrl, thumbnailUrl: image.publicUrl, durationSeconds: 5, isPublic: true, tags: ['production'] }),
+      body: JSON.stringify({ title: `Prod video ${runId}`, description: 'Ubuntu production video', videoUrl: videoFile.publicUrl, thumbnailUrl: image.publicUrl, durationSeconds: 5, isPublic: false, tags: ['production-test'] }),
     })
     assert(created.video?.id, 'video sin id')
     await request(`/v1/data/videos/${encodeURIComponent(created.video.id)}/view`, { method: 'POST', headers: auth(actorToken) })
@@ -484,7 +647,7 @@ async function main() {
     const created = await request('/v1/data/moments', {
       method: 'POST',
       headers: auth(actorToken),
-      body: JSON.stringify({ mediaUrl: image.publicUrl, mediaType: 'image', caption: `Prod moment ${runId}` }),
+      body: JSON.stringify({ mediaUrl: image.publicUrl, mediaType: 'image', caption: `Prod moment ${runId}`, visibility: 'private', visibilityType: 'private' }),
     })
     const id = created.moment?.id || created.item?.id || created.id
     assert(id, 'momento sin id')
@@ -523,7 +686,7 @@ async function main() {
     const room = await request('/v1/data/voice/rooms', {
       method: 'POST',
       headers: auth(actorToken),
-      body: JSON.stringify({ name: `Prod Voice ${runId}`, description: 'Ubuntu voice room', isPublic: true, maxParticipants: 8 }),
+      body: JSON.stringify({ name: `Prod Voice ${runId}`, description: 'Ubuntu voice room', isPublic: false, maxParticipants: 8 }),
     })
     assert(room.room?.id, 'sala sin id')
     await request(`/v1/data/voice/rooms/${encodeURIComponent(room.room.id)}/join`, {
@@ -534,7 +697,10 @@ async function main() {
     const detail = await request(`/v1/data/voice/rooms/${encodeURIComponent(room.room.id)}`, { headers: auth(actorToken) })
     assert(Array.isArray(detail.participants), 'sala sin participantes')
     await request(`/v1/data/voice/rooms/${encodeURIComponent(room.room.id)}/leave`, { method: 'POST', headers: auth(actorToken) })
-    return `room=${room.room.id}; participants=${detail.participants.length}`
+    const afterLeave = await request(`/v1/data/voice/rooms/${encodeURIComponent(room.room.id)}`, { headers: auth(actorToken) })
+    assert(afterLeave.participants.length === 0, 'presencia fantasma después de salir')
+    assert(Number(afterLeave.room?.participant_count || 0) === 0, 'contador de sala no volvió a cero')
+    return `room=${room.room.id}; joined=${detail.participants.length}; afterLeave=${afterLeave.participants.length}`
   })
 
   await step('storage listado y borrado', 'GET/DELETE /v1/storage/objects', 'StorageService.delete/list', 'fallback_storage_objects', 'chat-media', async () => {
@@ -572,7 +738,7 @@ fi
 if [ -f "$MODULE_REPORT" ]; then
   line ""
   line "### Matriz endpoint Android Postgres Storage"
-  node - "$MODULE_REPORT" "$REPORT_PATH" <<'NODE'
+  "${NODE_CMD[@]}" - "$MODULE_REPORT" "$REPORT_PATH" <<'NODE'
 const fs = require('fs')
 const [inputPath, reportPath] = process.argv.slice(2)
 const data = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
@@ -590,7 +756,7 @@ fi
 section "Referencias Supabase activas esperadas"
 line "- Supabase debe quedar desactivado funcionalmente con FALLBACK_API_URL/Ubuntu como primario."
 line "- LEGACY_SUPABASE_IMPORT_ENABLED solo debe activarse temporalmente para importar usuarios/storage antiguos."
-line "- FCM push remoto todavia requiere proveedor externo si quieres push fuera del proceso local; las notificaciones in-app ya se persisten en fallback_notifications."
+line "- FCM remoto usa Firebase Admin en Ubuntu; /ready debe reportar pushNotifications.configured=true."
 
 section "Resumen"
 line "- PASS: $PASS_COUNT"

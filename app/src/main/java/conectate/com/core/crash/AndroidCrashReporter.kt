@@ -1,8 +1,6 @@
 package conectate.com.core.crash
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.firebase.ktx.Firebase
-import com.google.firebase.crashlytics.ktx.crashlytics
 import conectate.com.core.logging.AppLogger
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -14,11 +12,19 @@ class AndroidCrashReporter @Inject constructor(
 ) : CrashReporter {
 
     private val currentUserId = AtomicReference<String?>(null)
-    private val crashlytics = Firebase.crashlytics
+
+    private inline fun withCrashlytics(block: (FirebaseCrashlytics) -> Unit) {
+        runCatching { FirebaseCrashlytics.getInstance() }
+            .onSuccess { crashlytics ->
+                runCatching { block(crashlytics) }
+                    .onFailure { logger.w("CrashReporter", "Crashlytics call skipped", it) }
+            }
+            .onFailure { logger.w("CrashReporter", "Crashlytics unavailable; keeping app alive", it) }
+    }
 
     override fun setUserId(userId: String?) {
         currentUserId.set(userId)
-        crashlytics.setCustomKey("user_id", userId ?: "anonymous")
+        withCrashlytics { it.setCustomKey("user_id", userId ?: "anonymous") }
     }
 
     override fun recordException(throwable: Throwable, extra: Map<String, String>) {
@@ -50,16 +56,18 @@ class AndroidCrashReporter @Inject constructor(
         // Log local
         logger.e("CrashReporter", message, throwable)
 
-        // Report to Crashlytics
-        extra.forEach { (key, value) -> crashlytics.setCustomKey(key, value) }
-        currentUserId.get()?.let { crashlytics.setCustomKey("user_id", it) }
-        crashlytics.setCustomKey("heap_used_mb", usedMb.toInt())
-        crashlytics.setCustomKey("heap_max_mb", maxMb.toInt())
-        if (origin != null) {
-            crashlytics.setCustomKey("origin_class", origin.className)
-            crashlytics.setCustomKey("origin_line", origin.lineNumber)
+        // Report to Crashlytics if Firebase is available. Never let telemetry crash startup.
+        withCrashlytics { crashlytics ->
+            extra.forEach { (key, value) -> crashlytics.setCustomKey(key, value) }
+            currentUserId.get()?.let { crashlytics.setCustomKey("user_id", it) }
+            crashlytics.setCustomKey("heap_used_mb", usedMb.toInt())
+            crashlytics.setCustomKey("heap_max_mb", maxMb.toInt())
+            if (origin != null) {
+                crashlytics.setCustomKey("origin_class", origin.className)
+                crashlytics.setCustomKey("origin_line", origin.lineNumber)
+            }
+            crashlytics.recordException(throwable)
         }
-        crashlytics.recordException(throwable)
     }
 
     override fun recordFatalException(threadName: String, throwable: Throwable) {
@@ -88,16 +96,18 @@ class AndroidCrashReporter @Inject constructor(
         // Log local
         logger.e("CrashReporter", message, throwable)
 
-        // Report to Crashlytics
-        crashlytics.setCustomKey("thread_name", threadName)
-        crashlytics.setCustomKey("heap_used_mb", usedMb.toInt())
-        crashlytics.setCustomKey("heap_max_mb", maxMb.toInt())
-        currentUserId.get()?.let { crashlytics.setCustomKey("user_id", it) }
-        if (origin != null) {
-            crashlytics.setCustomKey("origin_class", origin.className)
-            crashlytics.setCustomKey("origin_line", origin.lineNumber)
+        // Report to Crashlytics if Firebase is available. Never let telemetry crash startup.
+        withCrashlytics { crashlytics ->
+            crashlytics.setCustomKey("thread_name", threadName)
+            crashlytics.setCustomKey("heap_used_mb", usedMb.toInt())
+            crashlytics.setCustomKey("heap_max_mb", maxMb.toInt())
+            currentUserId.get()?.let { crashlytics.setCustomKey("user_id", it) }
+            if (origin != null) {
+                crashlytics.setCustomKey("origin_class", origin.className)
+                crashlytics.setCustomKey("origin_line", origin.lineNumber)
+            }
+            crashlytics.recordException(throwable)
         }
-        crashlytics.recordException(throwable)
     }
 
     override fun recordMessage(message: String, attributes: Map<String, String>) {
@@ -110,10 +120,12 @@ class AndroidCrashReporter @Inject constructor(
         // Log local
         logger.i("CrashReporter", payload)
 
-        // Log to Crashlytics as non-fatal info
-        crashlytics.log(payload)
-        attributes.forEach { (key, value) ->
-            crashlytics.setCustomKey(key, value)
+        // Log to Crashlytics as non-fatal info if available.
+        withCrashlytics { crashlytics ->
+            crashlytics.log(payload)
+            attributes.forEach { (key, value) ->
+                crashlytics.setCustomKey(key, value)
+            }
         }
     }
 }

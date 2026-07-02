@@ -3,6 +3,8 @@ package conectate.com.presentation.calls
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -23,10 +25,12 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallMissedOutgoing
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PhoneDisabled
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AssistChip
-
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,10 +38,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +58,7 @@ import conectate.com.data.model.CallHistoryDirection
 import conectate.com.data.model.CallHistoryEntry
 import conectate.com.data.model.CallHistoryStatus
 import conectate.com.data.repository.CallHistoryRepository
+import conectate.com.data.repository.UserRepository
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,10 +67,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import androidx.navigation.NavController
+import conectate.com.data.localfallback.UbuntuStorageUrl
 
 enum class CallHistoryFilter(val label: String) {
     ALL("Todo"),
@@ -72,12 +84,14 @@ enum class CallHistoryFilter(val label: String) {
 
 @HiltViewModel
 class CallHistoryViewModel @Inject constructor(
-    repository: CallHistoryRepository
+    private val repository: CallHistoryRepository,
+    private val userRepository: UserRepository
 ) : ViewModel() {
     private val _filter = MutableStateFlow(CallHistoryFilter.ALL)
     val filter: StateFlow<CallHistoryFilter> = _filter.asStateFlow()
+    private val _profileHints = MutableStateFlow<Map<String, CallHistoryProfileHint>>(emptyMap())
 
-    val entries = combine(repository.entries, _filter) { entries, filter ->
+    val entries = combine(repository.entries, _filter, _profileHints) { entries, filter, hints ->
         entries.filter { entry ->
             when (filter) {
                 CallHistoryFilter.ALL -> true
@@ -85,13 +99,67 @@ class CallHistoryViewModel @Inject constructor(
                 CallHistoryFilter.GROUP -> entry.contextType.equals("group", ignoreCase = true)
                 CallHistoryFilter.COMMUNITY -> entry.contextType.equals("community", ignoreCase = true)
             }
+        }.map { entry ->
+            val peerId = entry.peerUserId?.trim()?.lowercase().orEmpty()
+            val hint = hints[peerId]
+            if (hint == null) {
+                entry.copy(peerAvatarUrl = UbuntuStorageUrl.rewrite(entry.peerAvatarUrl))
+            } else {
+                entry.copy(
+                    peerName = entry.peerName?.takeIf { it.isNotBlank() } ?: hint.name,
+                    peerAvatarUrl = UbuntuStorageUrl.rewrite(
+                        entry.peerAvatarUrl?.takeIf { it.isNotBlank() } ?: hint.avatarUrl
+                    )
+                )
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            repository.entries
+                .onEach { entries ->
+                    entries
+                        .mapNotNull { it.peerUserId?.trim()?.lowercase()?.takeIf { id -> id.isNotBlank() } }
+                        .distinct()
+                        .filterNot { _profileHints.value.containsKey(it) }
+                        .forEach { userId ->
+                            val user = userRepository.getUserById(userId).getOrNull()
+                            if (user != null) {
+                                _profileHints.value = _profileHints.value + (
+                                    userId to CallHistoryProfileHint(
+                                        name = user.displayName.ifBlank { user.username },
+                                        avatarUrl = UbuntuStorageUrl.rewrite(user.avatar_url)
+                                    )
+                                )
+                            }
+                        }
+                }
+                .collect { }
+        }
+    }
 
     fun updateFilter(value: String) {
         _filter.value = CallHistoryFilter.entries.firstOrNull { it.name == value } ?: CallHistoryFilter.ALL
     }
+
+    fun deleteEntry(entryId: String) {
+        viewModelScope.launch {
+            repository.delete(entryId)
+        }
+    }
+
+    fun clearAll() {
+        viewModelScope.launch {
+            repository.clearAll()
+        }
+    }
 }
+
+private data class CallHistoryProfileHint(
+    val name: String?,
+    val avatarUrl: String?
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +169,8 @@ fun CallHistoryScreen(
 ) {
     val entries by viewModel.entries.collectAsState()
     val filter by viewModel.filter.collectAsState()
+    var entryPendingDelete by remember { mutableStateOf<CallHistoryEntry?>(null) }
+    var showClearAllDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -109,6 +179,13 @@ fun CallHistoryScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                actions = {
+                    if (entries.isNotEmpty()) {
+                        IconButton(onClick = { showClearAllDialog = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Borrar historial")
+                        }
                     }
                 }
             )
@@ -122,6 +199,7 @@ fun CallHistoryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -152,9 +230,13 @@ fun CallHistoryScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(items = entries, key = { it.id }) { entry ->
+                    itemsIndexed(
+                        items = entries,
+                        key = { index, entry -> "${entry.id}:${entry.callId}:$index" }
+                    ) { _, entry ->
                         CallHistoryRow(
                             entry = entry,
+                            onDelete = { entryPendingDelete = entry },
                             onClick = {
                                 when (entry.contextType.trim().lowercase()) {
                                     "group" -> entry.contextId?.let {
@@ -177,11 +259,46 @@ fun CallHistoryScreen(
             }
         }
     }
+
+    entryPendingDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { entryPendingDelete = null },
+            title = { Text("Eliminar llamada") },
+            text = { Text("¿Quieres eliminar esta llamada del historial?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteEntry(entry.id)
+                    entryPendingDelete = null
+                }) { Text("Eliminar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { entryPendingDelete = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showClearAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearAllDialog = false },
+            title = { Text("Borrar historial") },
+            text = { Text("¿Quieres borrar todo el historial de llamadas?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearAll()
+                    showClearAllDialog = false
+                }) { Text("Borrar todo") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 }
 
 @Composable
 private fun CallHistoryRow(
     entry: CallHistoryEntry,
+    onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
     val (icon, tint) = when (entry.status) {
@@ -237,6 +354,15 @@ private fun CallHistoryRow(
         }
         Column(horizontalAlignment = Alignment.End) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Eliminar llamada",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(2.dp))
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(

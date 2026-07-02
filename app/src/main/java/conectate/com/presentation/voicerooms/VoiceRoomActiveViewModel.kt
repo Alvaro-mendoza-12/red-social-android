@@ -12,8 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.webrtc.EglBase
 import org.webrtc.VideoTrack
 import java.util.UUID
 import javax.inject.Inject
@@ -36,6 +37,9 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val _isJoined = MutableStateFlow(false)
     val isJoined: StateFlow<Boolean> = _isJoined.asStateFlow()
 
+    private val _joinError = MutableStateFlow<String?>(null)
+    val joinError: StateFlow<String?> = _joinError.asStateFlow()
+
     private val _currentUserId = MutableStateFlow<String?>(null)
     val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
 
@@ -44,6 +48,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _videoMode = MutableStateFlow(VoiceRoomRepository.VideoMode.NONE)
     val videoMode: StateFlow<VoiceRoomRepository.VideoMode> = _videoMode.asStateFlow()
+    val videoError: StateFlow<String?> = voiceRoomRepository.videoError
 
     private val _remoteVideoTracks = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
     val remoteVideoTracks: StateFlow<Map<String, VideoTrack>> = _remoteVideoTracks.asStateFlow()
@@ -56,9 +61,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _signalingStates = MutableStateFlow<Map<String, String>>(emptyMap())
     val signalingStates: StateFlow<Map<String, String>> = _signalingStates.asStateFlow()
-
-    private val _sharingStates = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val sharingStates: StateFlow<Map<String, Boolean>> = _sharingStates.asStateFlow()
 
     private val _debugInfo = MutableStateFlow<String?>(null)
     val debugInfo: StateFlow<String?> = _debugInfo.asStateFlow()
@@ -92,6 +94,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _activeReactions = MutableStateFlow<List<ReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<ReactionEvent>> = _activeReactions.asStateFlow()
+    private var videoActionJob: Job? = null
 
     private val _inviteQuery = MutableStateFlow("")
     val inviteQuery: StateFlow<String> = _inviteQuery.asStateFlow()
@@ -102,7 +105,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val _isSearchingInvites = MutableStateFlow(false)
     val isSearchingInvites: StateFlow<Boolean> = _isSearchingInvites.asStateFlow()
 
-    private var eglBase: EglBase? = null
     private var joinedRoomId: String? = null
 
     init {
@@ -150,11 +152,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            voiceRoomRepository.sharingStates.collectLatest { states ->
-                _sharingStates.value = states.mapValues { it.value.first || it.value.second }
-            }
-        }
-        viewModelScope.launch {
             voiceRoomRepository.debugInfo.collectLatest { info ->
                 _debugInfo.value = info.entries
                     .take(6)
@@ -167,6 +164,11 @@ class VoiceRoomActiveViewModel @Inject constructor(
                 _isJoined.value = session.isConnected
                 _videoMode.value = session.videoMode
                 _isMuted.value = session.isMuted
+                if (session.connectionState == conectate.com.data.repository.VoiceConnectionState.ERROR) {
+                    _joinError.value = session.connectionError ?: "No se pudo conectar con la sala de voz."
+                } else if (session.isConnected) {
+                    _joinError.value = null
+                }
                 session.room?.let { _room.value = it }
             }
         }
@@ -191,28 +193,29 @@ class VoiceRoomActiveViewModel @Inject constructor(
         }
         viewModelScope.launch {
             voiceRoomRepository.incomingReactions.collectLatest { reaction ->
-                _activeReactions.value = _activeReactions.value + reaction
+                _activeReactions.value = (_activeReactions.value + reaction).distinctBy { it.id }
                 launch {
-                    kotlinx.coroutines.delay(3000)
+                    delay(10_000)
                     _activeReactions.value = _activeReactions.value.filterNot { it.id == reaction.id }
                 }
             }
         }
     }
 
-    fun getEglBaseContext(): org.webrtc.EglBase.Context {
-        if (eglBase == null) {
-            eglBase = EglBase.create()
-        }
-        return eglBase!!.eglBaseContext
+    fun getEglBaseContext(): org.webrtc.EglBase.Context? {
+        return voiceRoomRepository.getEglBaseContext()
     }
 
     fun joinRoom(roomId: String) {
         viewModelScope.launch {
+            _joinError.value = null
             val seed = authService.getCurrentUserProfileSeed()
             val userId = voiceRoomRepository.getCurrentUserId()
                 ?: seed?.id
-                ?: return@launch
+                ?: run {
+                    _joinError.value = "No se pudo identificar tu sesión. Vuelve a iniciar sesión."
+                    return@launch
+                }
             _currentUserId.value = userId
             try {
                 val roomResult = voiceRoomRepository.getRoomById(roomId)
@@ -235,6 +238,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomActiveVM", "Error joining room", e)
                 _isJoined.value = false
+                _joinError.value = e.message ?: "No se pudo entrar a la sala de voz."
             }
         }
     }
@@ -252,23 +256,51 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun toggleCamera() {
-        if (_videoMode.value == VoiceRoomRepository.VideoMode.NONE) {
-            voiceRoomRepository.startCameraCapture()
-        } else {
-            voiceRoomRepository.stopVideo()
+        if (videoActionJob?.isActive == true) return
+        videoActionJob = viewModelScope.launch {
+            if (!_isJoined.value) {
+                _joinError.value = "Espera a que la sala termine de conectar."
+                return@launch
+            }
+            runCatching {
+                if (_videoMode.value == VoiceRoomRepository.VideoMode.CAMERA) {
+                    voiceRoomRepository.stopVideo()
+                } else {
+                    voiceRoomRepository.startCameraCapture()
+                }
+            }.onFailure {
+                _joinError.value = "No se pudo cambiar la cámara. Intenta otra vez."
+            }
+            delay(2_200)
         }
     }
 
     fun toggleScreenShare(data: Intent) {
-        if (_videoMode.value == VoiceRoomRepository.VideoMode.SCREEN) {
-            voiceRoomRepository.stopVideo()
-        } else {
-            voiceRoomRepository.startScreenCapture(data)
+        if (videoActionJob?.isActive == true) return
+        videoActionJob = viewModelScope.launch {
+            if (!_isJoined.value) {
+                _joinError.value = "Espera a que la sala termine de conectar."
+                return@launch
+            }
+            runCatching {
+                if (_videoMode.value == VoiceRoomRepository.VideoMode.SCREEN) {
+                    voiceRoomRepository.stopVideo()
+                } else {
+                    voiceRoomRepository.startScreenCapture(data)
+                }
+            }.onFailure {
+                _joinError.value = "No se pudo compartir la pantalla. Vuelve a intentarlo."
+            }
+            delay(2_200)
         }
     }
 
     fun stopVideo() {
-        voiceRoomRepository.stopVideo()
+        runCatching { voiceRoomRepository.stopVideo() }
+    }
+
+    fun clearVideoError() {
+        voiceRoomRepository.clearVideoError()
     }
 
     fun leaveRoom() {
@@ -276,8 +308,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
             voiceRoomRepository.leaveRoom()
             _isJoined.value = false
             joinedRoomId = null
-            eglBase?.release()
-            eglBase = null
         }
     }
 
@@ -320,19 +350,18 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     fun sendReaction(emoji: String) {
         val reaction = ReactionEvent(
+            id = UUID.randomUUID().toString(),
+            userId = getCurrentUserId(),
             emoji = emoji,
-            timestamp = System.currentTimeMillis(),
-            userId = getCurrentUserId()
+            timestamp = System.currentTimeMillis()
         )
-        val current = _activeReactions.value.toMutableList()
-        current.add(reaction)
-        _activeReactions.value = current
-        _room.value?.id?.let { roomId -> voiceRoomRepository.sendReaction(roomId, emoji) }
-        // Remove after animation
+        _activeReactions.value = (_activeReactions.value + reaction).distinctBy { it.id }
         viewModelScope.launch {
-            kotlinx.coroutines.delay(3000)
-            val updated = _activeReactions.value.filter { it.timestamp > System.currentTimeMillis() - 4000 }
-            _activeReactions.value = updated
+            delay(10_000)
+            _activeReactions.value = _activeReactions.value.filterNot { it.id == reaction.id }
+        }
+        _room.value?.id?.let { roomId ->
+            voiceRoomRepository.sendReaction(roomId, emoji)
         }
     }
 
@@ -415,8 +444,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        eglBase?.release()
-        eglBase = null
     }
 }
 

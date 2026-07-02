@@ -7,7 +7,6 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
 
 /**
  * Dialog to guide users on problematic devices to disable battery optimization
@@ -19,8 +18,6 @@ fun BatteryOptimizationDialog(
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val context = LocalContext.current
-    
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Mejora tus Notificaciones") },

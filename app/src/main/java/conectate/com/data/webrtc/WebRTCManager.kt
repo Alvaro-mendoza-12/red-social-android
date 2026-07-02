@@ -767,6 +767,7 @@ class WebRTCManager(
         )
         activeOutgoingVideoTrack()?.let { track ->
             videoTransceiver.sender.setTrack(track, false)
+            videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
             Log.i("WebRTC", "📹 Video track attached to $requestedKey")
         } ?: run {
             videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
@@ -1402,7 +1403,6 @@ class WebRTCManager(
                 pc.setLocalDescription(object : SdpObserverAdapter() {
                     override fun onSetSuccess() {
                         Log.d("WebRTC", "Local Offer SET for $socketId")
-                        drainIceQueue(socketId, pc)
                         // v24.3: Apply Bitrate control after setting local description
                         setMaxBitrate(pc, socketId)
                         signalingEvents.onSendOffer(socketId, JSONObject().apply { 
@@ -1438,7 +1438,6 @@ class WebRTCManager(
                 pc.setLocalDescription(object : SdpObserverAdapter() {
                     override fun onSetSuccess() {
                         Log.d("WebRTC", "Local Answer SET for $socketId")
-                        drainIceQueue(socketId, pc)
                         // v24.3: Apply Bitrate control after setting local description
                         setMaxBitrate(pc, socketId)
                         signalingEvents.onSendAnswer(socketId, JSONObject().apply { 

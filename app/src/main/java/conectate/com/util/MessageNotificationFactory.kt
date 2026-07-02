@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
@@ -243,6 +244,7 @@ object MessageNotificationFactory {
         channelName: String,
         channelDescription: String
     ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             channelId,

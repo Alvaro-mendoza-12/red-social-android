@@ -24,6 +24,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
+import conectate.com.data.localfallback.UbuntuStorageUrl
 
 @Composable
 fun CircularProfileImage(
@@ -35,6 +40,22 @@ fun CircularProfileImage(
     borderWidth: Dp = 2.dp,
     isVerified: Boolean = false
 ) {
+    val context = LocalContext.current
+    val resolvedImageUrl = remember(imageUrl, UbuntuStorageUrl.baseUrl) {
+        UbuntuStorageUrl.rewrite(imageUrl)
+    }
+    val request = remember(resolvedImageUrl) {
+        resolvedImageUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
+                .diskCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
+                .crossfade(false)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .build()
+        }
+    }
     Box(modifier = modifier.size(size)) {
         Box(
             modifier = Modifier
@@ -53,7 +74,7 @@ fun CircularProfileImage(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            if (imageUrl.isNullOrEmpty()) {
+            if (resolvedImageUrl.isNullOrEmpty()) {
                 // Placeholder icon
                 Icon(
                     imageVector = Icons.Default.Person,
@@ -64,14 +85,16 @@ fun CircularProfileImage(
             } else {
                 // Load image with Coil
                 SubcomposeAsyncImage(
-                    model = imageUrl,
+                    model = request,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                     loading = {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(size * 0.4f),
-                            color = MaterialTheme.colorScheme.primary
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(size * 0.6f),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     },
                     error = {

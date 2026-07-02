@@ -53,7 +53,7 @@ class ConversationRepository @Inject constructor(
 
     suspend fun deleteConversation(conversationId: String): Result<Unit> = runCatching {
         val cleanId = normalizeId(conversationId)
-        chatDao.deleteChat(cleanId)
+        chatDao.deleteChat(cleanId, java.time.Instant.now().toString())
     }
 
     private suspend fun updateArchiveState(conversationId: String, isArchived: Boolean): Result<Unit> =

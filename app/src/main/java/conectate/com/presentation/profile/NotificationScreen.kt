@@ -197,6 +197,25 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "new_post" -> " hizo una nueva publicación"
         "friend_request" -> " te envió una solicitud de amistad"
         "friend_request_accepted" -> " aceptó tu solicitud de amistad"
+        "group_member_added" -> {
+            val groupName = n.content?.trim().orEmpty()
+            if (groupName.isNotBlank()) " te agregó al grupo $groupName" else " te agregó a un grupo"
+        }
+        "community_member_added" -> {
+            val communityName = n.content?.trim().orEmpty()
+            if (communityName.isNotBlank()) " te agregó a la comunidad $communityName" else " te agregó a una comunidad"
+        }
+        "message", "new_message" -> {
+            val target = when {
+                n.targetType.equals("group", ignoreCase = true) -> " en un grupo"
+                n.targetType.equals("community", ignoreCase = true) -> " en una comunidad"
+                else -> ""
+            }
+            val body = n.content?.trim().orEmpty()
+            if (body.isNotBlank()) " te escribió$target: $body" else " te envió un mensaje$target"
+        }
+        "call_invite" -> " te está llamando"
+        "call_missed" -> " tiene una llamada perdida contigo"
         "view_moment" -> " vio tu estado"
         "new_moment" -> " subió un nuevo estado"
         "voice_access_request" -> " solicitó acceso a la sección de voz"
@@ -247,7 +266,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
         "like_post", "comment_post", "reply_post", "new_post", "share_post", "mention_post" -> {
             resolvedPostId?.let { navController.navigate(Screen.PostDetail.createRoute(it, focusCommentId = commentId)) }
         }
-        "new_message" -> {
+        "message", "new_message" -> {
             when {
                 !communityId.isNullOrBlank() -> navController.navigate(
                     Screen.CommunityChat.createRoute(communityId, focusMessageId = messageId)
@@ -255,13 +274,21 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
                 !groupId.isNullOrBlank() -> navController.navigate(
                     Screen.GroupChat.createRoute(groupId, focusMessageId = messageId)
                 )
-                !n.actorId.isBlank() -> navController.navigate(
-                    Screen.Chat.createRoute(n.actorId, focusMessageId = messageId)
-                )
                 n.targetId != null -> navController.navigate(
                     Screen.Chat.createRoute(n.targetId, focusMessageId = messageId)
                 )
+                !n.actorId.isBlank() -> navController.navigate(
+                    Screen.Chat.createRoute(n.actorId, focusMessageId = messageId)
+                )
             }
+        }
+        "group_member_added" -> {
+            val destination = groupId ?: n.targetId
+            if (!destination.isNullOrBlank()) navController.navigate(Screen.GroupChat.createRoute(destination))
+        }
+        "community_member_added" -> {
+            val destination = communityId ?: n.targetId
+            if (!destination.isNullOrBlank()) navController.navigate(Screen.CommunityChat.createRoute(destination))
         }
         "view_moment", "new_moment" -> {
             n.targetId?.let { navController.navigate(Screen.MomentViewer.createRoute(it)) }

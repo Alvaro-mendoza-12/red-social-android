@@ -233,7 +233,8 @@ async function serveStoredObject(pool, req, res, bucketParam, pathParam) {
   const filePath = row?.local_path || objectFilePath(bucket, objectPath)
   await fs.promises.access(filePath, fs.constants.R_OK)
   res.setHeader('Content-Type', row?.content_type || 'application/octet-stream')
-  res.setHeader('Cache-Control', 'public, max-age=3600')
+  res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400, immutable')
+  res.setHeader('Accept-Ranges', 'bytes')
   res.setHeader('Content-Disposition', `inline; filename="${contentDispositionName(objectPath)}"`)
   return res.sendFile(filePath)
 }

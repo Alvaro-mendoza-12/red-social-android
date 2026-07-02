@@ -220,34 +220,7 @@ class CallRepository @Inject constructor(
                     _incomingInvite.value = null
                 }
 
-                var call = _activeCall.value
-                if (call != null && call.callId == callId) {
-                    when (action) {
-                        "accept" -> {
-                            if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
-                                callTonePlayer.stopRingback()
-                                clearOutgoingRingTimeout()
-                                _activeCall.value = call.copy(connectionState = CallConnectionState.CONNECTING)
-                                scheduleConnectingTimeout(callId)
-                            }
-                        }
-                        "decline" -> {
-                            pendingInvitees.remove(fromUserId)
-                            if (call.connectionState == CallConnectionState.RINGING_OUTGOING && pendingInvitees.isEmpty()) {
-                                endCallInternal(reason = "Llamada rechazada")
-                            }
-                        }
-                        "end" -> {
-                            callTonePlayer.stopRingback()
-                            endCallInternal(reason = "Llamada finalizada")
-                        }
-                        "cancel" -> {
-                            if (call.connectionState == CallConnectionState.RINGING_OUTGOING || call.connectionState == CallConnectionState.CONNECTING) {
-                                endCallInternal(reason = "Llamada cancelada")
-                            }
-                        }
-                    }
-                }
+                handleExternalCallResponse(callId, action, fromUserId)
             }
         }
 
@@ -255,6 +228,38 @@ class CallRepository @Inject constructor(
             channel = channel,
             reason = "call-user-$userId"
         )
+    }
+
+    fun handleExternalCallResponse(callId: String, action: String, fromUserId: String) {
+        val safeAction = action.trim().lowercase()
+        var call = _activeCall.value
+        if (call != null && call.callId == callId) {
+            when (safeAction) {
+                "accept" -> {
+                    if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
+                        callTonePlayer.stopRingback()
+                        clearOutgoingRingTimeout()
+                        _activeCall.value = call.copy(connectionState = CallConnectionState.CONNECTING)
+                        scheduleConnectingTimeout(callId)
+                    }
+                }
+                "decline" -> {
+                    pendingInvitees.remove(fromUserId)
+                    if (call.connectionState == CallConnectionState.RINGING_OUTGOING && pendingInvitees.isEmpty()) {
+                        endCallInternal(reason = "Llamada rechazada")
+                    }
+                }
+                "end" -> {
+                    callTonePlayer.stopRingback()
+                    endCallInternal(reason = "Llamada finalizada")
+                }
+                "cancel" -> {
+                    if (call.connectionState == CallConnectionState.RINGING_OUTGOING || call.connectionState == CallConnectionState.CONNECTING) {
+                        endCallInternal(reason = "Llamada cancelada")
+                    }
+                }
+            }
+        }
     }
 
     suspend fun startOutgoingCall(
@@ -745,7 +750,7 @@ class CallRepository @Inject constructor(
         fromUserId: String,
         notificationAction: String = action
     ) {
-        if (action == "cancel" || action == "end") {
+        if (action == "cancel" || action == "end" || action == "decline") {
             runCatching {
                 notificationRepository.sendNotification(
                     recipientId = targetUserId.trim(),
@@ -754,6 +759,7 @@ class CallRepository @Inject constructor(
                     content = when (notificationAction.trim().lowercase()) {
                         "missed" -> "Llamada no contestada"
                         "end" -> "Llamada finalizada"
+                        "decline" -> "Llamada rechazada"
                         else -> "Llamada cancelada"
                     },
                     extraData = buildJsonObject {
@@ -787,7 +793,7 @@ class CallRepository @Inject constructor(
                     fromUserId = fromUserId
                 )
             )
-            delay(150)
+            delay(800)
             channel.unsubscribe()
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to send call response", e)
@@ -834,18 +840,22 @@ class CallRepository @Inject constructor(
 
             socket?.on(Socket.EVENT_CONNECT) {
                 var sid = socket?.id() ?: ""
-                webRTCManager?.setCurrentUser(userId, sid)
-                webRTCManager?.refreshManagedIceServers(force = true)
-                refreshAudioSession()
 
-                // Sync self socketId
-                _participants.update { current ->
-                    var self = current.firstOrNull { it.userId.equals(userId, ignoreCase = true) }
-                        ?: CallParticipant(userId = userId, name = name, avatarUrl = avatarUrl, socketId = sid)
-                    (current.filterNot { it.userId.equals(userId, ignoreCase = true) } + self.copy(socketId = sid))
-                        .distinctBy { it.socketId }
+                // IDENTITY DIAGNOSTIC: Log what userId is being sent vs what authService reports
+                val authCurrentId = authService.getCurrentUserId().orEmpty()
+                val authToken = authService.getAccessToken().orEmpty()
+                android.util.Log.w("IDENTITY", "=== CALL CONNECT IDENTITY CHECK ===")
+                android.util.Log.w("IDENTITY", "  socketId       = $sid")
+                android.util.Log.w("IDENTITY", "  callId         = $callId")
+                android.util.Log.w("IDENTITY", "  claimedUserId  = ${userId.trim()} (param passed to connectSocket)")
+                android.util.Log.w("IDENTITY", "  authCurrentId  = $authCurrentId (from authService.getCurrentUserId)")
+                android.util.Log.w("IDENTITY", "  tokenPrefix    = ${authToken.take(20).ifBlank { "EMPTY" }}...")
+                android.util.Log.w("IDENTITY", "  signalingUrl   = $signalingUrl")
+                if (userId.trim() != authCurrentId && authCurrentId.isNotBlank()) {
+                    android.util.Log.e("IDENTITY", "⚠️ MISMATCH! claimedUserId != authCurrentId. Possible stale session or wrong account. Clear app data and re-login!")
                 }
 
+                // *** CRITICAL: Emit join-call FIRST before any WebRTC/audio setup ***
                 socket?.emit(
                     "join-call",
                     org.json.JSONObject().apply {
@@ -855,6 +865,24 @@ class CallRepository @Inject constructor(
                         put("avatarUrl", avatarUrl ?: "")
                     }
                 )
+                android.util.Log.i("CallRepository", "📤 join-call EMITTED for call=$callId sid=$sid")
+
+                // Now do WebRTC/audio setup in a protected block
+                try {
+                    webRTCManager?.setCurrentUser(userId, sid)
+                    webRTCManager?.refreshManagedIceServers(force = true)
+                    refreshAudioSession()
+                } catch (e: Exception) {
+                    android.util.Log.e("CallRepository", "❌ WebRTC/audio setup failed AFTER join-call was sent", e)
+                }
+
+                // Sync self socketId
+                _participants.update { current ->
+                    var self = current.firstOrNull { it.userId.equals(userId, ignoreCase = true) }
+                        ?: CallParticipant(userId = userId, name = name, avatarUrl = avatarUrl, socketId = sid)
+                    (current.filterNot { it.userId.equals(userId, ignoreCase = true) } + self.copy(socketId = sid))
+                        .distinctBy { it.socketId }
+                }
             }
 
             socket?.on("user-joined") { args ->

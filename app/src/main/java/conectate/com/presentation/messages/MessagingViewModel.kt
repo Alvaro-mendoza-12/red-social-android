@@ -11,6 +11,7 @@ import conectate.com.data.supabase.AuthService
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -21,6 +22,19 @@ sealed class ConversationsUiState {
     data class Success(val conversations: List<ChatWithLastMessage>) : ConversationsUiState()
     data class Error(val message: String) : ConversationsUiState()
 }
+
+enum class ChatListFilter {
+    ALL,
+    FAVORITES,
+    ARCHIVED
+}
+
+private data class ConversationFilterInput(
+    val list: List<ChatWithLastMessage>,
+    val query: String,
+    val selectedFolderId: String?,
+    val selectedListFilter: ChatListFilter
+)
 
 @HiltViewModel
 class MessagingViewModel @Inject constructor(
@@ -45,6 +59,13 @@ class MessagingViewModel @Inject constructor(
     private val _selectedFolderId = MutableStateFlow<String?>(null)
     val selectedFolderId: StateFlow<String?> = _selectedFolderId.asStateFlow()
 
+    private val _selectedListFilter = MutableStateFlow(ChatListFilter.ALL)
+    val selectedListFilter: StateFlow<ChatListFilter> = _selectedListFilter.asStateFlow()
+
+    // Oculta inmediatamente un chat deslizado mientras Room y la sincronizacion
+    // remota terminan la eliminacion. Evita dejar una franja roja en la lista.
+    private val _hiddenChatIds = MutableStateFlow<Set<String>>(emptySet())
+
     val chatFolders: StateFlow<List<ChatFolder>> = advancedMessagingRepository.folders
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
@@ -55,54 +76,59 @@ class MessagingViewModel @Inject constructor(
 
     fun selectFolder(folderId: String?) {
         _selectedFolderId.value = folderId?.trim()?.ifBlank { null }
+        if (!folderId.isNullOrBlank()) {
+            _selectedListFilter.value = ChatListFilter.ALL
+        }
+    }
+
+    fun selectListFilter(filter: ChatListFilter) {
+        _selectedListFilter.value = filter
+        if (filter != ChatListFilter.ALL) {
+            _selectedFolderId.value = null
+        }
     }
 
     // FILTERED UI STATE
-    val conversationsState: StateFlow<ConversationsUiState> = combine(_conversations, _searchQuery, _selectedFolderId, chatFolders) { list, query, selectedFolderId, folders ->
+    private val conversationFilterInput = combine(
+        _conversations,
+        _searchQuery,
+        _selectedFolderId,
+        _selectedListFilter
+    ) { list: List<ChatWithLastMessage>, query: String, selectedFolderId: String?, selectedListFilter: ChatListFilter ->
+        ConversationFilterInput(
+            list = list,
+            query = query,
+            selectedFolderId = selectedFolderId,
+            selectedListFilter = selectedListFilter
+        )
+    }
+
+    val conversationsState: StateFlow<ConversationsUiState> = combine(
+        conversationFilterInput,
+        chatFolders,
+        _hiddenChatIds
+    ) { input, folders, hiddenChatIds ->
+        val list = input.list
+        val query = input.query
+        val selectedFolderId = input.selectedFolderId
+        val selectedListFilter = input.selectedListFilter
         if (list.isEmpty()) {
             // We can't distinguish between "Loading from DB" and "Empty DB" easily here,
             // but since Room emits [] immediately if empty, this is correct for "Empty".
             ConversationsUiState.Success(emptyList())
         } else {
-            // 2. LOGICAL DEDUPLICATION & GHOST CHAT FILTERING
-            val validChats = list.filter {
-                val hasContent = !it.chat.last_message.isNullOrBlank() || !it.lastMessage?.content.isNullOrBlank()
-                val hasTimestamp = !it.chat.last_message_at.isNullOrBlank() || !it.lastMessage?.created_at.isNullOrBlank()
-                hasContent || hasTimestamp
-            }
-
-            val (groups, dms) = validChats.partition { it.chat.is_group }
-            
-            // DMs: Deduplicate by otherUserId (Collapses multiple chats with same person)
-            val uniqueDms = dms.groupBy { it.otherUserId ?: it.chat.id }
-                .map { (_, duplicates) -> 
-                    duplicates.maxWithOrNull(
-                        compareBy<ChatWithLastMessage> { it.chat.is_pinned }
-                            .thenBy { it.chat.safeLastMessageAt }
-                    )!!
-                }
-
-            // Groups: Deduplicate by ID
-            val uniqueGroups = groups.groupBy { it.chat.id }
-                .map { (_, duplicates) -> 
-                    duplicates.maxWithOrNull(
-                        compareBy<ChatWithLastMessage> { it.chat.is_pinned }
-                            .thenBy { it.chat.safeLastMessageAt }
-                    )!!
-                }
-
-            // Combine and Final Sort
-            val distinctList = (uniqueDms + uniqueGroups)
-                .sortedWith(
-                    compareByDescending<ChatWithLastMessage> { it.chat.is_pinned }
-                        .thenByDescending { it.chat.safeLastMessageAt }
-                )
+            val distinctList = normalizedVisibleConversations(list, hiddenChatIds)
 
             val folderChatIds = folders.firstOrNull { it.id == selectedFolderId }?.chat_ids?.toSet().orEmpty()
+            val byFilter = when (selectedListFilter) {
+                ChatListFilter.ALL -> distinctList.filter { !it.chat.is_archived }
+                ChatListFilter.FAVORITES -> distinctList.filter { it.chat.is_favorite && !it.chat.is_archived }
+                ChatListFilter.ARCHIVED -> distinctList.filter { it.chat.is_archived }
+            }
             val byFolder = if (selectedFolderId.isNullOrBlank()) {
-                distinctList
+                byFilter
             } else {
-                distinctList.filter { folderChatIds.contains(it.chat.id.trim().lowercase()) }
+                byFilter.filter { folderChatIds.contains(it.chat.id.trim().lowercase()) }
             }
 
             // 3. SEARCH FILTER
@@ -125,8 +151,10 @@ class MessagingViewModel @Inject constructor(
 
     // --- UNREAD COUNTS (FOR BADGES) ---
     
-    val unreadDmsCount: StateFlow<Int> = messageRepository.getUserChatsFlow()
-        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group } }
+    val unreadDmsCount: StateFlow<Int> = combine(messageRepository.getUserChatsFlow(), _hiddenChatIds) { chats, hiddenChatIds ->
+        normalizedVisibleConversations(chats, hiddenChatIds)
+            .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val unreadGroupsCount: StateFlow<Int> = groupRepository.getGroupsFlow()
@@ -146,6 +174,12 @@ class MessagingViewModel @Inject constructor(
             advancedMessagingRepository.refreshFolders()
             groupRepository.syncGroups()
             communityRepository.syncCommunities()
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(12_000)
+                refreshNow()
+            }
         }
     }
 
@@ -188,14 +222,40 @@ class MessagingViewModel @Inject constructor(
         }
     }
 
+    fun favoriteChat(chatId: String, isFavorite: Boolean) {
+        viewModelScope.launch {
+            val result = messageRepository.favoriteChat(chatId, isFavorite)
+            _uiMessage.value = if (result.isSuccess) {
+                if (isFavorite) "Chat añadido a favoritos." else "Chat quitado de favoritos."
+            } else {
+                result.exceptionOrNull()?.message ?: "No se pudo actualizar favorito."
+            }
+        }
+    }
+
+    fun archiveChat(chatId: String, isArchived: Boolean) {
+        viewModelScope.launch {
+            val result = messageRepository.archiveChat(chatId, isArchived)
+            _uiMessage.value = if (result.isSuccess) {
+                if (isArchived) "Chat archivado." else "Chat desarchivado."
+            } else {
+                result.exceptionOrNull()?.message ?: "No se pudo actualizar archivado."
+            }
+        }
+    }
+
     fun blockUser(userId: String) {
         viewModelScope.launch { userRepository.blockUser(userId) }
     }
     
     fun deleteChat(chatId: String) {
+        val cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return
+        _hiddenChatIds.update { it + cleanId }
         viewModelScope.launch {
-            val result = messageRepository.deleteChat(chatId)
+            val result = messageRepository.deleteChat(cleanId)
             if (result.isFailure) {
+                _hiddenChatIds.update { it - cleanId }
                 _uiMessage.value = result.exceptionOrNull()?.message ?: "No se pudo eliminar el chat."
             }
         }

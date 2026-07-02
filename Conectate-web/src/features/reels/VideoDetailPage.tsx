@@ -234,7 +234,7 @@ export function VideoDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [cleanVideoId, user])
+  }, [cleanVideoId, useUbuntu, user])
 
   useEffect(() => {
     void load()

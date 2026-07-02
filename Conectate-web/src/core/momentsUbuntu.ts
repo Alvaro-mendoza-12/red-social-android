@@ -20,6 +20,8 @@ type FeedResponse = {
 }
 
 export async function fetchUbuntuMomentsFeed(_currentUserId: string): Promise<MomentItem[]> {
+  // The API identifies the viewer from the bearer token.
+  void _currentUserId
   const payload = await fallbackApiJson<FeedResponse>('/v1/data/moments/feed')
   return (payload.items ?? []).map((row) => ({
     id: row.id,

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -85,6 +86,7 @@ fun CommunityChatScreen(
     val messageInfoReceipts by viewModel.messageInfoReceipts.collectAsState()
     val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsState()
     val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
+    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
     var focusAttempts by remember(focusMessageId) { mutableStateOf(0) }
 
@@ -95,6 +97,11 @@ fun CommunityChatScreen(
     var pendingMediaUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingMediaType by remember { mutableStateOf<String?>(null) }
     var pendingMediaCaption by remember { mutableStateOf("") }
+    var showBackgroundSheet by remember { mutableStateOf(false) }
+    var showHeaderMenu by remember { mutableStateOf(false) }
+    val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { viewModel.setChatBackground("custom", it.toString()) }
+    }
 
     // FULL SCREEN MEDIA VIEWER STATE
     val messages = (uiState as? CommunityChatUiState.Success)?.messages ?: emptyList()
@@ -283,24 +290,58 @@ fun CommunityChatScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             val state = uiState as? CommunityChatUiState.Success
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            navController.navigate(conectate.com.presentation.navigation.Screen.CommunityDetail.createRoute(communityId))
-                        }
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                navController.navigate(conectate.com.presentation.navigation.Screen.CommunityDetail.createRoute(communityId))
+                            }
                     ) {
                         state?.community?.image?.let {
                             CircularProfileImage(imageUrl = it, size = 32.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        Text(state?.community?.name ?: "Comunidad")
+                        Text(
+                            text = state?.community?.name ?: "Comunidad",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Volver")
+                    }
+                },
+                actions = {
+                    val invitedIds = state?.memberIds.orEmpty().filterNot {
+                        it.equals(currentUserId, ignoreCase = true)
+                    }
+                    conectate.com.presentation.calls.CallActionButtons(
+                        navController = navController,
+                        title = state?.community?.name ?: "Comunidad",
+                        invitedUserIds = invitedIds,
+                        contextType = "community",
+                        contextId = communityId
+                    )
+                    IconButton(onClick = { showHeaderMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Opciones de la comunidad")
+                    }
+                    DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Fondo") },
+                            leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },
+                            onClick = {
+                                showHeaderMenu = false
+                                showBackgroundSheet = true
+                            }
+                        )
                     }
                 }
             )
@@ -312,6 +353,11 @@ fun CommunityChatScreen(
                 .padding(padding)
         ) {
             Box(modifier = Modifier.weight(1f)) {
+                ChatBackgroundLayer(
+                    backgroundType = chatBackgroundSettings.backgroundType,
+                    backgroundUri = chatBackgroundSettings.backgroundUri,
+                    modifier = Modifier.fillMaxSize()
+                )
                 when (val state = uiState) {
                     is CommunityChatUiState.Loading -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -701,6 +747,24 @@ fun CommunityChatScreen(
         }
     }
 
+    if (showBackgroundSheet) {
+        ChatBackgroundPickerSheet(
+            onDismiss = { showBackgroundSheet = false },
+            onSelectPattern = { type ->
+                viewModel.setChatBackground(type)
+                showBackgroundSheet = false
+            },
+            onSelectGallery = {
+                showBackgroundSheet = false
+                backgroundPickerLauncher.launch("image/*")
+            },
+            onClear = {
+                viewModel.clearChatBackground()
+                showBackgroundSheet = false
+            }
+        )
+    }
+
     if (fullScreenImageInitialIndex != null) {
         val activeMediaItems = if (oneTimeMediaItems.isNotEmpty()) oneTimeMediaItems else fullScreenMediaItems
         FullScreenImageDialog(
@@ -805,6 +869,27 @@ fun CommunityChatScreen(
                 }
 
                 if (selectedMessage?.deleted_for_all != true) {
+                    if (selectedMessage?.content_type == "sticker") {
+                        val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedMessage?.let { viewModel.toggleStickerFavorite(it) }
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (stickerIsFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(if (stickerIsFavorite) "Eliminar de favoritos" else "Añadir a favoritos")
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

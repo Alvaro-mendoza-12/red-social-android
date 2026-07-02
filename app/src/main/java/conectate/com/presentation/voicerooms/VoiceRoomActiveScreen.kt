@@ -114,7 +114,6 @@ fun VoiceRoomActiveScreen(
     val localVideoTrack by viewModel.localVideoTrack.collectAsState()
     val peerConnectionStates by viewModel.peerConnectionStates.collectAsState()
     val signalingStates by viewModel.signalingStates.collectAsState()
-    val sharingStates by viewModel.sharingStates.collectAsState()
     val debugInfo by viewModel.debugInfo.collectAsState()
     val fullScreenParticipantId by viewModel.fullScreenParticipantId.collectAsState()
     
@@ -365,7 +364,7 @@ fun VoiceRoomActiveScreen(
                                  val track = if (isLocal) {
                                      if (videoMode != VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
                                  } else {
-                                     remoteVideoTracks[participant.socketId]
+                                     remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
                                  }
                                  
                                  if (track != null) {
@@ -399,7 +398,6 @@ fun VoiceRoomActiveScreen(
                     remoteVideoTracks = remoteVideoTracks,
                     peerConnectionStates = peerConnectionStates,
                     signalingStates = signalingStates,
-                    sharingStates = sharingStates,
                     debugInfo = debugInfo,
                     localVideoTrack = localVideoTrack,
                     localVideoMode = videoMode,
@@ -543,7 +541,6 @@ fun VideoGridLayout(
     remoteVideoTracks: Map<String, VideoTrack>,
     peerConnectionStates: Map<String, String>,
     signalingStates: Map<String, String>,
-    sharingStates: Map<String, Boolean>,
     debugInfo: String?,
     localVideoTrack: VideoTrack?,
     localVideoMode: VoiceRoomRepository.VideoMode,
@@ -562,13 +559,13 @@ fun VideoGridLayout(
          gridItems(participants, key = { it.id }) { participant ->
              val isLocal = participant.id == currentUserId 
              
-             // Logic: Show video only if track is present AND the peer is actively sharing
-             val isRemoteSharing = sharingStates[participant.socketId] == true
-             
+             // The received WebRTC track is authoritative. A media-status
+             // socket event can arrive later (or be lost during reconnect),
+             // and must never hide a video track that is already flowing.
              val track = if (isLocal) {
                  if (localVideoMode != VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
              } else {
-                 if (isRemoteSharing) remoteVideoTracks[participant.socketId] else null
+                 remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
              }
              
              if (track != null) {
@@ -657,14 +654,21 @@ fun VideoRenderer(
                 init(eglBaseContext, null)
                 setScalingType(scalingType)
                 setEnableHardwareScaler(true)
+                tag = track
                 track.addSink(this)
             }
         },
         update = { view ->
-            // Update logic if needed
+            val oldTrack = view.tag as? VideoTrack
+            if (oldTrack != track) {
+                oldTrack?.removeSink(view)
+                track.addSink(view)
+                view.tag = track
+            }
         },
         onRelease = { view ->
-            track.removeSink(view)
+            val currentTrack = view.tag as? VideoTrack
+            currentTrack?.removeSink(view)
             view.release()
         },
         modifier = Modifier.fillMaxSize()
@@ -1527,7 +1531,7 @@ fun FullScreenParticipantView(
     val track = if (isLocal) {
         if (localVideoMode != conectate.com.data.repository.VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
     } else {
-        remoteVideoTracks[participant.socketId]
+        remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
     }
 
     Box(

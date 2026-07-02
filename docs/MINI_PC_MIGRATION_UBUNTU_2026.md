@@ -1,150 +1,179 @@
-# Migracion Ubuntu Laptop a Mini PC
+# Migración de Conéctate a una mini PC Ubuntu nueva
 
-Esta guia deja preparado el paso del backend Conectate desde el Ubuntu actual
-en la laptop hacia la mini PC. La meta de produccion es que Supabase quede vacio
-en runtime y que web/Android usen solo `FALLBACK_API_URL`.
+Estado actualizado: 24 de junio de 2026.
 
-## Estado objetivo
+Esta es la ruta oficial para mover el backend Ubuntu completo sin perder base
+de datos, uploads, tokens FCM, secretos, API, realtime ni signaling.
 
-- Backend API: `infrastructure/local-fallback/api`
-- Postgres: contenedor Docker privado
-- Storage: volumen Docker local para uploads
-- Realtime/voz/llamadas: `signaling-server` detras del proxy local
-- Entrada publica temporal: ngrok apuntando al puerto `3080`
-- Entrada publica final: dominio HTTPS apuntando al puerto `3080`
+## Estado real antes del corte
 
-## Variables obligatorias
+- API, PostgreSQL, storage, realtime y signaling: operativos.
+- Verificación funcional: auth, perfil, publicaciones, mensajes privados,
+  grupos, comunidades, notificaciones, videos, momentos, retos, rankings y
+  salas de voz aprobados.
+- Firebase Admin: configurado; prueba real FCM con `sent=1`, `failed=0`.
+- Respaldo: checksum aprobado y restauración aislada de 97 tablas aprobada.
+- TURN: preparado para Coturn gratuito en la mini PC, pero requiere abrir en el
+  router TCP/UDP 3478 y UDP 49160-49200 hacia la IP local de la mini PC.
+- La URL `trycloudflare.com` es temporal. Después del corte hay que crear un
+  túnel nuevo y publicar su URL por el descubrimiento DuckDNS.
 
-Crea `~/conectate-local-fallback/.env` en la mini PC con este formato:
+No borres ni formatees el Ubuntu anterior durante al menos siete días después
+del cambio.
 
-```env
-POSTGRES_PASSWORD=cambia-esto
-FALLBACK_API_PORT=3001
-FALLBACK_EDGE_PORT=3080
-FALLBACK_REALTIME_PORT=3002
-FALLBACK_DB_PORT=5433
-PUBLIC_BASE_URL=https://tu-url-publica
-SIGNALING_CONTEXT=../signaling-server
-JWT_SECRET=pega-un-hex-de-32-bytes
-JWT_ISSUER=conectate-local-fallback
-JWT_EXPIRES_IN=7d
-CORS_ORIGIN=*
-SIGNALING_ALLOWED_ORIGINS=*
-PASSWORD_RESET_DELIVERY=console
-PASSWORD_RESET_TOKEN_TTL_MINUTES=30
-LEGACY_SUPABASE_IMPORT_ENABLED=false
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_SECRET_KEY=
-ADMIN_SYNC_TOKEN=pega-un-hex-de-32-bytes
-ADMIN_EMAILS=gamergamerff004@gmail.com,alvaromendozamarin004@gmail.com,gamergamerff017@gmail.com
-```
+## Qué contiene el paquete cifrado
 
-Genera secretos en Ubuntu:
+`export-mini-pc-migration.sh` produce un único `.tar.gz.enc` con:
 
-```bash
-openssl rand -hex 32
-```
+- dump PostgreSQL en formato custom;
+- todo el volumen de storage;
+- `.env` real;
+- cuenta Firebase Admin;
+- código activo de API, proxy, realtime y signaling;
+- checksums SHA-256 y metadata de conteos;
+- importador para Ubuntu limpio.
 
-## Preparar la mini PC
+No contiene backups históricos, logs ni `node_modules`.
 
-```bash
-sudo apt update
-sudo apt install -y git curl ca-certificates docker.io docker-compose-plugin nginx
-sudo usermod -aG docker "$USER"
-newgrp docker
-```
+## 1. Preparar el paquete desde Windows
 
-Instala ngrok solo si seguira siendo la entrada publica temporal:
-
-```bash
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
-  | sudo tee /etc/apt/sources.list.d/ngrok.list
-sudo apt update
-sudo apt install -y ngrok
-ngrok config add-authtoken "TU_TOKEN_DE_NGROK"
-```
-
-## Copiar codigo desde Windows
-
-Desde PowerShell en la PC Windows, en la raiz del repo:
+Con la VM Ubuntu actual encendida, abre PowerShell en la raíz del repositorio:
 
 ```powershell
-ssh usuario@IP_MINI_PC "mkdir -p ~/conectate-local-fallback ~/signaling-server"
-scp -r infrastructure/local-fallback/* usuario@IP_MINI_PC:~/conectate-local-fallback/
-scp -r signaling-server/* usuario@IP_MINI_PC:~/signaling-server/
+.\scripts\prepare-mini-pc-migration.ps1
 ```
 
-Si la mini PC esta en otra red, usa la IP local cuando estes alla o configura
-Tailscale/ZeroTier para evitar exponer SSH directamente a internet.
+El script pide una contraseña de al menos 12 caracteres, crea un respaldo
+nuevo, lo verifica, cifra el paquete y lo descarga a `migration-output`.
+Guarda esa contraseña fuera del PC; no queda escrita en el paquete.
 
-## Levantar servicios
+Para otro usuario o IP:
 
-Dentro de la mini PC:
+```powershell
+.\scripts\prepare-mini-pc-migration.ps1 `
+  -UbuntuHost 192.168.56.100 `
+  -UbuntuUser alvaro `
+  -SshPort 22
+```
+
+## 2. Instalar la mini PC desde cero
+
+Instala Ubuntu Server 24.04 LTS, crea un usuario con `sudo`, activa OpenSSH y
+conecta la mini PC por cable Ethernet. En el router reserva una IP DHCP fija
+para esa máquina.
+
+Desde Windows autoriza la llave existente:
+
+```powershell
+.\scripts\authorize-vm-ssh.ps1 -User TU_USUARIO -HostName IP_MINI_PC -Port 22
+```
+
+## 3. Copiar el paquete
+
+```powershell
+scp -r .\migration-output\* TU_USUARIO@IP_MINI_PC:~/
+```
+
+En la mini PC:
+
+```bash
+chmod 700 ~/import-mini-pc-migration.sh ~/verify-mini-pc-migration.sh
+~/verify-mini-pc-migration.sh ~/conectate-mini-pc-*.tar.gz.enc
+~/import-mini-pc-migration.sh ~/conectate-mini-pc-*.tar.gz.enc
+```
+
+El importador instala Docker desde el repositorio oficial, conserva cualquier
+directorio previo con sufijo `.pre-migration-*`, restaura base y storage,
+construye los cinco servicios, comprueba Firebase y configura:
+
+- inicio automático del stack;
+- watchdog cada dos minutos;
+- backup diario verificado;
+- simulacro semanal de restauración.
+
+El importador se niega a sobrescribir un volumen PostgreSQL existente. Está
+diseñado para una mini PC nueva.
+
+Al terminar, cierra y vuelve a abrir la sesión SSH para que el grupo `docker`
+quede aplicado al usuario (`newgrp docker` también sirve).
+
+## 4. Activar TURN gratuito
+
+Usa un dominio que apunte a la IP pública de tu casa. Puede ser DuckDNS:
 
 ```bash
 cd ~/conectate-local-fallback
-cp config.example .env
-nano .env
-bash scripts/repair-ubuntu-primary.sh
+bash scripts/configure-mini-pc-turn.sh conectate-alvaro.duckdns.org
+```
+
+El script genera el secreto TURN, configura Coturn y recrea signaling. Luego,
+en el router reenvía hacia la IP local mostrada por el script:
+
+- TCP 3478;
+- UDP 3478;
+- UDP 49160-49200.
+
+No abras PostgreSQL 5433, API 3001 ni realtime 3002 a Internet.
+
+## 5. Publicar el backend sin pagar
+
+Desde Windows inicia el Quick Tunnel en la mini PC y actualiza el TXT de
+descubrimiento DuckDNS:
+
+```powershell
+.\scripts\start-conectate-server.ps1 `
+  -User TU_USUARIO `
+  -HostName IP_MINI_PC `
+  -Port 22
+```
+
+Este comando actualiza también el endpoint Android/web local. El Quick Tunnel
+es gratuito, pero su URL cambia cuando se recrea. El watchdog de Windows debe
+seguir activo mientras se use este modo temporal.
+
+## 6. Compuerta final antes del cambio
+
+En la mini PC:
+
+```bash
+cd ~/conectate-local-fallback
+STRICT_PRODUCTION=true bash scripts/verify-ubuntu-production.sh
+```
+
+El resultado obligatorio es `FAIL: 0`. Comprueba además:
+
+```bash
 docker compose ps
-curl -sS http://127.0.0.1:3080/health
-curl -sS http://127.0.0.1:3080/ready
+curl -fsS http://127.0.0.1:3080/ready
+systemctl list-timers --all | grep conectate
 ```
 
-Exponer con ngrok:
+Pruebas manuales con dos teléfonos y la app cerrada:
 
-```bash
-ngrok http 3080
-```
+1. mensaje privado y de grupo;
+2. llamada de voz y videollamada entrante;
+3. cámara y pantalla desde redes diferentes;
+4. reacción y comentario;
+5. notificación de momento/video;
+6. abrir cada notificación en su destino correcto.
 
-La URL HTTPS resultante debe ponerse en:
+## 7. Corte definitivo con mínima pérdida
 
-- Android: `secrets.properties` como `FALLBACK_API_URL=...`
-- Web/Vercel: variable `VITE_FALLBACK_API_URL=...`
-- No llenar `SUPABASE_URL` ni `SUPABASE_ANON_KEY` en clientes.
-- Mantener `LEGACY_SUPABASE_IMPORT_ENABLED=false` salvo durante una importacion puntual.
+1. Avisa una ventana corta de mantenimiento.
+2. Evita publicaciones/mensajes durante el corte.
+3. Ejecuta otra vez `prepare-mini-pc-migration.ps1` para obtener el respaldo
+   final, no reutilices el paquete de ensayo.
+4. Importa ese último paquete en la mini PC.
+5. Configura TURN, túnel y descubrimiento.
+6. Ejecuta la compuerta estricta y las pruebas de dos teléfonos.
+7. Apaga el stack Ubuntu viejo, pero conserva su disco y backups siete días.
 
-## Migrar datos desde la laptop Ubuntu
+## Rollback
 
-En la laptop Ubuntu actual:
+Si el verificador o una prueba crítica falla:
 
-```bash
-cd ~/conectate-local-fallback
-docker compose exec -T db pg_dump -U conectate conectate_fallback > conectate_fallback.sql
-docker run --rm -v conectate-fallback-storage:/data/storage -v "$PWD":/backup alpine \
-  tar -czf /backup/conectate-storage.tar.gz -C /data/storage .
-```
-
-Copia a la mini PC:
-
-```bash
-scp conectate_fallback.sql conectate-storage.tar.gz usuario@IP_MINI_PC:~/
-```
-
-Restaurar en la mini PC:
-
-```bash
-cd ~/conectate-local-fallback
-docker compose up -d db
-cat ~/conectate_fallback.sql | docker compose exec -T db psql -U conectate -d conectate_fallback
-docker run --rm -v conectate-fallback-storage:/data/storage -v "$HOME":/backup alpine \
-  sh -c "cd /data/storage && tar -xzf /backup/conectate-storage.tar.gz"
-docker compose up -d --build
-```
-
-## Checklist final
-
-- `docker compose ps` muestra `api`, `db`, `edge` y `signaling` arriba.
-- `GET /health` responde OK por `http://127.0.0.1:3080`.
-- `GET /ready` responde OK por `http://127.0.0.1:3080`.
-- Registro/login funcionan contra `FALLBACK_API_URL`.
-- Upload de imagen/video devuelve URL bajo tu backend, no bajo `supabase.co`.
-- Android tiene `SUPABASE_URL=` y `SUPABASE_ANON_KEY=` vacios.
-- Vercel tiene `VITE_FALLBACK_API_URL` apuntando a la URL publica activa.
-- Si necesitas importar usuarios antiguos, habilita temporalmente `LEGACY_SUPABASE_IMPORT_ENABLED=true`,
-  llena las llaves legacy solo en el servidor Ubuntu, importa, vuelve a dejarlo en `false`
-  y reinicia los contenedores.
+1. no borres nada en la mini PC;
+2. vuelve a encender el Ubuntu anterior;
+3. ejecuta `scripts/start-conectate-server.ps1` apuntando al servidor anterior;
+4. confirma `/ready` y notificaciones;
+5. investiga la mini PC fuera de producción.

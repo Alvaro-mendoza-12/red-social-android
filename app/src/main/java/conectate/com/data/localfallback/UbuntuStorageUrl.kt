@@ -1,6 +1,5 @@
 package conectate.com.data.localfallback
 
-import conectate.com.BuildConfig
 import java.net.URLEncoder
 
 object UbuntuStorageUrl {
@@ -27,7 +26,7 @@ object UbuntuStorageUrl {
     )
 
     val baseUrl: String
-        get() = BuildConfig.FALLBACK_API_URL.trim().replace(Regex("/+$"), "")
+        get() = RuntimeBackendEndpoint.baseUrl
 
     val isConfigured: Boolean
         get() = baseUrl.startsWith("http", ignoreCase = true)
@@ -75,6 +74,17 @@ object UbuntuStorageUrl {
         values.mapNotNull(::rewrite)
             .filter { it.isNotBlank() }
             .distinct()
+
+    fun stableCacheKey(value: String?): String? {
+        val raw = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val normalized = raw.replace("\\", "/")
+        val markerIndex = normalized.indexOf(PUBLIC_MARKER, ignoreCase = true)
+        return if (markerIndex >= 0) {
+            "ubuntu-storage:${normalized.substring(markerIndex).lowercase()}"
+        } else {
+            normalized
+        }
+    }
 
     fun publicObjectUrl(bucketName: String, objectPath: String): String {
         val root = baseUrl.takeIf { it.startsWith("http", ignoreCase = true) } ?: return ""

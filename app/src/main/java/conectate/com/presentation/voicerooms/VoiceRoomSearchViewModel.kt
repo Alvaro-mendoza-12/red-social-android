@@ -2,6 +2,7 @@ package conectate.com.presentation.voicerooms
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.data.repository.VoiceRoomRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +15,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class VoiceRoomSearchViewModel @Inject constructor() : ViewModel() {
+class VoiceRoomSearchViewModel @Inject constructor(
+    private val voiceRoomRepository: VoiceRoomRepository
+) : ViewModel() {
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
@@ -40,6 +43,13 @@ class VoiceRoomSearchViewModel @Inject constructor() : ViewModel() {
     }
 
     private suspend fun performSearch(query: String) {
-        _searchResults.value = emptyList()
+        val cleanQuery = query.trim()
+        _searchResults.value = voiceRoomRepository.refreshRooms()
+            .getOrElse { emptyList() }
+            .filter { room ->
+                room.name.contains(cleanQuery, ignoreCase = true) ||
+                    room.id.equals(cleanQuery, ignoreCase = true) ||
+                    room.readableId?.contains(cleanQuery, ignoreCase = true) == true
+            }
     }
 }

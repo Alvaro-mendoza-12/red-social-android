@@ -3,8 +3,10 @@ package conectate.com.presentation.calls
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -31,11 +33,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +75,7 @@ import conectate.com.data.model.CallConnectionState
 import conectate.com.data.model.CallEndedSummary
 import conectate.com.data.model.CallReactionEvent
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.WebRtcVideoView
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.delay
 
@@ -84,6 +90,8 @@ fun CallScreen(
     val participants by viewModel.participants.collectAsStateWithLifecycle()
     val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
     val isSpeaker by viewModel.isSpeaker.collectAsStateWithLifecycle()
+    val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
+    val remoteVideoTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val activeReactions by viewModel.activeReactions.collectAsStateWithLifecycle()
     var currentUserId = viewModel.getCurrentUserId()
     val context = LocalContext.current
@@ -95,6 +103,18 @@ fun CallScreen(
         if (granted) {
             viewModel.refreshAudioSession()
         }
+    }
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        if (granted) viewModel.ensureVideoEnabledRepeatedly()
     }
 
     var active = call?.takeIf { it.callId == callId }
@@ -124,6 +144,18 @@ fun CallScreen(
         if (active?.callId.isNullOrBlank() || !hasMicPermission) {
             viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
             return@LaunchedEffect
+        }
+    }
+    LaunchedEffect(active?.callId, active?.isVideo) {
+        if (active?.isVideo != true) return@LaunchedEffect
+        hasCameraPermission = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasCameraPermission) {
+            viewModel.ensureVideoEnabledRepeatedly()
+        } else {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
         }
     }
 
@@ -270,6 +302,7 @@ fun CallScreen(
                         )
                     }
 
+                    if (!active.isVideo) {
                     Spacer(modifier = Modifier.height(22.dp))
                     if (remoteParticipants.size <= 1) {
                         Box(contentAlignment = Alignment.Center) {
@@ -311,6 +344,7 @@ fun CallScreen(
                             color = Color.White.copy(alpha = 0.72f)
                         )
                     }
+                    }
                 }
 
                 Box(
@@ -319,7 +353,52 @@ fun CallScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (remoteParticipants.size > 1) {
+                    if (active.isVideo) {
+                        val remoteVideoTrack = primaryRemote?.let { participant ->
+                            remoteVideoTracks[participant.socketId]
+                                ?: remoteVideoTracks[participant.userId]
+                        } ?: remoteVideoTracks.values.firstOrNull()
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (remoteVideoTrack != null) {
+                                WebRtcVideoView(
+                                    videoTrack = remoteVideoTrack,
+                                    sharedEglContext = viewModel.eglContext,
+                                    modifier = Modifier.fillMaxSize(),
+                                    mirror = false
+                                )
+                            } else {
+                                Column(
+                                    modifier = Modifier.align(Alignment.Center),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    CircularProfileImage(
+                                        imageUrl = peerAvatarUrl,
+                                        size = 140.dp,
+                                        showBorder = false
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Esperando video…", color = Color.White.copy(alpha = 0.75f))
+                                }
+                            }
+                            if (localVideoTrack != null) {
+                                Card(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(12.dp)
+                                        .width(108.dp)
+                                        .height(156.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.DarkGray)
+                                ) {
+                                    WebRtcVideoView(
+                                        videoTrack = localVideoTrack,
+                                        sharedEglContext = viewModel.eglContext,
+                                        modifier = Modifier.fillMaxSize(),
+                                        mirror = true
+                                    )
+                                }
+                            }
+                        }
+                    } else if (remoteParticipants.size > 1) {
                         CallParticipantGrid(
                             participants = remoteParticipants,
                             modifier = Modifier.fillMaxWidth()
@@ -375,6 +454,26 @@ fun CallScreen(
                                 contentDescription = "Altavoz",
                                 tint = Color.White
                             )
+                        }
+                        IconButton(onClick = {
+                            if (localVideoTrack != null) {
+                                viewModel.toggleVideo(false)
+                            } else if (hasCameraPermission) {
+                                viewModel.ensureVideoEnabledRepeatedly()
+                            } else {
+                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (localVideoTrack != null) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                contentDescription = "Cámara",
+                                tint = Color.White
+                            )
+                        }
+                        if (localVideoTrack != null) {
+                            IconButton(onClick = { viewModel.switchCamera() }) {
+                                Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar cámara", tint = Color.White)
+                            }
                         }
                         IconButton(onClick = { showReactions = !showReactions }) {
                             Icon(
@@ -581,30 +680,27 @@ private fun FloatingCallReaction(
     reaction: CallReactionEvent,
     modifier: Modifier = Modifier
 ) {
-    val floatTransition = rememberInfiniteTransition(label = "callReactionFloat")
-    val offsetY by floatTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = -140f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "callReactionOffset"
-    )
-    val alpha by floatTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "callReactionAlpha"
-    )
+    val progress = remember(reaction.id) { Animatable(0f) }
+    LaunchedEffect(reaction.id) {
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 9_500, easing = LinearOutSlowInEasing)
+        )
+    }
+    val p = progress.value
+    val offsetY = -260f * p
+    val alpha = (1f - p).coerceIn(0f, 1f)
+    val scale = 0.88f + (0.52f * p)
 
     Box(
         modifier = modifier
             .offset(y = offsetY.dp)
-            .graphicsLayer(alpha = alpha)
+            .graphicsLayer(
+                alpha = alpha,
+                scaleX = scale,
+                scaleY = scale
+            )
     ) {
         Text(
             text = reaction.emoji,

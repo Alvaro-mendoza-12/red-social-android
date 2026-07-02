@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -86,9 +87,14 @@ fun HomeScreen(
                                     if (item is BottomNavItem.Messages && unreadBadge > 0) {
                                         Badge(
                                             containerColor = Color(0xFF2196F3), // Blue circle as requested
-                                            contentColor = Color.White
+                                            contentColor = Color.White,
+                                            modifier = Modifier.offset(x = 6.dp, y = 0.dp)
                                         ) {
-                                            Text(if (unreadBadge > 9) "9+" else unreadBadge.toString())
+                                            Text(
+                                                text = if (unreadBadge > 9) "9+" else unreadBadge.toString(),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
@@ -146,6 +152,11 @@ fun HomeScreen(
                     },
                     onNavigateToSearch = {
                         mainNavController.navigate(Screen.SearchUsers.route)
+                    },
+                    onNavigateToCallHistory = {
+                        mainNavController.navigate(Screen.CallHistory.route) {
+                            launchSingleTop = true
+                        }
                     },
                     onNavigateToCreateGroup = {
                         mainNavController.navigate(Screen.CreateGroup.route)

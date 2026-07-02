@@ -1,12 +1,10 @@
 package conectate.com.analytics.enterprise
 
-import android.content.Context
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,16 +20,14 @@ import java.util.concurrent.ConcurrentHashMap
  * Dejamos una versión compilable y degradada que conserva la API base mientras
  * se diseña una implementación de producción con modelos/versionado/backend reales.
  */
-class PredictiveAnalyticsManager private constructor(
-    private val context: Context
-) {
+class PredictiveAnalyticsManager private constructor() {
     companion object {
         @Volatile
         private var INSTANCE: PredictiveAnalyticsManager? = null
 
-        fun getInstance(context: Context): PredictiveAnalyticsManager {
+        fun getInstance(): PredictiveAnalyticsManager {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: PredictiveAnalyticsManager(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: PredictiveAnalyticsManager().also { INSTANCE = it }
             }
         }
     }
@@ -233,9 +229,9 @@ sealed class PredictionEvent {
 }
 
 @Composable
-fun rememberPredictiveAnalytics(context: Context = LocalContext.current): PredictiveAnalyticsManager {
-    return remember(context.applicationContext) {
-        PredictiveAnalyticsManager.getInstance(context.applicationContext)
+fun rememberPredictiveAnalytics(): PredictiveAnalyticsManager {
+    return remember {
+        PredictiveAnalyticsManager.getInstance()
     }
 }
 

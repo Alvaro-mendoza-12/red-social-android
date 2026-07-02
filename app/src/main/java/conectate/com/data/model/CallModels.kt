@@ -56,5 +56,6 @@ data class CallInvite(
 data class CallReactionEvent(
     val id: String = "",
     val userId: String,
-    val emoji: String
+    val emoji: String,
+    val timestamp: Long = System.currentTimeMillis()
 )

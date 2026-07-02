@@ -3,6 +3,7 @@ package conectate.com.data.supabase
 import android.os.Looper
 import android.util.Log
 import conectate.com.BuildConfig
+import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.realtime
 import io.ktor.client.*
@@ -49,20 +50,23 @@ class SupabaseConfig @Inject constructor(
 
     private val rawSupabaseUrl: String = BuildConfig.SUPABASE_URL.trim()
     private val rawSupabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY.trim()
-    private val rawFallbackApiUrl: String = BuildConfig.FALLBACK_API_URL.trim().replace(Regex("/+$"), "")
+    private val rawFallbackApiUrl: String
+        get() = RuntimeBackendEndpoint.baseUrl
     private val hasSupabaseBackend: Boolean =
         rawSupabaseUrl.startsWith("http", ignoreCase = true) && rawSupabaseAnonKey.isNotBlank()
-    private val hasFallbackBackend: Boolean =
-        rawFallbackApiUrl.startsWith("http", ignoreCase = true)
+    private val hasFallbackBackend: Boolean
+        get() = RuntimeBackendEndpoint.isConfigured
     /** Ubuntu/local API wins whenever configured, even if legacy Supabase keys remain in secrets.properties. */
-    val isLocalFallbackPrimary: Boolean = hasFallbackBackend
-    val supabaseUrl: String = if (isLocalFallbackPrimary) rawFallbackApiUrl else rawSupabaseUrl
-    val supabaseAnonKey: String = if (isLocalFallbackPrimary) LOCAL_FALLBACK_ANON_KEY else rawSupabaseAnonKey
-    val isConfigured: Boolean = hasSupabaseBackend
+    val isLocalFallbackPrimary: Boolean get() = hasFallbackBackend
+    val supabaseUrl: String get() = if (isLocalFallbackPrimary) rawFallbackApiUrl else rawSupabaseUrl
+    val supabaseAnonKey: String get() = if (isLocalFallbackPrimary) LOCAL_FALLBACK_ANON_KEY else rawSupabaseAnonKey
+    /** A usable backend exists. Ubuntu is the production backend whenever it is configured. */
+    val isConfigured: Boolean
+        get() = hasFallbackBackend || hasSupabaseBackend
 
     // URLs específicas para diferentes servicios
-    val authUrl: String = "$supabaseUrl/auth/v1"
-    val storageUrl: String = "$supabaseUrl/storage/v1"
+    val authUrl: String get() = "$supabaseUrl/auth/v1"
+    val storageUrl: String get() = "$supabaseUrl/storage/v1"
 
     val json = Json {
         prettyPrint = true
@@ -98,33 +102,50 @@ class SupabaseConfig @Inject constructor(
         expectSuccess = false
     }
 
-    // Official Supabase Client for Realtime
-    // IMPORTANT: Initialized lazily to avoid blocking the Main thread during app startup.
-    // The Supabase Auth plugin registers lifecycle callbacks and must be created on Main.
-    // CRITICAL: When Ubuntu is the primary backend, do NOT initialize Supabase client at all.
-    @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
-    val client: io.github.jan.supabase.SupabaseClient by lazy {
-        val startAt = System.currentTimeMillis()
+    // Legacy SDK facade kept temporarily for repositories that still use its PostgREST DSL.
+    // With Ubuntu primary it points only to Ubuntu's compatibility routes. Auth and Realtime
+    // operations are routed through AuthService/Socket.IO and remain disabled in this facade.
+    @Volatile
+    private var compatibilityClient: io.github.jan.supabase.SupabaseClient? = null
 
-        // Si Ubuntu es el backend principal, no inicializar Supabase
-        if (isLocalFallbackPrimary) {
-            Log.w("SupabaseConfig", "⚠️ Ubuntu is primary backend - Skipping Supabase client initialization")
-            createSupabaseClientOnMain(DISABLED_SUPABASE_URL, DISABLED_SUPABASE_KEY)
-        } else {
-            try {
-                val safeUrl = if (isConfigured) supabaseUrl else DISABLED_SUPABASE_URL
-                val safeKey = if (isConfigured) supabaseAnonKey else DISABLED_SUPABASE_KEY
+    @Volatile
+    private var compatibilityClientUrl: String = ""
 
-                createSupabaseClientOnMain(safeUrl, safeKey).also {
-                    val endAt = System.currentTimeMillis()
-                    Log.d("SupabaseConfig", "✅ Supabase Client initialized in ${endAt - startAt}ms")
+    /**
+     * Compatibility facade for legacy PostgREST call sites.
+     *
+     * RuntimeBackendEndpoint can change after DNS discovery, so this cannot be a one-shot lazy
+     * value. Rebuilding on URL change keeps every repository on the current Ubuntu endpoint.
+     */
+    val client: io.github.jan.supabase.SupabaseClient
+        get() {
+            val targetUrl = when {
+                isLocalFallbackPrimary -> supabaseUrl
+                hasSupabaseBackend -> rawSupabaseUrl
+                else -> DISABLED_SUPABASE_URL
+            }
+            compatibilityClient?.takeIf { compatibilityClientUrl == targetUrl }?.let { return it }
+
+            return synchronized(this) {
+                compatibilityClient?.takeIf { compatibilityClientUrl == targetUrl } ?: run {
+                    val targetKey = when {
+                        isLocalFallbackPrimary -> LOCAL_FALLBACK_ANON_KEY
+                        hasSupabaseBackend -> rawSupabaseAnonKey
+                        else -> DISABLED_SUPABASE_KEY
+                    }
+                    val startAt = System.currentTimeMillis()
+                    createSupabaseClientOnMain(targetUrl, targetKey).also { created ->
+                        compatibilityClient = created
+                        compatibilityClientUrl = targetUrl
+                        Log.i(
+                            "SupabaseConfig",
+                            "Compatibility client initialized for $targetUrl in " +
+                                "${System.currentTimeMillis() - startAt}ms"
+                        )
+                    }
                 }
-            } catch (e: Exception) {
-                Log.e("SupabaseConfig", "❌ CRITICAL: Failed to initialize Supabase Client", e)
-                createSupabaseClientOnMain(DISABLED_SUPABASE_URL, DISABLED_SUPABASE_KEY)
             }
         }
-    }
 
     init {
         if (!isConfigured) {

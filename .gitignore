@@ -59,6 +59,7 @@ supabase/*firebase-adminsdk*.json
 # Local Ubuntu fallback runtime data
 infrastructure/local-fallback/api/storage-data/
 infrastructure/local-fallback/storage-data/
+infrastructure/local-fallback/secrets/
 storage-data/
 
 # Runtime binaries and tools

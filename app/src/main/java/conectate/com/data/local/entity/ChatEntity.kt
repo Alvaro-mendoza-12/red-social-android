@@ -62,6 +62,9 @@ data class ChatEntity(
             participants = participantsList,
             created_at = last_message_timestamp ?: "", // Fallback
             last_message_at = last_message_at,
+            last_message = last_message_preview,
+            last_message_id = last_message_id,
+            last_message_sender_id = last_message_sender_id,
             nickname = nickname,
             is_muted = is_muted,
             is_pinned = is_pinned,

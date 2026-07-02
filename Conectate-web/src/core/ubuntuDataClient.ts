@@ -2,11 +2,10 @@ import { fallbackApiJson, readFallbackSession } from './auth/fallbackAuth'
 import { callUbuntuRpc } from './fallbackRpc'
 import { isUbuntuPrimary } from './ubuntuBackend'
 import { supabase } from './supabase'
+import { getRuntimeBackendUrl } from './runtimeBackend'
 
 type QueryResult<T> = { data: T | null; error: unknown | null }
 type SingleMode = 'many' | 'single' | 'maybeSingle'
-
-const fallbackApiUrl = import.meta.env.VITE_FALLBACK_API_URL?.trim().replace(/\/+$/, '') ?? ''
 
 function encodePathSegments(path: string) {
   return path
@@ -18,7 +17,7 @@ function encodePathSegments(path: string) {
 }
 
 function publicStorageUrl(bucket: string, path: string) {
-  return `${fallbackApiUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodePathSegments(path)}`
+  return `${getRuntimeBackendUrl()}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodePathSegments(path)}`
 }
 
 function asError(value: unknown, fallback: string) {
@@ -48,6 +47,8 @@ class UbuntuQueryBuilder {
   }
 
   select(_columns = '*', _options?: { count?: string; head?: boolean }) {
+    void _columns
+    void _options
     return this
   }
 
@@ -126,6 +127,7 @@ class UbuntuQueryBuilder {
   }
 
   upsert(payload: Record<string, unknown>, _options?: { onConflict?: string }) {
+    void _options
     this.insertBody = payload
     return this
   }
@@ -189,7 +191,8 @@ class UbuntuQueryBuilder {
 
 async function uploadUbuntuStorageObject(bucket: string, path: string, file: File, options?: { upsert?: boolean; contentType?: string }) {
   try {
-    if (!fallbackApiUrl) throw new Error('VITE_FALLBACK_API_URL no esta configurado.')
+    const fallbackApiUrl = getRuntimeBackendUrl()
+    if (!fallbackApiUrl) throw new Error('El servidor Ubuntu no esta configurado.')
     const token = readFallbackSession()?.accessToken?.trim()
     if (!token) throw new Error('No hay una sesion Ubuntu activa para subir archivos.')
     const objectPath = encodePathSegments(path)

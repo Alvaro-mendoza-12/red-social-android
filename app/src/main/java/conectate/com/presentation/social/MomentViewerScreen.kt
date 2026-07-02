@@ -35,6 +35,8 @@ import androidx.navigation.NavController
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -43,6 +45,7 @@ import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.util.UbuntuMedia
+import conectate.com.util.VideoCache
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -90,6 +93,8 @@ fun MomentViewerScreen(
     var paused by remember { mutableStateOf(false) }
     var verticalDragTotal by remember { mutableStateOf(0f) }
     val videoDurationsMs = remember { mutableStateMapOf<String, Long>() }
+    val videoReadyMomentIds = remember { mutableStateMapOf<String, Boolean>() }
+    val videoProgressByMomentId = remember { mutableStateMapOf<String, Float>() }
 
     // Track view for the current moment
     LaunchedEffect(pagerState.currentPage, visibleMoments.size) {
@@ -125,6 +130,10 @@ fun MomentViewerScreen(
     var lastAdvancedMomentId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(activeMomentId) {
         lastAdvancedMomentId = null
+        val activeMoment = visibleMoments.getOrNull(pagerState.currentPage)
+        if (activeMoment?.isVideoMoment() == true) {
+            videoReadyMomentIds[activeMoment.id] = false
+        }
     }
     val advanceToNextMoment: () -> Unit = {
         val momentToAdvance = visibleMoments.getOrNull(pagerState.currentPage)?.id
@@ -141,28 +150,36 @@ fun MomentViewerScreen(
     }
     
     // Reset progress when page changes
-    val activeMomentDurationMs = visibleMoments
-        .getOrNull(pagerState.currentPage)
-        ?.let { moment ->
-            if (moment.isVideoMoment()) {
-                videoDurationsMs[moment.id] ?: DEFAULT_VIDEO_MOMENT_DURATION_MS
-            } else {
-                IMAGE_MOMENT_DURATION_MS.toLong()
-            }
-        } ?: IMAGE_MOMENT_DURATION_MS.toLong()
+    val activeMoment = visibleMoments.getOrNull(pagerState.currentPage)
+    val activeMomentDurationMs = activeMoment
+        ?.let { moment -> moment.playbackDurationMs(videoDurationsMs[moment.id]) }
+        ?: IMAGE_MOMENT_DURATION_MS.toLong()
+    val activeMomentReady = activeMoment
+        ?.let { moment -> !moment.isVideoMoment() || videoReadyMomentIds[moment.id] == true }
+        ?: false
 
     LaunchedEffect(
         hasScrolledToInitial,
         pagerState.currentPage,
         visibleMoments.getOrNull(pagerState.currentPage)?.id,
         paused,
-        activeMomentDurationMs
+        activeMomentDurationMs,
+        activeMomentReady
     ) {
         if (!hasScrolledToInitial) return@LaunchedEffect
+        // Video lifetime is owned by ExoPlayer. A metadata/timer race must never close a video.
+        if (activeMoment?.isVideoMoment() == true) {
+            currentProgress.stop()
+            return@LaunchedEffect
+        }
+        if (!activeMomentReady) {
+            currentProgress.stop()
+            return@LaunchedEffect
+        }
         if (!paused) {
             val currentMoment = visibleMoments.getOrNull(pagerState.currentPage)
             val currentMomentId = currentMoment?.id ?: return@LaunchedEffect
-            val durationMs = if (currentMoment.isVideoMoment()) activeMomentDurationMs else IMAGE_MOMENT_DURATION_MS.toLong()
+            val durationMs = currentMoment.playbackDurationMs(videoDurationsMs[currentMoment.id])
             if (currentProgress.value <= 0.001f || currentProgress.value >= 1f) {
                 currentProgress.snapTo(0f)
             }
@@ -206,8 +223,15 @@ fun MomentViewerScreen(
                     onVideoDurationKnown = { momentId, durationMs ->
                         videoDurationsMs[momentId] = clampMomentVideoDuration(durationMs)
                     },
+                    onVideoReady = { momentId ->
+                        videoReadyMomentIds[momentId] = true
+                    },
+                    onVideoProgress = { momentId, progress ->
+                        videoProgressByMomentId[momentId] = progress.coerceIn(0f, 1f)
+                    },
                     onVideoEnded = { momentId ->
                         if (momentId == visibleMoments.getOrNull(pagerState.currentPage)?.id && !paused) {
+                            videoProgressByMomentId[momentId] = 1f
                             advanceToNextMoment()
                         }
                     }
@@ -233,6 +257,8 @@ fun MomentViewerScreen(
                     repeat(visibleMoments.size) { index ->
                         val progressValue = when {
                             index < pagerState.currentPage -> 1f
+                            index == pagerState.currentPage && visibleMoments[index].isVideoMoment() ->
+                                videoProgressByMomentId[visibleMoments[index].id] ?: 0f
                             index == pagerState.currentPage -> currentProgress.value
                             else -> 0f
                         }
@@ -489,6 +515,8 @@ fun MomentContent(
     isVisible: Boolean,
     paused: Boolean,
     onVideoDurationKnown: (String, Long) -> Unit,
+    onVideoReady: (String) -> Unit,
+    onVideoProgress: (String, Float) -> Unit,
     onVideoEnded: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -500,29 +528,71 @@ fun MomentContent(
     // Force clipping to prevent next slide from overlapping
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
         if (moment.isVideoMoment()) {
-            var isVideoReady by remember { mutableStateOf(false) }
+            var isVideoReady by remember(moment.id, moment.mediaUrl) { mutableStateOf(false) }
+            val latestOnVideoDurationKnown = rememberUpdatedState(onVideoDurationKnown)
+            val latestOnVideoReady = rememberUpdatedState(onVideoReady)
+            val latestOnVideoProgress = rememberUpdatedState(onVideoProgress)
+            val latestOnVideoEnded = rememberUpdatedState(onVideoEnded)
 
-            val exoPlayer = remember(moment.mediaUrl) {
-                ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(UbuntuMedia.mediaItem(moment.mediaUrl))
+            LaunchedEffect(moment.id, moment.displayDurationMs) {
+                moment.displayDurationMs?.takeIf { it > 0L }?.let {
+                    onVideoDurationKnown(moment.id, it)
+                }
+            }
+
+            val exoPlayer = remember(moment.id, moment.mediaUrl) {
+                ExoPlayer.Builder(context)
+                    .setMediaSourceFactory(
+                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                            VideoCache.getCacheDataSourceFactory(context)
+                        )
+                    )
+                    .build()
+                    .apply {
+                    val resolvedUrl = UbuntuMedia.resolveUrl(moment.mediaUrl) ?: moment.mediaUrl
+                    setMediaItem(
+                        MediaItem.Builder()
+                            .setUri(resolvedUrl)
+                            .setMimeType(MimeTypes.VIDEO_MP4)
+                            .build()
+                    )
                     repeatMode = Player.REPEAT_MODE_OFF
                     prepare()
                     
                     addListener(object : Player.Listener {
                          override fun onPlaybackStateChanged(playbackState: Int) {
                              if (playbackState == Player.STATE_READY) {
-                                 val knownDuration = duration
-                                 if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
-                                     onVideoDurationKnown(moment.id, knownDuration)
-                                 }
-                             }
-                             if (playbackState == Player.STATE_ENDED) {
-                                 onVideoEnded(moment.id)
-                             }
-                         }
-                         override fun onRenderedFirstFrame() {
-                             isVideoReady = true
-                         }
+                                  val knownDuration = duration
+                                  if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
+                                      latestOnVideoDurationKnown.value(moment.id, knownDuration)
+                                  } else {
+                                      moment.displayDurationMs?.takeIf { it > 0L }?.let {
+                                          latestOnVideoDurationKnown.value(moment.id, it)
+                                      }
+                                  }
+                                  latestOnVideoReady.value(moment.id)
+                              }
+                              if (playbackState == Player.STATE_ENDED) {
+                                  val knownDuration = duration
+                                  val reachedRealEnd = knownDuration != C.TIME_UNSET &&
+                                      knownDuration > 0L &&
+                                      currentPosition >= (knownDuration - 750L).coerceAtLeast(0L)
+                                  if (reachedRealEnd) {
+                                      latestOnVideoProgress.value(moment.id, 1f)
+                                      latestOnVideoEnded.value(moment.id)
+                                  } else {
+                                      android.util.Log.w(
+                                          "MomentDebug",
+                                          "Ignoring premature STATE_ENDED for ${moment.id}: " +
+                                              "position=$currentPosition duration=$knownDuration"
+                                      )
+                                  }
+                              }
+                          }
+                          override fun onRenderedFirstFrame() {
+                              isVideoReady = true
+                              latestOnVideoReady.value(moment.id)
+                          }
                     })
                 }
             }
@@ -537,15 +607,20 @@ fun MomentContent(
             }
 
             LaunchedEffect(isVisible, exoPlayer, moment.id) {
-                if (isVisible) {
-                    exoPlayer.seekTo(0)
-                    while (true) {
-                        val knownDuration = exoPlayer.duration
-                        if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
-                            onVideoDurationKnown(moment.id, knownDuration)
-                        }
-                        delay(250)
-                    }
+                 if (isVisible) {
+                     exoPlayer.seekTo(0)
+                     latestOnVideoProgress.value(moment.id, 0f)
+                     while (true) {
+                         val knownDuration = exoPlayer.duration
+                         if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
+                             latestOnVideoDurationKnown.value(moment.id, knownDuration)
+                             latestOnVideoProgress.value(
+                                 moment.id,
+                                 exoPlayer.currentPosition.toFloat() / knownDuration.toFloat()
+                             )
+                         }
+                         delay(100)
+                     }
                 }
             }
 
@@ -660,6 +735,15 @@ private fun Moment.isVideoMoment(): Boolean {
         url.endsWith(".mov") ||
         url.endsWith(".m4v") ||
         url.endsWith(".webm")
+}
+
+private fun Moment.playbackDurationMs(playerDurationMs: Long?): Long {
+    return if (isVideoMoment()) {
+        (playerDurationMs ?: displayDurationMs ?: DEFAULT_VIDEO_MOMENT_DURATION_MS)
+            .coerceIn(1_000L, MAX_VIDEO_MOMENT_DURATION_MS)
+    } else {
+        IMAGE_MOMENT_DURATION_MS.toLong()
+    }
 }
 
 private fun clampMomentVideoDuration(durationMs: Long): Long {

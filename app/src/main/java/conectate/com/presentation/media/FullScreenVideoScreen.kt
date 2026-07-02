@@ -18,9 +18,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import androidx.navigation.NavController
 import conectate.com.util.UbuntuMedia
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenVideoScreen(

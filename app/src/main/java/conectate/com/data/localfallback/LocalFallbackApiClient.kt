@@ -91,6 +91,10 @@ data class LocalFallbackInboxItem(
     val avatarUrl: String = "",
     val profileId: String? = null,
     val unreadCount: Int = 0,
+    val lastMessageId: String? = null,
+    val lastMessageSenderId: String? = null,
+    val lastMessageContentType: String? = null,
+    val isMember: Boolean = true,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val isArchived: Boolean = false,
@@ -109,6 +113,8 @@ data class LocalFallbackParticipant(
     val id: String = "",
     val name: String = "",
     val avatarUrl: String = "",
+    val role: String = "member",
+    val joinedAt: String = "",
     val lastReadAt: String = ""
 )
 
@@ -127,8 +133,17 @@ data class LocalFallbackChatResponse(
     val chat: JsonObject? = null,
     val title: String = "",
     val otherParticipant: LocalFallbackParticipant? = null,
+    val participants: List<LocalFallbackParticipant> = emptyList(),
     val messages: List<JsonObject> = emptyList(),
     val settings: LocalFallbackChatSettings = LocalFallbackChatSettings()
+)
+
+@Serializable
+data class LocalFallbackChatPreferenceRequest(
+    val isMuted: Boolean? = null,
+    val isPinned: Boolean? = null,
+    val isArchived: Boolean? = null,
+    val isFavorite: Boolean? = null
 )
 
 @Serializable
@@ -341,6 +356,11 @@ private data class LocalFallbackUpdateProfileRequest(
     val profileVisibility: String? = null,
     val lastSeenVisibility: String? = null,
     val onlineStatusVisibility: String? = null
+)
+
+@Serializable
+private data class LocalFallbackPresenceRequest(
+    val isOnline: Boolean
 )
 
 @Serializable
@@ -613,8 +633,10 @@ data class LocalFallbackPasswordResetResponse(
 class LocalFallbackApiClient @Inject constructor(
     private val supabaseConfig: SupabaseConfig
 ) {
-    val baseUrl: String = UbuntuStorageUrl.baseUrl
-    val isConfigured: Boolean = UbuntuStorageUrl.isConfigured
+    val baseUrl: String
+        get() = UbuntuStorageUrl.baseUrl
+    val isConfigured: Boolean
+        get() = UbuntuStorageUrl.isConfigured
 
     private val json = supabaseConfig.json
 
@@ -777,6 +799,97 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun hideChat(accessToken: String, chatId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun clearChat(accessToken: String, chatId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/clear") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateChatPreferences(
+        accessToken: String,
+        chatId: String,
+        isMuted: Boolean? = null,
+        isPinned: Boolean? = null,
+        isArchived: Boolean? = null,
+        isFavorite: Boolean? = null
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/preferences") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    LocalFallbackChatPreferenceRequest(
+                        isMuted = isMuted,
+                        isPinned = isPinned,
+                        isArchived = isArchived,
+                        isFavorite = isFavorite
+                    )
+                )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun markCollectionAsRead(accessToken: String, collection: String, roomId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanCollection = when (collection.trim().lowercase()) {
+            "groups", "group" -> "groups"
+            "communities", "community" -> "communities"
+            else -> return Result.failure(Exception("Colección inválida."))
+        }
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/$cleanCollection/${urlEncode(roomId)}/read") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody("{}")
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun createDirectChat(accessToken: String, participantId: String): Result<Chat> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -847,6 +960,28 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun loadProfileUser(accessToken: String, profileId: String): Result<User?> {
         return loadProfile(accessToken, profileId).map { response ->
             response.profile?.let(::mapProfileUser)
+        }
+    }
+
+    suspend fun updatePresence(
+        accessToken: String,
+        isOnline: Boolean
+    ): Result<LocalFallbackProfileResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/presence") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackPresenceRequest(isOnline = isOnline))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackProfileResponse>(body).normalized())
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -1055,6 +1190,7 @@ class LocalFallbackApiClient @Inject constructor(
         val mediaUrl: String,
         val mediaType: String,
         val thumbnailUrl: String? = null,
+        val displayDurationMs: Long? = null,
         val durationHours: Int = 24,
         val durationType: String = "24h",
         val visibility: String = "all",
@@ -1078,6 +1214,7 @@ class LocalFallbackApiClient @Inject constructor(
         mediaUrl: String,
         mediaType: String,
         thumbnailUrl: String?,
+        displayDurationMs: Long?,
         durationHours: Int,
         durationType: String,
         visibility: String,
@@ -1095,6 +1232,7 @@ class LocalFallbackApiClient @Inject constructor(
                         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
                         mediaType = mediaType,
                         thumbnailUrl = UbuntuStorageUrl.rewrite(thumbnailUrl),
+                        displayDurationMs = displayDurationMs,
                         durationHours = durationHours,
                         durationType = durationType,
                         visibility = visibility,
@@ -2400,17 +2538,55 @@ class LocalFallbackApiClient @Inject constructor(
 
     private suspend inline fun <reified T> requestJson(url: String, accessToken: String): Result<T> {
         return try {
-            val response = supabaseConfig.httpClient.get(url) {
-                localHeaders(accessToken)
-            }
-            val body = response.bodyAsText()
-            if (response.status.isSuccess()) {
-                Result.success(json.decodeFromString(body))
-            } else {
-                Result.failure(toException(response, decodeError(body)))
-            }
+            requestJsonOnce<T>(url, accessToken).fold(
+                onSuccess = { Result.success(it) },
+                onFailure = { firstError ->
+                    val retryUrl = refreshedRetryUrl(url)
+                    if (retryUrl != null && retryUrl != url) {
+                        requestJsonOnce<T>(retryUrl, accessToken)
+                    } else {
+                        Result.failure(firstError)
+                    }
+                }
+            )
         } catch (error: Exception) {
-            Result.failure(error)
+            val retryUrl = refreshedRetryUrl(url)
+            if (retryUrl != null && retryUrl != url) {
+                requestJsonOnce<T>(retryUrl, accessToken)
+            } else {
+                Result.failure(error)
+            }
+        }
+    }
+
+    private suspend inline fun <reified T> requestJsonOnce(url: String, accessToken: String): Result<T> {
+        val response = supabaseConfig.httpClient.get(url) {
+            localHeaders(accessToken)
+        }
+        val body = response.bodyAsText()
+        return if (response.status.isSuccess()) {
+            Result.success(json.decodeFromString(body))
+        } else {
+            val error = toException(response, decodeError(body))
+            if (response.status.value in setOf(502, 503, 504)) {
+                Result.failure(Exception("Servidor temporalmente no disponible; refrescando endpoint.", error))
+            } else {
+                Result.failure(error)
+            }
+        }
+    }
+
+    private suspend fun refreshedRetryUrl(failedUrl: String): String? {
+        val oldBase = baseUrl.trimEnd('/')
+        if (oldBase.isBlank()) return null
+        val refreshed = RuntimeBackendEndpoint.refreshAfterEndpointFailure(failedUrl)
+        if (!refreshed) return null
+        val newBase = baseUrl.trimEnd('/')
+        if (newBase.isBlank() || newBase == oldBase) return null
+        return if (failedUrl.startsWith(oldBase)) {
+            newBase + failedUrl.removePrefix(oldBase)
+        } else {
+            null
         }
     }
 
@@ -2434,7 +2610,9 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
-            "INVALID_CREDENTIALS" -> Exception("Esta cuenta necesita actualizar su contraseña por la migración a Ubuntu. Toca Cambiar contraseña y crea una nueva contraseña para entrar normalmente.")
+            "INVALID_CREDENTIALS" -> Exception("Correo o contraseña incorrectos.")
+            "ACCOUNT_NOT_FOUND" -> Exception("No existe una cuenta con ese correo. Regístrate para crear una cuenta.")
+            "INVALID_PASSWORD" -> Exception("Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.")
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
             "AUTH_REQUIRED" -> Exception("Tu sesión Ubuntu no llegó a la API. Cierra sesión e inicia sesión otra vez contra Ubuntu.")
@@ -2478,6 +2656,7 @@ class LocalFallbackApiClient @Inject constructor(
         copy(
             chat = chat?.normalizedStorageUrls(),
             otherParticipant = otherParticipant?.normalized(),
+            participants = participants.map { it.normalized() },
             messages = messages.map { it.normalizedStorageUrls() }
         )
 
@@ -2600,6 +2779,14 @@ class LocalFallbackApiClient @Inject constructor(
             val primitive = row[key]?.jsonPrimitive ?: continue
             primitive.intOrNull?.let { return it }
             primitive.contentOrNull?.toIntOrNull()?.let { return it }
+        }
+        return fallback
+    }
+
+    private fun longOf(row: JsonObject, vararg keys: String, fallback: Long = 0L): Long {
+        for (key in keys) {
+            val primitive = row[key]?.jsonPrimitive ?: continue
+            primitive.contentOrNull?.toLongOrNull()?.let { return it }
         }
         return fallback
     }
@@ -2797,6 +2984,8 @@ class LocalFallbackApiClient @Inject constructor(
             mediaUrl = UbuntuStorageUrl.rewriteOrEmpty(textOf(row, "media_url", "mediaUrl")),
             mediaType = textOf(row, "media_type", "mediaType").ifBlank { "image" },
             thumbnailUrl = UbuntuStorageUrl.rewrite(textOf(row, "thumbnail_url", "thumbnailUrl")),
+            displayDurationMs = longOf(row, "display_duration_ms", "displayDurationMs", "duration_ms", "durationMs")
+                .takeIf { it > 0L },
             durationHours = intOf(row, "duration_hours", "durationHours", fallback = 24),
             durationType = textOf(row, "duration_type", "durationType").ifBlank { "24h" },
             visibility = textOf(row, "visibility").ifBlank { "all" },

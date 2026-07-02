@@ -115,12 +115,11 @@ type ClientEvents = {
 type VoiceSocket = Socket<ServerEvents, ClientEvents>
 
 const joinedRoomStorageKey = 'conectate-web-voice-joined-room'
-const fallbackSignalingUrl = 'https://voice.srv1495648.hstgr.cloud'
 
 function readSignalingUrl(): string {
   const configured = String(import.meta.env.VITE_SIGNALING_URL ?? '').trim()
-  const fallbackApi = String(import.meta.env.VITE_FALLBACK_API_URL ?? '').trim()
-  return configured || fallbackApi || fallbackSignalingUrl
+  const fallbackApi = getRuntimeBackendUrl()
+  return configured || fallbackApi
 }
 
 function readJoinedRoomFromStorage(): string | null {

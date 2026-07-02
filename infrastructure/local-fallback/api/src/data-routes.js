@@ -125,6 +125,75 @@ function toMillis(value) {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
+const PRESENCE_ONLINE_TTL_MS = Math.max(30_000, Number(process.env.PRESENCE_ONLINE_TTL_MS) || 90_000)
+const TTL_CACHE_MAX_ENTRIES = Math.max(100, Number(process.env.TTL_CACHE_MAX_ENTRIES) || 600)
+const ttlCache = new Map()
+
+function cacheGet(key) {
+  const entry = ttlCache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt <= Date.now()) {
+    ttlCache.delete(key)
+    return null
+  }
+  ttlCache.delete(key)
+  ttlCache.set(key, entry)
+  return entry.value
+}
+
+function cacheSet(key, value, ttlMs) {
+  if (ttlMs <= 0) return value
+  while (ttlCache.size >= TTL_CACHE_MAX_ENTRIES) {
+    const oldestKey = ttlCache.keys().next().value
+    if (!oldestKey) break
+    ttlCache.delete(oldestKey)
+  }
+  ttlCache.set(key, { value, expiresAt: Date.now() + ttlMs })
+  return value
+}
+
+async function cacheGetOrSet(key, ttlMs, loader) {
+  const cached = cacheGet(key)
+  if (cached) return cached.map((row) => ({ ...row }))
+  const rows = await loader()
+  cacheSet(key, rows.map((row) => ({ ...row })), ttlMs)
+  return rows
+}
+
+function cacheDeletePrefix(prefix) {
+  for (const key of Array.from(ttlCache.keys())) {
+    if (key.startsWith(prefix)) ttlCache.delete(key)
+  }
+}
+
+function clearProfileCaches() {
+  cacheDeletePrefix('fallbackUserProfileRows:')
+  cacheDeletePrefix('allPublicProfiles:')
+}
+
+function clearVoiceCaches() {
+  cacheDeletePrefix('localVoiceRooms:')
+  cacheDeletePrefix('localVoiceParticipants:')
+}
+
+function setPrivateShortCache(res, seconds = 10) {
+  res.setHeader('Cache-Control', `private, max-age=${seconds}, stale-while-revalidate=${seconds * 2}`)
+}
+
+function presenceLastSeen(row, fallback = '') {
+  return textOf(row, ['last_seen', 'lastSeen', 'last_seen_at', 'lastSeenAt'], fallback)
+}
+
+function presenceFields(row) {
+  const lastSeen = presenceLastSeen(row, textOf(row, ['updated_at', 'created_at'], ''))
+  const lastSeenMs = toMillis(lastSeen)
+  const isFresh = lastSeenMs > 0 && Date.now() - lastSeenMs <= PRESENCE_ONLINE_TTL_MS
+  return {
+    is_online: boolOf(row, ['is_online', 'isOnline'], false) && isFresh,
+    last_seen: lastSeen || null,
+  }
+}
+
 function sortByDateDesc(rows, keys) {
   return [...rows].sort((a, b) => {
     const left = keys.reduce((max, key) => Math.max(max, toMillis(a[key])), 0)
@@ -205,6 +274,9 @@ function indexProfiles(rows) {
 }
 
 async function tableExists(pool, tableName) {
+  const cacheKey = `tableExists:${tableName}`
+  const cached = cacheGet(cacheKey)
+  if (typeof cached === 'boolean') return cached
   const { rows } = await pool.query(
     `SELECT 1
      FROM information_schema.tables
@@ -213,19 +285,25 @@ async function tableExists(pool, tableName) {
      LIMIT 1`,
     [tableName],
   )
-  return Boolean(rows[0])
+  return cacheSet(cacheKey, Boolean(rows[0]), 5 * 60_000)
 }
 
 async function importedRows(pool, tableName, limit = 2000) {
   if (!(await tableExists(pool, tableName))) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 2000, 10_000))
-  const { rows } = await pool.query(
-    `SELECT to_jsonb(t) AS row
-     FROM supabase_import.${quoteIdentifier(tableName)} AS t
-     LIMIT $1`,
-    [safeLimit],
+  return cacheGetOrSet(
+    `importedRows:${tableName}:${safeLimit}`,
+    60_000,
+    async () => {
+      const { rows } = await pool.query(
+        `SELECT to_jsonb(t) AS row
+         FROM supabase_import.${quoteIdentifier(tableName)} AS t
+         LIMIT $1`,
+        [safeLimit],
+      )
+      return rows.map((entry) => normalizeImportedRow(entry.row))
+    },
   )
-  return rows.map((entry) => normalizeImportedRow(entry.row))
 }
 
 async function localMessages(pool, chatIds) {
@@ -301,6 +379,100 @@ async function localChatParticipants(pool, chatIds = []) {
     [ids],
   )
   return rows.map(normalizeImportedRow)
+}
+
+async function localHiddenChats(pool, userId) {
+  const cleanUserId = normalizeId(userId)
+  if (!cleanUserId) return new Map()
+  const { rows } = await pool.query(
+    `SELECT chat_id::text, hidden_at
+     FROM fallback_chat_hidden
+     WHERE lower(user_id) = $1`,
+    [cleanUserId],
+  )
+  return new Map(
+    rows
+      .map(normalizeImportedRow)
+      .map((row) => [normalizeId(textOf(row, ['chat_id', 'chatId'], '')), textOf(row, ['hidden_at', 'hiddenAt'], '')])
+      .filter(([chatId]) => chatId),
+  )
+}
+
+async function ensureFallbackChatExists(pool, chatId, sourceRow = {}, participantRows = []) {
+  const cleanChatId = normalizeId(chatId)
+  const uuidChatId = validUuid(cleanChatId)
+  if (!uuidChatId) return false
+
+  const rowParticipants = arrayOf(sourceRow, ['participants']).map(normalizeId).filter(Boolean)
+  const participantIds = participantRows
+    .filter((row) => normalizeId(textOf(row, ['chat_id', 'chatId'], '')) === cleanChatId)
+    .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id', 'userId', 'profileId'], '')))
+    .filter(Boolean)
+  const participants = Array.from(cleanSet([...rowParticipants, ...participantIds]))
+  // This helper materializes imported/migrated chats into fallback_chats so
+  // per-user preferences can reference them. Do not claim participant_key here:
+  // an existing local DM can already own the same key, and hide/archive/favorite
+  // must never fail because of that uniqueness constraint.
+  const participantKey = null
+  const lastMessageAt = textOf(sourceRow, ['last_message_at', 'lastMessageAt', 'updated_at', 'updatedAt', 'created_at', 'createdAt'], '') || null
+
+  await pool.query(
+    `INSERT INTO fallback_chats(
+       id,
+       participants,
+       participant_key,
+       is_group,
+       group_name,
+       last_message,
+       last_message_at,
+       last_message_sender_id,
+       last_message_id,
+       created_at,
+       updated_at
+     )
+     VALUES (
+       $1::uuid,
+       $2::text[],
+       $3,
+       $4,
+       $5,
+       $6,
+       $7::timestamptz,
+       $8,
+       $9,
+       COALESCE($10::timestamptz, NOW()),
+       NOW()
+     )
+     ON CONFLICT (id) DO UPDATE SET
+       participants = CASE
+         WHEN cardinality(EXCLUDED.participants) > 0 THEN EXCLUDED.participants
+         ELSE fallback_chats.participants
+       END,
+       participant_key = COALESCE(EXCLUDED.participant_key, fallback_chats.participant_key),
+       is_group = EXCLUDED.is_group OR fallback_chats.is_group,
+       group_name = COALESCE(NULLIF(EXCLUDED.group_name, ''), fallback_chats.group_name),
+       last_message = COALESCE(NULLIF(EXCLUDED.last_message, ''), fallback_chats.last_message),
+       last_message_at = GREATEST(
+         COALESCE(fallback_chats.last_message_at, 'epoch'::timestamptz),
+         COALESCE(EXCLUDED.last_message_at, 'epoch'::timestamptz)
+       ),
+       last_message_sender_id = COALESCE(NULLIF(EXCLUDED.last_message_sender_id, ''), fallback_chats.last_message_sender_id),
+       last_message_id = COALESCE(NULLIF(EXCLUDED.last_message_id, ''), fallback_chats.last_message_id),
+       updated_at = NOW()`,
+    [
+      uuidChatId,
+      participants,
+      participantKey,
+      boolOf(sourceRow, ['is_group', 'isGroup'], false),
+      textOf(sourceRow, ['group_name', 'groupName', 'name', 'title'], ''),
+      textOf(sourceRow, ['last_message', 'lastMessage'], ''),
+      lastMessageAt,
+      textOf(sourceRow, ['last_message_sender_id', 'lastMessageSenderId'], ''),
+      textOf(sourceRow, ['last_message_id', 'lastMessageId'], ''),
+      textOf(sourceRow, ['created_at', 'createdAt'], '') || null,
+    ],
+  )
+  return true
 }
 
 async function localNicknames(pool, userId) {
@@ -487,6 +659,26 @@ async function localVideoLikes(pool, videoIds, limit = 10_000) {
     [ids.map((id) => id.toLowerCase()), safeLimit],
   )
   return rows.map(normalizeImportedRow)
+}
+
+async function localCollectionReadStates(pool, kind, userId) {
+  const cleanKind = String(kind || '').trim().toLowerCase()
+  const cleanUserId = normalizeId(userId)
+  if (!cleanUserId || !['group', 'community'].includes(cleanKind)) return new Map()
+  const { rows } = await pool.query(
+    `SELECT
+        room_id,
+        last_read_at
+     FROM fallback_collection_read_states
+     WHERE room_kind = $1 AND lower(user_id) = $2`,
+    [cleanKind, cleanUserId],
+  )
+  return new Map(
+    rows
+      .map(normalizeImportedRow)
+      .map((row) => [normalizeId(textOf(row, ['room_id'], '')), textOf(row, ['last_read_at'], '')])
+      .filter(([roomId]) => roomId),
+  )
 }
 
 async function localVideoShares(pool, videoIds, limit = 10_000) {
@@ -722,11 +914,25 @@ function mergeRowsById(rows) {
   return Array.from(byId.values())
 }
 
+function playbackUrlWithVersion(rawUrl, row) {
+  const url = String(rawUrl || '').trim()
+  if (!url || !url.includes('/storage/v1/object/public/')) return url
+  const versionSource =
+    textOf(row, ['created_at', 'createdAt', 'id'], '') ||
+    Date.now().toString()
+  const version = encodeURIComponent(String(versionSource).replace(/[^0-9a-zA-Z._:-]/g, ''))
+  if (!version) return url
+  const [base, hash = ''] = url.split('#')
+  const separator = base.includes('?') ? '&' : '?'
+  return `${base}${separator}v=${version}${hash ? `#${hash}` : ''}`
+}
+
 function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
   const id = textOf(row, ['id'], '')
   const userId = textOf(row, ['user_id', 'userId'], '')
   const profile = profilesById.get(normalizeId(userId)) || {}
   const cover = textOf(row, ['cover_url', 'thumbnail_url', 'coverUrl', 'thumbnailUrl'], '')
+  const videoUrl = textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], '')
   return {
     ...row,
     id,
@@ -737,7 +943,7 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
       textOf(row, ['user_profile_image', 'userProfileImage'], ''),
     title: textOf(row, ['title', 'caption'], 'Video'),
     description: textOf(row, ['description', 'content'], ''),
-    video_url: textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
+    video_url: playbackUrlWithVersion(videoUrl, row),
     cover_url: cover,
     thumbnail_url: cover,
     duration_seconds: numberOf(row, ['duration_seconds', 'duration'], 0),
@@ -1220,25 +1426,35 @@ async function localPostShares(pool, postIds, limit = 10_000) {
 
 async function fallbackUserProfileRows(pool, limit = 5000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
-  const { rows } = await pool.query(
-    `SELECT
-        u.id::text AS id,
-        u.supabase_user_id::text AS supabase_user_id,
-        COALESCE(o.profile->>'email', u.email) AS email,
-        COALESCE(o.profile->>'display_name', o.profile->>'displayName', o.profile->>'full_name', u.display_name) AS display_name,
-        COALESCE(o.profile->>'full_name', o.profile->>'fullName', o.profile->>'display_name', u.display_name) AS full_name,
-        COALESCE(o.profile->>'username', split_part(u.email, '@', 1)) AS username,
-        COALESCE(o.profile->>'avatar_url', o.profile->>'avatarUrl', o.profile->>'photo_url', o.profile->>'profile_image', u.avatar_url) AS avatar_url,
-        COALESCE(o.profile->>'cover_url', o.profile->>'coverUrl') AS cover_url,
-        u.created_at,
-        COALESCE(o.updated_at, u.last_login_at, u.created_at) AS updated_at
-     FROM fallback_users u
-     LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-     ORDER BY COALESCE(o.updated_at, u.created_at) DESC
-     LIMIT $1`,
-    [safeLimit],
+  return cacheGetOrSet(
+    `fallbackUserProfileRows:${safeLimit}`,
+    10_000,
+    async () => {
+      const { rows } = await pool.query(
+        `SELECT
+            u.id::text AS id,
+            u.supabase_user_id::text AS supabase_user_id,
+            COALESCE(o.profile->>'email', u.email) AS email,
+            COALESCE(o.profile->>'display_name', o.profile->>'displayName', o.profile->>'full_name', u.display_name) AS display_name,
+            COALESCE(o.profile->>'full_name', o.profile->>'fullName', o.profile->>'display_name', u.display_name) AS full_name,
+            COALESCE(o.profile->>'username', split_part(u.email, '@', 1)) AS username,
+            COALESCE(o.profile->>'avatar_url', o.profile->>'avatarUrl', o.profile->>'photo_url', o.profile->>'profile_image', u.avatar_url) AS avatar_url,
+            COALESCE(o.profile->>'cover_url', o.profile->>'coverUrl') AS cover_url,
+            COALESCE(o.profile->>'is_online', o.profile->>'isOnline', 'false') AS is_online,
+            COALESCE(o.profile->>'last_seen', o.profile->>'lastSeen', u.last_login_at::text, u.updated_at::text, u.created_at::text) AS last_seen,
+            COALESCE(o.profile->>'last_seen_visibility', o.profile->>'lastSeenVisibility', 'everyone') AS last_seen_visibility,
+            COALESCE(o.profile->>'online_status_visibility', o.profile->>'onlineStatusVisibility', 'everyone') AS online_status_visibility,
+            u.created_at,
+            COALESCE(o.updated_at, u.last_login_at, u.created_at) AS updated_at
+         FROM fallback_users u
+         LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+         ORDER BY COALESCE(o.updated_at, u.created_at) DESC
+         LIMIT $1`,
+        [safeLimit],
+      )
+      return rows.map(normalizeImportedRow)
+    },
   )
-  return rows.map(normalizeImportedRow)
 }
 
 async function localFollows(pool, limit = 10_000) {
@@ -1407,6 +1623,14 @@ async function createLocalNotification(pool, input) {
   } catch {
     // Realtime es best-effort; la notificación HTTP ya quedó persistida.
   }
+  try {
+    const { sendPushForNotification } = require('./push-notifications')
+    void sendPushForNotification(pool, notification, extraData).catch((error) => {
+      console.error(`[push] Notification ${notification.id} could not be delivered: ${error.message}`)
+    })
+  } catch (error) {
+    console.error(`[push] Notification sender could not be loaded: ${error.message}`)
+  }
   return notification
 }
 
@@ -1433,12 +1657,17 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     avatar_url: profileAvatar(row),
     cover_url: textOf(row, ['cover_url', 'banner_url'], ''),
     is_private: boolOf(row, ['is_private', 'private'], false),
+    ...presenceFields(row),
+    last_seen_visibility: textOf(row, ['last_seen_visibility', 'lastSeenVisibility'], 'everyone'),
+    online_status_visibility: textOf(row, ['online_status_visibility', 'onlineStatusVisibility'], 'everyone'),
     created_at: textOf(row, ['created_at'], ''),
     updated_at: textOf(row, ['updated_at'], textOf(row, ['created_at'], '')),
   }
 }
 
 async function allPublicProfiles(pool) {
+  const cached = cacheGet('allPublicProfiles:10000')
+  if (cached) return cached.map((row) => ({ ...row }))
   const [importedProfiles, fallbackProfiles] = await Promise.all([
     importedRows(pool, 'profiles', 10_000),
     fallbackUserProfileRows(pool, 10_000),
@@ -1464,7 +1693,7 @@ async function allPublicProfiles(pool) {
   for (const row of importedProfiles) upsertProfile(row, false)
   for (const row of fallbackProfiles) upsertProfile(row, true)
 
-  return Array.from(byCanonicalId.values())
+  return cacheSet('allPublicProfiles:10000', Array.from(byCanonicalId.values()), 15_000)
 }
 
 function profileMatchesQuery(profile, query) {
@@ -1532,6 +1761,10 @@ function fallbackProfileRow(user) {
     display_name: user.display_name || user.email,
     full_name: user.display_name || user.email,
     avatar_url: user.avatar_url || '',
+    is_online: false,
+    last_seen: user.last_login_at || user.updated_at || user.created_at,
+    last_seen_visibility: 'everyone',
+    online_status_visibility: 'everyone',
     created_at: user.created_at,
     updated_at: user.updated_at || user.last_login_at || user.created_at,
   }
@@ -1550,6 +1783,9 @@ function buildProfileForUser(user, importedProfile = {}, overrideProfile = {}) {
     display_name: profileName(merged, user.display_name || user.email),
     full_name: textOf(merged, ['full_name'], profileName(merged, user.display_name || user.email)),
     avatar_url: profileAvatar(merged),
+    ...presenceFields(merged),
+    last_seen_visibility: textOf(merged, ['last_seen_visibility', 'lastSeenVisibility'], 'everyone'),
+    online_status_visibility: textOf(merged, ['online_status_visibility', 'onlineStatusVisibility'], 'everyone'),
     created_at: textOf(merged, ['created_at'], user.created_at),
     updated_at: textOf(merged, ['updated_at'], new Date().toISOString()),
   }
@@ -1898,48 +2134,61 @@ function voiceParticipantRoomId(row) {
 
 async function localVoiceParticipants(pool, roomId = '') {
   const cleanRoomId = normalizeId(roomId)
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        room_id,
-        user_id,
-        user_name,
-        user_avatar_url,
-        socket_id,
-        is_muted,
-        is_speaking,
-        joined_at,
-        updated_at
-     FROM fallback_voice_room_participants
-     WHERE ($1::text = '' OR lower(room_id) = $1)
-     ORDER BY joined_at ASC`,
-    [cleanRoomId],
+  return cacheGetOrSet(
+    `localVoiceParticipants:${cleanRoomId || 'all'}`,
+    2_000,
+    async () => {
+      const { rows } = await pool.query(
+        `SELECT
+            id::text,
+            room_id,
+            user_id,
+            user_name,
+            user_avatar_url,
+            socket_id,
+            is_muted,
+            is_speaking,
+            joined_at,
+            updated_at
+         FROM fallback_voice_room_participants
+         WHERE ($1::text = '' OR lower(room_id) = $1)
+           AND updated_at >= NOW() - INTERVAL '2 minutes'
+         ORDER BY joined_at ASC`,
+        [cleanRoomId],
+      )
+      return rows.map(normalizeImportedRow)
+    },
   )
-  return rows.map(normalizeImportedRow)
 }
 
 async function localVoiceRooms(pool, limit = 1000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 1000, 10_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        name,
-        description,
-        creator_id,
-        max_participants,
-        is_public,
-        is_active,
-        agora_channel_name,
-        readable_id,
-        created_at,
-        updated_at
-     FROM fallback_voice_rooms
-     WHERE is_active = TRUE
-     ORDER BY updated_at DESC, created_at DESC
-     LIMIT $1`,
-    [safeLimit],
+  return cacheGetOrSet(
+    `localVoiceRooms:${safeLimit}`,
+    2_000,
+    async () => {
+      const { rows } = await pool.query(
+        `SELECT
+            id::text,
+            name,
+            description,
+            creator_id,
+            max_participants,
+            is_public,
+            is_active,
+            agora_channel_name,
+            readable_id,
+            created_at,
+            updated_at
+         FROM fallback_voice_rooms
+         WHERE is_active = TRUE
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT $1`,
+        [safeLimit],
+      )
+      return rows.map(normalizeImportedRow)
+    },
   )
-  return rows.map(normalizeImportedRow)
 }
 
 function mapVoiceParticipant(row, profilesById) {
@@ -1964,11 +2213,8 @@ function mapVoiceRoom(row, profilesById, participantCount) {
   const creatorId = normalizeId(textOf(row, ['creator_id', 'owner_id', 'user_id'], ''))
   const creatorProfile = creatorId ? profilesById.get(creatorId) : null
   const id = voiceRoomId(row)
-  const count = Math.max(
-    0,
-    participantCount,
-    numberOf(row, ['current_participants', 'participant_count', 'active_participants'], 0),
-  )
+  // Presence is live state. Historical CSV counters must never appear as listeners.
+  const count = Math.max(0, Number(participantCount || 0))
   return {
     ...row,
     id,
@@ -2053,6 +2299,18 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_chat_participants_user
      ON fallback_chat_participants(lower(user_id), joined_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_chat_hidden (
+      chat_id UUID NOT NULL,
+      user_id TEXT NOT NULL,
+      hidden_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (chat_id, user_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_chat_hidden_user
+     ON fallback_chat_hidden(lower(user_id), hidden_at DESC)`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_nicknames (
@@ -2431,6 +2689,20 @@ async function ensureLocalDataTables(pool) {
      ON fallback_collection_members(room_kind, lower(user_id), lower(room_id))`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_collection_read_states (
+      room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (room_kind, room_id, user_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_collection_read_states_user
+     ON fallback_collection_read_states(room_kind, lower(user_id), lower(room_id))`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_voice_rooms (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
@@ -2751,6 +3023,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ['created_at', 'updated_at'],
       ).slice(0, 12)
 
+      setPrivateShortCache(res, 10)
       res.json({
         profile: mergedProfile,
         posts: myPosts,
@@ -2792,6 +3065,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
            updated_at = NOW()`,
         [user.id, JSON.stringify(patch)],
       )
+      clearProfileCaches()
 
       const nextDisplayName = patch.display_name || patch.full_name || null
       const nextAvatarUrl = patch.avatar_url || null
@@ -2860,6 +3134,55 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
+  app.post('/v1/data/presence', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const isOnline = Boolean(req.body?.isOnline ?? req.body?.is_online ?? req.body?.online_status)
+      const now = new Date().toISOString()
+      const patch = {
+        is_online: isOnline,
+        last_seen: now,
+        updated_at: now,
+      }
+
+      await pool.query(
+        `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           profile = fallback_profile_overrides.profile || EXCLUDED.profile,
+           updated_at = NOW()`,
+        [user.id, JSON.stringify(patch)],
+      )
+      clearProfileCaches()
+
+      await pool.query(
+        `UPDATE fallback_users
+         SET last_login_at = $2,
+             updated_at = $2
+         WHERE id = $1`,
+        [user.id, now],
+      )
+
+      const refreshedUser = {
+        ...user,
+        last_login_at: now,
+        updated_at: now,
+      }
+      const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
+      res.json({
+        ok: true,
+        isOnline: current.is_online,
+        lastSeen: current.last_seen,
+        profile: current,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/profiles/search', authRequired, async (req, res, next) => {
     try {
       const query = cleanText(req.query.q || req.query.query || '', 120).toLowerCase()
@@ -2869,6 +3192,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         .filter((profile) => profileMatchesQuery(profile, query))
         .sort((a, b) => toMillis(b.updated_at || b.created_at) - toMillis(a.updated_at || a.created_at))
         .slice(0, limit)
+      setPrivateShortCache(res, 10)
       res.json({ items })
     } catch (error) {
       next(error)
@@ -2929,6 +3253,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         commentCounts.set(id, (commentCounts.get(id) || 0) + 1)
       }
 
+      setPrivateShortCache(res, 10)
       res.json({
         profile,
         posts: sortByDateDesc(posts, ['created_at', 'updated_at'])
@@ -3666,21 +3991,38 @@ function registerDataRoutes(app, { pool, authRequired }) {
             .filter((row) => rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids))
             .map((row) => textOf(row, [config.roomKey, 'room_id'], '')),
         )
+        const readStateByRoom = await localCollectionReadStates(pool, config.kind, identity.displayUserId)
+        const lastReadByRoom = new Map()
+        for (const row of memberships) {
+          const userId = normalizeId(textOf(row, ['user_id', 'profile_id', 'member_id'], ''))
+          if (!identity.ids.has(userId)) continue
+          const roomId = roomIdOf(row, config.roomKey)
+          if (!roomId) continue
+          const lastReadAt = textOf(row, ['last_read_at', 'lastReadAt'], '')
+          if (lastReadAt) lastReadByRoom.set(roomId, lastReadAt)
+        }
+        for (const [roomId, lastReadAt] of readStateByRoom.entries()) {
+          const current = lastReadByRoom.get(roomId)
+          if (!current || toMillis(lastReadAt) > toMillis(current)) lastReadByRoom.set(roomId, lastReadAt)
+        }
         const importedLatestByRoom = new Map()
         for (const message of sortByDateDesc(importedMessages, ['created_at', 'updated_at'])) {
           const roomId = roomIdOf(message, config.roomKey)
           if (roomId && !importedLatestByRoom.has(roomId)) importedLatestByRoom.set(roomId, message)
         }
-        const localLatestRows = []
-        for (const id of Array.from(roomIds)) {
+        const localMessagesByRoom = new Map()
+        for (const id of rooms.map((row) => normalizeId(textOf(row, ['id'], ''))).filter(Boolean)) {
           const localRows = await localCollectionMessages(pool, config.kind, id)
-          if (localRows.length > 0) localLatestRows.push(localRows[localRows.length - 1])
+          localMessagesByRoom.set(id, localRows)
         }
-        const localLatestByRoom = new Map(localLatestRows.map((row) => [roomIdOf(row, config.roomKey), row]))
-        const items = sortByDateDesc(
-          rooms.filter((row) => roomIds.size === 0 || roomIds.has(normalizeId(textOf(row, ['id'], '')))),
-          ['updated_at', 'created_at'],
-        ).slice(0, 60).map((row) => {
+        const localLatestByRoom = new Map(
+          Array.from(localMessagesByRoom.entries())
+            .filter(([, rows]) => rows.length > 0)
+            .map(([roomId, rows]) => [roomId, rows[rows.length - 1]]),
+        )
+        const items = rooms
+          .filter((row) => roomIds.has(normalizeId(textOf(row, ['id'], ''))))
+          .map((row) => {
           const id = textOf(row, ['id'], '')
           const cleanId = normalizeId(id)
           const importedLatest = importedLatestByRoom.get(cleanId)
@@ -3688,6 +4030,20 @@ function registerDataRoutes(app, { pool, authRequired }) {
           const latest = toMillis(textOf(localLatest || {}, ['created_at'], '')) > toMillis(textOf(importedLatest || {}, ['created_at'], ''))
             ? localLatest
             : importedLatest
+          const lastReadAt = toMillis(lastReadByRoom.get(cleanId))
+          const allRoomMessages = [
+            ...importedMessages.filter((message) => roomIdOf(message, config.roomKey) === cleanId),
+            ...(localMessagesByRoom.get(cleanId) || []),
+          ]
+          const unreadCount = roomIds.has(cleanId)
+            ? allRoomMessages.reduce((count, message) => {
+                const senderId = normalizeId(textOf(message, ['sender_id'], ''))
+                const messageAt = toMillis(textOf(message, ['created_at', 'updated_at'], ''))
+                if (senderId && identity.ids.has(senderId)) return count
+                if (lastReadAt && messageAt && messageAt <= lastReadAt) return count
+                return count + 1
+              }, 0)
+            : 0
           return {
             id,
             title: collectionRoomTitle(row, config.titleFallback),
@@ -3696,7 +4052,11 @@ function registerDataRoutes(app, { pool, authRequired }) {
             kind: config.kind,
             avatarUrl: collectionRoomAvatar(row),
             profileId: null,
-            unreadCount: 0,
+            unreadCount,
+            lastMessageId: textOf(latest || {}, ['id'], ''),
+            lastMessageSenderId: textOf(latest || {}, ['sender_id'], ''),
+            lastMessageContentType: textOf(latest || {}, ['content_type'], 'text') || 'text',
+            isMember: roomIds.has(cleanId),
             isPinned: false,
             isMuted: false,
             isArchived: false,
@@ -3704,7 +4064,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             folders: [],
             openPath: `${config.openPathPrefix}${id}`,
           }
-        })
+        }).sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt)).slice(0, 80)
         return res.json({ items })
       }
 
@@ -3717,10 +4077,14 @@ function registerDataRoutes(app, { pool, authRequired }) {
         localChats(pool, 5000),
       ])
       const nicknamesByTarget = await localNicknames(pool, identity.displayUserId)
+      const hiddenByChat = await localHiddenChats(pool, identity.displayUserId)
       const chatIdsFromLocal = fallbackChats.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const importedChatIds = chats.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      // Load localChatParticipants for ALL chats (imported + local) so cleared_at is always applied
+      const allChatIdsForParticipants = Array.from(cleanSet([...chatIdsFromLocal, ...importedChatIds]))
       const participants = [
         ...importedParticipants,
-        ...(await localChatParticipants(pool, chatIdsFromLocal)),
+        ...(await localChatParticipants(pool, allChatIdsForParticipants)),
       ]
       const allChats = [...chats, ...fallbackChats]
 
@@ -3775,8 +4139,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         }
       }
 
-      const items = sortByDateDesc(chatRows, ['last_message_at', 'updated_at', 'created_at'])
-        .slice(0, 80)
+      const items = chatRows
         .map((row) => {
           const id = textOf(row, ['id'], '')
           const cleanChatId = normalizeId(id)
@@ -3786,21 +4149,31 @@ function registerDataRoutes(app, { pool, authRequired }) {
           }
           const otherProfile = otherId ? profilesById.get(otherId) : null
           const participant = participantByChat.get(cleanChatId) || {}
-          const latest = latestByChat.get(cleanChatId) || {}
+          const myClearedAt = toMillis(textOf(participant, ['cleared_at', 'clearedAt'], ''))
+          let latest = latestByChat.get(cleanChatId) || {}
+          if (myClearedAt && toMillis(textOf(latest, ['created_at', 'updated_at'], '')) <= myClearedAt) {
+            latest = {} // Hide latest message if it was cleared
+          }
+          const effectiveUpdatedAt =
+            textOf(latest, ['created_at', 'updated_at'], '') ||
+            textOf(row, ['last_message_at', 'updated_at', 'created_at'], '')
+          const hiddenAt = hiddenByChat.get(cleanChatId)
+          if (hiddenAt && toMillis(hiddenAt) >= toMillis(effectiveUpdatedAt)) return null
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name'], 'Chat privado')
           const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
           return {
             id,
             title: nickname || (otherProfile ? profileName(otherProfile, fallbackName) : fallbackName),
-            subtitle: previewFromMessage(latest) || textOf(row, ['last_message'], 'Sin mensajes'),
-            updatedAt:
-              textOf(latest, ['created_at', 'updated_at'], '') ||
-              textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
+            subtitle: previewFromMessage(latest) || (myClearedAt ? 'Sin mensajes' : textOf(row, ['last_message'], 'Sin mensajes')),
+            updatedAt: effectiveUpdatedAt,
             kind: 'chat',
             avatarUrl: otherProfile ? profileAvatar(otherProfile) : textOf(row, ['other_user_image', 'avatar_url'], ''),
             profileId: otherId || null,
             nickname: nickname || null,
             unreadCount: unreadByChat.get(cleanChatId) || 0,
+            lastMessageId: textOf(latest, ['id'], '') || textOf(row, ['last_message_id'], ''),
+            lastMessageSenderId: textOf(latest, ['sender_id'], '') || textOf(row, ['last_message_sender_id'], ''),
+            lastMessageContentType: textOf(latest, ['content_type'], 'text') || 'text',
             isPinned: boolOf(participant, ['is_pinned'], false),
             isMuted: boolOf(participant, ['is_muted'], false),
             isArchived: boolOf(participant, ['is_archived'], false),
@@ -3809,6 +4182,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
             openPath: `/app/messages/${id}`,
           }
         })
+        .filter(Boolean)
+        .sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt))
+        .slice(0, 80)
 
       res.json({ items })
     } catch (error) {
@@ -3914,6 +4290,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       if (!chatRow) return res.status(500).json({ error: 'DIRECT_CHAT_CREATE_FAILED' })
       const chat = normalizeImportedRow(chatRow)
+      await pool.query(
+        `DELETE FROM fallback_chat_hidden
+         WHERE lower(chat_id::text) = $1
+           AND lower(user_id) = $2`,
+        [normalizeId(chat.id), identity.displayUserId],
+      )
       for (const participantId of participants) {
         await pool.query(
           `INSERT INTO fallback_chat_participants(chat_id, user_id, joined_at)
@@ -3923,6 +4305,140 @@ function registerDataRoutes(app, { pool, authRequired }) {
         )
       }
       res.status(201).json({ chat })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/chats/:chatId/clear', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const cleanChatId = normalizeId(req.params.chatId)
+      const uuidChatId = validUuid(cleanChatId)
+      if (!cleanChatId || !uuidChatId) return res.status(400).json({ error: 'CHAT_ID_REQUIRED' })
+
+      const now = new Date().toISOString()
+
+      // Mark cleared_at in fallback_chat_participants (create row if missing)
+      await pool.query(
+        `INSERT INTO fallback_chat_participants(chat_id, user_id, cleared_at, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3::timestamptz, NOW(), NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET cleared_at = $3::timestamptz, updated_at = NOW()`,
+        [uuidChatId, identity.displayUserId, now],
+      )
+
+      res.json({ ok: true, chatId: cleanChatId, clearedAt: now })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/messages/chats/:chatId', authRequired, async (req, res, next) => {
+
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const cleanChatId = normalizeId(req.params.chatId)
+      const uuidChatId = validUuid(cleanChatId)
+      if (!cleanChatId || !uuidChatId) return res.status(400).json({ error: 'CHAT_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const [fallbackChatRows, importedChatRows, importedParticipants, fallbackParticipants] = await Promise.all([
+        localChats(pool, 5000),
+        importedRows(pool, 'chats', 5000),
+        importedRows(pool, 'chat_participants', 10_000),
+        localChatParticipants(pool, [cleanChatId]),
+      ])
+      const chat = [...fallbackChatRows, ...importedChatRows]
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
+      const participantRows = [...importedParticipants, ...fallbackParticipants]
+        .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
+      const hasAccess =
+        (chat && rowParticipantsContain(chat, identity.ids)) ||
+        participantRows.some((row) => rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids))
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+
+      await ensureFallbackChatExists(pool, cleanChatId, chat || {}, participantRows)
+      await pool.query(
+        `INSERT INTO fallback_chat_hidden(chat_id, user_id, hidden_at)
+         VALUES ($1::uuid, $2, NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET hidden_at = NOW()`,
+        [uuidChatId, identity.displayUserId],
+      )
+      await pool.query(
+        `UPDATE fallback_chat_participants
+         SET cleared_at = NOW(),
+             last_read_at = GREATEST(COALESCE(last_read_at, 'epoch'::timestamptz), NOW())
+         WHERE lower(chat_id::text) = $1
+           AND lower(user_id) = $2`,
+        [cleanChatId, identity.displayUserId],
+      )
+      res.json({ ok: true, chatId: cleanChatId, hidden: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/messages/chats/:chatId/preferences', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const cleanChatId = normalizeId(req.params.chatId)
+      const uuidChatId = validUuid(cleanChatId)
+      if (!cleanChatId || !uuidChatId) return res.status(400).json({ error: 'CHAT_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const [fallbackChatRows, importedChatRows, importedParticipants, fallbackParticipants] = await Promise.all([
+        localChats(pool, 5000),
+        importedRows(pool, 'chats', 5000),
+        importedRows(pool, 'chat_participants', 10_000),
+        localChatParticipants(pool, [cleanChatId]),
+      ])
+      const chat = [...fallbackChatRows, ...importedChatRows]
+        .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
+      const participantRows = [...importedParticipants, ...fallbackParticipants]
+        .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
+      const hasAccess =
+        (chat && rowParticipantsContain(chat, identity.ids)) ||
+        participantRows.some((row) => rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids))
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+
+      const allowed = [
+        ['isMuted', 'is_muted'],
+        ['isPinned', 'is_pinned'],
+        ['isArchived', 'is_archived'],
+        ['isFavorite', 'is_favorite'],
+      ]
+      const assignments = []
+      const values = [uuidChatId, identity.displayUserId]
+      for (const [camelKey, column] of allowed) {
+        if (typeof req.body?.[camelKey] === 'boolean') {
+          values.push(Boolean(req.body[camelKey]))
+          assignments.push(`${column} = $${values.length}`)
+        }
+      }
+      if (assignments.length === 0) return res.status(400).json({ error: 'NO_PREFERENCES_TO_UPDATE' })
+
+      await ensureFallbackChatExists(pool, cleanChatId, chat || {}, participantRows)
+      await pool.query(
+        `INSERT INTO fallback_chat_participants(chat_id, user_id, joined_at)
+         VALUES ($1::uuid, $2, NOW())
+         ON CONFLICT (chat_id, user_id) DO NOTHING`,
+        [uuidChatId, identity.displayUserId],
+      )
+      await pool.query(
+        `UPDATE fallback_chat_participants
+         SET ${assignments.join(', ')}
+         WHERE chat_id = $1::uuid
+           AND lower(user_id) = $2`,
+        values,
+      )
+      res.json({ ok: true, chatId: cleanChatId })
     } catch (error) {
       next(error)
     }
@@ -3992,6 +4508,46 @@ function registerDataRoutes(app, { pool, authRequired }) {
       )
 
       res.json({ ok: true, chatId: cleanChatId, lastReadAt: new Date().toISOString() })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post(['/v1/data/messages/groups/:roomId/read', '/v1/data/messages/communities/:roomId/read'], authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const config = collectionConfig(messageCollectionFromRequest(req))
+      const roomId = normalizeId(req.params.roomId)
+      if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const identity = userIdentity(user)
+      const memberships = [
+        ...(await importedRows(pool, config.memberTable, 5000)),
+        ...(await localCollectionMembers(pool, config.kind, 10_000)),
+      ].filter((row) => roomIdOf(row, config.roomKey) === roomId)
+      const hasMembership = memberships.length === 0 || memberships.some((row) => {
+        const status = textOf(row, ['status', 'member_status'], '').toLowerCase()
+        return rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids) &&
+          !['left', 'removed', 'deleted'].includes(status)
+      })
+      if (!hasMembership) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
+
+      await pool.query(
+        `INSERT INTO fallback_collection_read_states(room_kind, room_id, user_id, last_read_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (room_kind, room_id, user_id) DO UPDATE SET
+           last_read_at = CASE
+             WHEN fallback_collection_read_states.last_read_at < EXCLUDED.last_read_at
+             THEN EXCLUDED.last_read_at
+             ELSE fallback_collection_read_states.last_read_at
+           END,
+           updated_at = NOW()`,
+        [config.kind, roomId, identity.displayUserId],
+      )
+
+      res.json({ ok: true, roomId, kind: config.kind, lastReadAt: new Date().toISOString() })
     } catch (error) {
       next(error)
     }
@@ -4112,6 +4668,23 @@ function registerDataRoutes(app, { pool, authRequired }) {
          DO UPDATE SET role = COALESCE(NULLIF(fallback_collection_members.role, ''), EXCLUDED.role)`,
         [config.kind, roomId, targetUserId, role],
       )
+
+      if (targetUserId && !identity.ids.has(targetUserId)) {
+        await createLocalNotification(pool, {
+          recipientId: targetUserId,
+          actorId: identity.displayUserId,
+          actorName: user.display_name || user.email || 'Usuario',
+          actorAvatarUrl: user.avatar_url || '',
+          type: `${config.kind}_member_added`,
+          targetId: roomId,
+          targetType: config.kind,
+          content: room?.title || config.titleFallback,
+          extraData: {
+            [`${config.kind}_id`]: roomId,
+            notification_type: `${config.kind}_member_added`,
+          },
+        })
+      }
 
       res.json({ ok: true })
     } catch (error) {
@@ -4447,6 +5020,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
       const room = mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, 0)
+      clearVoiceCaches()
       void publishVoiceRoomsLiveEvent({ action: 'created', roomId: room.id, room })
       res.status(201).json({ room })
     } catch (error) {
@@ -4456,18 +5030,17 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
   app.get('/v1/data/voice/rooms', authRequired, async (_req, res, next) => {
     try {
-      const [importedProfiles, localProfiles, importedRooms, importedParticipants, fallbackParticipants, fallbackRooms] = await Promise.all([
+      const [importedProfiles, localProfiles, importedRooms, fallbackParticipants, fallbackRooms] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'voice_rooms', 1000),
-        importedRows(pool, 'voice_room_participants', 10_000),
         localVoiceParticipants(pool),
         localVoiceRooms(pool, 1000),
       ])
       const rooms = [...importedRooms, ...fallbackRooms]
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
       const countByRoom = new Map()
-      for (const row of [...importedParticipants, ...fallbackParticipants]) {
+      for (const row of fallbackParticipants) {
         const id = voiceParticipantRoomId(row)
         if (!id) continue
         countByRoom.set(id, (countByRoom.get(id) || 0) + 1)
@@ -4479,6 +5052,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         }),
         ['updated_at', 'created_at'],
       )
+      setPrivateShortCache(res, 2)
       res.json({ rooms: items, items })
     } catch (error) {
       next(error)
@@ -4488,11 +5062,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
   app.get('/v1/data/voice/rooms/:roomId', authRequired, async (req, res, next) => {
     try {
       const cleanRoomId = normalizeId(req.params.roomId)
-      const [importedProfiles, localProfiles, importedRooms, importedParticipants, fallbackParticipants, fallbackRooms] = await Promise.all([
+      const [importedProfiles, localProfiles, importedRooms, fallbackParticipants, fallbackRooms] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'voice_rooms', 1000),
-        importedRows(pool, 'voice_room_participants', 10_000),
         localVoiceParticipants(pool),
         localVoiceRooms(pool, 1000),
       ])
@@ -4501,9 +5074,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
       const actualRoomId = voiceRoomId(room) || cleanRoomId
-      const participants = [...importedParticipants, ...fallbackParticipants]
+      const participants = fallbackParticipants
         .filter((row) => voiceParticipantRoomId(row) === actualRoomId)
         .map((row) => mapVoiceParticipant(row, profilesById))
+      setPrivateShortCache(res, 2)
       res.json({
         room: mapVoiceRoom(room, profilesById, participants.length),
         participants,
@@ -4561,6 +5135,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
          WHERE lower(id::text) = $1`,
         [actualRoomId],
       )
+      clearVoiceCaches()
       const payload = await localVoiceParticipants(pool, actualRoomId)
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
       const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
@@ -4591,6 +5166,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
          WHERE lower(id::text) = $1`,
         [actualRoomId],
       )
+      clearVoiceCaches()
       void publishVoiceRoomsLiveEvent({ action: 'left', roomId: actualRoomId, userId: identity.displayUserId })
       res.json({ ok: true })
     } catch (error) {
@@ -4629,6 +5205,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
          WHERE lower(room_id) = $1`,
         [actualRoomId],
       )
+      clearVoiceCaches()
       void publishVoiceRoomsLiveEvent({ action: 'deleted', roomId: actualRoomId })
       res.json({ ok: true, roomId: actualRoomId, deleted: true })
     } catch (error) {
@@ -5716,35 +6293,45 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const otherProfile = otherId ? profilesById.get(otherId) : null
       const nicknamesByTarget = await localNicknames(pool, identity.displayUserId)
       const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
-      const messages = [
-        ...importedMessages.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId),
-        ...(await localMessages(pool, [chatId])),
-      ].sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
-
       const otherParticipantRow = memberRows.find((row) => {
         const id = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
         return id && !identity.ids.has(id)
       })
+      const myParticipantRow = memberRows.find((row) => {
+        const id = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
+        return id && identity.ids.has(id)
+      })
+      const myClearedAt = toMillis(textOf(myParticipantRow || {}, ['cleared_at', 'clearedAt'], ''))
+
+      const messages = [
+        ...importedMessages.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId),
+        ...(await localMessages(pool, [chatId])),
+      ].sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
+       .filter((msg) => !myClearedAt || toMillis(textOf(msg, ['created_at'], '')) > myClearedAt)
+
       if (messages.length === 0 && textOf(chat, ['last_message'], '')) {
-        messages.push({
-          id: textOf(chat, ['last_message_id'], '') || `summary-${chatId}`,
-          chat_id: textOf(chat, ['id'], chatId),
-          sender_id: textOf(chat, ['last_message_sender_id'], '') || otherId || '',
-          content: textOf(chat, ['last_message'], ''),
-          content_type: 'text',
-          media_url: '',
-          status: 'sent',
-          reply_to_id: '',
-          created_at: textOf(chat, ['last_message_at', 'updated_at', 'created_at'], ''),
-          updated_at: textOf(chat, ['updated_at', 'last_message_at', 'created_at'], ''),
-          reactions: {},
-          deleted_by: [],
-          deleted_for_all: false,
-          is_edited: false,
-          is_forwarded: false,
-          read_at: '',
-          delivered_at: '',
-        })
+        const chatLastMsgAt = toMillis(textOf(chat, ['last_message_at', 'updated_at', 'created_at'], ''))
+        if (!myClearedAt || chatLastMsgAt > myClearedAt) {
+          messages.push({
+            id: textOf(chat, ['last_message_id'], '') || `summary-${chatId}`,
+            chat_id: textOf(chat, ['id'], chatId),
+            sender_id: textOf(chat, ['last_message_sender_id'], '') || otherId || '',
+            content: textOf(chat, ['last_message'], ''),
+            content_type: 'text',
+            media_url: '',
+            status: 'sent',
+            reply_to_id: '',
+            created_at: textOf(chat, ['last_message_at', 'updated_at', 'created_at'], ''),
+            updated_at: textOf(chat, ['updated_at', 'last_message_at', 'created_at'], ''),
+            reactions: {},
+            deleted_by: [],
+            deleted_for_all: false,
+            is_edited: false,
+            is_forwarded: false,
+            read_at: '',
+            delivered_at: '',
+          })
+        }
       }
 
       res.json({
@@ -5808,6 +6395,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
         [requestedId, chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
       )
       const insertedMessage = normalizeImportedRow(rows[0])
+      await pool.query(
+        `DELETE FROM fallback_chat_hidden
+         WHERE lower(chat_id::text) = $1
+           AND lower(user_id) = $2`,
+        [chatId, senderId],
+      )
       await pool.query(
         `UPDATE fallback_chats
          SET last_message = $2,

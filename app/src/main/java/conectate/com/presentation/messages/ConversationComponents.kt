@@ -36,6 +36,8 @@ fun ConversationItem(
     onClick: () -> Unit,
     onMute: () -> Unit = {},
     onPin: () -> Unit = {},
+    onFavorite: () -> Unit = {},
+    onArchive: () -> Unit = {},
     onBlock: () -> Unit = {},
     onManageFolders: (() -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -58,7 +60,8 @@ fun ConversationItem(
     }
 
     val lastMessage = conversation.lastMessage
-    val isFromMe = lastMessage?.sender_id == currentUserId
+    val cleanCurrentUserId = currentUserId.trim().lowercase(Locale.ROOT)
+    val isFromMe = lastMessage?.sender_id?.trim()?.lowercase(Locale.ROOT) == cleanCurrentUserId
 
     Row(
         modifier = Modifier
@@ -181,9 +184,14 @@ fun ConversationItem(
                     "audio" -> "Audio"
                     else -> lastMessage?.content ?: "Sin actividad reciente"
                 }
+                val previewText = if (isFromMe && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
+                    "Tú: $displayText"
+                } else {
+                    displayText
+                }
                 
                 Text(
-                    text = displayText,
+                    text = previewText,
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     color = InboxMuted,
@@ -255,6 +263,22 @@ fun ConversationItem(
                         onPin()
                     },
                     leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_favorite) "Quitar de favoritos" else "Añadir a favoritos") },
+                    onClick = {
+                        showMenu = false
+                        onFavorite()
+                    },
+                    leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (conversation.chat.is_archived) "Desarchivar" else "Archivar") },
+                    onClick = {
+                        showMenu = false
+                        onArchive()
+                    },
+                    leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) }
                 )
                 if (onManageFolders != null) {
                     DropdownMenuItem(
@@ -331,12 +355,15 @@ fun ConversationItemWithSwipe(
     onClick: () -> Unit,
     onMute: () -> Unit,
     onPin: () -> Unit,
+    onFavorite: () -> Unit = {},
+    onArchive: () -> Unit = {},
     onBlock: () -> Unit,
     onManageFolders: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onReport: () -> Unit
 ) {
     val dismissState = rememberDismissState(
+        positionalThreshold = { totalDistance -> totalDistance * 0.93f },
         confirmValueChange = { value ->
             if (value == DismissValue.DismissedToStart) {
                 onDelete()
@@ -348,11 +375,12 @@ fun ConversationItemWithSwipe(
         state = dismissState,
         directions = setOf(DismissDirection.EndToStart),
         background = {
-            val isSwiping = dismissState.dismissDirection == DismissDirection.EndToStart
+            val direction = dismissState.dismissDirection
+            val isSwiping = direction != null
             val color = if (isSwiping) Color.Red else Color.Transparent
             Box(
                 modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
-                contentAlignment = Alignment.CenterEnd
+                contentAlignment = if (direction == DismissDirection.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
             ) {
                 if (isSwiping) {
                     Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
@@ -366,6 +394,8 @@ fun ConversationItemWithSwipe(
                onClick = onClick,
                onMute = onMute,
                onPin = onPin,
+               onFavorite = onFavorite,
+               onArchive = onArchive,
                onBlock = onBlock,
                onManageFolders = onManageFolders,
                onDelete = onDelete,

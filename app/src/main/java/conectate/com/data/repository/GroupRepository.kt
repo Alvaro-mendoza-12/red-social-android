@@ -1055,7 +1055,13 @@ class GroupRepository @Inject constructor(
                 .filter { it.isNotBlank() }
                 .distinct()
             if (cleanMessageIds.isEmpty()) return@withContext
-            var remotelyReadIds = runCatching {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
+                localFallbackApiClient.markCollectionAsRead(token, "groups", cleanId)
+                    .onFailure { android.util.Log.w("GroupRepository", "Ubuntu mark group read failed for $cleanId", it) }
+            }
+            var remotelyReadIds = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                cleanMessageIds.toSet()
+            } else runCatching {
                 collectionMessageReceiptRemoteStore.markMessagesReadByIds(
                     logTag = "GroupRepository",
                     messageTable = "group_messages",
@@ -1097,7 +1103,10 @@ class GroupRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
             var token = authService.getAccessToken()
             var now = java.time.Instant.now().toString()
-            runCatching {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
+                localFallbackApiClient.markCollectionAsRead(token, "groups", cleanId)
+                    .onFailure { android.util.Log.w("GroupRepository", "Ubuntu mark group read failed for $cleanId", it) }
+            } else runCatching {
                 collectionMessageReceiptRemoteStore.markAllMessagesRead(
                     logTag = "GroupRepository",
                     messageTable = "group_messages",
@@ -1964,6 +1973,12 @@ class GroupRepository @Inject constructor(
                 }
             )
             groupDao.markOthersAsNotMembers(activeIds)
+            // CRITICAL FIX: Remove stale group_members rows so they don't appear via INNER JOIN
+            if (activeIds.isEmpty()) {
+                groupDao.deleteAllMembershipsForUser(userId)
+            } else {
+                groupDao.deleteUserMembershipsNotIn(userId, activeIds)
+            }
             activeIds.forEach { cleanId -> syncGroupMessages(cleanId, userId) }
             android.util.Log.d("GroupRepository", "✅ [UBUNTU-SYNC] ${activeIds.size} grupos sincronizados desde Ubuntu")
             Result.success(Unit)
@@ -2228,6 +2243,36 @@ class GroupRepository @Inject constructor(
 
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         try {
+            val cleanGroupId = groupId.trim().lowercase()
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val payload = localFallbackApiClient.loadGroupRoom(token, cleanGroupId).getOrThrow()
+                val members = payload.participants
+                    .mapNotNull { participant ->
+                        val cleanUserId = participant.id.trim().lowercase()
+                        if (cleanUserId.isBlank()) null else GroupMember(
+                            group_id = cleanGroupId,
+                            user_id = cleanUserId,
+                            role = participant.role.ifBlank { "member" },
+                            joined_at = participant.joinedAt.ifBlank { java.time.Instant.now().toString() },
+                            userName = participant.name.ifBlank { null },
+                            userImage = participant.avatarUrl.ifBlank { null }
+                        )
+                    }
+                    .distinctBy { it.user_id }
+                if (members.isNotEmpty()) {
+                    groupDao.insertMembers(members.map {
+                        GroupMemberEntity(
+                            it.group_id.trim().lowercase(),
+                            it.user_id.trim().lowercase(),
+                            it.role,
+                            it.joined_at
+                        )
+                    })
+                    return@withContext Result.success(members)
+                }
+            }
             var response = supabaseConfig.client.postgrest["group_members"].select {
                 filter { eq("group_id", groupId) }
             }.decodeList<GroupMember>()

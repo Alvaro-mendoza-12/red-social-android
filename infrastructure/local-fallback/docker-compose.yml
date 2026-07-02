@@ -32,8 +32,10 @@ services:
       STORAGE_ROOT: /data/storage
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
+      FIREBASE_SERVICE_ACCOUNT_FILE: /run/secrets/firebase-service-account.json
     volumes:
       - ./imports:/imports:ro
+      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
       - conectate-fallback-storage:/data/storage
     ports:
       - "127.0.0.1:${FALLBACK_API_PORT:-3001}:3001"
@@ -70,7 +72,7 @@ services:
         aliases:
           - conectate-signaling
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/turn-credentials').then(r=>process.exit([200,401,503].includes(r.status)?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -117,6 +119,35 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+  # TURN autoalojado para llamadas entre redes/NAT restrictivos.
+  # IMPORTANTE: Cloudflare Tunnel NO transporta el relay de media WebRTC.
+  # En CGNAT este servicio sólo sirve si el host tiene puertos públicos
+  # reenviados o si se ejecuta en una VPS/IP pública. Para CGNAT puro usa
+  # TURN externo (TURN_STATIC_URLS) o una VPS con coturn.
+  # Se activa explícitamente con:
+  #   docker compose --profile turn up -d coturn
+  coturn:
+    image: coturn/coturn:4.6.3-r3
+    container_name: conectate-local-fallback-coturn-main
+    restart: unless-stopped
+    profiles: ["turn"]
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=${TURN_PORT:-3478}
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}
+      - --realm=${TURN_REALM:-conectate.local}
+      - --server-name=${TURN_REALM:-conectate.local}
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:-turn-not-configured}
+      - --fingerprint
+      - --no-multicast-peers
+      - --no-cli
+      - --stale-nonce=600
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
 
 volumes:
   conectate-fallback-db:

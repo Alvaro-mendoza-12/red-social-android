@@ -55,7 +55,7 @@ class MessageUnreadCounter @Inject constructor(
         }
 
         return try {
-            var chat = chatDao.getChatById(chatId) ?: return 0
+            if (chatDao.getChatById(chatId) == null) return 0
             val messages = messageDao.getMessagesForChat(chatId)
             val currentUserId = getCurrentUserId() ?: return 0
 

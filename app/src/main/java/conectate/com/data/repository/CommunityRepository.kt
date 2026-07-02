@@ -1350,7 +1350,13 @@ class CommunityRepository @Inject constructor(
                 .filter { it.isNotBlank() }
                 .distinct()
             if (cleanMessageIds.isEmpty()) return@withContext
-            var remotelyReadIds = runCatching {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
+                localFallbackApiClient.markCollectionAsRead(token, "communities", cleanId)
+                    .onFailure { android.util.Log.w("CommunityRepository", "Ubuntu mark community read failed for $cleanId", it) }
+            }
+            var remotelyReadIds = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                cleanMessageIds.toSet()
+            } else runCatching {
                 collectionMessageReceiptRemoteStore.markMessagesReadByIds(
                     logTag = "CommunityRepository",
                     messageTable = "community_messages",
@@ -1393,7 +1399,10 @@ class CommunityRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
             var token = authService.getAccessToken()
             var now = java.time.Instant.now().toString()
-            runCatching {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
+                localFallbackApiClient.markCollectionAsRead(token, "communities", cleanId)
+                    .onFailure { android.util.Log.w("CommunityRepository", "Ubuntu mark community read failed for $cleanId", it) }
+            } else runCatching {
                 collectionMessageReceiptRemoteStore.markAllMessagesRead(
                     logTag = "CommunityRepository",
                     messageTable = "community_messages",
@@ -2418,6 +2427,36 @@ class CommunityRepository @Inject constructor(
 
     suspend fun getCommunityMembers(communityId: String): Result<List<CommunityMember>> = withContext(Dispatchers.IO) {
         try {
+            val cleanCommunityId = communityId.trim().lowercase()
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val payload = localFallbackApiClient.loadCommunityRoom(token, cleanCommunityId).getOrThrow()
+                val members = payload.participants
+                    .mapNotNull { participant ->
+                        val cleanUserId = participant.id.trim().lowercase()
+                        if (cleanUserId.isBlank()) null else CommunityMember(
+                            community_id = cleanCommunityId,
+                            user_id = cleanUserId,
+                            role = participant.role.ifBlank { "member" },
+                            joined_at = participant.joinedAt.ifBlank { java.time.Instant.now().toString() },
+                            userName = participant.name.ifBlank { null },
+                            userImage = participant.avatarUrl.ifBlank { null }
+                        )
+                    }
+                    .distinctBy { it.user_id }
+                if (members.isNotEmpty()) {
+                    communityDao.insertMembers(members.map {
+                        CommunityMemberEntity(
+                            it.community_id.trim().lowercase(),
+                            it.user_id.trim().lowercase(),
+                            it.role,
+                            it.joined_at
+                        )
+                    })
+                    return@withContext Result.success(members)
+                }
+            }
             var response = supabaseConfig.client.postgrest["community_members"].select {
                 filter { eq("community_id", communityId) }
             }.decodeList<CommunityMember>()

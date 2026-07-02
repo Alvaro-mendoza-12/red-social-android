@@ -74,9 +74,11 @@ class LiveRepository @Inject constructor(
     private val scope = newSafeScope("LiveRepository", Dispatchers.IO)
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private val livePresenceUrl = "${SignalingConfig.BASE_URL}/live-active-ids"
+    private val livePresenceUrl: String
+        get() = "${SignalingConfig.BASE_URL}/live-active-ids"
 
-    private val signalingUrl = SignalingConfig.LIVE_URL
+    private val signalingUrl: String
+        get() = SignalingConfig.LIVE_URL
     private var socket: Socket? = null
     private var webRTCManager: WebRTCManager? = null
     private var commentsChannel: RealtimeChannel? = null

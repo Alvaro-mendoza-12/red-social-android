@@ -177,6 +177,16 @@ object IntentRouter {
                 }
             }
 
+            "new_moment", "view_moment" -> {
+                val momentId = incomingIntent.getStringExtra("moment_id")
+                    ?: incomingIntent.getStringExtra("target_id")
+                if (!momentId.isNullOrBlank()) {
+                    navController.navigate(Screen.MomentViewer.createRoute(momentId))
+                    clearIntent()
+                    return true
+                }
+            }
+
             "follow", "friend_request", "voice_access_request" -> {
                 val followerId = incomingIntent.getStringExtra("follower_id")
                     ?: incomingIntent.getStringExtra("target_id")

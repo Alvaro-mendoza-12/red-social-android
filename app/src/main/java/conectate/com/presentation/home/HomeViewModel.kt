@@ -7,6 +7,7 @@ import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.presentation.messages.normalizedVisibleConversations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -26,7 +27,10 @@ class HomeViewModel @Inject constructor(
 
     // 1. Unread DMs (Number of conversations with unread messages)
     val unreadDmsCount: StateFlow<Int> = messageRepository.getUserChatsFlow()
-        .map { chats -> chats.count { it.unreadCount > 0 && !it.chat.is_group } }
+        .map { chats ->
+            normalizedVisibleConversations(chats)
+                .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // 2. Unread Groups

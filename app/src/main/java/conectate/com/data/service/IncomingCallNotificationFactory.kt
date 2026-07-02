@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
@@ -20,6 +21,7 @@ import conectate.com.presentation.calls.IncomingCallActivity
 object IncomingCallNotificationFactory {
 
     fun ensureChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
         val channel = NotificationChannel(
             context.getString(R.string.call_notification_channel_id),

@@ -19,7 +19,7 @@ data class VoiceRoom(
     @SerialName("agora_channel_name") val agoraChannelName: String = "",
     val password: String? = null,
     @SerialName("readable_id") val readableId: String? = null,
-    val settings: Map<String, String> = emptyMap(),
+    val settings: kotlinx.serialization.json.JsonElement? = null,
     @Transient val agoraToken: String = "",
     @Transient val participantIds: List<String> = emptyList(),
     @Transient val speakerIds: List<String> = emptyList(),

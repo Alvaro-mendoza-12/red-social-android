@@ -13,11 +13,6 @@ import { fetchMomentsFeed, publishMoment, recordMomentView, type MomentItem } fr
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
-function inferMomentMediaType(file: File): 'image' | 'video' {
-  if (file.type.startsWith('video/')) return 'video'
-  return 'image'
-}
-
 function toMillis(value: string): number {
   if (!value) return 0
   const parsed = Date.parse(value)

@@ -1,6 +1,6 @@
 package conectate.com.data.repository
 
-import conectate.com.BuildConfig
+import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -77,7 +77,7 @@ class WebLoginPairingRepository @Inject constructor(
 ) {
 
     private val fallbackBaseUrl: String
-        get() = BuildConfig.FALLBACK_API_URL.trim().trimEnd('/')
+        get() = RuntimeBackendEndpoint.baseUrl
 
     private val useUbuntuPrimary: Boolean
         get() = fallbackBaseUrl.startsWith("http://") || fallbackBaseUrl.startsWith("https://")

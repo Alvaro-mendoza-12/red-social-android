@@ -1,0 +1,142 @@
+const fs = require('fs')
+const { cert, getApps, initializeApp } = require('firebase-admin/app')
+const { getMessaging } = require('firebase-admin/messaging')
+
+const serviceAccountFile = String(
+  process.env.FIREBASE_SERVICE_ACCOUNT_FILE || '/run/secrets/firebase-service-account.json',
+).trim()
+
+let firebaseApp = null
+let initializationError = null
+
+function initializeFirebase() {
+  if (firebaseApp || initializationError) return firebaseApp
+  try {
+    if (!serviceAccountFile || !fs.existsSync(serviceAccountFile)) {
+      throw new Error(`Firebase service account not found at ${serviceAccountFile || '(empty path)'}`)
+    }
+    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountFile, 'utf8'))
+    firebaseApp = getApps()[0] || initializeApp({ credential: cert(serviceAccount) })
+    return firebaseApp
+  } catch (error) {
+    initializationError = error
+    console.error(`[push] Firebase disabled: ${error.message}`)
+    return null
+  }
+}
+
+function pushNotificationsStatus() {
+  const app = initializeFirebase()
+  return {
+    configured: Boolean(app),
+    provider: 'firebase-cloud-messaging',
+    error: app ? null : (initializationError?.message || 'Firebase is not initialized'),
+  }
+}
+
+function stringValue(value) {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value.slice(0, 350)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return null
+}
+
+function buildData(notification, extraData = {}) {
+  const type = stringValue(notification.type) || 'activity'
+  const targetId = stringValue(notification.target_id) || ''
+  const targetType = stringValue(notification.target_type || extraData.target_type) || ''
+  const actorId = stringValue(notification.actor_id) || ''
+  const actorName = stringValue(notification.actor_name) || 'Conéctate'
+  const content = stringValue(notification.content) || ''
+  const data = {
+    type,
+    notification_id: stringValue(notification.id) || '',
+    target_id: targetId,
+    target_type: targetType,
+    sender_id: actorId,
+    actor_id: actorId,
+    sender_name: actorName,
+    sender_avatar: stringValue(notification.actor_avatar_url) || '',
+    content,
+    body: content,
+  }
+
+  for (const [key, value] of Object.entries(extraData || {})) {
+    const serialized = stringValue(value)
+    if (serialized !== null) data[key] = serialized
+  }
+
+  const contextId = data.call_context_id || data.context_id || targetId
+  if (targetType === 'group' || data.is_group === 'true') {
+    data.group_id ||= contextId
+    data.is_group = 'true'
+  } else if (targetType === 'community' || data.is_community === 'true') {
+    data.community_id ||= contextId
+    data.is_community = 'true'
+  } else if (targetType === 'chat' || targetType === 'dm' || type === 'new_message') {
+    data.chat_id ||= contextId
+  }
+  if (type.startsWith('call_')) data.call_id ||= targetId
+  return data
+}
+
+function isInvalidTokenError(code = '') {
+  return code === 'messaging/registration-token-not-registered' ||
+    code === 'messaging/invalid-registration-token'
+}
+
+async function sendPushForNotification(pool, notification, extraData = {}) {
+  const app = initializeFirebase()
+  if (!app || !notification?.recipient_id) return { sent: 0, failed: 0, disabled: true }
+
+  const { rows } = await pool.query(
+    `SELECT token
+       FROM fallback_fcm_tokens
+      WHERE lower(user_id) = lower($1)
+      ORDER BY updated_at DESC`,
+    [notification.recipient_id],
+  )
+  const tokens = [...new Set(rows.map((row) => String(row.token || '').trim()).filter(Boolean))]
+  if (tokens.length === 0) return { sent: 0, failed: 0 }
+
+  const data = buildData(notification, extraData)
+  const isCall = String(notification.type || '').startsWith('call_')
+  let sent = 0
+  let failed = 0
+  const invalidTokens = []
+
+  for (let offset = 0; offset < tokens.length; offset += 500) {
+    const batch = tokens.slice(offset, offset + 500)
+    const response = await getMessaging(app).sendEachForMulticast({
+      tokens: batch,
+      data,
+      android: {
+        priority: 'high',
+        ttl: isCall ? 45_000 : 24 * 60 * 60 * 1000,
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-expiration': String(Math.floor(Date.now() / 1000) + (isCall ? 45 : 86_400)),
+        },
+        payload: { aps: { 'content-available': 1 } },
+      },
+    })
+    sent += response.successCount
+    failed += response.failureCount
+    response.responses.forEach((result, index) => {
+      if (!result.success && isInvalidTokenError(result.error?.code)) invalidTokens.push(batch[index])
+    })
+  }
+
+  if (invalidTokens.length > 0) {
+    await pool.query('DELETE FROM fallback_fcm_tokens WHERE token = ANY($1::text[])', [invalidTokens])
+  }
+  console.log(`[push] type=${notification.type} recipient=${notification.recipient_id} sent=${sent} failed=${failed}`)
+  return { sent, failed, removedInvalidTokens: invalidTokens.length }
+}
+
+module.exports = {
+  pushNotificationsStatus,
+  sendPushForNotification,
+}

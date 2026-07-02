@@ -19,6 +19,7 @@ import conectate.com.data.repository.BlockRelationship
 import conectate.com.data.repository.ChatBackgroundSettings
 import conectate.com.data.repository.ChatSettingsRepository
 import conectate.com.data.repository.MessageRepository
+import conectate.com.data.repository.StickerRepository
 import conectate.com.data.repository.TypingRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
@@ -68,6 +69,7 @@ class ChatViewModel @Inject constructor(
     private val badgeRepository: conectate.com.data.repository.BadgeRepository,
     private val authService: AuthService,
     private val groupRepository: conectate.com.data.repository.GroupRepository,
+    private val stickerRepository: StickerRepository,
     private val voiceMessageManager: VoiceMessageManager,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -525,13 +527,7 @@ class ChatViewModel @Inject constructor(
     fun setChatBackground(backgroundType: String, backgroundUri: String? = null) {
         val cleanId = chatId?.trim()?.lowercase() ?: return
         viewModelScope.launch {
-            val normalizedType = backgroundType.trim().lowercase()
-            val resolvedBackgroundUri = if (normalizedType == "custom" && !backgroundUri.isNullOrBlank()) {
-                optimizeAndCacheChatBackground(cleanId, backgroundUri) ?: backgroundUri
-            } else {
-                backgroundUri
-            }
-            chatSettingsRepository.upsertChatBackground(cleanId, backgroundType, resolvedBackgroundUri)
+            chatSettingsRepository.setChatBackground(cleanId, backgroundType, backgroundUri)
         }
     }
 
@@ -540,43 +536,6 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatSettingsRepository.clearChatBackground(cleanId)
         }
-    }
-
-    private suspend fun optimizeAndCacheChatBackground(chatId: String, sourceUri: String): String? = withContext(Dispatchers.IO) {
-        runCatching {
-            val parsed = Uri.parse(sourceUri)
-            val resolver = context.contentResolver
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(parsed)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, bounds)
-            }
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
-
-            val maxDimension = 1440
-            var sampleSize = 1
-            while (
-                bounds.outWidth / sampleSize > maxDimension ||
-                bounds.outHeight / sampleSize > maxDimension
-            ) {
-                sampleSize *= 2
-            }
-
-            val decodeOpts = BitmapFactory.Options().apply {
-                inSampleSize = sampleSize.coerceAtLeast(1)
-                inPreferredConfig = Bitmap.Config.RGB_565
-            }
-            val bitmap = resolver.openInputStream(parsed)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, decodeOpts)
-            } ?: return@runCatching null
-
-            val targetDir = File(context.filesDir, "chat_backgrounds").apply { mkdirs() }
-            val targetFile = File(targetDir, "bg_${chatId.trim().lowercase()}.jpg")
-            FileOutputStream(targetFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
-            }
-            bitmap.recycle()
-            Uri.fromFile(targetFile).toString()
-        }.getOrNull()
     }
 
     private fun loadTranslationSettings(chatId: String) {
@@ -818,6 +777,28 @@ class ChatViewModel @Inject constructor(
             } finally {
                 _isSending.value = false
             }
+        }
+    }
+
+    fun isStickerFavorite(mediaUrl: String?): Boolean = stickerRepository.isFavoriteMediaUrl(mediaUrl)
+
+    fun toggleStickerFavorite(message: Message) {
+        val url = message.media_url?.trim().orEmpty()
+        if (url.isBlank()) {
+            Toast.makeText(context, "Sticker sin archivo para guardar.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModelScope.launch {
+            val isFavorite = stickerRepository.toggleFavoriteByMedia(
+                mediaUrl = url,
+                title = message.content.ifBlank { "Sticker personalizado" }
+            )
+            Toast.makeText(
+                context,
+                if (isFavorite) "Sticker añadido a favoritos" else "Sticker eliminado de favoritos",
+                Toast.LENGTH_SHORT
+            ).show()
+            dismissMessageActions()
         }
     }
 

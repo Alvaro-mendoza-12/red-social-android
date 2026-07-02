@@ -1,12 +1,15 @@
 package conectate.com.presentation.calls
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -44,6 +47,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import conectate.com.MainActivity
@@ -70,6 +74,34 @@ class IncomingCallActivity : ComponentActivity() {
 
     @Inject
     lateinit var themePreferences: ThemePreferences
+
+    private var pendingAcceptInvite: CallInvite? = null
+
+    private val acceptPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val invite = pendingAcceptInvite
+        pendingAcceptInvite = null
+        if (invite == null) return@registerForActivityResult
+
+        val hasAudio = grants[Manifest.permission.RECORD_AUDIO] == true ||
+            hasPermission(Manifest.permission.RECORD_AUDIO)
+        val hasCamera = !invite.isVideo ||
+            grants[Manifest.permission.CAMERA] == true ||
+            hasPermission(Manifest.permission.CAMERA)
+
+        if (hasAudio && hasCamera) {
+            performAcceptInvite(invite)
+        } else {
+            AppFeedbackBus.showError(
+                if (invite.isVideo) {
+                    "Activa micrófono y cámara para contestar la videollamada."
+                } else {
+                    "Activa el micrófono para contestar la llamada."
+                }
+            )
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,6 +156,18 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun acceptInvite(invite: CallInvite) {
+        val missingPermissions = requiredCallPermissions(invite)
+            .filterNot(::hasPermission)
+            .toTypedArray()
+        if (missingPermissions.isNotEmpty()) {
+            pendingAcceptInvite = invite
+            acceptPermissionsLauncher.launch(missingPermissions)
+            return
+        }
+        performAcceptInvite(invite)
+    }
+
+    private fun performAcceptInvite(invite: CallInvite) {
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
             IncomingCallForegroundService.stop(this@IncomingCallActivity)
@@ -143,6 +187,17 @@ class IncomingCallActivity : ComponentActivity() {
             navigateToCall(invite.callId)
             finish()
         }
+    }
+
+    private fun requiredCallPermissions(invite: CallInvite): List<String> {
+        return buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (invite.isVideo) add(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun declineInvite(invite: CallInvite) {

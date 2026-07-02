@@ -53,6 +53,8 @@ class MomentRepository @Inject constructor(
     private companion object {
         private const val MOMENTS_FALLBACK_POLL_INTERVAL_MS = 45_000L
         private const val MAX_MOMENT_VIDEO_DURATION_SECONDS = 25L
+        private const val MAX_MOMENT_VIDEO_DURATION_MS = MAX_MOMENT_VIDEO_DURATION_SECONDS * 1_000L
+        private const val IMAGE_MOMENT_DISPLAY_DURATION_MS = 6_000L
     }
 
     private val _moments = MutableStateFlow<List<Moment>>(emptyList())
@@ -360,6 +362,7 @@ class MomentRepository @Inject constructor(
                 mediaUrl = json["media_url"]?.jsonPrimitive?.content ?: "",
                 mediaType = json["media_type"]?.jsonPrimitive?.content ?: "image",
                 thumbnailUrl = json["thumbnail_url"]?.jsonPrimitive?.contentOrNull,
+                displayDurationMs = momentDisplayDurationMs(json),
                 durationHours = json["duration_hours"]?.jsonPrimitive?.int ?: 24,
                 durationType = json["duration_type"]?.jsonPrimitive?.content ?: "24h",
                 visibility = json["visibility"]?.jsonPrimitive?.content ?: "all",
@@ -445,6 +448,7 @@ class MomentRepository @Inject constructor(
                         mediaUrl = json["media_url"]?.jsonPrimitive?.contentOrNull ?: "",
                         mediaType = json["media_type"]?.jsonPrimitive?.contentOrNull ?: "image",
                         thumbnailUrl = json["thumbnail_url"]?.jsonPrimitive?.contentOrNull,
+                        displayDurationMs = momentDisplayDurationMs(json),
                         durationHours = json["duration_hours"]?.jsonPrimitive?.intOrNull ?: 24,
                         durationType = json["duration_type"]?.jsonPrimitive?.contentOrNull ?: "24h",
                         visibility = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all",
@@ -553,6 +557,7 @@ class MomentRepository @Inject constructor(
                             mediaUrl = json["media_url"]?.jsonPrimitive?.content ?: "",
                             mediaType = json["media_type"]?.jsonPrimitive?.content ?: "image",
                             thumbnailUrl = json["thumbnail_url"]?.jsonPrimitive?.contentOrNull,
+                            displayDurationMs = momentDisplayDurationMs(json),
                             durationHours = json["duration_hours"]?.jsonPrimitive?.int ?: 24,
                             durationType = json["duration_type"]?.jsonPrimitive?.content ?: "24h",
                             visibility = json["visibility"]?.jsonPrimitive?.content ?: "all",
@@ -601,14 +606,18 @@ class MomentRepository @Inject constructor(
             val payload = resolveMomentMediaPayload(mediaUri = mediaUri, mediaType = mediaType, bytes = rawBytes)
                 .getOrElse { return@withContext Result.failure(it) }
             val normalizedMediaType = if (payload.contentType.startsWith("video/")) "video" else "image"
-            if (normalizedMediaType == "video") {
-                val durationSeconds = readVideoDurationSeconds(mediaUri)
+            val displayDurationMs = if (normalizedMediaType == "video") {
+                val durationMs = readVideoDurationMs(mediaUri)
                     ?: return@withContext Result.failure(Exception("No se pudo validar la duración del video."))
-                if (durationSeconds > MAX_MOMENT_VIDEO_DURATION_SECONDS) {
+                if (durationMs > MAX_MOMENT_VIDEO_DURATION_MS) {
+                    val durationSeconds = kotlin.math.ceil(durationMs / 1000.0).toLong()
                     return@withContext Result.failure(
                         Exception("El momento dura ${durationSeconds}s. Máximo permitido: ${MAX_MOMENT_VIDEO_DURATION_SECONDS}s.")
                     )
                 }
+                durationMs.coerceIn(1_000L, MAX_MOMENT_VIDEO_DURATION_MS)
+            } else {
+                IMAGE_MOMENT_DISPLAY_DURATION_MS
             }
 
             val uuid = UUID.randomUUID().toString()
@@ -668,6 +677,7 @@ class MomentRepository @Inject constructor(
                     mediaUrl = mediaUrl,
                     mediaType = normalizedMediaType,
                     thumbnailUrl = thumbnailUrl,
+                    displayDurationMs = displayDurationMs,
                     durationHours = durationHours,
                     durationType = durationType,
                     visibility = visibility,
@@ -1014,14 +1024,13 @@ class MomentRepository @Inject constructor(
         }
     }
 
-    private fun readVideoDurationSeconds(uri: Uri): Long? {
+    private fun readVideoDurationMs(uri: Uri): Long? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull()
-                ?: return null
-            kotlin.math.ceil(durationMs / 1000.0).toLong().coerceAtLeast(1L)
+                ?.coerceAtLeast(1L)
         } catch (e: Exception) {
             android.util.Log.e("MomentRepository", "Error reading moment video duration", e)
             null
@@ -1048,6 +1057,30 @@ class MomentRepository @Inject constructor(
         } finally {
             try { retriever.release() } catch (e: Exception) {}
         }
+    }
+
+    private fun momentDisplayDurationMs(json: JsonObject): Long? {
+        val direct = json.longValue(
+            "display_duration_ms",
+            "displayDurationMs",
+            "duration_ms",
+            "durationMs",
+            "duration_milliseconds"
+        )
+        if (direct > 0L) return direct
+
+        val seconds = json.longValue("duration_seconds", "durationSeconds")
+        if (seconds > 0L) return seconds * 1_000L
+
+        return null
+    }
+
+    private fun JsonObject.longValue(vararg keys: String): Long {
+        for (key in keys) {
+            val primitive = this[key]?.jsonPrimitive ?: continue
+            primitive.contentOrNull?.toLongOrNull()?.let { return it }
+        }
+        return 0L
     }
 
     private fun Moment.normalizedStorageUrls(): Moment = copy(

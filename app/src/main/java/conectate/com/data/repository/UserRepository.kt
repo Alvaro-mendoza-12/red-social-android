@@ -2628,8 +2628,9 @@ class UserRepository @Inject constructor(
     suspend fun setOnlineStatus(userId: String, isOnline: Boolean): Result<Unit> {
         return try {
             if (authService.isLocalFallbackModeEnabled()) {
-                android.util.Log.d("UserRepository", "Skipping Supabase online status in local fallback mode")
-                return Result.success(Unit)
+                val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+                android.util.Log.d("UserRepository", "Setting Ubuntu online status for $userId to $isOnline")
+                return localFallbackApiClient.updatePresence(token, isOnline).map { Unit }
             }
             var token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             
@@ -2672,8 +2673,10 @@ class UserRepository @Inject constructor(
     ): Result<Unit> {
         return try {
             if (authService.isLocalFallbackModeEnabled()) {
-                android.util.Log.d("UserRepository", "Skipping Supabase online status with token in local fallback mode")
-                return Result.success(Unit)
+                var token = accessToken.trim()
+                if (token.isBlank()) return Result.failure(Exception("No token"))
+                android.util.Log.d("UserRepository", "Setting Ubuntu online status (explicit token) for $userId to $isOnline")
+                return localFallbackApiClient.updatePresence(token, isOnline).map { Unit }
             }
             var token = accessToken.trim()
             if (token.isBlank()) return Result.failure(Exception("No token"))
@@ -2716,15 +2719,22 @@ class UserRepository @Inject constructor(
             close()
             return@callbackFlow
         }
-        if (authService.isLocalFallbackModeEnabled()) {
-            getUserById(cleanUserId).getOrNull()?.let { trySend(it) }
-            close()
-            return@callbackFlow
-        }
-
         suspend fun refreshState() {
             var user = getUserById(cleanUserId).getOrNull() ?: return
             trySend(user)
+        }
+
+        if (authService.isLocalFallbackModeEnabled()) {
+            val pollingJob = launch {
+                while (isActive) {
+                    refreshState()
+                    delay(10_000)
+                }
+            }
+            awaitClose {
+                pollingJob.cancel()
+            }
+            return@callbackFlow
         }
 
         var channel = supabaseConfig.client.realtime.channel("presence-$cleanUserId")

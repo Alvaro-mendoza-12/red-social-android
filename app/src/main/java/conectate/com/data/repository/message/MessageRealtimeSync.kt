@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -94,7 +95,6 @@ class MessageRealtimeSync @Inject constructor(
         }
 
         globalListenerJob = scope.launch {
-            val retryCount = 0
             while (isActive) {
                 var channel: RealtimeChannel? = null
                 try {
@@ -194,8 +194,11 @@ class MessageRealtimeSync @Inject constructor(
                     // 4. Emitir evento para UI
                     _messageEvents.emit(msg)
 
-                    // 5. Actualizar last_message en chats
-                    updateChatLastMessage(cleanId, msg)
+                    // 5. Actualizar last_message/unread en chats.
+                    // Ubuntu realtime is the production path now. The notification could arrive,
+                    // but the inbox badge/preview stayed stale because only the message row was
+                    // inserted. Keep the conversation metadata authoritative here too.
+                    updateChatLastMessage(cleanId, msg, sessionUserId)
 
                     Log.d(TAG, "✅ Mensaje insertado via realtime: ${msg.id} en chat $cleanId")
                 } catch (e: Exception) {
@@ -245,22 +248,64 @@ class MessageRealtimeSync @Inject constructor(
     /**
      * Actualiza el campo last_message del chat correspondiente.
      */
-    private suspend fun updateChatLastMessage(chatId: String, msg: Message) {
+    private suspend fun updateChatLastMessage(chatId: String, msg: Message, sessionUserId: String?) {
         try {
             var chat = chatDao.getChatById(chatId)
             if (chat != null) {
+                val messageAt = normalizeInstantText(msg.created_at)
+                val clearedAt = normalizeInstantText(chat.cleared_at)
+                if (chat.is_deleted && clearedAt.isNotBlank() && messageAt.isNotBlank() && !isAfterInstant(messageAt, clearedAt)) {
+                    Log.d(TAG, "Manteniendo oculto chat eliminado $chatId; evento no es posterior a cleared_at")
+                    return
+                }
+                val preview = previewFor(msg.content_type, msg.content)
                 val updatedChat = chat.copy(
                     last_message_id = msg.id,
-                    last_message_preview = msg.content.take(100), // preview
+                    last_message_preview = preview,
                     last_message_timestamp = msg.created_at,
                     last_message_at = msg.created_at,
-                    last_message_sender_id = msg.sender_id
+                    last_message_sender_id = msg.sender_id,
+                    unread_count = if (msg.sender_id.trim().lowercase() != sessionUserId?.trim()?.lowercase()) {
+                        chat.unread_count + 1
+                    } else {
+                        chat.unread_count
+                    },
+                    is_deleted = false
                 )
                 chatDao.updateChat(updatedChat)
                 refreshUserChatsFlow()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error actualizando last_message para chat $chatId", e)
+        }
+    }
+
+    private fun previewFor(contentType: String, fallbackContent: String): String {
+        return when (contentType.trim().lowercase()) {
+            "image" -> "📷 Foto"
+            "video" -> "🎥 Video"
+            "audio", "voice" -> "🎤 Audio"
+            "view_once_image" -> "👁️ Foto ver una vez"
+            "view_once_video" -> "👁️ Video ver una vez"
+            "gif" -> "🌀 GIF"
+            "sticker" -> "🧩 Sticker"
+            "document", "file" -> "📎 Archivo"
+            "location" -> "📍 Ubicación"
+            "contact" -> "👤 Contacto"
+            "poll" -> "📊 Encuesta"
+            else -> fallbackContent.ifBlank { "Mensaje" }.take(100)
+        }
+    }
+
+    private fun normalizeInstantText(value: String?): String {
+        return value?.trim()?.replace(" ", "T").orEmpty()
+    }
+
+    private fun isAfterInstant(left: String, right: String): Boolean {
+        return runCatching {
+            Instant.parse(left).isAfter(Instant.parse(right))
+        }.getOrElse {
+            left > right
         }
     }
 

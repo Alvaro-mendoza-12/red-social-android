@@ -364,7 +364,7 @@ fun MessageBubble(
     ) {
         Box(
             modifier = Modifier
-                .widthIn(max = if (isStickerMessage) 220.dp else 280.dp)
+                .widthIn(max = if (isStickerMessage) 156.dp else 280.dp)
                 .then(
                     if (isStickerMessage) {
                         Modifier
@@ -376,11 +376,13 @@ fun MessageBubble(
                 )
                 .combinedClickable(
                     onClick = { 
-                        if (message.isAudio) {
-                            onPlayAudio(message)
-                        } else {
-                            // Pass the resolved URL back (useful for fullscreen dialogs)
-                            onClick(resolvedUrl ?: message.media_url)
+                        when {
+                            message.isAudio -> onPlayAudio(message)
+                            isStickerMessage -> onLongClick()
+                            else -> {
+                                // Pass the resolved URL back (useful for fullscreen dialogs)
+                                onClick(resolvedUrl ?: message.media_url)
+                            }
                         }
                     },
                     onLongClick = onLongClick
@@ -630,12 +632,12 @@ fun MessageBubble(
                                     model = resolvedUrl ?: message.media_url,
                                     contentDescription = "Sticker",
                                     modifier = Modifier
-                                        .sizeIn(maxWidth = 220.dp, maxHeight = 220.dp),
+                                        .sizeIn(maxWidth = 148.dp, maxHeight = 148.dp),
                                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                                     loading = {
                                         Box(
                                             modifier = Modifier
-                                                .size(120.dp),
+                                                .size(92.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -644,7 +646,7 @@ fun MessageBubble(
                                     error = {
                                         Box(
                                             modifier = Modifier
-                                                .size(120.dp),
+                                                .size(92.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(

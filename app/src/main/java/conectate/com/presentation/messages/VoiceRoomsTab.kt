@@ -47,6 +47,7 @@ fun VoiceRoomsTab(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshStatus()
+                viewModel.refreshRooms()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -215,12 +216,12 @@ fun VoiceRoomsTab(
                                 modifier = Modifier.padding(32.dp)
                             ) {
                                 Text(
-                                    "No hay salas activas ahora mismo",
+                                    "No hay salas disponibles",
                                     style = MaterialTheme.typography.titleLarge,
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
-                                    "Sé el primero en crear una sala y empezar a hablar",
+                                    "Crea una ahora y empieza a hablar.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     textAlign = TextAlign.Center,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -239,7 +240,7 @@ fun VoiceRoomsTab(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 80.dp) // Space for FAB
                         ) {
-                            items(state.rooms) { room ->
+                            items(state.rooms, key = { it.id }) { room ->
                                 val isCreator = room.creatorId == viewModel.getCurrentUserId()
                                 VoiceRoomItem(
                                     room = room,
@@ -259,7 +260,18 @@ fun VoiceRoomsTab(
                 }
                 is VoiceRoomsUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Text(text = state.message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                            Button(onClick = viewModel::refreshRooms) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Reintentar")
+                            }
+                        }
                     }
                 }
             }

@@ -2,6 +2,7 @@ package conectate.com.presentation.voicerooms
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.data.repository.VoiceRoomRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +24,10 @@ sealed class VoiceRoomsUiState {
 }
 
 @HiltViewModel
-class VoiceRoomsViewModel @Inject constructor() : ViewModel() {
+class VoiceRoomsViewModel @Inject constructor(
+    private val voiceRoomRepository: VoiceRoomRepository
+) : ViewModel() {
+    private var hasCompletedInitialLoad = false
     private val _uiState = MutableStateFlow<VoiceRoomsUiState>(VoiceRoomsUiState.Loading)
     val uiState: StateFlow<VoiceRoomsUiState> = _uiState.asStateFlow()
 
@@ -39,19 +43,34 @@ class VoiceRoomsViewModel @Inject constructor() : ViewModel() {
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
 
-    private val _activeRoomId = MutableStateFlow<String?>(null)
-    val activeRoomId: StateFlow<String?> = _activeRoomId.asStateFlow()
-
     private val _errorEvents = Channel<String>(Channel.CONFLATED)
     val errorEvents = _errorEvents.receiveAsFlow()
 
     init {
+        viewModelScope.launch {
+            voiceRoomRepository.activeRooms.collect { rooms ->
+                if (rooms.isNotEmpty() || hasCompletedInitialLoad) {
+                    _uiState.value = VoiceRoomsUiState.Success(rooms)
+                }
+            }
+        }
         loadRooms()
     }
 
     fun loadRooms() {
         viewModelScope.launch {
-            _uiState.value = VoiceRoomsUiState.Success(emptyList())
+            _uiState.value = VoiceRoomsUiState.Loading
+            voiceRoomRepository.refreshRooms().fold(
+                onSuccess = { rooms ->
+                    hasCompletedInitialLoad = true
+                    _uiState.value = VoiceRoomsUiState.Success(rooms)
+                },
+                onFailure = { error ->
+                    val message = error.message ?: "No se pudieron cargar las salas de voz"
+                    _uiState.value = VoiceRoomsUiState.Error(message)
+                    _errorEvents.trySend(message)
+                }
+            )
         }
     }
 
@@ -67,7 +86,11 @@ class VoiceRoomsViewModel @Inject constructor() : ViewModel() {
 
     fun searchRoomById(id: String) {
         viewModelScope.launch {
-            _uiState.value = VoiceRoomsUiState.SearchResult(emptyList())
+            _uiState.value = VoiceRoomsUiState.Loading
+            voiceRoomRepository.getRoomById(id.trim()).fold(
+                onSuccess = { room -> _uiState.value = VoiceRoomsUiState.SearchResult(listOf(room)) },
+                onFailure = { _uiState.value = VoiceRoomsUiState.SearchResult(emptyList()) }
+            )
         }
     }
 
@@ -83,10 +106,14 @@ class VoiceRoomsViewModel @Inject constructor() : ViewModel() {
 
     fun deleteRoom(roomId: String) {
         viewModelScope.launch {
+            voiceRoomRepository.deleteRoom(roomId).onFailure { error ->
+                _errorEvents.trySend(error.message ?: "No se pudo eliminar la sala")
+            }
+            loadRooms()
         }
     }
 
-    fun getCurrentUserId(): String = ""
+    fun getCurrentUserId(): String = voiceRoomRepository.getCurrentUserId()?.trim()?.lowercase().orEmpty()
 
-    fun getActiveRoomId(): String? = _activeRoomId.value
+    fun getActiveRoomId(): String? = voiceRoomRepository.getCurrentRoomId()
 }

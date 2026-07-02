@@ -27,9 +27,13 @@ class CallViewModel @Inject constructor(
     val participants = callRepository.participants
     val isMuted = callRepository.isMuted
     val isSpeaker = callRepository.isSpeaker
+    val localVideoTrack = callRepository.localVideoTrack
+    val remoteVideoTracks = callRepository.remoteVideoTracks
+    val eglContext get() = callRepository.eglContext
     private val _activeReactions = MutableStateFlow<List<CallReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<CallReactionEvent>> = _activeReactions.asStateFlow()
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
+    private var videoEnableJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -50,13 +54,33 @@ class CallViewModel @Inject constructor(
         callRepository.toggleSpeaker(on)
     }
 
+    fun toggleVideo(enabled: Boolean) {
+        runCatching { callRepository.toggleVideo(enabled) }
+    }
+
+    fun ensureVideoEnabledRepeatedly(attempts: Int = 2, delayMs: Long = 1_800L) {
+        if (videoEnableJob?.isActive == true) return
+        videoEnableJob = viewModelScope.launch {
+            repeat(attempts.coerceAtLeast(1)) { index ->
+                if (localVideoTrack.value != null) return@launch
+                runCatching { callRepository.toggleVideo(true) }
+                if (index < attempts - 1) delay(delayMs)
+            }
+        }
+    }
+
+    fun switchCamera() {
+        runCatching { callRepository.switchCamera() }
+    }
+
     fun sendReaction(emoji: String) {
-        appendReaction(
-            CallReactionEvent(
-                userId = authService.getCurrentUserId()?.trim().orEmpty(),
-                emoji = emoji
-            )
+        val reaction = CallReactionEvent(
+            id = UUID.randomUUID().toString(),
+            userId = authService.getCurrentUserId()?.trim().orEmpty(),
+            emoji = emoji,
+            timestamp = System.currentTimeMillis()
         )
+        appendReaction(reaction)
         callRepository.sendReaction(emoji)
     }
 
@@ -86,7 +110,7 @@ class CallViewModel @Inject constructor(
 
     private fun appendReaction(reaction: CallReactionEvent) {
         val enriched = reaction.copy(id = reaction.id.ifBlank { UUID.randomUUID().toString() })
-        _activeReactions.value = (_activeReactions.value + enriched).takeLast(12)
+        _activeReactions.value = (_activeReactions.value + enriched).distinctBy { it.id }.takeLast(12)
         scheduleReactionExpiry(enriched)
     }
 
@@ -95,7 +119,7 @@ class CallViewModel @Inject constructor(
         if (reactionId.isBlank()) return
         reactionExpiryJobs[reactionId]?.cancel()
         reactionExpiryJobs[reactionId] = viewModelScope.launch {
-            delay(2200)
+            delay(10_000)
             _activeReactions.value = _activeReactions.value.filterNot { it.id == reactionId }
             reactionExpiryJobs.remove(reactionId)?.cancel()
         }
