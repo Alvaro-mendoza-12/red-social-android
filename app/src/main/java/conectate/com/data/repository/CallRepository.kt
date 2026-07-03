@@ -239,6 +239,25 @@ class CallRepository @Inject constructor(
                     if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
                         callTonePlayer.stopRingback()
                         clearOutgoingRingTimeout()
+                        
+                        // FIX: Cancel all OTHER pending invitees so they don't ring forever
+                        val otherInvitees = pendingInvitees.filter { it != fromUserId }
+                        if (otherInvitees.isNotEmpty()) {
+                            scope.launch {
+                                otherInvitees.forEach { target ->
+                                    runCatching {
+                                        sendCallResponse(
+                                            targetUserId = target,
+                                            callId = callId,
+                                            action = "cancel",
+                                            fromUserId = authService.getCurrentUserId() ?: ""
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        pendingInvitees.retainAll(setOf(fromUserId))
+
                         _activeCall.value = call.copy(connectionState = CallConnectionState.CONNECTING)
                         scheduleConnectingTimeout(callId)
                     }

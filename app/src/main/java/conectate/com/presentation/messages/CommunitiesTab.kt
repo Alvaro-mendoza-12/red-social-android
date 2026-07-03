@@ -66,7 +66,10 @@ fun CommunitiesTab(
                 }
             }
             is CommunitiesUiState.Success -> {
-                if (combinedCommunities.isEmpty()) {
+                val myCommunities = combinedCommunities.filter { it.community.is_member }
+                val exploreCommunities = combinedCommunities.filter { !it.community.is_member }
+
+                if (myCommunities.isEmpty() && exploreCommunities.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,15 +91,44 @@ fun CommunitiesTab(
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(combinedCommunities) { communityWithLastMessage ->
-                            CommunityItem(
-                                communityWithLastMessage = communityWithLastMessage,
-                                onClick = {
-                                    // Navigate to Community Chat
-                                    onNavigateToCommunityChat(communityWithLastMessage.community.id)
-                                }
-                            )
-                            Divider()
+                        if (myCommunities.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Mis comunidades",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            items(myCommunities) { communityWithLastMessage ->
+                                CommunityItem(
+                                    communityWithLastMessage = communityWithLastMessage,
+                                    onClick = {
+                                        onNavigateToCommunityChat(communityWithLastMessage.community.id)
+                                    }
+                                )
+                                Divider()
+                            }
+                        }
+                        
+                        if (exploreCommunities.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Explorar comunidades",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            items(exploreCommunities) { communityWithLastMessage ->
+                                CommunityItem(
+                                    communityWithLastMessage = communityWithLastMessage,
+                                    onClick = {
+                                        onNavigateToCommunityChat(communityWithLastMessage.community.id)
+                                    }
+                                )
+                                Divider()
+                            }
                         }
                     }
                 }

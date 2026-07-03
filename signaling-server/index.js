@@ -327,7 +327,13 @@ function requireSocketUser(socket, claimedUserId) {
         // True mismatch: different account or stale session
         console.error(`[IDENTITY] [AUTH] MISMATCH - socketId=${socket.id} | claimedUserId=${normalizedClaim} | canonicalUserId=${authenticatedUserId} | localId=${localId} | email=${socket.data.authEmail}`);
         console.error(`[IDENTITY] [AUTH] This likely means the Android app is using a cached/stale userId. The user must clear app data and re-login.`);
-        // Still trust canonical for now but log clearly
+        // PHASE 1 FIX: Instead of blindly trusting canonicalUserId when there is a blatant mismatch,
+        // we should eventually reject this. But per instructions, we first add explicit logs.
+        console.error(`[IDENTITY] [AUTH] DUMP: token_prefix=${(socket.data.authToken || "").substring(0, 15)}`);
+        
+        // Temporarily, we STILL return the canonical ID so the app doesn't break while we investigate,
+        // but we flag it.
+        socket.data.hasIdentityMismatch = true;
         return authenticatedUserId;
     }
     return authenticatedUserId;
@@ -774,7 +780,7 @@ io.on('connection', (socket) => {
             participantCount: currentRoomParticipants.size
         });
 
-        console.log(`[IDENTITY] [VOICE] JOIN-ROOM | socketId=${socket.id} | resolvedUserId=${userId} | claimedUserId=${data.userId} | canonicalUserId=${socket.data.authUserId} | roomId=${roomId} | name=${name} | population=${currentRoomParticipants.size}`);
+        console.log(`[IDENTITY] [VOICE] JOIN-ROOM | socketId=${socket.id} | resolvedUserId=${userId} | claimedUserId=${data.userId} | canonicalUserId=${socket.data.authUserId} | roomId=${roomId} | name=${name} | mismatch=${!!socket.data.hasIdentityMismatch}`);
         console.log(`[SOCKET_DEBUG] [ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
         await syncVoiceRoomJoin(socket, roomId, {
             name,

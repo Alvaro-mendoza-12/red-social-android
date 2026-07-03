@@ -40,7 +40,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -99,6 +101,8 @@ data class LocalFallbackInboxItem(
     val isMuted: Boolean = false,
     val isArchived: Boolean = false,
     val isFavorite: Boolean = false,
+    val isPublic: Boolean = true,
+    val onlyAdminsCanTalk: Boolean = false,
     val folders: List<String> = emptyList(),
     val openPath: String? = null
 )
@@ -2149,8 +2153,8 @@ class LocalFallbackApiClient @Inject constructor(
         role: String? = null
     ): Result<Unit> = mutateCollectionMembership(accessToken, collection, roomId, "join", userId, role)
 
-    suspend fun leaveCollection(accessToken: String, collection: String, roomId: String): Result<Unit> =
-        mutateCollectionMembership(accessToken, collection, roomId, "leave")
+    suspend fun leaveCollection(accessToken: String, collection: String, roomId: String, userId: String? = null): Result<Unit> =
+        mutateCollectionMembership(accessToken, collection, roomId, "leave", userId)
 
     suspend fun deleteCollection(accessToken: String, collection: String, roomId: String): Result<Unit> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
@@ -3117,4 +3121,52 @@ class LocalFallbackApiClient @Inject constructor(
             .replace("\r", "_")
             .replace("\n", "_")
             .ifBlank { "upload.bin" }
+
+    // ─── Admin Moderation API ───────────────────────────────────
+
+    suspend fun adminCheckAccess(accessToken: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/access") {
+                localHeaders(accessToken)
+            }
+            if (response.status.value == 200) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Acceso denegado: ${response.status}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminGetSuspendedProfiles(accessToken: String): Result<List<conectate.com.presentation.profile.SuspendedProfile>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/suspended-profiles") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) {
+                return Result.failure(Exception("Error: ${response.status}"))
+            }
+            val body = response.bodyAsText()
+            val parsed = json.parseToJsonElement(body).jsonObject
+            val items = parsed["items"]?.jsonArray ?: return Result.success(emptyList())
+            val profiles = items.map { element ->
+                val obj = element.jsonObject
+                conectate.com.presentation.profile.SuspendedProfile(
+                    userId = textOf(obj, "id", "user_id"),
+                    isSuspended = boolOf(obj, "is_suspended"),
+                    suspendedUntil = textOf(obj, "suspended_until").ifBlank { null },
+                    suspensionEndDate = textOf(obj, "suspension_end_date").ifBlank { null },
+                    suspensionReason = textOf(obj, "suspension_reason").ifBlank { null },
+                    suspensionCount = intOf(obj, "suspension_count"),
+                    updatedAt = textOf(obj, "updated_at").ifBlank { null }
+                )
+            }
+            Result.success(profiles)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

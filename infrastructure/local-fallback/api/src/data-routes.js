@@ -577,7 +577,9 @@ async function localCollectionMembers(pool, kind, limit = 10_000) {
         room_id,
         user_id,
         role,
-        joined_at
+        joined_at,
+        is_deleted
+
      FROM fallback_collection_members
      WHERE room_kind = $1
      ORDER BY joined_at ASC
@@ -2006,6 +2008,16 @@ function roomIdOf(row, key) {
   return normalizeId(textOf(row, [key, 'room_id'], ''))
 }
 
+function deduplicateMembers(members, roomKey) {
+  const map = new Map()
+  for (const row of members) {
+    const roomId = roomIdOf(row, roomKey)
+    const userId = memberUserId(row)
+    if (roomId && userId) map.set(`${roomId}_${userId}`, row)
+  }
+  return Array.from(map.values()).filter((row) => !boolOf(row, ['is_deleted', 'deleted'], false))
+}
+
 function collectionRoomTitle(row, fallback) {
   return textOf(row, ['name', 'title', 'group_name', 'community_name', 'readable_id'], fallback)
 }
@@ -2067,7 +2079,7 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
       const id = normalizeId(textOf(row, ['id'], ''))
       return id && !deletedLocalRoomIds.has(id) && !boolOf(row, ['is_deleted', 'deleted'], false)
     })
-  const members = [...importedMembers, ...localMembers]
+  const members = deduplicateMembers([...importedMembers, ...localMembers], config.roomKey)
     .filter((row) => !deletedLocalRoomIds.has(roomIdOf(row, config.roomKey)))
   const room = rooms.find((row) => normalizeId(textOf(row, ['id'], '')) === cleanRoomId)
   if (!room) return null
@@ -2075,8 +2087,8 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
   const roomMembers = members.filter((row) => roomIdOf(row, config.roomKey) === cleanRoomId)
   const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
   const isMember = roomMembers.some((row) => identity.ids.has(memberUserId(row)))
-  const isPublicCommunity = config.kind === 'community' && boolOf(room, ['is_public', 'public'], true)
-  const hasAccess = isCreator || isMember || isPublicCommunity || roomMembers.length === 0
+  const isPublicRoom = boolOf(room, ['is_public', 'public'], config.kind === 'community')
+  const hasAccess = isCreator || isMember || isPublicRoom || roomMembers.length === 0
   if (!hasAccess) return null
 
   const importedRoomMessages = importedMessages.filter((row) => roomIdOf(row, config.roomKey) === cleanRoomId)
@@ -2681,6 +2693,7 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member'`,
     `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_collection_members ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
   ]) {
     await pool.query(statement)
   }
@@ -3975,7 +3988,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
           localCollectionMembers(pool, config.kind, 10_000),
           localDeletedCollectionRoomIds(pool, config.kind),
         ])
-        const memberships = [...importedMemberships, ...localMemberships]
+        const memberships = deduplicateMembers([...importedMemberships, ...localMemberships], config.roomKey)
           .filter((row) => {
             const roomId = roomIdOf(row, config.roomKey)
             const status = textOf(row, ['status', 'member_status'], '').toLowerCase()
@@ -4061,6 +4074,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
             isMuted: false,
             isArchived: false,
             isFavorite: false,
+            isPublic: !boolOf(row, ['is_private'], false),
             folders: [],
             openPath: `${config.openPathPrefix}${id}`,
           }
@@ -4156,6 +4170,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
           }
           const effectiveUpdatedAt =
             textOf(latest, ['created_at', 'updated_at'], '') ||
+            (myClearedAt ? textOf(participant, ['cleared_at', 'clearedAt'], '') : '') ||
             textOf(row, ['last_message_at', 'updated_at', 'created_at'], '')
           const hiddenAt = hiddenByChat.get(cleanChatId)
           if (hiddenAt && toMillis(hiddenAt) >= toMillis(effectiveUpdatedAt)) return null
@@ -4523,10 +4538,10 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
 
       const identity = userIdentity(user)
-      const memberships = [
+      const memberships = deduplicateMembers([
         ...(await importedRows(pool, config.memberTable, 5000)),
         ...(await localCollectionMembers(pool, config.kind, 10_000)),
-      ].filter((row) => roomIdOf(row, config.roomKey) === roomId)
+      ], config.roomKey).filter((row) => roomIdOf(row, config.roomKey) === roomId)
       const hasMembership = memberships.length === 0 || memberships.some((row) => {
         const status = textOf(row, ['status', 'member_status'], '').toLowerCase()
         return rowMatchesAny(row, ['user_id', 'profile_id', 'member_id'], identity.ids) &&
@@ -4571,7 +4586,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const category = config.kind === 'community' ? cleanText(req.body?.category, 80) || null : null
       const isPublic = config.kind === 'community'
         ? (Object.prototype.hasOwnProperty.call(req.body || {}, 'isPublic') ? Boolean(req.body.isPublic) : Boolean(req.body?.is_public ?? true))
-        : true
+        : false
       const memberIds = Array.from(cleanSet([...asArray(req.body?.members), ...asArray(req.body?.memberIds), identity.displayUserId]))
 
       const { rows } = await pool.query(
@@ -4659,13 +4674,24 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
       const role = cleanText(req.body?.role, 40) || 'member'
       const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-      if (!room && config.kind === 'group') return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
-
+      const isSelf = identity.ids.has(targetUserId)
+      if (!isSelf) {
+        if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+        const membersRows = await pool.query(
+          `SELECT role FROM fallback_collection_members
+           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
+          [config.kind, roomId, Array.from(identity.ids)],
+        )
+        const myRole = membersRows.rows[0]?.role?.toLowerCase()
+        const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+        const isAdmin = isCreator || ['owner', 'admin', 'creator'].includes(myRole)
+        if (!isAdmin) return res.status(403).json({ error: 'ADD_MEMBER_DENIED' })
+      }
       await pool.query(
-        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
+         VALUES ($1, $2, $3, $4, NOW(), FALSE)
          ON CONFLICT (room_kind, room_id, user_id)
-         DO UPDATE SET role = COALESCE(NULLIF(fallback_collection_members.role, ''), EXCLUDED.role)`,
+         DO UPDATE SET role = COALESCE(NULLIF(fallback_collection_members.role, ''), EXCLUDED.role), is_deleted = FALSE`,
         [config.kind, roomId, targetUserId, role],
       )
 
@@ -4702,10 +4728,29 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
 
       const identity = userIdentity(user)
+      const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
+      const isSelf = identity.ids.has(targetUserId)
+
+      if (!isSelf) {
+        const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
+        if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+        const membersRows = await pool.query(
+          `SELECT role FROM fallback_collection_members
+           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
+          [config.kind, roomId, Array.from(identity.ids)],
+        )
+        const myRole = membersRows.rows[0]?.role?.toLowerCase()
+        const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+        const isAdmin = isCreator || ['owner', 'admin', 'creator'].includes(myRole)
+        if (!isAdmin) return res.status(403).json({ error: 'REMOVE_MEMBER_DENIED' })
+      }
+
       await pool.query(
-        `DELETE FROM fallback_collection_members
-         WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = $3`,
-        [config.kind, roomId, identity.displayUserId],
+        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
+         VALUES ($1, $2, $3, 'member', NOW(), TRUE)
+         ON CONFLICT (room_kind, room_id, user_id)
+         DO UPDATE SET is_deleted = TRUE`,
+        [config.kind, roomId, targetUserId],
       )
 
       res.json({ ok: true })
@@ -4753,7 +4798,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         .find((row) => normalizeId(textOf(row, ['id'], '')) === roomId)
       if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
 
-      const members = [...importedMembers, ...localMembers]
+      const members = deduplicateMembers([...importedMembers, ...localMembers], config.roomKey)
         .filter((row) => roomIdOf(row, config.roomKey) === roomId)
       const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
       const isAdminMember = members.some((row) => {

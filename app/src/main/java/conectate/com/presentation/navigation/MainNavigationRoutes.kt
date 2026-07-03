@@ -205,6 +205,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         conectate.com.presentation.profile.MyReportsScreen(navController = navController)
     }
 
+    composable(Screen.AdminPanel.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.AdminPanelScreen(navController = navController)
+        }
+    }
+
     composable(
         route = Screen.FullScreenImage.route,
         arguments = listOf(

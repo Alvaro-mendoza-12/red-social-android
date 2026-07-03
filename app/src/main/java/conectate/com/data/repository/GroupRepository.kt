@@ -1935,7 +1935,8 @@ class GroupRepository @Inject constructor(
             last_message = preview,
             last_message_at = updatedAt,
             is_member = true,
-            is_deleted = false
+            is_deleted = false,
+            only_admins_can_talk = item.onlyAdminsCanTalk
         )
     }
 
@@ -2424,6 +2425,13 @@ class GroupRepository @Inject constructor(
                 privileges = privileges,
                 errorMessage = "No tienes permisos para eliminar miembros."
             )
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                localFallbackApiClient.leaveCollection(token, "groups", cleanId, targetUserId).getOrThrow()
+                groupDao.removeMember(cleanId, targetUserId)
+                scope.launch { syncGroups() }
+                return@withContext Result.success(Unit)
+            }
 
             // Execute delete
             collectionAdminRemoteStore.deleteMember(

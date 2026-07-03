@@ -457,6 +457,22 @@ fun SettingsScreen(
 
             Divider()
 
+            // Section: Admin Panel (solo visible para admins)
+            if (viewModel.isAdmin) {
+                SettingsSection(title = "Administración") {
+                    Button(
+                        onClick = { navController.navigate(Screen.AdminPanel.route) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Panel de Administrador")
+                    }
+                }
+
+                Divider()
+            }
+
             // Section: General
             SettingsSection(title = "General") {
                 val scope = rememberCoroutineScope()

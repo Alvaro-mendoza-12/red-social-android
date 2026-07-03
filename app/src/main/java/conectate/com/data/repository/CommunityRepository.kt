@@ -1026,13 +1026,14 @@ class CommunityRepository @Inject constructor(
             name = item.title.ifBlank { "Comunidad" },
             image = item.avatarUrl.ifBlank { null },
             description = item.subtitle.takeIf { it.isNotBlank() },
-            is_public = true,
+            is_public = item.isPublic,
             created_at = updatedAt,
             creator_id = currentUserId,
             last_message = preview,
             last_message_at = updatedAt,
             is_member = true,
-            is_deleted = false
+            is_deleted = false,
+            only_admins_can_talk = item.onlyAdminsCanTalk
         )
     }
 
@@ -1667,6 +1668,14 @@ class CommunityRepository @Inject constructor(
                 privileges = privileges,
                 errorMessage = "No tienes permisos para eliminar miembros."
             )
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                localFallbackApiClient.leaveCollection(token, "communities", cleanId, targetUserId).getOrThrow()
+                communityDao.removeMember(cleanId, targetUserId)
+                scope.launch { syncCommunities() }
+                return@withContext Result.success(Unit)
+            }
 
             // Execute delete
             collectionAdminRemoteStore.deleteMember(
