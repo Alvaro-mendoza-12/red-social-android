@@ -390,10 +390,8 @@ fun MomentViewerScreen(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(bottom = 24.dp)
-                    .windowInsetsPadding(WindowInsets.navigationBars) // Respect nav bar
-                    .navigationBarsPadding() // thorough padding
-                    .imePadding() // CRITICAL FIX: Push up when keyboard opens
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

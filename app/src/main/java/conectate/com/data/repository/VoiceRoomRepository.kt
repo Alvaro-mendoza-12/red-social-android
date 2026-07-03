@@ -118,7 +118,7 @@ class VoiceRoomRepository @Inject constructor(
     private var reconnectFailureCount = 0
     
     // VPS signaling server (Socket.IO over HTTPS)
-    private val SIGNALING_URL = SignalingConfig.VOICE_URL
+    private val SIGNALING_URL: String get() = SignalingConfig.VOICE_URL
     
     // Exposed for notification navigation
     fun getCurrentRoomId(): String? = activeRoomId
@@ -273,9 +273,16 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     private fun stopVoiceForegroundService() {
-        runCatching {
-            context.stopService(Intent(context, VoiceForegroundService::class.java))
-        }.onFailure { error ->
+        try {
+            var intent = Intent(context, VoiceForegroundService::class.java).apply {
+                action = VoiceForegroundService.ACTION_STOP
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (error: Exception) {
             android.util.Log.w("VoiceRoomRepository", "No se pudo detener VoiceForegroundService", error)
         }
     }
@@ -1262,6 +1269,7 @@ class VoiceRoomRepository @Inject constructor(
             socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 val errorMessage = args.firstOrNull()?.toString().orEmpty().ifBlank { "Socket connect error" }
                 android.util.Log.e("VoiceRoomRepository", "❌ Socket connect error: $errorMessage")
+                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
                 reconnectFailureCount += 1
                 updateConnectionState(VoiceConnectionState.RECONNECTING)
                 var error = IllegalStateException(errorMessage)
@@ -1816,12 +1824,7 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             activeRoomId = null
-            updateConnectionState(VoiceConnectionState.IDLE)
-            stopVoiceForegroundService()
             
-            // 4. Release Audio with Safety Delay
-            releaseVoiceAudioSession()
-
             runCatching { refreshRooms() }.onFailure {
                 android.util.Log.w("VoiceRoomRepository", "Could not refresh lobby after leaving room", it)
             }
@@ -1833,6 +1836,10 @@ class VoiceRoomRepository @Inject constructor(
                 throwable = e,
                 extra = currentMetricAttributes(roomId = roomId)
             )
+        } finally {
+            updateConnectionState(VoiceConnectionState.IDLE)
+            stopVoiceForegroundService()
+            releaseVoiceAudioSession()
         }
     }
 

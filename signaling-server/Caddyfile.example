@@ -1,4 +1,4 @@
-voice.srv1495648.hstgr.cloud {
+voice.tudominio.com {
     encode gzip zstd
 
     # Proxy every HTTP route to the signaling server, not only /socket.io.

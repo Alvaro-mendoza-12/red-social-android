@@ -40,6 +40,7 @@ fun PostDetailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var commentText by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var commentToEdit by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
     
     // Voice Manager States
@@ -395,6 +396,9 @@ fun PostDetailScreen(
                                 },
                                 onDeleteClick = {
                                     viewModel.deleteComment(comment.id)
+                                },
+                                onEditClick = {
+                                    commentToEdit = comment
                                 }
                             )
                         }
@@ -402,6 +406,40 @@ fun PostDetailScreen(
                 }
             }
         }
+    }
+
+    if (commentToEdit != null) {
+        var editContent by remember(commentToEdit) { mutableStateOf(commentToEdit?.content ?: "") }
+        AlertDialog(
+            onDismissRequest = { commentToEdit = null },
+            title = { Text("Editar Comentario") },
+            text = {
+                OutlinedTextField(
+                    value = editContent,
+                    onValueChange = { editContent = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        commentToEdit?.let {
+                            viewModel.editComment(it.id, editContent)
+                        }
+                        commentToEdit = null
+                    },
+                    enabled = editContent.isNotBlank() && editContent != commentToEdit?.content
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { commentToEdit = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 

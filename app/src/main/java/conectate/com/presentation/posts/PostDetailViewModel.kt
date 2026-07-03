@@ -203,6 +203,22 @@ class PostDetailViewModel @Inject constructor(
                 }
         }
     }
+
+    fun editComment(commentId: String, newContent: String) {
+        val postId = _uiState.value.post?.id ?: return
+        viewModelScope.launch {
+            postRepository.updateCommentContent(commentId, newContent)
+                .onSuccess {
+                    android.util.Log.d("PostDetailViewModel", "Comment updated successfully")
+                    android.widget.Toast.makeText(context, "Comentario editado", android.widget.Toast.LENGTH_SHORT).show()
+                    loadComments(postId)
+                }
+                .onFailure {
+                    android.util.Log.e("PostDetailViewModel", "Error editing comment", it)
+                    android.widget.Toast.makeText(context, "Error al editar: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
     
     // Voice Message Recording - delegated to VoiceMessageManager
     fun startRecording() = voiceMessageManager.startRecording()

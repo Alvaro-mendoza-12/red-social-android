@@ -248,7 +248,7 @@ fun VideoFeedScreen(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(cacheDataSourceFactory)
             )
             .build().apply {
-                repeatMode = Player.REPEAT_MODE_ONE
+                repeatMode = Player.REPEAT_MODE_OFF // Auto skip instead of loop
                 playWhenReady = true
                 // Handle Audio Focus automatically
                 setAudioAttributes(
@@ -261,6 +261,27 @@ fun VideoFeedScreen(
             }
     }
     
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Auto-skip when video ends
+    DisposableEffect(exoPlayer, pagerState.currentPage) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    coroutineScope.launch {
+                        if (pagerState.currentPage < currentVideos.size - 1) {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
+                    }
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
     // ════════════════════════════════════════════════════════
     // 2️⃣ LIFECYCLE MANAGEMENT (CRITICAL BUG FIX)
     // ════════════════════════════════════════════════════════

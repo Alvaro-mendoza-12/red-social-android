@@ -44,9 +44,9 @@ Ejemplo recomendado para una sola VPS:
 ```conf
 use-auth-secret
 static-auth-secret=REEMPLAZA_CON_TU_SECRET
-realm=voice.srv1495648.hstgr.cloud
+realm=voice.tudominio.com
 
-server-name=voice.srv1495648.hstgr.cloud
+server-name=voice.tudominio.com
 listening-port=3478
 tls-listening-port=5349
 
@@ -61,8 +61,8 @@ external-ip=76.13.160.177
 min-port=49160
 max-port=49200
 
-cert=/etc/letsencrypt/live/voice.srv1495648.hstgr.cloud/fullchain.pem
-pkey=/etc/letsencrypt/live/voice.srv1495648.hstgr.cloud/privkey.pem
+cert=/etc/letsencrypt/live/voice.tudominio.com/fullchain.pem
+pkey=/etc/letsencrypt/live/voice.tudominio.com/privkey.pem
 ```
 
 Notas:
@@ -97,11 +97,11 @@ FALLBACK_API_URL=https://tu-url-ngrok-o-dominio-api
 SIGNALING_ALLOWED_ORIGINS=https://app.tudominio.com,https://admin.tudominio.com
 HTTP_RATE_LIMIT_PER_MINUTE=180
 SOCKET_RATE_LIMIT_PER_MINUTE=90
-TURN_HOST=voice.srv1495648.hstgr.cloud
+TURN_HOST=voice.tudominio.com
 TURN_PORT=3478
 TURN_TLS_PORT=5349
 TURN_SECRET=EL_MISMO_SECRET_DE_COTURN
-TURN_REALM=voice.srv1495648.hstgr.cloud
+TURN_REALM=voice.tudominio.com
 TURN_TTL_SECONDS=3600
 TURN_ENABLE_UDP=true
 TURN_ENABLE_TCP=true
@@ -127,14 +127,14 @@ Tambien deben quedar publicados:
 - `/turn-credentials`
 
 Puedes partir de `signaling-server/Caddyfile.example`.
-La idea es que todo el host `voice.srv1495648.hstgr.cloud` haga reverse proxy a `127.0.0.1:3001`.
+La idea es que todo el host `voice.tudominio.com` haga reverse proxy a `127.0.0.1:3001`.
 
 ## 6. Probar el endpoint
 
 Con un access token valido del backend Ubuntu:
 
 ```bash
-curl -H "Authorization: Bearer TU_ACCESS_TOKEN" https://voice.srv1495648.hstgr.cloud/turn-credentials
+curl -H "Authorization: Bearer TU_ACCESS_TOKEN" https://voice.tudominio.com/turn-credentials
 ```
 
 Debes recibir un JSON con:

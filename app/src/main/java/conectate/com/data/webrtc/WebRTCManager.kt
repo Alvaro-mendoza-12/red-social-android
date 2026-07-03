@@ -153,8 +153,8 @@ class WebRTCManager(
     private val glareRecoveryTimeoutMs = 2_000L
     private val lowLatencyJitterPackets = 20
     
-    private val selfHostedTurnUrl = SignalingConfig.TURN_CREDENTIALS_URL.trim()
-    private val hasManagedTurnConfigured = selfHostedTurnUrl.isNotBlank()
+    private val selfHostedTurnUrl: String get() = SignalingConfig.TURN_CREDENTIALS_URL.trim()
+    private val hasManagedTurnConfigured: Boolean get() = selfHostedTurnUrl.isNotBlank()
     private val dynamicIceServers = mutableListOf<PeerConnection.IceServer>()
     private val managedIceRefreshLock = Any()
     @Volatile

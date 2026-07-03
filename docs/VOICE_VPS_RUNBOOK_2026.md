@@ -14,7 +14,7 @@ Esta guia documenta:
 
 Produccion actual:
 
-- Dominio de voz: `voice.srv1495648.hstgr.cloud`
+- Dominio de voz: `voice.tudominio.com`
 - VPS publica: `76.13.160.177`
 - Carpeta real del signaling server: `/srv/signaling-server`
 - Servicio systemd del signaling: `signaling-server.service`
@@ -88,7 +88,7 @@ Se confirmo:
   - `fingerprint`
   - `lt-cred-mech`
   - `external-ip=76.13.160.177`
-  - `realm=voice.srv1495648.hstgr.cloud`
+  - `realm=voice.tudominio.com`
   - `min-port=49160`
   - `max-port=49200`
 
@@ -139,8 +139,8 @@ grep -E '^(PORT|TURN_HOST|TURN_PORT|TURN_TLS_PORT|TURN_SECRET|TURN_REALM|TURN_EN
 Comprobar endpoints HTTP publicados por el proxy:
 
 ```bash
-curl -I https://voice.srv1495648.hstgr.cloud/health
-curl "https://voice.srv1495648.hstgr.cloud/live-active-ids"
+curl -I https://voice.tudominio.com/health
+curl "https://voice.tudominio.com/live-active-ids"
 ```
 
 Ver configuracion de coturn:

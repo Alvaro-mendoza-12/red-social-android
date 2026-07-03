@@ -151,6 +151,7 @@ fun SocialScreen(
     }
 
     var showCreatePostDialog by remember { mutableStateOf(false) }
+    var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var challengesUnlocked by remember { mutableStateOf(false) }
@@ -1054,7 +1055,11 @@ fun SocialScreen(
                                             onSendToFriend = {
                                                 selectedPostForShare = post
                                                 showInternalShareDialog = true
-                                            }
+                                            },
+                                            isOwner = post.userId == viewModel.currentUserId,
+                                            onDeleteClick = { viewModel.deletePost(post.id) },
+                                            onVisibilityClick = { newVis -> viewModel.updatePostVisibility(post.id, newVis) },
+                                            onEditClick = { postToEdit = post }
                                         )
                                     }
                                 }
@@ -1173,6 +1178,38 @@ fun SocialScreen(
             voiceManager = viewModel.voiceMessageManager,
             onMicPermissionRequest = {
                 micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
+        )
+    }
+
+    // Diálogo de Edición de Post
+    if (postToEdit != null) {
+        var editContent by remember { mutableStateOf(postToEdit?.content ?: "") }
+        AlertDialog(
+            onDismissRequest = { postToEdit = null },
+            title = { Text("Editar Publicación") },
+            text = {
+                OutlinedTextField(
+                    value = editContent,
+                    onValueChange = { editContent = it },
+                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                    placeholder = { Text("Escribe algo...") }
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    postToEdit?.id?.let { pid ->
+                        viewModel.updatePostContent(pid, editContent)
+                    }
+                    postToEdit = null
+                }) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { postToEdit = null }) {
+                    Text("Cancelar")
+                }
             }
         )
     }

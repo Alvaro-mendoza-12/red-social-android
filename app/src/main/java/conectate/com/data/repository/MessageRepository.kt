@@ -730,7 +730,22 @@ class MessageRepository @Inject constructor(
                     .map { item -> 
                         val mapped = mapLocalFallbackInboxItem(item, cleanUserId)
                         val existing = existingLocalChats[mapped.chat.id]
-                        mapped.copy(clearedAt = existing?.cleared_at)
+                        val mappedTime = mapped.chat.last_message_at ?: ""
+                        val existingTime = existing?.last_message_at ?: ""
+                        
+                        if (existing != null && existingTime > mappedTime) {
+                            mapped.copy(
+                                clearedAt = existing.cleared_at,
+                                chat = mapped.chat.copy(
+                                    last_message = existing.last_message,
+                                    last_message_at = existing.last_message_at,
+                                    last_message_id = existing.last_message_id,
+                                    last_message_sender_id = existing.last_message_sender_id
+                                )
+                            )
+                        } else {
+                            mapped.copy(clearedAt = existing?.cleared_at)
+                        }
                     }
                     .let(::sortChatsByPriority)
 

@@ -165,4 +165,28 @@ class NotificationViewModel @Inject constructor(
             loadNotifications()
         }
     }
+
+    fun deleteNotification(notificationId: String) {
+        viewModelScope.launch {
+            val result = notificationRepository.deleteNotification(notificationId)
+            if (result.isSuccess) {
+                val currentState = _notificationsState.value
+                if (currentState is NotificationsUiState.Success) {
+                    val updatedList = currentState.notifications.filter { it.id != notificationId }
+                    _notificationsState.value = NotificationsUiState.Success(updatedList)
+                }
+                updateUnreadCount()
+            }
+        }
+    }
+
+    fun deleteAllNotifications() {
+        viewModelScope.launch {
+            val result = notificationRepository.deleteAllNotifications()
+            if (result.isSuccess) {
+                _notificationsState.value = NotificationsUiState.Success(emptyList())
+                updateUnreadCount()
+            }
+        }
+    }
 }

@@ -156,6 +156,74 @@ function registerAdminModerationRoutes(app, { pool, authRequired, getCurrentUser
       next(error)
     }
   })
+
+  app.get('/v1/data/admin/reports', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const { rows } = await pool.query(
+        `SELECT * FROM fallback_reports ORDER BY created_at DESC LIMIT 200`
+      )
+      res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/admin/video-reports', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const { rows } = await pool.query(
+        `SELECT * FROM fallback_video_reports ORDER BY created_at DESC LIMIT 200`
+      )
+      res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/admin/suspend', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const { user_id, reason, days } = req.body
+      if (!user_id) return res.status(400).json({ error: 'Missing user_id' })
+      
+      const isSuspended = days > 0
+      const suspendedUntil = days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null
+      
+      await pool.query(
+        `INSERT INTO fallback_profile_moderation (user_id, is_suspended, suspension_reason, suspension_end_date, suspended_until, suspension_count, updated_at)
+         VALUES ($1, $2, $3, $4, $4, CASE WHEN $2 THEN 1 ELSE 0 END, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+         is_suspended = $2, suspension_reason = $3, suspension_end_date = $4, suspended_until = $4,
+         suspension_count = fallback_profile_moderation.suspension_count + (CASE WHEN $2 THEN 1 ELSE 0 END),
+         updated_at = NOW()`,
+        [user_id, isSuspended, reason || null, suspendedUntil]
+      )
+      
+      res.json({ success: true, suspended_until: suspendedUntil })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/admin/reports/:id/status', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const { id } = req.params
+      const { status, type } = req.body // type = 'user' or 'video'
+      if (!['pendiente', 'resuelto', 'ignorado'].includes(status)) return res.status(400).json({ error: 'Invalid status' })
+      
+      const table = type === 'video' ? 'fallback_video_reports' : 'fallback_reports'
+      await pool.query(`UPDATE ${table} SET status = $1, updated_at = NOW() WHERE id = $2`, [status, id])
+      res.json({ success: true })
+    } catch (error) {
+      next(error)
+    }
+  })
 }
 
 module.exports = {

@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +51,9 @@ fun NotificationScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.deleteAllNotifications() }) {
+                        Icon(Icons.Default.DeleteSweep, "Borrar Todo", tint = MaterialTheme.colorScheme.error)
+                    }
                     TextButton(onClick = { viewModel.markAllAsRead() }) {
                         Icon(Icons.Default.DoneAll, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
@@ -99,6 +104,9 @@ fun NotificationScreen(
                                     onClick = {
                                         viewModel.markAsRead(notification.id)
                                         handleNotificationNavigation(navController, notification)
+                                    },
+                                    onDelete = {
+                                        viewModel.deleteNotification(notification.id)
                                     }
                                 )
                                 Divider(thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.5f))
@@ -114,7 +122,8 @@ fun NotificationScreen(
 @Composable
 fun NotificationItem(
     notification: Notification,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val bgColor = if (notification.isRead) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
     
@@ -166,6 +175,10 @@ fun NotificationItem(
                     .size(8.dp)
                     .background(MaterialTheme.colorScheme.primary, shape = androidx.compose.foundation.shape.CircleShape)
             )
+        }
+
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Close, contentDescription = "Borrar", tint = Color.Gray, modifier = Modifier.size(16.dp))
         }
     }
 }

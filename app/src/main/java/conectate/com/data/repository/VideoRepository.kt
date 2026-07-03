@@ -197,6 +197,10 @@ class VideoRepository @Inject constructor(
             val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
                 ?.toIntOrNull()
                 ?: 0
+            val fpsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+            val fps = fpsStr?.toFloatOrNull() ?: 30f
+
+            val isTooLarge = width > 1920 || height > 1920 || (width * height > 1930000)
 
             when {
                 durationSeconds <= 0L -> Result.failure(Exception("No se pudo validar la duración del video."))
@@ -208,6 +212,12 @@ class VideoRepository @Inject constructor(
                 )
                 width < MIN_UPLOAD_DIMENSION || height < MIN_UPLOAD_DIMENSION -> Result.failure(
                     Exception("Resolución muy baja (${width}x$height). Mínimo: ${MIN_UPLOAD_DIMENSION}x${MIN_UPLOAD_DIMENSION}.")
+                )
+                isTooLarge -> Result.failure(
+                    Exception("El video es de muy alta resolución (${width}x${height}). El máximo permitido es 1080p. Usa el editor para adaptarlo.")
+                )
+                fps > 31f -> Result.failure(
+                    Exception("El video tiene demasiados FPS (${fps.toInt()}). El máximo permitido es 30fps. Usa el editor para adaptarlo.")
                 )
                 else -> Result.success(
                     UploadVideoMetadata(
@@ -290,7 +300,11 @@ class VideoRepository @Inject constructor(
                 if (shouldUseUbuntuBackend()) {
                     val result = localFallbackApiClient.loadVideos(accessToken, limit, offset)
                     if (result.isSuccess) {
-                        val videos = if (random) result.getOrThrow().shuffled() else result.getOrThrow()
+                        val videos = if (random) {
+                            result.getOrThrow().sortedByDescending { 
+                                (it.likeCount * 3 + it.commentCount * 5 + it.shareCount * 10 + it.views) * Math.random() 
+                            }
+                        } else result.getOrThrow()
                         videos.forEach { video ->
                             updateLocalVideoStats(
                                 video.id,
@@ -320,7 +334,11 @@ class VideoRepository @Inject constructor(
 
                 if (response.status.isSuccess()) {
                     val videos: List<Video> = response.body<List<Video>>().map { it.normalizedStorageUrls() }
-                    val deliveredVideos = if (random) videos.shuffled() else videos
+                    val deliveredVideos = if (random) {
+                        videos.sortedByDescending { 
+                            (it.likeCount * 3 + it.commentCount * 5 + it.shareCount * 10 + it.views) * Math.random() 
+                        }
+                    } else videos
                     
                     if (offset == 0 && !random && deliveredVideos.isNotEmpty()) {
                         val stored = runCatching {

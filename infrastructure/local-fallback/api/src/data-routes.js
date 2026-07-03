@@ -3504,6 +3504,37 @@ function registerDataRoutes(app, { pool, authRequired }) {
     }
   })
 
+  app.delete('/v1/data/notifications/:notificationId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const cleanId = normalizeId(req.params.notificationId)
+      const del = await pool.query(
+        `DELETE FROM fallback_notifications WHERE id = $1 AND lower(recipient_id) = ANY($2::text[])`,
+        [cleanId, identity.values],
+      )
+      res.json({ ok: true, deleted: del.rowCount })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/notifications', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const del = await pool.query(
+        `DELETE FROM fallback_notifications WHERE lower(recipient_id) = ANY($1::text[])`,
+        [identity.values],
+      )
+      res.json({ ok: true, deleted: del.rowCount })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.post('/v1/data/notifications/fcm-tokens', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -3833,6 +3864,32 @@ function registerDataRoutes(app, { pool, authRequired }) {
       next(error)
     }
   })
+
+  app.patch('/v1/data/feed/comments/:commentId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const commentId = validUuid(req.params.commentId)
+      if (!commentId) return res.status(400).json({ error: 'COMMENT_ID_REQUIRED' })
+
+      const content = cleanText(req.body?.content || '')
+      if (!content) return res.status(400).json({ error: 'CONTENT_REQUIRED' })
+
+      const { rowCount, rows } = await pool.query(
+        `UPDATE fallback_post_comments
+         SET content = $1, updated_at = NOW()
+         WHERE id = $2 AND lower(user_id) = $3
+         RETURNING *`,
+        [content, commentId, identity.displayUserId],
+      )
+      if (!rowCount) return res.status(404).json({ error: 'COMMENT_NOT_FOUND' })
+      res.json({ comment: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
 
   app.post('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
     try {
@@ -4186,9 +4243,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
             profileId: otherId || null,
             nickname: nickname || null,
             unreadCount: unreadByChat.get(cleanChatId) || 0,
-            lastMessageId: textOf(latest, ['id'], '') || textOf(row, ['last_message_id'], ''),
-            lastMessageSenderId: textOf(latest, ['sender_id'], '') || textOf(row, ['last_message_sender_id'], ''),
-            lastMessageContentType: textOf(latest, ['content_type'], 'text') || 'text',
+            lastMessageId: myClearedAt && !latest.id ? '' : textOf(latest, ['id'], '') || textOf(row, ['last_message_id'], ''),
+            lastMessageSenderId: myClearedAt && !latest.sender_id ? '' : textOf(latest, ['sender_id'], '') || textOf(row, ['last_message_sender_id'], ''),
+            lastMessageContentType: myClearedAt && !latest.content_type ? 'text' : textOf(latest, ['content_type'], 'text') || 'text',
             isPinned: boolOf(participant, ['is_pinned'], false),
             isMuted: boolOf(participant, ['is_muted'], false),
             isArchived: boolOf(participant, ['is_archived'], false),

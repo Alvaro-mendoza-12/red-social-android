@@ -211,6 +211,14 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (ignored: Exception) {}
         serviceScope.cancel()
         super.onDestroy()
     }

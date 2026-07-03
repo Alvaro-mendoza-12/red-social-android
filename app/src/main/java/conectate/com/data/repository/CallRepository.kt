@@ -103,7 +103,7 @@ class CallRepository @Inject constructor(
 
     private var socket: Socket? = null
     private var webRTCManager: WebRTCManager? = null
-    private val signalingUrl = SignalingConfig.CALL_URL
+    private val signalingUrl: String get() = SignalingConfig.CALL_URL
     private var audioFocusRequest: AudioFocusRequest? = null
 
     private val _activeCall = MutableStateFlow<ActiveCall?>(null)
@@ -842,6 +842,7 @@ class CallRepository @Inject constructor(
 
             socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 val detail = args.firstOrNull()?.toString().orEmpty().ifBlank { "socket_connect_error" }
+                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
                 _activeCall.value?.let { active ->
                     if (active.callId.equals(callId, ignoreCase = true)) {
                         appMetrics.recordFailure(
@@ -1039,6 +1040,7 @@ class CallRepository @Inject constructor(
             socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 var reason = args.firstOrNull()?.toString().orEmpty()
                 android.util.Log.e("CallRepository", "Call socket connect error: $reason")
+                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
             }
 
             socket?.connect()
@@ -1373,7 +1375,11 @@ class CallRepository @Inject constructor(
             var intent = android.content.Intent(context, CallForegroundService::class.java).apply {
                 action = CallForegroundService.ACTION_STOP
             }
-            context.stopService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         } catch (error: Exception) {
             logBestEffortFailure(
                 operation = "stopCallForegroundService",

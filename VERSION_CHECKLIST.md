@@ -37,8 +37,8 @@ Guía detallada para generar el `.aab` en Android Studio y subirlo a Google Play
 - [ ] Logs revisados:
   - `journalctl -u signaling-server.service -n 100 --no-pager`
 - [ ] Endpoints validados:
-  - `curl -I https://voice.srv1495648.hstgr.cloud/health`
-  - `curl "https://voice.srv1495648.hstgr.cloud/live-active-ids"`
+  - `curl -I https://TU_DOMINIO/health`
+  - `curl "https://TU_DOMINIO/live-active-ids"`
 - [ ] Si `/live-active-ids` responde `404`, revisar proxy/Caddy para que todo el host haga `reverse_proxy 127.0.0.1:3001`
 
 ## ✅ Testing en Dispositivos

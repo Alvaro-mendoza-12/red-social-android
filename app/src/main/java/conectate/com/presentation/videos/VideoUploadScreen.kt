@@ -149,10 +149,10 @@ class VideoUploadViewModel @Inject constructor(
                         onComplete(false)
                     }
                 )
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 progressJob.cancel()
                 _isUploading.value = false
-                _uploadError.value = e.message
+                _uploadError.value = "Error al subir el video: ${e.message ?: "Memoria insuficiente o error de red"}"
                 onComplete(false)
             }
         }

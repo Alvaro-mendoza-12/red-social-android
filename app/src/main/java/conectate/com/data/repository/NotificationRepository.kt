@@ -644,6 +644,51 @@ class NotificationRepository @Inject constructor(
     private fun buildFcmRegistrationCacheKey(userId: String, token: String): String {
         return "${userId.trim().lowercase()}|${token.trim()}"
     }
+
+    suspend fun deleteNotification(id: String): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            return localFallbackApiClient.deleteNotification(token, id)
+        }
+
+        return safeRepositoryCall("notifications.delete") {
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("id", "eq.$id")
+                parameter("recipient_id", "eq.$userId")
+            }
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Error deleting notification: ${response.status}")
+            }
+        }
+    }
+
+    suspend fun deleteAllNotifications(): Result<Unit> {
+        if (authService.isLocalFallbackSession()) {
+            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            return localFallbackApiClient.deleteAllNotifications(token)
+                .onSuccess { _unreadCount.value = 0 }
+        }
+
+        return safeRepositoryCall("notifications.deleteAll") {
+            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
+            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+            
+            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("recipient_id", "eq.$userId")
+            }
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Error deleting all notifications: ${response.status}")
+            }
+            updateUnreadCount()
+        }
+    }
 }
 
 

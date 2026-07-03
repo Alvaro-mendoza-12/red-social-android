@@ -40,6 +40,19 @@ const socketRateLimitPerMinute = clampInt(process.env.SOCKET_RATE_LIMIT_PER_MINU
 const allowedOrigins = parseAllowedOrigins(process.env.SIGNALING_ALLOWED_ORIGINS);
 const rateLimitBuckets = new Map();
 
+// Periodic cleanup to prevent memory leaks from inactive rate limit buckets
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of rateLimitBuckets.entries()) {
+        const fresh = timestamps.filter(t => now - t < 60000);
+        if (fresh.length === 0) {
+            rateLimitBuckets.delete(key);
+        } else {
+            rateLimitBuckets.set(key, fresh);
+        }
+    }
+}, 5 * 60 * 1000).unref();
+
 if (allowedOrigins.size === 0) {
     console.warn('[SOCKET_DEBUG] [WARN] SIGNALING_ALLOWED_ORIGINS not set. Only local browser origins and native clients without Origin header will be allowed.');
 }

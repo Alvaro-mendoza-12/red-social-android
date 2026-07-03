@@ -227,6 +227,42 @@ class SocialViewModel @Inject constructor(
         }
     }
 
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            val result = postRepository.deletePost(postId)
+            if (result.isSuccess) {
+                _posts.value = _posts.value.filter { it.id != postId }
+                android.widget.Toast.makeText(context, "Publicación eliminada", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                android.widget.Toast.makeText(context, "Error al eliminar la publicación", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun updatePostVisibility(postId: String, visibility: String) {
+        viewModelScope.launch {
+            val result = postRepository.updatePostVisibility(postId, visibility)
+            if (result.isSuccess) {
+                _posts.value = _posts.value.map {
+                    if (it.id == postId) it.copy(visibility = visibility) else it
+                }
+                android.widget.Toast.makeText(context, "Visibilidad actualizada", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun updatePostContent(postId: String, content: String) {
+        viewModelScope.launch {
+            val result = postRepository.updatePostContent(postId, content)
+            if (result.isSuccess) {
+                _posts.value = _posts.value.map {
+                    if (it.id == postId) it.copy(content = content) else it
+                }
+                android.widget.Toast.makeText(context, "Publicación actualizada", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Challenge submission methods removed (moved to ChallengeViewModel)
 
     // loadSubmissions removed

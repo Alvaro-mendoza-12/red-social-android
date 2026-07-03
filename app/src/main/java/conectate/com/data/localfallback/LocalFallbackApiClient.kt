@@ -1415,6 +1415,21 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun updatePostComment(accessToken: String, commentId: String, content: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/feed/comments/${urlEncode(commentId)}") {
+                localHeaders(accessToken)
+                setBody(buildJsonObject { put("content", JsonPrimitive(content)) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun setPostReaction(
         accessToken: String,
         postId: String,
@@ -1489,14 +1504,37 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/notifications/read-all") {
                 localHeaders(accessToken)
-                contentType(ContentType.Application.Json)
-                setBody("{}")
             }
-            val body = response.bodyAsText()
             if (response.status.isSuccess()) Result.success(Unit)
-            else Result.failure(toException(response, decodeError(body)))
-        } catch (error: Exception) {
-            Result.failure(error)
+            else Result.failure(toException(response, decodeError(response.bodyAsText())))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteNotification(accessToken: String, notificationId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/notifications/${urlEncode(notificationId)}") {
+                localHeaders(accessToken)
+            }
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(response.bodyAsText())))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAllNotifications(accessToken: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/notifications") {
+                localHeaders(accessToken)
+            }
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(response.bodyAsText())))
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -3165,6 +3203,103 @@ class LocalFallbackApiClient @Inject constructor(
                 )
             }
             Result.success(profiles)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminGetReports(accessToken: String): Result<List<conectate.com.data.model.Report>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/reports") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("Error: ${response.status}"))
+            val body = response.bodyAsText()
+            val parsed = json.parseToJsonElement(body).jsonObject
+            val items = parsed["items"]?.jsonArray ?: return Result.success(emptyList())
+            val reports = items.map { element ->
+                val obj = element.jsonObject
+                conectate.com.data.model.Report(
+                    id = textOf(obj, "id"),
+                    reporter_id = textOf(obj, "reporter_id"),
+                    reporter_name = textOf(obj, "reporter_name"),
+                    reported_user_id = textOf(obj, "reported_user_id"),
+                    reported_user_name = textOf(obj, "reported_user_name"),
+                    reason = textOf(obj, "reason"),
+                    description = textOf(obj, "description"),
+                    evidence_url = textOf(obj, "evidence_url").ifBlank { null },
+                    status = textOf(obj, "status"),
+                    created_at = textOf(obj, "created_at")
+                )
+            }
+            Result.success(reports)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminGetVideoReports(accessToken: String): Result<List<conectate.com.data.model.VideoReport>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/video-reports") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("Error: ${response.status}"))
+            val body = response.bodyAsText()
+            val parsed = json.parseToJsonElement(body).jsonObject
+            val items = parsed["items"]?.jsonArray ?: return Result.success(emptyList())
+            val reports = items.map { element ->
+                val obj = element.jsonObject
+                conectate.com.data.model.VideoReport(
+                    id = textOf(obj, "id"),
+                    videoId = textOf(obj, "video_id"),
+                    videoOwnerId = textOf(obj, "video_owner_id"),
+                    videoOwnerName = textOf(obj, "video_owner_name"),
+                    videoTitle = textOf(obj, "video_title").ifBlank { null },
+                    reporterId = textOf(obj, "reporter_id"),
+                    reporterName = textOf(obj, "reporter_name"),
+                    reason = textOf(obj, "reason"),
+                    details = textOf(obj, "details").ifBlank { null },
+                    status = textOf(obj, "status"),
+                    createdAt = textOf(obj, "created_at"),
+                    updatedAt = textOf(obj, "updated_at")
+                )
+            }
+            Result.success(reports)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminSuspendUser(accessToken: String, userId: String, reason: String, days: Int): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/suspend") {
+                localHeaders(accessToken)
+                setBody(buildJsonObject {
+                    put("user_id", kotlinx.serialization.json.JsonPrimitive(userId))
+                    put("reason", kotlinx.serialization.json.JsonPrimitive(reason))
+                    put("days", kotlinx.serialization.json.JsonPrimitive(days))
+                })
+            }
+            if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminUpdateReportStatus(accessToken: String, reportId: String, status: String, type: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/admin/reports/$reportId/status") {
+                localHeaders(accessToken)
+                setBody(buildJsonObject {
+                    put("status", kotlinx.serialization.json.JsonPrimitive(status))
+                    put("type", kotlinx.serialization.json.JsonPrimitive(type))
+                })
+            }
+            if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
         } catch (e: Exception) {
             Result.failure(e)
         }

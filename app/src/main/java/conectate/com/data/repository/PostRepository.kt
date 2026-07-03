@@ -1439,6 +1439,37 @@ class PostRepository @Inject constructor(
         @SerialName("visibility") val visibility: String = "public",
         @SerialName("tags") val tags: List<String> = emptyList()
     )
+
+    suspend fun updateCommentContent(commentId: String, newContent: String): Result<Unit> {
+        return try {
+            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient.updatePostComment(accessToken, commentId, newContent)
+            }
+
+            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                header("Prefer", "return=representation")
+                parameter("id", "eq.$commentId")
+                setBody(buildJsonObject { put("content", JsonPrimitive(newContent)) })
+            }
+
+            if (response.status.isSuccess()) {
+                val updatedItems: List<kotlinx.serialization.json.JsonObject> = response.body()
+                if (updatedItems.isNotEmpty()) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(Exception("Not found or unauthorized"))
+                }
+            } else {
+                Result.failure(Exception("HTTP ${response.status}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
 
 

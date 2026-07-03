@@ -33,6 +33,12 @@ class AdminPanelViewModel @Inject constructor(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _userReports = MutableStateFlow<List<conectate.com.data.model.Report>>(emptyList())
+    val userReports: StateFlow<List<conectate.com.data.model.Report>> = _userReports.asStateFlow()
+
+    private val _videoReports = MutableStateFlow<List<conectate.com.data.model.VideoReport>>(emptyList())
+    val videoReports: StateFlow<List<conectate.com.data.model.VideoReport>> = _videoReports.asStateFlow()
+
     fun checkAdminAccess() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -49,6 +55,7 @@ class AdminPanelViewModel @Inject constructor(
                 if (result.isSuccess) {
                     _isAdmin.value = true
                     loadSuspendedProfiles(token)
+                    loadReports(token)
                 } else {
                     _isAdmin.value = false
                     _errorMessage.value = "No tienes permisos de administrador."
@@ -58,6 +65,21 @@ class AdminPanelViewModel @Inject constructor(
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    private suspend fun loadReports(token: String) {
+        try {
+            val userRes = localFallbackApiClient.adminGetReports(token)
+            if (userRes.isSuccess) {
+                _userReports.value = userRes.getOrDefault(emptyList())
+            }
+            val videoRes = localFallbackApiClient.adminGetVideoReports(token)
+            if (videoRes.isSuccess) {
+                _videoReports.value = videoRes.getOrDefault(emptyList())
+            }
+        } catch (e: Exception) {
+            _errorMessage.value = "Error cargando reportes: ${e.message}"
         }
     }
 
@@ -77,5 +99,45 @@ class AdminPanelViewModel @Inject constructor(
 
     fun refreshData() {
         checkAdminAccess()
+    }
+
+    fun suspendUser(userId: String, reason: String, days: Int) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                val result = localFallbackApiClient.adminSuspendUser(token, userId, reason, days)
+                if (result.isSuccess) {
+                    _statusMessage.value = "Usuario suspendido correctamente."
+                    loadSuspendedProfiles(token)
+                } else {
+                    _errorMessage.value = "Error al suspender: ${result.exceptionOrNull()?.message}"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateReportStatus(reportId: String, status: String, type: String) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                val result = localFallbackApiClient.adminUpdateReportStatus(token, reportId, status, type)
+                if (result.isSuccess) {
+                    _statusMessage.value = "Estado de reporte actualizado."
+                    loadReports(token)
+                } else {
+                    _errorMessage.value = "Error al actualizar reporte: ${result.exceptionOrNull()?.message}"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
 }

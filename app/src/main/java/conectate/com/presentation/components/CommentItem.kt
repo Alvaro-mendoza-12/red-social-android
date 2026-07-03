@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ fun CommentItem(
     replyingToUserName: String? = null,
     onReplyClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
+    onEditClick: () -> Unit = {},
     onProfileClick: () -> Unit = {}
 ) {
     val isReply = level > 0
@@ -118,6 +120,17 @@ fun CommentItem(
                 
                 if (comment.isMine || isPostOwner) {
                     Spacer(modifier = Modifier.width(16.dp))
+                    if (comment.isMine) {
+                        IconButton(onClick = onEditClick, modifier = Modifier.size(18.dp)) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Edit,
+                                contentDescription = "Editar",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     IconButton(onClick = onDeleteClick, modifier = Modifier.size(18.dp)) {
                         Icon(
                             imageVector = Icons.Default.Delete, 
