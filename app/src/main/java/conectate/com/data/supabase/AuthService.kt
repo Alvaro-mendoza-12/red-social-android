@@ -952,21 +952,23 @@ class AuthService @Inject constructor(
             return it
         }
         readLocalFallbackAccessToken()?.let { return it }
-        if (isLocalFallbackModeEnabled()) return null
         var currentToken = getAccessToken()
-        if (currentToken.isNullOrBlank() && !isForcedLogout()) {
-            repeat(12) {
-                val liveSession = awaitUsableSession(maxAttempts = 1, intervalMs = 0)
-                if (isUsableSession(liveSession)) {
-                    var safeSession = liveSession ?: return@repeat
-                    _currentSession.value = mapSession(safeSession)
-                    persistSessionSnapshot(safeSession)
-                    currentToken = safeSession.accessToken
-                    return@repeat
+        if (currentToken.isNullOrBlank()) {
+            if (isLocalFallbackModeEnabled()) return null
+            if (!isForcedLogout()) {
+                repeat(12) {
+                    val liveSession = awaitUsableSession(maxAttempts = 1, intervalMs = 0)
+                    if (isUsableSession(liveSession)) {
+                        var safeSession = liveSession ?: return@repeat
+                        _currentSession.value = mapSession(safeSession)
+                        persistSessionSnapshot(safeSession)
+                        currentToken = safeSession.accessToken
+                        return@repeat
+                    }
+                    delay(150)
+                    currentToken = getAccessToken()
+                    if (!currentToken.isNullOrBlank()) return@repeat
                 }
-                delay(150)
-                currentToken = getAccessToken()
-                if (!currentToken.isNullOrBlank()) return@repeat
             }
         }
 
