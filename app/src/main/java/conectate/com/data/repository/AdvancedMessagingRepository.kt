@@ -305,7 +305,7 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
                 parameter("on_conflict", "folder_id,chat_id")
                 setBody(buildJsonObject { put("folder_id", cleanFolder); put("chat_id", cleanChat) })
@@ -330,8 +330,8 @@ class AdvancedMessagingRepository @Inject constructor(
             if (token.isNullOrBlank()) return@runCatching
 
             var r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("folder_id", "eq.`$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("folder_id", "eq.$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
             }
             if (!r.status.isSuccess()) {
                 android.util.Log.w("AdvancedMessagingRepository", "removeChatFromFolder remote sync failed: ${r.status}")
@@ -395,7 +395,7 @@ class AdvancedMessagingRepository @Inject constructor(
                 }
             }
             var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_set_chat_translation_settings") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey); header("Content-Type", "application/json")
                 setBody(payload)
             }
             if (!r.status.isSuccess()) throw IllegalStateException("No se pudo guardar traducción")
@@ -540,6 +540,40 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
 
+    suspend fun getScheduledJobs(scopeType: String, targetId: String): Result<List<ScheduledMessageJob>> = withContext(Dispatchers.IO) {
+        val cleanScope = scopeType.trim().lowercase(Locale.US)
+        val cleanTarget = targetId.trim().lowercase(Locale.US)
+        if (cleanScope.isBlank() || cleanTarget.isBlank()) return@withContext Result.success(emptyList())
+        runCatching {
+            loadLocalScheduled()
+                .filter {
+                    it.scope_type.trim().lowercase(Locale.US) == cleanScope &&
+                        it.target_id.trim().lowercase(Locale.US) == cleanTarget &&
+                        it.status.trim().lowercase(Locale.US) in setOf("pending", "failed")
+                }
+                .sortedBy { parseIso(it.scheduled_for) }
+        }.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudieron cargar mensajes programados")) }
+        )
+    }
+
+
+    suspend fun cancelScheduledJob(jobId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val cleanId = jobId.trim()
+        if (cleanId.isBlank()) return@withContext Result.failure(Exception("Mensaje programado inválido"))
+        runCatching {
+            persistLocalScheduled(loadLocalScheduled().filterNot { it.id == cleanId })
+            if (!cleanId.startsWith("local-", ignoreCase = true)) {
+                patchRemoteScheduledStatus(cleanId, "cancelled", null)
+            }
+        }.fold(
+            onSuccess = { Result.success(Unit) },
+            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo cancelar mensaje programado")) }
+        )
+    }
+
+
 
     suspend fun processDueScheduledJobs(maxBatch: Int = 20): Result<Int> = withContext(Dispatchers.IO) {
         val nowMs = System.currentTimeMillis()
@@ -652,7 +686,7 @@ class AdvancedMessagingRepository @Inject constructor(
         var token = authService.getAccessToken() ?: return emptyList()
         return runCatching {
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/scheduled_message_jobs") {
-                header("Authorization", "Bearer `$token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("select", "id,scope_type,target_id,content,content_type,media_url,translate_to,self_destruct_seconds,scheduled_for,status,error_message,created_at,updated_at")
                 parameter("status", "eq.pending")
                 parameter("scheduled_for", "lte.${Instant.now()}")

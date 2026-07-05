@@ -242,7 +242,11 @@ fun HomeScreen(
             composable(Screen.ChatSettings.route) {
                 conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
             }
-            
+
+            composable(Screen.AdminPanel.route) {
+                conectate.com.presentation.profile.AdminPanelScreen(navController = navController)
+            }
+
             // ✅ FIX: Add FollowList route to HomeScreen NavHost to prevent crash
             composable(
                 route = Screen.FollowList.route,

@@ -2159,7 +2159,7 @@ class GroupRepository @Inject constructor(
                 buildJsonObject {
                     put("group_id", groupId)
                     put("user_id", uid)
-                    put("role", if (uid == creatorId.trim().lowercase()) "admin" else "member")
+                    put("role", if (uid == creatorId.trim().lowercase()) "owner" else "member")
                     put("joined_at", now)
                 }
             }
@@ -2191,7 +2191,7 @@ class GroupRepository @Inject constructor(
                     GroupMemberEntity(
                         group_id = groupId,
                         user_id = uid,
-                        role = if (uid == creatorId.trim().lowercase()) "admin" else "member",
+                        role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
                         joined_at = now
                     )
                 })
@@ -2223,7 +2223,7 @@ class GroupRepository @Inject constructor(
                     conectate.com.data.local.entity.GroupMemberEntity(
                         group_id = groupId,
                         user_id = uid,
-                        role = if (uid == creatorId.trim().lowercase()) "admin" else "member",
+                        role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
                         joined_at = now
                     )
                 })
@@ -2496,6 +2496,9 @@ class GroupRepository @Inject constructor(
     }
 
     private suspend fun getMemberRole(groupId: String, userId: String): String? {
+        if (authService.isLocalFallbackModeEnabled()) {
+            return groupDao.getUserRoleSync(groupId.trim().lowercase(), userId.trim().lowercase())
+        }
         return collectionAdminRemoteStore.getMemberRole(
             membershipTable = "group_members",
             scopeColumn = "group_id",
@@ -2528,6 +2531,26 @@ class GroupRepository @Inject constructor(
                 privileges = privileges,
                 errorMessage = "No tienes permisos para gestionar roles."
             )
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val cleanRole = newRole.trim().lowercase().takeIf { it == "admin" || it == "member" }
+                    ?: return@withContext Result.failure(Exception("Rol inválido."))
+                localFallbackApiClient.joinCollection(token, "groups", cleanId, targetUserId, cleanRole).getOrThrow()
+                groupDao.insertMembers(
+                    listOf(
+                        GroupMemberEntity(
+                            group_id = cleanId,
+                            user_id = targetUserId,
+                            role = cleanRole,
+                            joined_at = java.time.Instant.now().toString()
+                        )
+                    )
+                )
+                scope.launch { syncGroups() }
+                return@withContext Result.success(Unit)
+            }
 
             collectionAdminRemoteStore.updateMemberRole(
                 membershipTable = "group_members",

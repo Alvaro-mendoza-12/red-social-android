@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.media.projection.MediaProjection
@@ -135,21 +136,21 @@ class WebRTCManager(
     private val _debugInfo = MutableStateFlow<Map<String, String>>(emptyMap())
     val debugInfo = _debugInfo.asStateFlow()
 
-    private val peerConnections = mutableMapOf<String, PeerConnection>()
-    private val remoteUserIds = mutableMapOf<String, String>()
-    private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
+    private val peerConnections = ConcurrentHashMap<String, PeerConnection>()
+    private val remoteUserIds = ConcurrentHashMap<String, String>()
+    private val remoteAudioTracks = ConcurrentHashMap<String, AudioTrack>()
     private var remoteAudioPlaybackEnabled: Boolean = true
     
-    private val makingOffer = mutableMapOf<String, Boolean>()
-    private val iceCandidateQueue = mutableMapOf<String, MutableList<IceCandidate>>()
-    private val iceRetryCount = mutableMapOf<String, Int>()
+    private val makingOffer = ConcurrentHashMap<String, Boolean>()
+    private val iceCandidateQueue = ConcurrentHashMap<String, MutableList<IceCandidate>>()
+    private val iceRetryCount = ConcurrentHashMap<String, Int>()
     private val disconnectRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val offerRetryJobs = ConcurrentHashMap<String, Job>()
     private val glareRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val ignoreOffer = mutableMapOf<String, Boolean>()
     private val isSettingRemoteAnswerPending = mutableMapOf<String, Boolean>()
     private val MAX_ICE_RETRIES = 3
-    private val managedIceWaitTimeoutMs = 3_500L
+    private val managedIceWaitTimeoutMs = 10_000L
     private val glareRecoveryTimeoutMs = 2_000L
     private val lowLatencyJitterPackets = 20
     
@@ -395,16 +396,25 @@ class WebRTCManager(
         _signalingStates.value = emptyMap()
         _debugInfo.value = emptyMap()
         outgoingVideoEnabled = true
-        
+
         factory?.dispose()
         factory = null
-        
+
         audioDeviceModule?.release()
         audioDeviceModule = null
+
+        localAudioSource?.dispose()
+        localAudioSource = null
+
+        statsScope.cancel()
+        asyncScope.cancel()
     }
+
+    private var localAudioSource: AudioSource? = null
 
     private fun createLocalAudioTrack() {
         var f = factory ?: return
+        localAudioSource?.dispose()
         val audioConstraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
@@ -412,8 +422,8 @@ class WebRTCManager(
             mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googTypingNoiseDetection", "false"))
         }
-        val audioSource = f.createAudioSource(audioConstraints)
-        localAudioTrack = f.createAudioTrack("ARDAMSa0", audioSource)
+        localAudioSource = f.createAudioSource(audioConstraints)
+        localAudioTrack = f.createAudioTrack("ARDAMSa0", localAudioSource)
         localAudioTrack?.setEnabled(true)
         Log.i("WebRTC", "Audio track created: ${localAudioTrack?.id()}, enabled=${localAudioTrack?.enabled()}")
     }
@@ -955,9 +965,20 @@ class WebRTCManager(
     }
 
     private fun createPeerConnection(socketId: String, remoteUserId: String): PeerConnection? {
-        // Wait briefly for managed TURN credentials before falling back.
+        // Wait for managed TURN credentials before falling back.  This matters a lot
+        // for users outside the local network: signaling can work through Cloudflare,
+        // but audio/video/screen-share needs TURN candidates ready before the first offer.
         try {
             var refreshLatch = activeManagedIceRefreshLatch()
+            if (
+                refreshLatch == null &&
+                hasManagedTurnConfigured &&
+                synchronized(dynamicIceServers) { dynamicIceServers.isEmpty() }
+            ) {
+                Log.w("WebRTC", "⌛ createPeerConnection: managed TURN is empty; forcing refresh before creating peer...")
+                refreshManagedIceServers(force = true)
+                refreshLatch = activeManagedIceRefreshLatch()
+            }
             if (refreshLatch != null) {
                 Log.w("WebRTC", "⌛ createPeerConnection: Waiting for managed TURN refresh...")
                 refreshLatch.await(managedIceWaitTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -1410,6 +1431,7 @@ class WebRTCManager(
                             put("sdp", preferredDesc.description)
                             put("userId", currentUserId)
                         })
+                        makingOffer[socketId] = false
                     }
                     override fun onSetFailure(s: String?) {
                         makingOffer[socketId] = false
@@ -1593,7 +1615,7 @@ class WebRTCManager(
                 // v4.7.1: Wrap suspend call properly
                 asyncScope.launch {
                     delay(300)
-                    renegotiateAll(iceRestart = false)
+                    renegotiateAll(iceRestart = false, force = true)
                 }
             } catch (e: Exception) {
                 Log.e("WebRTCManager", "Error starting video: ${e.message}")
@@ -1617,7 +1639,7 @@ class WebRTCManager(
                 _localVideoTrackFlow.value = null
                 updateLocalVideoSenders(null)
                 releaseVideoPipeline(previousCapturer, previousHelper, previousSource)
-                renegotiateAll(iceRestart = false)
+                renegotiateAll(iceRestart = false, force = true)
             } catch (e: Exception) {
                 Log.e("WebRTCManager", "Error in stopVideo: ${e.message}")
             }
@@ -1627,7 +1649,7 @@ class WebRTCManager(
     private val renegotiateScope = newSafeScope("WebRTCManagerRenegotiate", Dispatchers.Default)
     private var renegotiateJob: Job? = null
 
-    private fun renegotiateAll(iceRestart: Boolean = false) {
+    private fun renegotiateAll(iceRestart: Boolean = false, force: Boolean = false) {
         renegotiateJob?.cancel()
         renegotiateJob = renegotiateScope.launch {
             delay(100) // Debounce reduced for faster sync
@@ -1659,7 +1681,7 @@ class WebRTCManager(
 
                     val trackChanged = previousTrackId != vt?.id()
                     val directionChanged = oldDir != newDirection
-                    if (!directionChanged && !trackChanged && !iceRestart) {
+                    if (!force && !directionChanged && !trackChanged && !iceRestart) {
                         Log.d("WebRTC", "Skipping renegotiation for $id: no effective media change")
                         return@forEach
                     }
@@ -1759,7 +1781,7 @@ class WebRTCManager(
             outgoingVideoEnabled = enabled
             updateLocalVideoSenders(activeOutgoingVideoTrack())
             if (renegotiate) {
-                renegotiateAll(iceRestart = false)
+                renegotiateAll(iceRestart = false, force = true)
             }
         }
     }

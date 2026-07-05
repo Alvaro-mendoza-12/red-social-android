@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.Divider
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -32,6 +33,7 @@ fun CommunitiesTab(
     val combinedCommunities by viewModel.combinedCommunities.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    var selectedSection by rememberSaveable { mutableStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Search Bar with Loading Indicator
@@ -68,8 +70,25 @@ fun CommunitiesTab(
             is CommunitiesUiState.Success -> {
                 val myCommunities = combinedCommunities.filter { it.community.is_member }
                 val exploreCommunities = combinedCommunities.filter { !it.community.is_member }
+                val visibleCommunities = if (selectedSection == 0) myCommunities else exploreCommunities
 
-                if (myCommunities.isEmpty() && exploreCommunities.isEmpty()) {
+                TabRow(
+                    selectedTabIndex = selectedSection,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Tab(
+                        selected = selectedSection == 0,
+                        onClick = { selectedSection = 0 },
+                        text = { Text("Mis comunidades (${myCommunities.size})") }
+                    )
+                    Tab(
+                        selected = selectedSection == 1,
+                        onClick = { selectedSection = 1 },
+                        text = { Text("Explorar (${exploreCommunities.size})") }
+                    )
+                }
+
+                if (visibleCommunities.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -83,7 +102,11 @@ fun CommunitiesTab(
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                             )
                             Text(
-                                text = if (searchQuery.isEmpty()) "No hay comunidades disponibles" else "No se encontraron comunidades",
+                                text = when {
+                                    searchQuery.isNotBlank() -> "No se encontraron comunidades"
+                                    selectedSection == 0 -> "No perteneces a ninguna comunidad"
+                                    else -> "No hay comunidades públicas para explorar"
+                                },
                                 style = MaterialTheme.typography.headlineSmall,
                                 textAlign = TextAlign.Center
                             )
@@ -91,44 +114,22 @@ fun CommunitiesTab(
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        if (myCommunities.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "Mis comunidades",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            items(myCommunities) { communityWithLastMessage ->
-                                CommunityItem(
-                                    communityWithLastMessage = communityWithLastMessage,
-                                    onClick = {
-                                        onNavigateToCommunityChat(communityWithLastMessage.community.id)
-                                    }
-                                )
-                                Divider()
-                            }
+                        item {
+                            Text(
+                                text = if (selectedSection == 0) "Mis comunidades" else "Explorar comunidades",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-                        
-                        if (exploreCommunities.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "Explorar comunidades",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            items(exploreCommunities) { communityWithLastMessage ->
-                                CommunityItem(
-                                    communityWithLastMessage = communityWithLastMessage,
-                                    onClick = {
-                                        onNavigateToCommunityChat(communityWithLastMessage.community.id)
-                                    }
-                                )
-                                Divider()
-                            }
+                        items(visibleCommunities) { communityWithLastMessage ->
+                            CommunityItem(
+                                communityWithLastMessage = communityWithLastMessage,
+                                onClick = {
+                                    onNavigateToCommunityChat(communityWithLastMessage.community.id)
+                                }
+                            )
+                            Divider()
                         }
                     }
                 }

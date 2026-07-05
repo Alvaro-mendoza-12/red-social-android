@@ -319,7 +319,10 @@ fun PollOptionVotersDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     CircularProfileImage(
                                         imageUrl = voter.avatarUrl.orEmpty(),
-                                        size = 28.dp
+                                        size = 28.dp,
+                                        fallbackName = voter.fullName?.ifBlank { null }
+                                            ?: voter.username?.ifBlank { null }
+                                            ?: voter.userId
                                     )
                                     Spacer(Modifier.size(8.dp))
                                     Column {

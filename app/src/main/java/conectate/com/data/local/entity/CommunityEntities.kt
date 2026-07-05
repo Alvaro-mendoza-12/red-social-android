@@ -29,7 +29,7 @@ data class CommunityEntity(
     val unread_count: Int = 0,
     val is_deleted: Boolean = false,
     val only_admins_can_talk: Boolean = false,
-    val is_member: Boolean = true
+    val is_member: Boolean = false
 ) {
     fun toDomain(): Community {
         return Community(

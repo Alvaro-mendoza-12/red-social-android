@@ -112,6 +112,7 @@ androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref 
 
 # Coil
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 coil-video = { group = "io.coil-kt", name = "coil-video", version.ref = "coil" }
 
 # ExoPlayer (Media3)

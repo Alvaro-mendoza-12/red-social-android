@@ -39,7 +39,7 @@ class CollectionGovernanceSupportTest {
     }
 
     @Test
-    fun `resolvePrivileges grants global admin management`() = runBlocking {
+    fun `resolvePrivileges does not grant collection management from global admin flag`() = runBlocking {
         val privileges = CollectionGovernanceSupport.resolvePrivileges(
             currentUserId = "moderator-9",
             creatorId = "creator-1",
@@ -48,8 +48,9 @@ class CollectionGovernanceSupportTest {
         )
 
         assertTrue(privileges.isGlobalAdmin)
-        assertTrue(privileges.canManageMembers)
-        assertTrue(privileges.canManageCollection)
+        assertFalse(privileges.isElevatedMember)
+        assertFalse(privileges.canManageMembers)
+        assertFalse(privileges.canManageCollection)
     }
 
     @Test
@@ -84,6 +85,19 @@ class CollectionGovernanceSupportTest {
                 creatorId = "creator-1",
                 memberRole = "member",
                 isGlobalAdmin = false
+            ),
+            errorMessage = "blocked"
+        )
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `requireCanManageMembers blocks global admin without collection role`() {
+        CollectionGovernanceSupport.requireCanManageMembers(
+            privileges = CollectionGovernancePrivileges(
+                currentUserId = "moderator-9",
+                creatorId = "creator-1",
+                memberRole = "member",
+                isGlobalAdmin = true
             ),
             errorMessage = "blocked"
         )

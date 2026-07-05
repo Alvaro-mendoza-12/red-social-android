@@ -229,6 +229,7 @@ fun SettingsScreen(
             // Section: Pantalla
             SettingsSection(title = "Pantalla") {
                 val isDarkMode by viewModel.isDarkMode.collectAsState()
+                val profileAvatarVideosMuted by viewModel.profileAvatarVideosMuted.collectAsState()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -238,6 +239,18 @@ fun SettingsScreen(
                     Switch(
                         checked = isDarkMode,
                         onCheckedChange = { viewModel.setDarkMode(it) }
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Silenciar avatares animados", style = MaterialTheme.typography.bodyLarge)
+                    Switch(
+                        checked = profileAvatarVideosMuted,
+                        onCheckedChange = { viewModel.setProfileAvatarVideosMuted(it) }
                     )
                 }
             }
@@ -461,7 +474,7 @@ fun SettingsScreen(
             if (viewModel.isAdmin) {
                 SettingsSection(title = "Administración") {
                     Button(
-                        onClick = { navController.navigate(Screen.AdminPanel.route) },
+                        onClick = { mainNavController.navigate(Screen.AdminPanel.route) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Settings, contentDescription = null)

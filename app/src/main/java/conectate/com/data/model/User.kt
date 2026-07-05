@@ -24,6 +24,9 @@ data class User(
     val phone: String? = null,
     val bio: String? = null,
     val avatar_url: String? = null,
+    val avatar_media_type: String? = null,
+    val avatar_video_muted: Boolean = true,
+    val avatar_duration_ms: Long? = null,
     val cover_url: String? = null,
     val country: String? = null,
     val city: String? = null,
@@ -74,6 +77,17 @@ data class User(
     
     val profileImage: String
         get() = if (avatar_url.isNullOrEmpty() || avatar_url.equals("null", ignoreCase = true)) "" else avatar_url
+
+    val isProfileAvatarVideo: Boolean
+        get() {
+            val type = avatar_media_type?.trim()?.lowercase().orEmpty()
+            val url = avatar_url?.substringBefore("?")?.lowercase().orEmpty()
+            return type == "video" ||
+                type.startsWith("video/") ||
+                url.endsWith(".mp4") ||
+                url.endsWith(".m4v") ||
+                url.endsWith(".mov")
+        }
         
     val safeProfileImage: String?
         get() = if (profileImage.isEmpty()) null else profileImage

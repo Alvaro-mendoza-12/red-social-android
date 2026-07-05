@@ -39,7 +39,8 @@ fun UserItem(
         CircularProfileImage(
             imageUrl = user.avatar_url,
             size = 56.dp,
-            isVerified = user.is_verified
+            isVerified = user.is_verified,
+            fallbackName = user.displayName
         )
 
         Spacer(modifier = Modifier.width(16.dp))

@@ -39,18 +39,9 @@ class CommunityDetailViewModel @Inject constructor(
 
     private var communityId: String? = null
 
-    private var isGlobalAdmin = false
-
     init {
         val userId = authService.getCurrentUserId()
         _currentUserId.value = userId
-        if (userId != null) {
-            viewModelScope.launch {
-                val profile = userRepository.getUserById(userId).getOrNull()
-                isGlobalAdmin = profile?.is_admin == true
-                _isAdmin.value = isGlobalAdmin
-            }
-        }
     }
 
     fun loadCommunityDetails(id: String) {
@@ -70,9 +61,11 @@ class CommunityDetailViewModel @Inject constructor(
                     _isLoading.value = false
                     
                     val myId = _currentUserId.value
-                    val amICreator = comm.creator_id == myId
-                    val amIAdmin = _members.value.find { it.user_id == myId }?.role == "admin"
-                    _isAdmin.value = isGlobalAdmin || amICreator || amIAdmin
+                    val amICreator = sameCommunityUserId(comm.creator_id, myId)
+                    val amIAdmin = _members.value.find { sameCommunityUserId(it.user_id, myId) }
+                        ?.role
+                        .isCommunityAdminRole()
+                    _isAdmin.value = amICreator || amIAdmin
                 }
             }
         }
@@ -115,9 +108,11 @@ class CommunityDetailViewModel @Inject constructor(
                     // Recalculate permissions on member update
                     val myId = _currentUserId.value
                     val comm = _community.value
-                    val amICreator = comm?.creator_id == myId
-                    val amIAdmin = enriched.find { it.user_id == myId }?.role == "admin"
-                    _isAdmin.value = isGlobalAdmin || amICreator || amIAdmin
+                    val amICreator = sameCommunityUserId(comm?.creator_id, myId)
+                    val amIAdmin = enriched.find { sameCommunityUserId(it.user_id, myId) }
+                        ?.role
+                        .isCommunityAdminRole()
+                    _isAdmin.value = amICreator || amIAdmin
                 }
             }
         }
@@ -176,6 +171,14 @@ class CommunityDetailViewModel @Inject constructor(
         }
     }
 
+    fun removeMember(userId: String) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            communityRepository.removeMember(id, userId)
+            loadMembers()
+        }
+    }
+
     fun updateCommunityInfo(
         name: String,
         description: String?,
@@ -203,3 +206,12 @@ class CommunityDetailViewModel @Inject constructor(
         }
     }
 }
+
+private fun sameCommunityUserId(left: String?, right: String?): Boolean {
+    val cleanLeft = left?.trim()?.lowercase().orEmpty()
+    val cleanRight = right?.trim()?.lowercase().orEmpty()
+    return cleanLeft.isNotBlank() && cleanLeft == cleanRight
+}
+
+private fun String?.isCommunityAdminRole(): Boolean =
+    this?.trim()?.lowercase() in setOf("admin", "owner", "creator")

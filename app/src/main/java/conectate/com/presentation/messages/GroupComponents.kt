@@ -35,7 +35,8 @@ fun GroupItem(
         CircularProfileImage(
             imageUrl = group.image,
             size = 52.dp,
-            showBorder = false
+            showBorder = false,
+            fallbackName = group.name
         )
         
         Spacer(modifier = Modifier.width(12.dp))

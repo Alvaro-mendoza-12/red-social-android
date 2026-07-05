@@ -17,9 +17,12 @@ import io.github.jan.supabase.realtime.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -81,7 +84,7 @@ class MessageRealtimeSync @Inject constructor(
                     val msg = parseMessageFromJson(record)
                     when (action) {
                         QueuedMessageAction.Insert -> handleGlobalMessageInsert(msg, cleanUserId)
-                        QueuedMessageAction.Update -> handleGlobalMessageUpdate(msg, cleanUserId)
+                        QueuedMessageAction.Update -> handleGlobalMessageUpdate(msg)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in queue processor", e)
@@ -155,7 +158,12 @@ class MessageRealtimeSync @Inject constructor(
             ubuntuRealtimeClient.events.collect { envelope ->
                 if (envelope.event != "message") return@collect
                 val record = envelope.payload["message"]?.jsonObject ?: return@collect
-                messageChannel.send(QueuedMessageAction.Insert to record)
+                val action = envelope.payload["action"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                val queuedAction = when (action) {
+                    "updated", "edited", "deleted", "reaction", "reacted" -> QueuedMessageAction.Update
+                    else -> QueuedMessageAction.Insert
+                }
+                messageChannel.send(queuedAction to record)
             }
         }
     }
@@ -214,10 +222,7 @@ class MessageRealtimeSync @Inject constructor(
     /**
      * Maneja actualización de mensaje desde realtime (read receipts, status changes).
      */
-    private suspend fun handleGlobalMessageUpdate(
-        msg: Message,
-        sessionUserId: String?
-    ) {
+    private suspend fun handleGlobalMessageUpdate(msg: Message) {
         var cleanId = msg.chat_id.trim().lowercase()
         var mutex = getMutexForChat(cleanId)
         mutex.withLock {
@@ -227,6 +232,23 @@ class MessageRealtimeSync @Inject constructor(
 
                     // Emitir evento
                     _messageEvents.emit(msg)
+
+                    val chat = chatDao.getChatById(cleanId)
+                    if (chat?.last_message_id == msg.id) {
+                        val timestamp = msg.created_at ?: msg.updated_at ?: Instant.now().toString()
+                        if (msg.deleted_for_all) {
+                            chatDao.clearLastMessage(cleanId, timestamp)
+                        } else {
+                            chatDao.updateLastMessage(
+                                chatId = cleanId,
+                                content = previewFor(msg.content_type, msg.content),
+                                timestamp = timestamp,
+                                messageId = msg.id,
+                                senderId = msg.sender_id
+                            )
+                        }
+                        refreshUserChatsFlow()
+                    }
 
                     // Si es un read receipt, recalcular unread del chat
                     if (msg.status == "read" || msg.status == "delivered") {
@@ -355,6 +377,7 @@ class MessageRealtimeSync @Inject constructor(
     /**
      * Parsea un registro JSON de Supabase a objeto Message.
      */
+    @OptIn(ExperimentalSerializationApi::class)
     private fun parseMessageFromJson(record: JsonObject): Message {
         val parser = Json {
             ignoreUnknownKeys = true

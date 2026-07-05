@@ -37,8 +37,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 35
-        versionCode = 39
-        versionName = "2.2.9"
+        versionCode = 41
+        versionName = "3.0.1"
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
@@ -123,7 +123,7 @@ android {
             isDebuggable = false
 
             proguardFiles(
-                getDefaultProguardFile("proguard-android.txt"),
+                getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
 
@@ -237,6 +237,7 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.video)
 
     implementation(libs.media3.exoplayer)

@@ -183,7 +183,11 @@ fun CreateGroupScreen(
                                 items(selectedUsers) { user ->
                                     Box(contentAlignment = Alignment.TopEnd) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            CircularProfileImage(imageUrl = user.avatar_url, size = 50.dp)
+                                            CircularProfileImage(
+                                                imageUrl = user.avatar_url,
+                                                size = 50.dp,
+                                                fallbackName = user.displayName
+                                            )
                                             Text(
                                                 text = user.displayName?.split(" ")?.firstOrNull() ?: "Usuario",
                                                 style = MaterialTheme.typography.labelSmall,
@@ -318,7 +322,11 @@ fun UserSelectionItem(user: User, isSelected: Boolean, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
-            CircularProfileImage(imageUrl = user.avatar_url, size = 48.dp)
+            CircularProfileImage(
+                imageUrl = user.avatar_url,
+                size = 48.dp,
+                fallbackName = user.displayName
+            )
             if (isSelected) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary,

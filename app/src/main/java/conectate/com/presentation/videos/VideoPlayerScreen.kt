@@ -1193,7 +1193,8 @@ fun VideoPlayerScreen(
                                                     ) {
                                                         CircularProfileImage(
                                                             imageUrl = user.avatar_url ?: "",
-                                                            size = 26.dp
+                                                            size = 26.dp,
+                                                            fallbackName = user.displayName
                                                         )
                                                         Spacer(modifier = Modifier.width(8.dp))
                                                         Text("@$username", fontWeight = FontWeight.SemiBold)

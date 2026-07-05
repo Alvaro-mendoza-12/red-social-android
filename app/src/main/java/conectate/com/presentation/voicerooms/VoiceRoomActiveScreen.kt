@@ -1373,19 +1373,17 @@ fun ReactionPicker(
 
 @Composable
 fun FloatingReaction(reaction: ReactionEvent) {
-    val infiniteTransition = rememberInfiniteTransition(label = "float")
-    val offsetY by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = -300f,
-        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
-        label = "y"
-    )
-    val opacity by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
-        label = "alpha"
-    )
+    val progress = remember(reaction.id) { Animatable(0f) }
+    LaunchedEffect(reaction.id) {
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 2_400, easing = LinearOutSlowInEasing)
+        )
+    }
+    val p = progress.value
+    val offsetY = -300f * p
+    val opacity = (1f - p).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier

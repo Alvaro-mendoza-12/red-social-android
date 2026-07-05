@@ -3,6 +3,8 @@ package conectate.com.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Movie
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
@@ -36,6 +38,7 @@ import java.net.URLEncoder
 import java.util.UUID
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
@@ -58,6 +61,12 @@ data class BlockRelationship(
 ) {
     val isBlocked: Boolean get() = blockedByMe || blockedMe
 }
+
+data class ProfileAvatarUpload(
+    val url: String,
+    val mediaType: String,
+    val durationMs: Long? = null
+)
 
 @Singleton
 class UserRepository @Inject constructor(
@@ -184,6 +193,9 @@ class UserRepository @Inject constructor(
                 avatar_url = sanitizeLocalFallbackAssetUrl(
                     profile.stringValue("avatar_url", "avatarUrl", "photo_url", "profile_image", "picture", "image")
                 ),
+                avatar_media_type = sanitizeProfileText(profile.stringValue("avatar_media_type", "avatarMediaType")),
+                avatar_video_muted = profile.booleanValue("avatar_video_muted", "avatarVideoMuted") ?: true,
+                avatar_duration_ms = profile.intValue("avatar_duration_ms", "avatarDurationMs")?.toLong(),
                 cover_url = sanitizeLocalFallbackAssetUrl(profile.stringValue("cover_url", "coverUrl", "cover_image")),
                 country = sanitizeProfileText(profile.stringValue("country")),
                 city = sanitizeProfileText(profile.stringValue("city")),
@@ -413,6 +425,11 @@ class UserRepository @Inject constructor(
             request.career?.let { put("career", JsonPrimitive(it)) }
             request.availability_schedule?.let { put("availability_schedule", JsonPrimitive(it)) }
             request.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
+            request.avatar_media_type?.let { put("avatar_media_type", JsonPrimitive(it)) }
+            request.avatar_video_muted?.let { put("avatar_video_muted", JsonPrimitive(it)) }
+            request.avatar_duration_ms?.let {
+                put("avatar_duration_ms", JsonPrimitive(it.coerceIn(0L, PROFILE_AVATAR_MAX_DURATION_MS)))
+            }
             request.cover_url?.let { put("cover_url", JsonPrimitive(it)) }
             lastNameChange?.let { put("last_name_change", JsonPrimitive(it)) }
             request.is_private?.let { put("is_private", JsonPrimitive(it)) }
@@ -1342,6 +1359,9 @@ class UserRepository @Inject constructor(
                     city = request.city,
                     status = request.status,
                     avatarUrl = request.avatar_url,
+                    avatarMediaType = request.avatar_media_type,
+                    avatarVideoMuted = request.avatar_video_muted,
+                    avatarDurationMs = request.avatar_duration_ms,
                     coverUrl = request.cover_url,
                     isPrivate = request.is_private,
                     profileVisibility = request.profile_visibility,
@@ -1562,6 +1582,63 @@ class UserRepository @Inject constructor(
         return uploadImage(uri, "avatars", "_profile")
     }
 
+    suspend fun uploadProfileAvatarMedia(uri: Uri): Result<ProfileAvatarUpload> {
+        return try {
+            val userId = authService.getCurrentUserId()
+                ?: return Result.failure(Exception("No user logged in"))
+            val bytes = context.contentResolver
+                .openInputStream(uri)
+                ?.use { it.readBytes() }
+                ?: return Result.failure(Exception("No se pudo leer el archivo."))
+            val hintedMime = context.contentResolver.getType(uri)
+                ?.substringBefore(";")
+                ?.trim()
+                ?.lowercase()
+            val inferredMime = inferProfileAvatarMimeType(bytes)
+            val mimeType = when {
+                inferredMime != null -> inferredMime
+                hintedMime == "image/gif" -> "image/gif"
+                hintedMime?.startsWith("video/") == true -> "video/mp4"
+                hintedMime in setOf("image/jpeg", "image/png", "image/webp") -> hintedMime
+                else -> null
+            } ?: return Result.failure(Exception("Usa JPG, PNG, WEBP, GIF o un video MP4."))
+
+            if (mimeType == "image/gif") {
+                val durationMs = gifDurationMs(bytes).coerceAtLeast(PROFILE_AVATAR_MAX_DURATION_MS)
+                if (durationMs > PROFILE_AVATAR_MAX_DURATION_MS) {
+                    return Result.failure(Exception("El GIF dura ${durationMs / 1000.0}s. El máximo para perfil es 2s."))
+                }
+                return uploadRawAvatarMedia(
+                    fileName = "$userId/${UUID.randomUUID()}_profile.gif",
+                    bytes = bytes,
+                    mimeType = "image/gif",
+                    mediaType = "gif",
+                    durationMs = durationMs
+                )
+            }
+
+            if (mimeType == "video/mp4") {
+                val durationMs = getVideoDurationMs(uri)
+                if (durationMs > PROFILE_AVATAR_MAX_DURATION_MS + 150L) {
+                    return Result.failure(Exception("Recorta el video a máximo 2s antes de subirlo."))
+                }
+                return uploadRawAvatarMedia(
+                    fileName = "$userId/${UUID.randomUUID()}_profile.mp4",
+                    bytes = bytes,
+                    mimeType = "video/mp4",
+                    mediaType = "video",
+                    durationMs = durationMs.takeIf { it > 0L }?.coerceAtMost(PROFILE_AVATAR_MAX_DURATION_MS)
+                )
+            }
+
+            uploadImage(uri, "avatars", "_profile").map { url ->
+                ProfileAvatarUpload(url = url, mediaType = "image", durationMs = null)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ─────────────────────────────────────────────
     // UPLOAD COVER IMAGE
     // ─────────────────────────────────────────────
@@ -1670,8 +1747,78 @@ class UserRepository @Inject constructor(
         return when (mimeType) {
             "image/png" -> "png"
             "image/webp" -> "webp"
+            "image/gif" -> "gif"
             else -> "jpg"
         }
+    }
+
+    private suspend fun uploadRawAvatarMedia(
+        fileName: String,
+        bytes: ByteArray,
+        mimeType: String,
+        mediaType: String,
+        durationMs: Long?
+    ): Result<ProfileAvatarUpload> {
+        val upload = storageService.uploadFile(
+            "avatars",
+            fileName,
+            bytes,
+            mimeType
+        )
+        return if (upload.isSuccess) {
+            Result.success(
+                ProfileAvatarUpload(
+                    url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("avatars", fileName)).orEmpty(),
+                    mediaType = mediaType,
+                    durationMs = durationMs
+                )
+            )
+        } else {
+            Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir el avatar."))
+        }
+    }
+
+    fun getProfileVideoDurationMs(uri: Uri): Long = getVideoDurationMs(uri)
+
+    private fun getVideoDurationMs(uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?: 0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun gifDurationMs(bytes: ByteArray): Long {
+        return runCatching {
+            Movie.decodeByteArray(bytes, 0, bytes.size)?.duration()?.toLong() ?: PROFILE_AVATAR_MAX_DURATION_MS
+        }.getOrDefault(PROFILE_AVATAR_MAX_DURATION_MS)
+    }
+
+    private fun inferProfileAvatarMimeType(bytes: ByteArray): String? {
+        if (bytes.size < 12) return null
+        if (
+            bytes[0] == 0x47.toByte() &&
+            bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() &&
+            bytes[3] == 0x38.toByte()
+        ) {
+            return "image/gif"
+        }
+        if (
+            bytes.getOrNull(4) == 0x66.toByte() &&
+            bytes.getOrNull(5) == 0x74.toByte() &&
+            bytes.getOrNull(6) == 0x79.toByte() &&
+            bytes.getOrNull(7) == 0x70.toByte()
+        ) {
+            return "video/mp4"
+        }
+        return inferImageMimeType(bytes)
     }
 
     private fun compressImageToMaxBytes(uri: Uri, maxBytes: Long): ByteArray? {
@@ -1756,6 +1903,14 @@ class UserRepository @Inject constructor(
             bytes[3] == 0x47.toByte()
         ) {
             return "image/png"
+        }
+        if (
+            bytes[0] == 0x47.toByte() &&
+            bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() &&
+            bytes[3] == 0x38.toByte()
+        ) {
+            return "image/gif"
         }
         if (
             bytes[0] == 0x52.toByte() &&
@@ -2215,6 +2370,14 @@ class UserRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
 
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.blockUser(accessToken, targetUserId)
+                    .map {
+                        invalidateBlockedMentionCache()
+                        Unit
+                    }
+            }
+
             val blockData = buildJsonObject {
                 put("blocker_id", currentUserId)
                 put("blocked_id", targetUserId)
@@ -2252,6 +2415,14 @@ class UserRepository @Inject constructor(
                 ?: return Result.failure(Exception("No access token"))
             var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
+
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.unblockUser(accessToken, targetUserId)
+                    .map {
+                        invalidateBlockedMentionCache()
+                        Unit
+                    }
+            }
 
             var response = supabaseConfig.httpClient.delete(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
@@ -2343,6 +2514,16 @@ class UserRepository @Inject constructor(
             var cleanTargetId = targetUserId.trim().lowercase()
             if (cleanTargetId.isBlank()) return Result.success(BlockRelationship())
 
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.getBlockRelationship(accessToken, cleanTargetId)
+                    .map { response ->
+                        BlockRelationship(
+                            blockedByMe = response.blockedByMe,
+                            blockedMe = response.blockedMe
+                        )
+                    }
+            }
+
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
             ) {
@@ -2381,13 +2562,27 @@ class UserRepository @Inject constructor(
         }
     }
 
-    fun observeBlockRelationship(targetUserId: String): Flow<BlockRelationship> = callbackFlow {
+    fun observeBlockRelationship(targetUserId: String): Flow<BlockRelationship> {
+        val cleanTargetId = targetUserId.trim().lowercase()
+        if (shouldUseUbuntuBackend()) {
+            return flow {
+                if (cleanTargetId.isBlank()) {
+                    emit(BlockRelationship())
+                    return@flow
+                }
+                while (true) {
+                    emit(getBlockRelationship(cleanTargetId).getOrDefault(BlockRelationship()))
+                    delay(5_000L)
+                }
+            }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        }
+
+        return callbackFlow {
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         if (currentUserId.isNullOrBlank()) {
             close(IllegalStateException("No user logged in"))
             return@callbackFlow
         }
-        var cleanTargetId = targetUserId.trim().lowercase()
         if (cleanTargetId.isBlank()) {
             trySend(BlockRelationship())
             close()
@@ -2439,7 +2634,8 @@ class UserRepository @Inject constructor(
             collectorJob.cancel()
             subscribeJob.cancel()
         }
-    }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
+    }
 
     private fun isBlockPairEvent(
         record: JsonObject,
@@ -2801,6 +2997,8 @@ class UserRepository @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     private companion object {
+        const val PROFILE_AVATAR_MAX_DURATION_MS = 2_000L
+
         val NON_MENTIONABLE_STATUSES = setOf(
             "deleted",
             "deactivated",

@@ -248,7 +248,7 @@ fun VideoFeedScreen(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(cacheDataSourceFactory)
             )
             .build().apply {
-                repeatMode = Player.REPEAT_MODE_OFF // Auto skip instead of loop
+                repeatMode = Player.REPEAT_MODE_ONE
                 playWhenReady = true
                 // Handle Audio Focus automatically
                 setAudioAttributes(
@@ -261,18 +261,13 @@ fun VideoFeedScreen(
             }
     }
     
-    val coroutineScope = rememberCoroutineScope()
-    
-    // Auto-skip when video ends
+    // Keep the current video looping until the user swipes.
     DisposableEffect(exoPlayer, pagerState.currentPage) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    coroutineScope.launch {
-                        if (pagerState.currentPage < currentVideos.size - 1) {
-                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                        }
-                    }
+                    exoPlayer.seekTo(0)
+                    exoPlayer.play()
                 }
             }
         }
@@ -964,6 +959,10 @@ fun VideoItem(
                     imageUrl = if (video.userProfileImage.isNotEmpty()) video.userProfileImage else null,
                     size = 50.dp,
                     isVerified = video.isVerified,
+                    mediaType = video.avatarMediaType,
+                    muted = video.avatarVideoMuted,
+                    allowSound = !video.avatarVideoMuted,
+                    fallbackName = video.userName,
                     borderColor = Color.White,
                     borderWidth = 1.dp
                 )

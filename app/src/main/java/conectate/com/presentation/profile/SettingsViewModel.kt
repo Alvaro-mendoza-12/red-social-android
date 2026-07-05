@@ -33,9 +33,14 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val isDarkMode: StateFlow<Boolean> = themePreferences.isDarkMode
+    val profileAvatarVideosMuted: StateFlow<Boolean> = themePreferences.profileAvatarVideosMuted
 
     fun setDarkMode(enabled: Boolean) {
         themePreferences.setDarkMode(enabled)
+    }
+
+    fun setProfileAvatarVideosMuted(enabled: Boolean) {
+        themePreferences.setProfileAvatarVideosMuted(enabled)
     }
 
     private val _settingsState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -90,30 +95,40 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun contactSupport(adminName: String, navController: NavController, context: android.content.Context) {
-        val adminId = if (adminName.equals("conectate", ignoreCase = true)) {
-            _conectateAdminId.value
-        } else {
-             _alvaroAdminId.value
-        }
-
-        android.util.Log.d("SettingsViewModel", "Contacting support: $adminName, Resolved ID: $adminId")
-
-        if (!adminId.isNullOrBlank()) {
-            android.widget.Toast.makeText(context, "Abriendo chat con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
+        viewModelScope.launch {
             try {
-                val route = Screen.Chat.createRoute(
-                    userId = adminId, 
-                    initialMessage = "Hola $adminName, necesito ayuda con la aplicación."
-                )
-                android.util.Log.d("SettingsViewModel", "Navigating to: $route")
-                navController.navigate(route)
+                var adminId = if (adminName.equals("conectate", ignoreCase = true)) _conectateAdminId.value else _alvaroAdminId.value
+
+                if (adminId.isNullOrBlank()) {
+                    if (adminName.equals("conectate", ignoreCase = true)) {
+                        val conectateUser = userRepository.getUserByUsername("conectate").getOrNull()
+                            ?: userRepository.getUserByUsername("Conectate").getOrNull()
+                            ?: userRepository.getUserByUsername("gamergamerff017").getOrNull()
+                            ?: userRepository.getUserByEmail("conectate@admin.com").getOrNull()
+                            ?: userRepository.getUserByEmail("gamergamerff017@gmail.com").getOrNull()
+                        adminId = conectateUser?.id
+                    } else {
+                        val alvaroUser = userRepository.getUserByUsername("alvaro").getOrNull()
+                            ?: userRepository.getUserByUsername("Alvaro").getOrNull()
+                            ?: userRepository.getUserByEmail("alvaromendozamarin004@gmail.com").getOrNull()
+                        adminId = alvaroUser?.id
+                    }
+                }
+
+                if (!adminId.isNullOrBlank()) {
+                    val route = Screen.Chat.createRoute(
+                        userId = adminId,
+                        initialMessage = "Hola $adminName, necesito ayuda con la aplicación."
+                    )
+                    navController.navigate(route)
+                } else {
+                    android.widget.Toast.makeText(context, "Admin $adminName no encontrado.", android.widget.Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
-                android.util.Log.e("SettingsViewModel", "Navigation failed", e)
-                android.widget.Toast.makeText(context, "Error de navegación: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                android.util.Log.e("SettingsViewModel", "Contact support failed", e)
+                android.widget.Toast.makeText(context, "Error de red", android.widget.Toast.LENGTH_SHORT).show()
             }
-        } else {
-            android.widget.Toast.makeText(context, "Admin $adminName no encontrado. Intente más tarde.", android.widget.Toast.LENGTH_SHORT).show()
-            android.util.Log.e("SettingsViewModel", "Admin ID not found for $adminName")
         }
     }
 

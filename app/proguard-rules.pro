@@ -21,6 +21,9 @@
 -keep class conectate.com.core.** { *; }
 -keep class conectate.com.di.** { *; }
 -keep class conectate.com.util.** { *; }
+-keep class conectate.com.presentation.navigation.Screen { *; }
+-keep class conectate.com.presentation.navigation.Screen$* { *; }
+-keepclassmembers enum * { *; }
 -keep class conectate.com.util.ConversationBackgroundCodec** { *; }
 
 # Hilt / Dagger
@@ -105,3 +108,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# OkHttp
+-dontwarn okhttp3.internal.platform.**
+-keep class okhttp3.** { *; }
+-keepclassmembers class okhttp3.** { *; }

@@ -300,10 +300,12 @@ fun CommunityChatScreen(
                                 navController.navigate(conectate.com.presentation.navigation.Screen.CommunityDetail.createRoute(communityId))
                             }
                     ) {
-                        state?.community?.image?.let {
-                            CircularProfileImage(imageUrl = it, size = 32.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
+                        CircularProfileImage(
+                            imageUrl = state?.community?.image,
+                            size = 32.dp,
+                            fallbackName = state?.community?.name ?: "Comunidad"
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = state?.community?.name ?: "Comunidad",
                             maxLines = 1,
@@ -334,6 +336,24 @@ fun CommunityChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones de la comunidad")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        val amICreator = state?.community?.creator_id
+                            ?.trim()
+                            ?.equals(currentUserId, ignoreCase = true) == true
+                        if (state?.isMember == true && !amICreator) {
+                            DropdownMenuItem(
+                                text = { Text("Salir de la comunidad") },
+                                leadingIcon = { Icon(Icons.Default.ExitToApp, contentDescription = null) },
+                                onClick = {
+                                    showHeaderMenu = false
+                                    viewModel.leaveCommunity {
+                                        navController.navigate(conectate.com.presentation.navigation.Screen.Messages.route) {
+                                            popUpTo(conectate.com.presentation.navigation.Screen.Messages.route) { inclusive = false }
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Fondo") },
                             leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) },

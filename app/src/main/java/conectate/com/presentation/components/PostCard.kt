@@ -83,6 +83,7 @@ fun PostCard(
                     imageUrl = post.userProfileImage ?: "",
                     size = 40.dp,
                     isVerified = post.isVerified,
+                    fallbackName = post.userName,
                     modifier = Modifier.clickable { onUserClick(post.userId) }
                 )
                 

@@ -1,6 +1,9 @@
 # 🔴 Conéctate - Red Social Móvil
 
-Fecha de ultima revision documental: 2026-06-18.
+Fecha de ultima revision documental: 2026-07-04.
+
+> Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
+> Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
 Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
 

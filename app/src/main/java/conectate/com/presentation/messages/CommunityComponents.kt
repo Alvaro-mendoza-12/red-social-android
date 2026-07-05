@@ -34,7 +34,8 @@ fun CommunityItem(
         CircularProfileImage(
             imageUrl = community.image,
             size = 52.dp,
-            showBorder = false
+            showBorder = false,
+            fallbackName = community.name
         )
         
         Spacer(modifier = Modifier.width(12.dp))

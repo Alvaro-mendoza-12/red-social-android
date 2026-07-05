@@ -44,9 +44,14 @@ fun CommunityDetailScreen(
     var showDeletedByOtherAlert by remember { mutableStateOf(false) }
     var showEditCommunityDialog by remember { mutableStateOf(false) }
     
-    val amICreator = community?.creator_id == currentUserId
-    val amIAdmin = members.any { it.user_id == currentUserId && it.role == "admin" }
-    val canManage = amICreator || amIAdmin
+    val normalizedCurrentUserId = currentUserId?.trim()?.lowercase().orEmpty()
+    val normalizedCreatorId = community?.creator_id?.trim()?.lowercase().orEmpty()
+    val amICreator = normalizedCurrentUserId.isNotBlank() && normalizedCurrentUserId == normalizedCreatorId
+    val amIAdmin = members.any {
+        it.user_id.trim().lowercase() == normalizedCurrentUserId &&
+            normalizedCommunityRole(it.role) in setOf("admin", "owner", "creator")
+    }
+    val canManageMembers = isAdmin || amICreator || amIAdmin
 
     // Cargar detalles al iniciar la pantalla
     LaunchedEffect(communityId) {
@@ -94,9 +99,6 @@ fun CommunityDetailScreen(
                                 }
                             )
                             Divider()
-                        }
-
-                        if (canManage) {
                             DropdownMenuItem(
                                 text = { Text("Eliminar comunidad para todos") },
                                 onClick = {
@@ -255,13 +257,21 @@ fun CommunityDetailScreen(
                     }
 
                     items(members) { member ->
+                        val memberRole = communityMemberDisplayRole(
+                            memberUserId = member.user_id,
+                            creatorId = community?.creator_id,
+                            rawRole = member.role
+                        )
                         CommunityMemberItem(
                             userId = member.user_id,
                             userName = member.userName,
                             userImage = member.userImage,
-                            role = member.role,
-                            isCurrentUser = member.user_id == currentUserId,
-                            canManageMember = canManage && member.user_id != currentUserId && member.user_id != community?.creator_id,
+                            role = memberRole,
+                            isCurrentUser = member.user_id.trim().lowercase() == normalizedCurrentUserId,
+                            canManageMember = canManageMembers &&
+                                member.user_id.trim().lowercase() != normalizedCurrentUserId &&
+                                member.user_id.trim().lowercase() != normalizedCreatorId,
+                            onRemove = { viewModel.removeMember(member.user_id) },
                             onPromote = { viewModel.promoteToAdmin(member.user_id) },
                             onDemote = { viewModel.demoteToMember(member.user_id) },
                             navController = navController
@@ -406,6 +416,7 @@ fun CommunityMemberItem(
     canManageMember: Boolean,
     onPromote: () -> Unit,
     onDemote: () -> Unit,
+    onRemove: () -> Unit,
     navController: NavController
 ) {
     var showOptions by remember { mutableStateOf(false) }
@@ -422,6 +433,7 @@ fun CommunityMemberItem(
         CircularProfileImage(
             imageUrl = userImage,
             size = 48.dp,
+            fallbackName = if (isCurrentUser) "Tú" else userName,
             modifier = Modifier.clickable {
                 if (!userImage.isNullOrEmpty()) {
                     navController.navigate(Screen.FullScreenImage.createRoute(userImage))
@@ -435,12 +447,7 @@ fun CommunityMemberItem(
                 style = MaterialTheme.typography.bodyLarge
             )
             Text(
-                text = when (role) {
-                    "owner" -> "Creador"
-                    "admin" -> "Administrador"
-                    "member" -> "Miembro"
-                    else -> role
-                },
+                text = communityRoleLabel(role),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -457,8 +464,41 @@ fun CommunityMemberItem(
                     } else if (role == "admin") {
                         DropdownMenuItem(text = { Text("Degradar a Miembro") }, onClick = { showOptions = false; onDemote() })
                     }
+                    DropdownMenuItem(
+                        text = { Text("Expulsar miembro") },
+                        onClick = { showOptions = false; onRemove() },
+                        leadingIcon = {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        }
+                    )
                 }
             }
         }
     }
 }
+
+private fun normalizedCommunityRole(role: String?): String =
+    role?.trim()?.lowercase().orEmpty()
+
+private fun communityMemberDisplayRole(
+    memberUserId: String,
+    creatorId: String?,
+    rawRole: String?
+): String {
+    val cleanMemberId = memberUserId.trim().lowercase()
+    val cleanCreatorId = creatorId?.trim()?.lowercase().orEmpty()
+    if (cleanMemberId.isNotBlank() && cleanMemberId == cleanCreatorId) return "owner"
+    val role = normalizedCommunityRole(rawRole)
+    return when (role) {
+        "creator", "owner" -> "owner"
+        "admin" -> "admin"
+        else -> "member"
+    }
+}
+
+private fun communityRoleLabel(role: String): String =
+    when (normalizedCommunityRole(role)) {
+        "owner", "creator" -> "Admin principal"
+        "admin" -> "Admin"
+        else -> "Miembro"
+    }

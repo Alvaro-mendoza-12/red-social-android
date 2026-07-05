@@ -68,9 +68,11 @@ class MediaUploadGuard @Inject constructor() {
             allowedContentTypes = setOf(
                 "image/jpeg",
                 "image/png",
-                "image/webp"
+                "image/webp",
+                "image/gif",
+                "video/mp4"
             ),
-            allowedExtensions = setOf("jpg", "jpeg", "png", "webp")
+            allowedExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "mp4")
         ),
         "groups" to BucketPolicy(
             maxBytes = 60L * 1024 * 1024,
@@ -230,6 +232,14 @@ class MediaUploadGuard @Inject constructor() {
             bytes[3] == 0x47.toByte()
         ) {
             return "image/png"
+        }
+        if (
+            bytes[0] == 0x47.toByte() &&
+            bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() &&
+            bytes[3] == 0x38.toByte()
+        ) {
+            return "image/gif"
         }
         if (
             bytes[0] == 0x52.toByte() &&

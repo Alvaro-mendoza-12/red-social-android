@@ -11,6 +11,8 @@ data class Video(
     @SerialName("user_id") val userId: String = "",
     @SerialName("user_name") val userName: String = "",
     @SerialName("user_profile_image") val userProfileImage: String = "",
+    @SerialName("avatar_media_type") val avatarMediaType: String? = null,
+    @SerialName("avatar_video_muted") val avatarVideoMuted: Boolean = true,
     @SerialName("title") val title: String = "",
     @SerialName("description") val description: String = "",
     @SerialName("video_url") val videoUrl: String = "",

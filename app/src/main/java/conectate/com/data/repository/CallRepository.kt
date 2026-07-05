@@ -43,6 +43,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -102,7 +104,10 @@ class CallRepository @Inject constructor(
     private val scope = newSafeScope("CallRepository", Dispatchers.IO)
 
     private var socket: Socket? = null
-    private var webRTCManager: WebRTCManager? = null
+    private val _webRTCManager = MutableStateFlow<WebRTCManager?>(null)
+    private var webRTCManager: WebRTCManager?
+        get() = _webRTCManager.value
+        set(value) { _webRTCManager.value = value }
     private val signalingUrl: String get() = SignalingConfig.CALL_URL
     private var audioFocusRequest: AudioFocusRequest? = null
 
@@ -128,8 +133,10 @@ class CallRepository @Inject constructor(
     val incomingReactions: SharedFlow<CallReactionEvent> = _incomingReactions.asSharedFlow()
 
     // WebRTC Media Exposure for UI
-    val localVideoTrack: StateFlow<org.webrtc.VideoTrack?> = webRTCManager?.localVideoTrack ?: MutableStateFlow(null).asStateFlow()
-    val remoteVideoTracks: StateFlow<Map<String, org.webrtc.VideoTrack>> = webRTCManager?.remoteVideoTracks ?: MutableStateFlow(emptyMap<String, org.webrtc.VideoTrack>()).asStateFlow()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val localVideoTrack: Flow<org.webrtc.VideoTrack?> = _webRTCManager.flatMapLatest { it?.localVideoTrack ?: kotlinx.coroutines.flow.flowOf(null) }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val remoteVideoTracks: Flow<Map<String, org.webrtc.VideoTrack>> = _webRTCManager.flatMapLatest { it?.remoteVideoTracks ?: kotlinx.coroutines.flow.flowOf(emptyMap()) }
     val eglContext: org.webrtc.EglBase.Context? get() = webRTCManager?.eglContext
 
     private var callUserChannel: RealtimeChannel? = null
@@ -658,7 +665,11 @@ class CallRepository @Inject constructor(
         webRTCManager?.switchCamera()
     }
 
-    fun sendReaction(emoji: String) {
+    fun sendReaction(
+        emoji: String,
+        reactionId: String = UUID.randomUUID().toString(),
+        timestamp: Long = System.currentTimeMillis()
+    ) {
         var myId = authService.getCurrentUserId()?.trim().orEmpty()
         var callId = _activeCall.value?.callId ?: return
         socket?.emit(
@@ -667,6 +678,8 @@ class CallRepository @Inject constructor(
                 put("callId", callId)
                 put("userId", myId)
                 put("emoji", emoji)
+                put("reactionId", reactionId)
+                put("timestamp", timestamp)
             }
         )
     }
@@ -825,7 +838,11 @@ class CallRepository @Inject constructor(
             socket?.disconnect()
             socket = null
 
-            initializeWebRTC(userId)
+            if (hasMicrophonePermission()) {
+                initializeWebRTC(userId)
+            } else {
+                android.util.Log.e("CallRepository", "Microphone permission missing, skipping WebRTC init")
+            }
             refreshAudioSession()
 
             val options = IO.Options().apply {
@@ -906,7 +923,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("user-joined") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sid = data.getString("socketId")
                 var uid = data.getString("userId")
                 var pname = data.optString("name", "Usuario")
@@ -925,14 +942,14 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("user-left") { args ->
-                var sid = args[0] as String
+                val sid = args.getOrNull(0) as? String ?: return@on
                 _participants.update { list -> list.filterNot { it.socketId == sid } }
                 webRTCManager?.onUserLeft(sid)
                 autoEndIfAlone(graceMs = 1_500)
             }
 
             socket?.on("current-participants") { args ->
-                val participantsJson = args[0] as org.json.JSONArray
+                val participantsJson = args.getOrNull(0) as? org.json.JSONArray ?: return@on
                 val mySocketId = socket?.id() ?: ""
                 val previousRemoteSockets = _participants.value
                     .filterNot { it.userId.equals(userId, ignoreCase = true) }
@@ -988,7 +1005,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("mute-state") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var uid = data.getString("userId")
                 var muted = data.getBoolean("isMuted")
                 _participants.update { list ->
@@ -997,16 +1014,18 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("reaction") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val reaction = CallReactionEvent(
+                    id = data.optString("reactionId", data.optString("id", "")),
                     userId = data.getString("userId"),
-                    emoji = data.getString("emoji")
+                    emoji = data.getString("emoji"),
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
             }
 
             socket?.on("offer") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val senderSocketId = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else ""
                 val offerSdp = data.getJSONObject("offer").getString("sdp")
@@ -1014,7 +1033,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("answer") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sender = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else {
                     _participants.value.find { it.socketId == sender }?.userId ?: ""
@@ -1024,7 +1043,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("ice-candidate") { args ->
-                var data = args[0] as org.json.JSONObject
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sender = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else {
                     _participants.value.find { it.socketId == sender }?.userId ?: ""

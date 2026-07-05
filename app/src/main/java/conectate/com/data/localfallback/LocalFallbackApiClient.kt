@@ -96,6 +96,9 @@ data class LocalFallbackInboxItem(
     val lastMessageId: String? = null,
     val lastMessageSenderId: String? = null,
     val lastMessageContentType: String? = null,
+    val clearedAt: String? = null,
+    @SerialName("cleared_at")
+    val clearedAtSnake: String? = null,
     val isMember: Boolean = true,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
@@ -103,6 +106,10 @@ data class LocalFallbackInboxItem(
     val isFavorite: Boolean = false,
     val isPublic: Boolean = true,
     val onlyAdminsCanTalk: Boolean = false,
+    @SerialName("creator_id")
+    val creatorId: String? = null,
+    @SerialName("current_user_role")
+    val currentUserRole: String? = null,
     val folders: List<String> = emptyList(),
     val openPath: String? = null
 )
@@ -266,7 +273,32 @@ private data class LocalFallbackSendMessageRequest(
     val contentType: String,
     val mediaUrl: String = "",
     val mediaSize: Long = 0L,
-    val replyToId: String = ""
+    val replyToId: String = "",
+    val isForwarded: Boolean = false,
+    val forwardedFromMessageId: String? = null,
+    val forwardedFromUserId: String? = null
+)
+
+@Serializable
+private data class LocalFallbackEditMessageRequest(
+    val content: String
+)
+
+@Serializable
+private data class LocalFallbackDeleteMessageRequest(
+    val forEveryone: Boolean = false
+)
+
+@Serializable
+private data class LocalFallbackReactionMessageRequest(
+    val emoji: String
+)
+
+@Serializable
+data class LocalFallbackBlockRelationshipResponse(
+    val blockedByMe: Boolean = false,
+    val blockedMe: Boolean = false,
+    val isBlocked: Boolean = false
 )
 
 @Serializable
@@ -355,6 +387,9 @@ private data class LocalFallbackUpdateProfileRequest(
     val city: String? = null,
     val status: String? = null,
     val avatarUrl: String? = null,
+    val avatarMediaType: String? = null,
+    val avatarVideoMuted: Boolean? = null,
+    val avatarDurationMs: Long? = null,
     val coverUrl: String? = null,
     val isPrivate: Boolean? = null,
     val profileVisibility: String? = null,
@@ -961,6 +996,54 @@ class LocalFallbackApiClient @Inject constructor(
             .map { it.normalized() }
     }
 
+    suspend fun getBlockRelationship(
+        accessToken: String,
+        profileId: String
+    ): Result<LocalFallbackBlockRelationshipResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackBlockRelationshipResponse>("$baseUrl/v1/data/profiles/${urlEncode(profileId)}/block", accessToken)
+    }
+
+    suspend fun blockUser(
+        accessToken: String,
+        profileId: String
+    ): Result<LocalFallbackBlockRelationshipResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/profiles/${urlEncode(profileId)}/block") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackBlockRelationshipResponse>(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun unblockUser(
+        accessToken: String,
+        profileId: String
+    ): Result<LocalFallbackBlockRelationshipResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/profiles/${urlEncode(profileId)}/block") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackBlockRelationshipResponse>(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun loadProfileUser(accessToken: String, profileId: String): Result<User?> {
         return loadProfile(accessToken, profileId).map { response ->
             response.profile?.let(::mapProfileUser)
@@ -1141,6 +1224,9 @@ class LocalFallbackApiClient @Inject constructor(
         city: String? = null,
         status: String? = null,
         avatarUrl: String? = null,
+        avatarMediaType: String? = null,
+        avatarVideoMuted: Boolean? = null,
+        avatarDurationMs: Long? = null,
         coverUrl: String? = null,
         isPrivate: Boolean? = null,
         profileVisibility: String? = null,
@@ -1160,6 +1246,9 @@ class LocalFallbackApiClient @Inject constructor(
                         city = city,
                         status = status,
                         avatarUrl = UbuntuStorageUrl.rewrite(avatarUrl),
+                        avatarMediaType = avatarMediaType,
+                        avatarVideoMuted = avatarVideoMuted,
+                        avatarDurationMs = avatarDurationMs,
                         coverUrl = UbuntuStorageUrl.rewrite(coverUrl),
                         isPrivate = isPrivate,
                         profileVisibility = profileVisibility,
@@ -2015,7 +2104,10 @@ class LocalFallbackApiClient @Inject constructor(
         mediaUrl: String?,
         mediaSize: Long,
         replyToId: String?,
-        messageId: String? = null
+        messageId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null
     ): Result<Message> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2029,9 +2121,90 @@ class LocalFallbackApiClient @Inject constructor(
                         contentType = contentType,
                         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
                         mediaSize = mediaSize,
-                        replyToId = replyToId ?: ""
+                        replyToId = replyToId ?: "",
+                        isForwarded = isForwarded,
+                        forwardedFromMessageId = forwardedFromMessageId,
+                        forwardedFromUserId = forwardedFromUserId
                     )
                 )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackMessageResponse>(body).message)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun editChatMessage(
+        accessToken: String,
+        chatId: String,
+        messageId: String,
+        content: String
+    ): Result<Message> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/messages/${urlEncode(messageId)}"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackEditMessageRequest(content = content))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackMessageResponse>(body).message)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun deleteChatMessage(
+        accessToken: String,
+        chatId: String,
+        messageId: String,
+        forEveryone: Boolean
+    ): Result<Message> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/messages/${urlEncode(messageId)}/delete"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackDeleteMessageRequest(forEveryone = forEveryone))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackMessageResponse>(body).message)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun toggleChatMessageReaction(
+        accessToken: String,
+        chatId: String,
+        messageId: String,
+        emoji: String
+    ): Result<Message> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/messages/${urlEncode(messageId)}/reactions"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackReactionMessageRequest(emoji = emoji))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -2996,6 +3169,8 @@ class LocalFallbackApiClient @Inject constructor(
             userId = textOf(row, "user_id", "userId"),
             userName = textOf(row, "user_name", "userName", "display_name").ifBlank { "Usuario" },
             userProfileImage = UbuntuStorageUrl.rewriteOrEmpty(textOf(row, "user_profile_image", "userProfileImage", "avatar_url")),
+            avatarMediaType = textOf(row, "avatar_media_type", "avatarMediaType").ifBlank { null },
+            avatarVideoMuted = boolOf(row, "avatar_video_muted", "avatarVideoMuted", fallback = true),
             title = textOf(row, "title", "caption").ifBlank { "Video" },
             description = textOf(row, "description", "content"),
             videoUrl = UbuntuStorageUrl.rewriteOrEmpty(textOf(row, "video_url", "videoUrl", "media_url", "url")),

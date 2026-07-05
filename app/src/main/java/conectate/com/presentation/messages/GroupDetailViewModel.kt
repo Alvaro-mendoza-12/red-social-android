@@ -39,18 +39,9 @@ class GroupDetailViewModel @Inject constructor(
 
     private var groupId: String? = null
 
-    private var isGlobalAdmin = false
-
     init {
         val userId = authService.getCurrentUserId()
         _currentUserId.value = userId
-        if (userId != null) {
-            viewModelScope.launch {
-                val profile = userRepository.getUserById(userId).getOrNull()
-                isGlobalAdmin = profile?.is_admin == true
-                _isAdmin.value = isGlobalAdmin
-            }
-        }
     }
 
     fun loadGroupDetails(id: String) {
@@ -72,9 +63,11 @@ class GroupDetailViewModel @Inject constructor(
                     
                     // Recalculate permissions on group update
                     val myId = _currentUserId.value
-                    val amICreator = grp.creator_id == myId
-                    val amIGroupAdmin = _members.value.find { it.user_id == myId }?.role == "admin"
-                    _isAdmin.value = isGlobalAdmin || amICreator || amIGroupAdmin
+                    val amICreator = sameGroupUserId(grp.creator_id, myId)
+                    val amIGroupAdmin = _members.value.find { sameGroupUserId(it.user_id, myId) }
+                        ?.role
+                        .isGroupAdminRole()
+                    _isAdmin.value = amICreator || amIGroupAdmin
                 }
             }
         }
@@ -107,9 +100,11 @@ class GroupDetailViewModel @Inject constructor(
                     // Recalculate permissions on member update
                     val myId = _currentUserId.value
                     val grp = _group.value
-                    val amICreator = grp?.creator_id == myId
-                    val amIGroupAdmin = enriched.find { it.user_id == myId }?.role == "admin"
-                    _isAdmin.value = isGlobalAdmin || amICreator || amIGroupAdmin
+                    val amICreator = sameGroupUserId(grp?.creator_id, myId)
+                    val amIGroupAdmin = enriched.find { sameGroupUserId(it.user_id, myId) }
+                        ?.role
+                        .isGroupAdminRole()
+                    _isAdmin.value = amICreator || amIGroupAdmin
                 }
             }
         }
@@ -218,10 +213,19 @@ class GroupDetailViewModel @Inject constructor(
     private fun loadGroupMembers() {
          val id = groupId ?: return
          viewModelScope.launch {
-            val membersResult = groupRepository.getGroupMembers(id)
-            if (membersResult.isSuccess) {
+             val membersResult = groupRepository.getGroupMembers(id)
+             if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
             }
          }
     }
 }
+
+private fun sameGroupUserId(left: String?, right: String?): Boolean {
+    val cleanLeft = left?.trim()?.lowercase().orEmpty()
+    val cleanRight = right?.trim()?.lowercase().orEmpty()
+    return cleanLeft.isNotBlank() && cleanLeft == cleanRight
+}
+
+private fun String?.isGroupAdminRole(): Boolean =
+    this?.trim()?.lowercase() in setOf("admin", "owner", "creator")

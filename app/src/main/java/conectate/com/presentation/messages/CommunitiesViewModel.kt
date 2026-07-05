@@ -35,7 +35,7 @@ class CommunitiesViewModel @Inject constructor(
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
     val filteredCommunities: StateFlow<List<CommunityWithLastMessage>> = combine(
-        communityRepository.getCommunitiesFlow(),
+        communityRepository.getDiscoverableCommunitiesFlow(),
         _searchQuery
     ) { communities, query ->
         if (query.isBlank()) {
@@ -57,9 +57,10 @@ class CommunitiesViewModel @Inject constructor(
 
     init {
         refreshCommunities()
+        refreshExploreSnapshot()
         
         viewModelScope.launch {
-            communityRepository.getCommunitiesFlow().collect { communities ->
+            communityRepository.getDiscoverableCommunitiesFlow().collect { communities ->
                 android.util.Log.d("CommunitiesViewModel", "[FLOW] Received ${communities.size} communities from repository")
                 if (communities.isNotEmpty()) {
                     val first = communities.first()
@@ -74,8 +75,10 @@ class CommunitiesViewModel @Inject constructor(
         _searchQuery.value = query
         if (query.length >= 2) {
             searchGlobal(query)
+        } else if (query.isBlank()) {
+            refreshExploreSnapshot()
         } else {
-            _globalSearchResults.value = emptyList()
+            _isSearching.value = false
         }
     }
 
@@ -96,6 +99,22 @@ class CommunitiesViewModel @Inject constructor(
         }
     }
 
+    private fun refreshExploreSnapshot() {
+        viewModelScope.launch {
+            _isSearching.value = true
+            try {
+                val result = communityRepository.searchCommunities("")
+                if (result.isSuccess) {
+                    _globalSearchResults.value = result.getOrDefault(emptyList())
+                        .filter { it.is_public && !it.is_deleted }
+                        .map { CommunityWithLastMessage(community = it, unreadCount = 0) }
+                }
+            } finally {
+                _isSearching.value = false
+            }
+        }
+    }
+
     fun joinCommunity(communityId: String) {
         viewModelScope.launch {
             communityRepository.joinCommunity(communityId)
@@ -108,6 +127,9 @@ class CommunitiesViewModel @Inject constructor(
     fun refreshCommunities() {
         viewModelScope.launch {
             communityRepository.syncCommunities()
+            if (_searchQuery.value.isBlank()) {
+                refreshExploreSnapshot()
+            }
         }
     }
 }

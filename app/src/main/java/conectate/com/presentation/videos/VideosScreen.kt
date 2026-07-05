@@ -417,7 +417,11 @@ fun VideoCard(
                 ) {
                     CircularProfileImage(
                         imageUrl = video.userProfileImage,
-                        size = 20.dp
+                        size = 20.dp,
+                        mediaType = video.avatarMediaType,
+                        muted = video.avatarVideoMuted,
+                        allowSound = !video.avatarVideoMuted,
+                        fallbackName = video.userName
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(

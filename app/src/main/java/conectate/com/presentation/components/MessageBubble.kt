@@ -364,7 +364,7 @@ fun MessageBubble(
     ) {
         Box(
             modifier = Modifier
-                .widthIn(max = if (isStickerMessage) 156.dp else 280.dp)
+                .widthIn(max = if (isStickerMessage) 124.dp else 280.dp)
                 .then(
                     if (isStickerMessage) {
                         Modifier
@@ -389,7 +389,7 @@ fun MessageBubble(
                 )
                 .padding(
                     horizontal = if (isStickerMessage) 4.dp else 12.dp,
-                    vertical = if (isStickerMessage) 2.dp else 8.dp
+                    vertical = if (isStickerMessage) 1.dp else 8.dp
                 )
         ) {
             Column {
@@ -627,17 +627,17 @@ fun MessageBubble(
                     }
                     "sticker" -> {
                         if (!message.media_url.isNullOrBlank()) {
-                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
+                            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp))) {
                                 SubcomposeAsyncImage(
                                     model = resolvedUrl ?: message.media_url,
                                     contentDescription = "Sticker",
                                     modifier = Modifier
-                                        .sizeIn(maxWidth = 148.dp, maxHeight = 148.dp),
+                                        .sizeIn(maxWidth = 112.dp, maxHeight = 112.dp),
                                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                                     loading = {
                                         Box(
                                             modifier = Modifier
-                                                .size(92.dp),
+                                                .size(72.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -646,7 +646,7 @@ fun MessageBubble(
                                     error = {
                                         Box(
                                             modifier = Modifier
-                                                .size(92.dp),
+                                                .size(72.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(

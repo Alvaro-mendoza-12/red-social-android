@@ -1075,7 +1075,12 @@ callIo.on('connection', (socket) => {
         const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!callId || !userId) return;
-        socket.to(callId).emit('reaction', { ...data, userId });
+        socket.to(callId).emit('reaction', {
+            ...data,
+            userId,
+            reactionId: data?.reactionId || crypto.randomUUID(),
+            timestamp: Number(data?.timestamp) || Date.now()
+        });
     });
 
     socket.on('mute-state', (data) => {

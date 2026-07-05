@@ -355,6 +355,9 @@ class ProfileViewModel @Inject constructor(
         country: String,
         city: String,
         imageUri: Uri?,
+        avatarMediaType: String? = null,
+        avatarVideoMuted: Boolean? = null,
+        avatarDurationMs: Long? = null,
         coverImageUri: Uri?,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
@@ -386,16 +389,27 @@ class ProfileViewModel @Inject constructor(
                 }
                 
                 var avatarUrl: String? = currentUser?.avatar_url
+                var resolvedAvatarMediaType: String? = currentUser?.avatar_media_type
+                var resolvedAvatarVideoMuted: Boolean = currentUser?.avatar_video_muted ?: true
+                var resolvedAvatarDurationMs: Long? = currentUser?.avatar_duration_ms
                 var coverUrl: String? = currentUser?.cover_url
                 
                 // Profile Image Upload Logic
                 if (imageUri != null) {
-                    val uploadResult = userRepository.uploadProfileImage(imageUri)
+                    val uploadResult = userRepository.uploadProfileAvatarMedia(imageUri)
                     if (uploadResult.isFailure) {
-                        onError(uploadResult.exceptionOrNull()?.message ?: "No se pudo subir la foto de perfil")
+                        onError(uploadResult.exceptionOrNull()?.message ?: "No se pudo subir el avatar de perfil")
                         return@launch
                     }
-                    avatarUrl = uploadResult.getOrThrow()
+                    val uploaded = uploadResult.getOrThrow()
+                    avatarUrl = uploaded.url
+                    resolvedAvatarMediaType = uploaded.mediaType
+                    resolvedAvatarVideoMuted = avatarVideoMuted ?: true
+                    resolvedAvatarDurationMs = uploaded.durationMs ?: avatarDurationMs
+                } else {
+                    avatarVideoMuted?.let { resolvedAvatarVideoMuted = it }
+                    avatarMediaType?.let { resolvedAvatarMediaType = it }
+                    avatarDurationMs?.let { resolvedAvatarDurationMs = it }
                 }
                 
                 // Cover Image Upload Logic
@@ -414,6 +428,9 @@ class ProfileViewModel @Inject constructor(
                     country = country,
                     city = city,
                     avatar_url = avatarUrl,
+                    avatar_media_type = resolvedAvatarMediaType,
+                    avatar_video_muted = resolvedAvatarVideoMuted,
+                    avatar_duration_ms = resolvedAvatarDurationMs,
                     cover_url = coverUrl,
                     last_name_change = lastNameChange
                 )
@@ -428,6 +445,9 @@ class ProfileViewModel @Inject constructor(
                         country = updateRequest.country,
                         city = updateRequest.city,
                         avatar_url = updateRequest.avatar_url,
+                        avatar_media_type = updateRequest.avatar_media_type,
+                        avatar_video_muted = updateRequest.avatar_video_muted ?: currentUser.avatar_video_muted,
+                        avatar_duration_ms = updateRequest.avatar_duration_ms,
                         cover_url = updateRequest.cover_url,
                         last_name_change = updateRequest.last_name_change ?: currentUser.last_name_change
                     )
@@ -458,6 +478,57 @@ class ProfileViewModel @Inject constructor(
             days >= 7
         } catch (e: Exception) {
             true // If parse fails, allow
+        }
+    }
+
+    fun getProfileVideoDurationMs(uri: Uri): Long =
+        userRepository.getProfileVideoDurationMs(uri)
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun trimProfileAvatarVideo(
+        context: android.content.Context,
+        inputUri: Uri,
+        startMs: Long,
+        onSuccess: (Uri) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val safeStart = startMs.coerceAtLeast(0L)
+        val safeEnd = safeStart + 2_000L
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            try {
+                val outputFile = java.io.File(context.cacheDir, "profile_avatar_${System.currentTimeMillis()}.mp4")
+                val mediaItem = androidx.media3.common.MediaItem.fromUri(inputUri)
+                    .buildUpon()
+                    .setClippingConfiguration(
+                        androidx.media3.common.MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(safeStart)
+                            .setEndPositionMs(safeEnd)
+                            .build()
+                    )
+                    .build()
+                val transformer = androidx.media3.transformer.Transformer.Builder(context)
+                    .addListener(object : androidx.media3.transformer.Transformer.Listener {
+                        override fun onCompleted(
+                            composition: androidx.media3.transformer.Composition,
+                            result: androidx.media3.transformer.ExportResult
+                        ) {
+                            onSuccess(Uri.fromFile(outputFile))
+                        }
+
+                        override fun onError(
+                            composition: androidx.media3.transformer.Composition,
+                            result: androidx.media3.transformer.ExportResult,
+                            exception: androidx.media3.transformer.ExportException
+                        ) {
+                            onError(exception.message ?: "No se pudo recortar el avatar.")
+                        }
+                    })
+                    .build()
+
+                transformer.start(mediaItem, outputFile.absolutePath)
+            } catch (e: Exception) {
+                onError(e.message ?: "No se pudo recortar el avatar.")
+            }
         }
     }
 

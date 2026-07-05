@@ -1087,6 +1087,20 @@ class GroupChatViewModel @Inject constructor(
         _errorMessage.value = null
     }
 
+    fun leaveGroup(onSuccess: () -> Unit) {
+        val cleanId = groupId.trim().lowercase()
+        if (cleanId.isBlank()) return
+        viewModelScope.launch {
+            val result = groupRepository.leaveGroup(cleanId)
+            if (result.isSuccess) {
+                groupRepository.syncGroups()
+                onSuccess()
+            } else {
+                _errorMessage.value = result.exceptionOrNull()?.message ?: "No se pudo salir del grupo."
+            }
+        }
+    }
+
     fun deleteGroupLocally(onSuccess: () -> Unit) {
         viewModelScope.launch {
             groupRepository.deleteGroup(groupId) // This already deletes locally in Repo

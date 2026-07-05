@@ -17,7 +17,8 @@ data class Community(
     val last_message_at: String? = null,
     val is_deleted: Boolean = false,
     val only_admins_can_talk: Boolean = false,
-    val is_member: Boolean = true
+    val is_member: Boolean = false,
+    val current_user_role: String? = null
 )
 
 @Serializable

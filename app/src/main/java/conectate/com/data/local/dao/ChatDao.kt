@@ -68,6 +68,19 @@ interface ChatDao {
         senderId: String?
     )
 
+    @Query(
+        """
+        UPDATE chats
+        SET last_message_preview = NULL,
+            last_message_timestamp = :timestamp,
+            last_message_at = :timestamp,
+            last_message_id = NULL,
+            last_message_sender_id = NULL
+        WHERE id = :chatId
+        """
+    )
+    suspend fun clearLastMessage(chatId: String, timestamp: String?)
+
     suspend fun updateChat(chat: ChatEntity) {
         insertChat(chat)
     }
@@ -93,7 +106,7 @@ interface ChatDao {
     @Query("UPDATE chats SET nickname = :nickname WHERE id = :chatId")
     suspend fun updateNickname(chatId: String, nickname: String?)
 
-    @Query("UPDATE chats SET cleared_at = :clearedAt, last_message_preview = 'Sin mensajes', last_message_timestamp = :clearedAt, last_message_id = NULL, last_message_sender_id = NULL, unread_count = 0 WHERE id = :chatId")
+    @Query("UPDATE chats SET cleared_at = :clearedAt, last_message_preview = NULL, last_message_timestamp = :clearedAt, last_message_id = NULL, last_message_sender_id = NULL, unread_count = 0 WHERE id = :chatId")
     suspend fun updateClearedAt(chatId: String, clearedAt: String?)
 
     @Query("UPDATE chats SET is_muted = :isMuted WHERE LOWER(id) = LOWER(:chatId)")

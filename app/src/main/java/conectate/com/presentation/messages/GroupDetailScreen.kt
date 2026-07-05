@@ -77,9 +77,14 @@ fun GroupDetailScreen(
     var showEditGroupDialog by remember { mutableStateOf(false) }
 
     // Check permissions
-    val amICreator = group?.creator_id == currentUserId
-    val amIAdmin = members.any { it.user_id == currentUserId && it.role == "admin" }
-    val canManage = amICreator || amIAdmin
+    val normalizedCurrentUserId = currentUserId?.trim()?.lowercase().orEmpty()
+    val normalizedCreatorId = group?.creator_id?.trim()?.lowercase().orEmpty()
+    val amICreator = normalizedCurrentUserId.isNotBlank() && normalizedCurrentUserId == normalizedCreatorId
+    val amIAdmin = members.any {
+        it.user_id.trim().lowercase() == normalizedCurrentUserId &&
+            normalizedGroupRole(it.role) in setOf("admin", "owner", "creator")
+    }
+    val canManageMembers = isAdmin || amICreator || amIAdmin
 
     Scaffold(
         topBar = {
@@ -91,9 +96,10 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
-                    // CUALQUIER MIEMBRO puede añadir
-                    IconButton(onClick = { showAddMemberDialog = true }) {
-                        Icon(Icons.Default.PersonAdd, "Agregar miembro", tint = MaterialTheme.colorScheme.onPrimary)
+                    if (canManageMembers) {
+                        IconButton(onClick = { showAddMemberDialog = true }) {
+                            Icon(Icons.Default.PersonAdd, "Agregar miembro", tint = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
 
                     IconButton(onClick = { showMenu = true }) {
@@ -103,7 +109,7 @@ fun GroupDetailScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
-                        if (canManage) {
+                        if (canManageMembers) {
                             DropdownMenuItem(
                                 text = { Text("Editar información") },
                                 onClick = {
@@ -114,16 +120,18 @@ fun GroupDetailScreen(
                             )
                             Divider()
 
-                            DropdownMenuItem(
-                                text = { Text("Eliminar grupo para todos") },
-                                onClick = {
-                                    showMenu = false
-                                    showDeleteConfirm = true
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                                }
-                            )
+                            if (amICreator) {
+                                DropdownMenuItem(
+                                    text = { Text("Eliminar grupo para todos") },
+                                    onClick = {
+                                        showMenu = false
+                                        showDeleteConfirm = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                    }
+                                )
+                            }
                         } else {
                             DropdownMenuItem(
                                 text = { Text("Borrar de mi lista") },
@@ -246,13 +254,20 @@ fun GroupDetailScreen(
                 }
 
                 items(members) { member ->
+                    val memberRole = groupMemberDisplayRole(
+                        memberUserId = member.user_id,
+                        creatorId = group?.creator_id,
+                        rawRole = member.role
+                    )
                     GroupMemberItem(
                         userId = member.user_id,
                         userName = member.userName,
                         userImage = member.userImage,
-                        role = member.role,
-                        isCurrentUser = member.user_id == currentUserId,
-                        canManageMember = canManage && member.user_id != currentUserId && member.user_id != group?.creator_id,
+                        role = memberRole,
+                        isCurrentUser = member.user_id.trim().lowercase() == normalizedCurrentUserId,
+                        canManageMember = canManageMembers &&
+                            member.user_id.trim().lowercase() != normalizedCurrentUserId &&
+                            member.user_id.trim().lowercase() != normalizedCreatorId,
                         onRemove = { viewModel.removeMember(member.user_id) },
                         onPromote = { viewModel.promoteToAdmin(member.user_id) },
                         onDemote = { viewModel.demoteToMember(member.user_id) },
@@ -446,11 +461,12 @@ fun AddMemberDialog(
                         ) {
                             CircularProfileImage(
                                 imageUrl = user.avatar_url,
-                                size = 40.dp
+                                size = 40.dp,
+                                fallbackName = user.displayName
                             )
                             Spacer(Modifier.width(12.dp))
                             Column {
-                                Text(user.displayName ?: user.username ?: "Usuario", style = MaterialTheme.typography.bodyMedium)
+                                Text(user.displayName, style = MaterialTheme.typography.bodyMedium)
                                 user.username?.let {
                                      Text("@$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -496,6 +512,7 @@ fun GroupMemberItem(
         CircularProfileImage(
             imageUrl = userImage,
             size = 48.dp,
+            fallbackName = if (isCurrentUser) "Tú" else userName,
             modifier = Modifier.clickable {
                 if (!userImage.isNullOrEmpty()) {
                     navController.navigate(Screen.FullScreenImage.createRoute(userImage))
@@ -509,12 +526,7 @@ fun GroupMemberItem(
                 style = MaterialTheme.typography.bodyLarge
             )
             Text(
-                text = when (role) {
-                    "admin" -> "Administrador"
-                    "member" -> "Miembro"
-                    "owner" -> "Dueño"
-                    else -> role
-                },
+                text = groupRoleLabel(role),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -541,3 +553,29 @@ fun GroupMemberItem(
         }
     }
 }
+
+private fun normalizedGroupRole(role: String?): String =
+    role?.trim()?.lowercase().orEmpty()
+
+private fun groupMemberDisplayRole(
+    memberUserId: String,
+    creatorId: String?,
+    rawRole: String?
+): String {
+    val cleanMemberId = memberUserId.trim().lowercase()
+    val cleanCreatorId = creatorId?.trim()?.lowercase().orEmpty()
+    if (cleanMemberId.isNotBlank() && cleanMemberId == cleanCreatorId) return "owner"
+    val role = normalizedGroupRole(rawRole)
+    return when (role) {
+        "creator", "owner" -> "owner"
+        "admin" -> "admin"
+        else -> "member"
+    }
+}
+
+private fun groupRoleLabel(role: String): String =
+    when (normalizedGroupRole(role)) {
+        "owner", "creator" -> "Admin principal"
+        "admin" -> "Admin"
+        else -> "Miembro"
+    }

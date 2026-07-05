@@ -1107,6 +1107,20 @@ class CommunityChatViewModel @Inject constructor(
         }
     }
 
+    fun leaveCommunity(onSuccess: () -> Unit) {
+        val cleanId = communityId.trim().lowercase()
+        if (cleanId.isBlank()) return
+        viewModelScope.launch {
+            val result = communityRepository.leaveCommunity(cleanId)
+            if (result.isSuccess) {
+                communityRepository.syncCommunities()
+                onSuccess()
+            } else {
+                _errorMessage.value = result.exceptionOrNull()?.message ?: "No se pudo salir de la comunidad."
+            }
+        }
+    }
+
     fun deleteCommunityLocally(onSuccess: () -> Unit) {
         viewModelScope.launch {
             communityRepository.deleteCommunity(communityId) // Already has creator check for global vs local

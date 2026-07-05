@@ -51,7 +51,11 @@ class IncomingCallForegroundService : Service() {
 
         currentNotificationId = invite.callId.hashCode()
         val avatarBitmap = intent.toAvatarBitmapOrNull()
-        startForeground(currentNotificationId, buildNotification(invite, avatarBitmap))
+        try {
+            startForeground(currentNotificationId, buildNotification(invite, avatarBitmap))
+        } catch (e: Exception) {
+            android.util.Log.e("IncomingCallService", "Failed to start foreground service", e)
+        }
         startLoopingRingtone()
 
         timeoutJob?.cancel()

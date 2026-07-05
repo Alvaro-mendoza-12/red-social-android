@@ -37,12 +37,15 @@ private object LatestSchemaNormalizer {
 
     private val usersPlan = TablePlan(
         name = "users",
-        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `bio` TEXT, `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `avatar_media_type` TEXT, `avatar_video_muted` INTEGER NOT NULL DEFAULT 1, `avatar_duration_ms` INTEGER, `bio` TEXT, `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("username", "''"),
             ColumnSpec("full_name", "''"),
             ColumnSpec("avatar_url", "NULL", coalesceNulls = false),
+            ColumnSpec("avatar_media_type", "NULL", coalesceNulls = false),
+            ColumnSpec("avatar_video_muted", "1"),
+            ColumnSpec("avatar_duration_ms", "NULL", coalesceNulls = false),
             ColumnSpec("bio", "NULL", coalesceNulls = false),
             ColumnSpec("follower_count", "0"),
             ColumnSpec("following_count", "0"),

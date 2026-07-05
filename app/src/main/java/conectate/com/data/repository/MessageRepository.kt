@@ -732,19 +732,34 @@ class MessageRepository @Inject constructor(
                         val existing = existingLocalChats[mapped.chat.id]
                         val mappedTime = mapped.chat.last_message_at ?: ""
                         val existingTime = existing?.last_message_at ?: ""
+                        val effectiveClearedAt = mapped.clearedAt ?: mapped.chat.cleared_at ?: existing?.cleared_at
+                        val normalizedClearedAt = normalizeDate(effectiveClearedAt.orEmpty())
+                        val normalizedExistingTime = normalizeDate(existingTime)
                         
-                        if (existing != null && existingTime > mappedTime) {
+                        if (
+                            existing != null &&
+                            existingTime > mappedTime &&
+                            (normalizedClearedAt.isEmpty() || normalizedExistingTime > normalizedClearedAt)
+                        ) {
                             mapped.copy(
-                                clearedAt = existing.cleared_at,
+                                clearedAt = effectiveClearedAt,
                                 chat = mapped.chat.copy(
                                     last_message = existing.last_message,
                                     last_message_at = existing.last_message_at,
                                     last_message_id = existing.last_message_id,
-                                    last_message_sender_id = existing.last_message_sender_id
+                                    last_message_sender_id = existing.last_message_sender_id,
+                                    cleared_at = effectiveClearedAt
                                 )
                             )
                         } else {
-                            mapped.copy(clearedAt = existing?.cleared_at)
+                            mapped.copy(
+                                clearedAt = effectiveClearedAt,
+                                lastMessage = mapped.lastMessage?.takeIf { message ->
+                                    val messageAt = normalizeDate(message.created_at.orEmpty())
+                                    normalizedClearedAt.isEmpty() || messageAt.isEmpty() || messageAt > normalizedClearedAt
+                                },
+                                chat = mapped.chat.copy(cleared_at = effectiveClearedAt)
+                            )
                         }
                     }
                     .let(::sortChatsByPriority)
@@ -924,7 +939,16 @@ class MessageRepository @Inject constructor(
                         if (msgRes.status.isSuccess()) {
                             msgRes.body<List<Message>>()
                                 .groupBy { it.chat_id.trim().lowercase() }
-                                .forEach { (id, msgs) -> if (!lastMessagesMap.containsKey(id)) lastMessagesMap[id] = msgs.first() }
+                                .forEach { (id, msgs) ->
+                                    val clearedAtKey = normalizeDate(participantStateMap[id]?.clearedAt.orEmpty())
+                                    val visibleLatest = msgs.firstOrNull { message ->
+                                        val messageAt = normalizeDate(message.created_at ?: "")
+                                        clearedAtKey.isEmpty() || messageAt.isEmpty() || messageAt > clearedAtKey
+                                    }
+                                    if (visibleLatest != null && !lastMessagesMap.containsKey(id)) {
+                                        lastMessagesMap[id] = visibleLatest
+                                    }
+                                }
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("MessageRepository", "Chunked last msg fetch failed", e)
@@ -940,7 +964,7 @@ class MessageRepository @Inject constructor(
                         var countRes = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
                             header("Authorization", "Bearer $accessToken")
                             header("apikey", supabaseConfig.supabaseAnonKey)
-                            parameter("select", "chat_id,read_at,sender_id,status")
+                            parameter("select", "chat_id,read_at,sender_id,status,created_at")
                             parameter("chat_id", "in.(${chunk.joinToString(",")})")
                             parameter("sender_id", "neq.$cleanUserId")
                             parameter("read_at", "is.null")
@@ -954,6 +978,11 @@ class MessageRepository @Inject constructor(
                                     ?: return@unreadLoop
                                 var status = json["status"]?.jsonPrimitive?.contentOrNull
                                 var readAt = json["read_at"]?.jsonPrimitive?.contentOrNull
+                                val createdAt = normalizeDate(json["created_at"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                                val clearedAt = normalizeDate(participantStateMap[cid]?.clearedAt.orEmpty())
+                                if (clearedAt.isNotEmpty() && createdAt.isNotEmpty() && createdAt <= clearedAt) {
+                                    return@unreadLoop
+                                }
                                 val isUnread = MessageStatusNormalizer.isUnread(status, readAt)
                                 if (senderId != cleanUserId && isUnread) {
                                     unreadCountsMap[cid] = (unreadCountsMap[cid] ?: 0) + 1
@@ -985,13 +1014,20 @@ class MessageRepository @Inject constructor(
                 var isArchived = participantState?.isArchived ?: chat.is_archived
                 var isFavorite = participantState?.isFavorite ?: chat.is_favorite
                 
-                val realLastMsg = lastMessagesMap[cleanChatId]
+                val clearedAtKey = normalizeDate(clearedAt ?: chat.cleared_at ?: "")
+                val realLastMsg = lastMessagesMap[cleanChatId]?.takeIf { message ->
+                    val messageAt = normalizeDate(message.created_at ?: "")
+                    clearedAtKey.isEmpty() || messageAt.isEmpty() || messageAt > clearedAtKey
+                }
                 val remoteUnread = unreadCountsMap[cleanChatId] ?: 0
                 var unread = if (sessionStateStore.hasLocalReadOverride(cleanChatId)) 0 else remoteUnread
 
                 // NUCLEAR FIX: Always compare Server vs Local to find the TRUE latest message
                 // The server might return stale data (2025), but Room has the "hola" we just sent (2026).
-                val localLast = messageDao.getLatestMessageSync(cleanChatId)?.toDomain()
+                val localLast = messageDao.getLatestMessageSync(cleanChatId)?.toDomain()?.takeIf { message ->
+                    val messageAt = normalizeDate(message.created_at ?: "")
+                    clearedAtKey.isEmpty() || messageAt.isEmpty() || messageAt > clearedAtKey
+                }
                 
                 var finalLastMsg = realLastMsg
                 if (localLast != null) {
@@ -1010,6 +1046,8 @@ class MessageRepository @Inject constructor(
                 // Otherwise fall back to chat metadata (only if we have no message).
                 val finalLastAt = if (finalLastMsg != null && realMsgAt >= remoteMetaAt) {
                     finalLastMsg.created_at
+                } else if (finalLastMsg == null && clearedAtKey.isNotEmpty()) {
+                    clearedAt ?: chat.cleared_at ?: remoteMetaAt
                 } else {
                     // Try to respect the newest date we have seen anywhere
                     if (realMsgAt > remoteMetaAt) finalLastMsg?.created_at ?: remoteMetaAt else remoteMetaAt
@@ -1018,6 +1056,7 @@ class MessageRepository @Inject constructor(
                 // Content for display
                 val finalLastContent = when {
                     finalLastMsg != null -> buildPreviewForContentType(finalLastMsg.content_type, finalLastMsg.content)
+                    clearedAtKey.isNotEmpty() -> "Sin mensajes"
                     else -> chat.last_message ?: "Sin mensajes"
                 }
 
@@ -1356,19 +1395,29 @@ class MessageRepository @Inject constructor(
             listOfNotNull(currentUserId.takeIf { it.isNotBlank() }, otherId).distinct()
         }
         val subtitle = item.subtitle.trim().ifBlank { "Sin mensajes" }
+        val lastMessageId = item.lastMessageId?.trim().orEmpty()
+        val lastMessageSenderId = item.lastMessageSenderId?.trim().orEmpty()
+        val lastMessageContentType = item.lastMessageContentType?.trim()?.ifBlank { null } ?: "text"
         val summaryMessage = subtitle
-            .takeUnless { it.equals("Sin actividad reciente", ignoreCase = true) }
+            .takeIf {
+                lastMessageId.isNotBlank() &&
+                    !it.equals("Sin actividad reciente", ignoreCase = true) &&
+                    !it.equals("Sin mensajes", ignoreCase = true) &&
+                    !it.equals("No hay mensajes recientes", ignoreCase = true)
+            }
             ?.let {
                 Message(
-                    id = "summary-$chatId",
+                    id = lastMessageId,
                     chat_id = chatId,
-                    sender_id = otherId ?: "",
+                    sender_id = lastMessageSenderId,
                     content = it,
-                    content_type = "text",
+                    content_type = lastMessageContentType,
                     status = "sent",
                     created_at = updatedAt
                 )
             }
+        val clearedAt = item.clearedAt?.takeIf { it.isNotBlank() }
+            ?: item.clearedAtSnake?.takeIf { it.isNotBlank() }
         val chat = Chat(
             id = chatId,
             participants = participants,
@@ -1384,7 +1433,8 @@ class MessageRepository @Inject constructor(
             is_muted = item.isMuted,
             is_pinned = item.isPinned,
             is_archived = item.isArchived,
-            is_favorite = item.isFavorite
+            is_favorite = item.isFavorite,
+            cleared_at = clearedAt
         )
         return ChatWithLastMessage(
             chat = chat,
@@ -1393,7 +1443,7 @@ class MessageRepository @Inject constructor(
             otherUserName = item.title.ifBlank { "Chat privado" },
             otherUserImage = item.avatarUrl.takeIf { it.isNotBlank() },
             otherUserId = otherId,
-            clearedAt = null
+            clearedAt = clearedAt
         )
     }
 
@@ -1546,6 +1596,28 @@ class MessageRepository @Inject constructor(
         pending: conectate.com.data.local.entity.MessageEntity,
         currentUserId: String
     ): Boolean {
+        if (shouldUseUbuntuBackend()) {
+            val token = authService.getAccessToken()?.trim().orEmpty()
+            if (token.isBlank()) return false
+            return localFallbackApiClient.deleteChatMessage(
+                accessToken = token,
+                chatId = pending.chat_id,
+                messageId = pending.id,
+                forEveryone = pending.deleted_for_all
+            ).onSuccess { serverMessage ->
+                messageDao.insertMessage(
+                    conectate.com.data.local.entity.MessageEntity.fromDomain(
+                        msg = serverMessage,
+                        isSynced = true,
+                        pendingAction = null
+                    )
+                )
+                updateMessageInFlow(serverMessage.chat_id.trim().lowercase(), serverMessage)
+            }.onFailure { error ->
+                android.util.Log.w("MessageRepository", "Ubuntu delete failed for ${pending.id}", error)
+            }.isSuccess
+        }
+
         val deleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
             logTag = "MessageRepository",
             messageId = pending.id,
@@ -1733,8 +1805,16 @@ class MessageRepository @Inject constructor(
             var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
             if (idx != -1) {
                 currentChats[idx] = currentChats[idx].copy(
+                    chat = currentChats[idx].chat.copy(
+                        last_message = "Sin mensajes",
+                        last_message_at = now,
+                        last_message_sender_id = null,
+                        last_message_id = null,
+                        cleared_at = now
+                    ),
                     clearedAt = now,
-                    lastMessage = null
+                    lastMessage = null,
+                    unreadCount = 0
                 )
                 _userChats.value = currentChats
             }
@@ -2373,7 +2453,10 @@ class MessageRepository @Inject constructor(
                 mediaUrl = UbuntuStorageUrl.rewrite(msg.media_url),
                 mediaSize = msg.media_size,
                 replyToId = msg.reply_to_id,
-                messageId = msg.id
+                messageId = msg.id,
+                isForwarded = msg.is_forwarded,
+                forwardedFromMessageId = msg.forwarded_from_message_id,
+                forwardedFromUserId = msg.forwarded_from_user_id
             ).fold(
                 onSuccess = { sent ->
                     BackendSendResult(
@@ -3559,6 +3642,25 @@ class MessageRepository @Inject constructor(
                 return@withContext Result.failure(Exception("Solo puedes editar tus propios mensajes"))
             }
 
+            if (shouldUseUbuntuBackend()) {
+                val serverMessage = localFallbackApiClient.editChatMessage(
+                    accessToken = token,
+                    chatId = source.chat_id.trim().lowercase(),
+                    messageId = cleanMessageId,
+                    content = normalizedContent
+                ).getOrElse { error ->
+                    return@withContext Result.failure(error)
+                }
+                val updatedEntity = conectate.com.data.local.entity.MessageEntity.fromDomain(
+                    msg = serverMessage,
+                    isSynced = true,
+                    pendingAction = null
+                )
+                messageDao.insertMessage(updatedEntity)
+                updateMessageInFlow(serverMessage.chat_id.trim().lowercase(), serverMessage)
+                return@withContext Result.success(Unit)
+            }
+
             var patchPayload = buildJsonObject {
                 put("content", normalizedContent)
                 put("is_edited", true)
@@ -3621,6 +3723,31 @@ class MessageRepository @Inject constructor(
             val normalizedEmoji = emoji.trim()
             if (normalizedEmoji.isBlank()) {
                 return@withContext Result.failure(Exception("Reacción inválida"))
+            }
+
+            if (shouldUseUbuntuBackend()) {
+                val serverMessage = localFallbackApiClient.toggleChatMessageReaction(
+                    accessToken = token,
+                    chatId = local.chat_id,
+                    messageId = messageId,
+                    emoji = normalizedEmoji
+                ).getOrElse { error ->
+                    return@withContext Result.failure(error)
+                }
+                messageDao.insertMessage(
+                    conectate.com.data.local.entity.MessageEntity.fromDomain(
+                        msg = serverMessage,
+                        isSynced = true,
+                        pendingAction = null
+                    )
+                )
+                updateMessageInFlow(serverMessage.chat_id.trim().lowercase(), serverMessage)
+                return@withContext Result.success(
+                    MessageReactionToggleResult(
+                        messageId = serverMessage.id,
+                        reactions = serverMessage.reactions
+                    )
+                )
             }
 
             var rpcPayload = buildJsonObject {
@@ -4008,9 +4135,32 @@ class MessageRepository @Inject constructor(
     suspend fun deleteChat(chatId: String): Result<Unit> {
         return try {
             var cleanId = chatId.trim().lowercase()
+            var now = java.time.Instant.now().toString()
             sessionStateStore.clearLocalReadOverride(cleanId)
+
+            if (shouldUseUbuntuBackend()) {
+                val token = authService.ensureValidAccessToken()
+                    .getOrElse { return Result.failure(it) }
+                localFallbackApiClient.hideChat(token, cleanId)
+                    .onFailure { firstError ->
+                        android.util.Log.w(
+                            "MessageRepository",
+                            "hideChat ubuntu failed, trying clearChat before local hide",
+                            firstError
+                        )
+                        localFallbackApiClient.clearChat(token, cleanId)
+                            .getOrElse { secondError ->
+                                return Result.failure(
+                                    Exception("No se pudo eliminar el chat en el servidor: ${secondError.message}", secondError)
+                                )
+                            }
+                    }
+            } else {
+                clearChat(cleanId).getOrElse { return Result.failure(it) }
+            }
+
             // Soft delete from Room (marks as deleted, hidden from UI)
-            chatDao.deleteChat(cleanId, java.time.Instant.now().toString())
+            chatDao.deleteChat(cleanId, now)
             // Hard delete messages locally to free space and prevent old messages showing up
             messageDao.deleteMessagesByChatId(cleanId)
             

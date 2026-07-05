@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.ChatSummary
 import conectate.com.data.model.Message
+import conectate.com.data.model.ScheduledMessageJob
 import conectate.com.data.model.TypingConversationScope
 import conectate.com.data.model.TypingParticipant
 import conectate.com.data.model.User
@@ -152,6 +153,9 @@ class ChatViewModel @Inject constructor(
     private val _advancedMessage = MutableStateFlow<String?>(null)
     val advancedMessage: StateFlow<String?> = _advancedMessage.asStateFlow()
 
+    private val _scheduledMessages = MutableStateFlow<List<ScheduledMessageJob>>(emptyList())
+    val scheduledMessages: StateFlow<List<ScheduledMessageJob>> = _scheduledMessages.asStateFlow()
+
     private val _chatSummary = MutableStateFlow<ChatSummary?>(null)
     val chatSummary: StateFlow<ChatSummary?> = _chatSummary.asStateFlow()
 
@@ -280,9 +284,10 @@ class ChatViewModel @Inject constructor(
             
             if (resolvedChat != null) {
                 chatId = resolvedChat.id
-                messageRepository.setActiveChatSession(chatId, _isScreenActive.value)
+                val isRealChat = !isPlaceholder && !resolvedChat.id.startsWith("placeholder_", ignoreCase = true)
                 val cleanChatId = chatId?.trim()?.lowercase()
-                if (!cleanChatId.isNullOrBlank()) {
+                if (isRealChat && !cleanChatId.isNullOrBlank()) {
+                    messageRepository.setActiveChatSession(chatId, _isScreenActive.value)
                     viewModelScope.launch {
                         messageRepository.markChatAsRead(cleanChatId)
                     }
@@ -304,9 +309,20 @@ class ChatViewModel @Inject constructor(
                 _otherUserMetadata.value = cachedOtherUser
                 _currentNickname.value = cachedOtherUser?.display_name ?: resolvedChat.nickname
 
-                // Start observing messages
-                startObservingMessages(resolvedChat.id, resolvedChat)
-                loadTranslationSettings(resolvedChat.id)
+                if (isRealChat) {
+                    // Start observing messages only for real chats. Placeholder chats must not touch server/Room.
+                    startObservingMessages(resolvedChat.id, resolvedChat)
+                    loadTranslationSettings(resolvedChat.id)
+                    refreshScheduledMessages()
+                } else {
+                    _scheduledMessages.value = emptyList()
+                    _chatState.value = ChatUiState.Success(
+                        messages = emptyList(),
+                        otherUser = cachedOtherUser,
+                        currentUser = null,
+                        chat = resolvedChat
+                    )
+                }
 
                 // 4. Fetch Profiles and Badges in Parallel from Server (Refresh metadata)
                 viewModelScope.launch {
@@ -343,6 +359,16 @@ class ChatViewModel @Inject constructor(
                     _otherUserMetadata.value = otherUser
                     _currentUserMetadata.value = userWithBadges
                     _currentUserBadgesMetadata.value = currentBadges
+
+                    if (!isRealChat) {
+                        _chatState.value = ChatUiState.Success(
+                            messages = emptyList(),
+                            otherUser = otherUser,
+                            currentUser = userWithBadges,
+                            chat = resolvedChat,
+                            currentUserBadges = currentBadges
+                        )
+                    }
 
                     // Observe presence in real-time
                     if (targetUserId != null) {
@@ -888,6 +914,11 @@ class ChatViewModel @Inject constructor(
     fun setAutoTranslation(enabled: Boolean, targetLang: String) {
         val cid = chatId ?: return
         val cleanLang = normalizeLanguageCode(targetLang) ?: "en"
+        if (enabled && !advancedMessagingRepository.isSecureTranslationAvailable()) {
+            _autoTranslateEnabled.value = false
+            _advancedMessage.value = "La traducción automática aún no está disponible en producción."
+            return
+        }
         viewModelScope.launch {
             val result = advancedMessagingRepository.setChatTranslation(
                 chatId = cid,
@@ -930,13 +961,14 @@ class ChatViewModel @Inject constructor(
     }
 
     fun scheduleCurrentTextMessageAt(
+        content: String? = null,
         dateIso: String,
         time24h: String,
         selfDestructSeconds: Int? = null,
         translateTo: String? = null
     ) {
         if (!ensureNotBlockedForSending()) return
-        val text = _messageText.value.trim()
+        val text = (content ?: _messageText.value).trim()
         if (text.isBlank()) {
             _advancedMessage.value = "Escribe un mensaje para programarlo."
             return
@@ -961,6 +993,7 @@ class ChatViewModel @Inject constructor(
     fun scheduleMediaMessageAt(
         mediaUri: Uri,
         messageType: String,
+        content: String? = null,
         dateIso: String,
         time24h: String,
         selfDestructSeconds: Int? = null,
@@ -1009,7 +1042,8 @@ class ChatViewModel @Inject constructor(
                 return@launch
             }
 
-            val caption = _messageText.value.trim().ifBlank { defaultScheduleCaption(messageType) }
+            val caption = content?.trim()?.ifBlank { null }
+                ?: _messageText.value.trim().ifBlank { defaultScheduleCaption(messageType) }
             val scheduled = advancedMessagingRepository.scheduleMessageJob(
                 scopeType = "dm",
                 targetId = cid,
@@ -1024,6 +1058,7 @@ class ChatViewModel @Inject constructor(
             if (scheduled.isSuccess) {
                 _messageText.value = ""
                 stopTypingPresence()
+                refreshScheduledMessages()
                 val scheduledAt = runCatching {
                     Instant.ofEpochMilli(scheduledMs)
                         .atZone(ZoneId.systemDefault())
@@ -1034,6 +1069,36 @@ class ChatViewModel @Inject constructor(
                 _advancedMessage.value = "Multimedia programada para $scheduledAt."
             } else {
                 _advancedMessage.value = scheduled.exceptionOrNull()?.message ?: "No se pudo programar multimedia."
+            }
+        }
+    }
+
+    fun refreshScheduledMessages() {
+        val cid = chatId?.trim()?.lowercase()
+        if (cid.isNullOrBlank() || isPlaceholder || cid.startsWith("placeholder_")) {
+            _scheduledMessages.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            val result = advancedMessagingRepository.getScheduledJobs("dm", cid)
+            if (result.isSuccess) {
+                _scheduledMessages.value = result.getOrDefault(emptyList())
+            } else {
+                _advancedMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudieron cargar mensajes programados."
+            }
+        }
+    }
+
+    fun cancelScheduledMessage(jobId: String) {
+        viewModelScope.launch {
+            val result = advancedMessagingRepository.cancelScheduledJob(jobId)
+            if (result.isSuccess) {
+                _advancedMessage.value = "Mensaje programado cancelado."
+                refreshScheduledMessages()
+            } else {
+                _advancedMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo cancelar mensaje programado."
             }
         }
     }
@@ -1330,6 +1395,7 @@ class ChatViewModel @Inject constructor(
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         _isScreenActive.value = isVisible
+        if (isPlaceholder || chatId?.startsWith("placeholder_", ignoreCase = true) == true) return
         messageRepository.setActiveChatSession(chatId, isVisible)
         if (!isVisible) return
         val cleanChatId = chatId?.trim()?.lowercase() ?: return
@@ -1343,6 +1409,7 @@ class ChatViewModel @Inject constructor(
         _visibleMessageIds.value = visibleMessageIds
         if (!_isScreenActive.value) return
         val cid = chatId?.trim()?.lowercase() ?: return
+        if (cid.startsWith("placeholder_")) return
         val state = _chatState.value as? ChatUiState.Success ?: return
         maybeMarkChatAsRead(cid, state.messages, visibleMessageIds)
     }
@@ -1785,6 +1852,7 @@ class ChatViewModel @Inject constructor(
             if (scheduled.isSuccess) {
                 _messageText.value = ""
                 stopTypingPresence()
+                refreshScheduledMessages()
                 val scheduledAt = runCatching {
                     Instant.ofEpochMilli(whenMs)
                         .atZone(ZoneId.systemDefault())

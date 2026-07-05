@@ -32,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import conectate.com.data.model.Message
+import conectate.com.data.model.ScheduledMessageJob
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -171,11 +172,13 @@ fun ChatScreen(
     val showClearChatDialog by viewModel.showClearChatDialog.collectAsState()
     val advancedMessage by viewModel.advancedMessage.collectAsState()
     val chatSummary by viewModel.chatSummary.collectAsState()
+    val scheduledMessages by viewModel.scheduledMessages.collectAsState()
     val autoTranslateEnabled by viewModel.autoTranslateEnabled.collectAsState()
     val autoTranslateTargetLang by viewModel.autoTranslateTargetLang.collectAsState()
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
 
     var showScheduleDialog by remember { mutableStateOf(false) }
+    var showScheduledMessagesDialog by remember { mutableStateOf(false) }
     var showTranslateDialog by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     val scheduleDefaults = remember {
@@ -184,6 +187,7 @@ fun ChatScreen(
     }
     var scheduleDateText by remember { mutableStateOf(scheduleDefaults.first) }
     var scheduleTimeText by remember { mutableStateOf(scheduleDefaults.second.take(5)) }
+    var scheduleMessageText by remember { mutableStateOf("") }
     var scheduleSelfDestructText by remember { mutableStateOf("") }
     var scheduleTranslateLang by remember { mutableStateOf("") }
     var scheduledMediaUri by remember { mutableStateOf<Uri?>(null) }
@@ -828,20 +832,19 @@ fun ChatScreen(
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (chatImage != null) {
-                                 Box(modifier = Modifier.clickable {
-                                    // Navigate to full screen image
-                                    // Using navigation for individual profile photos
-                                    navController.navigate(conectate.com.presentation.navigation.Screen.FullScreenImage.createRoute(chatImage))
-                                }) {
-                                    conectate.com.presentation.components.CircularProfileImage(
-                                        imageUrl = chatImage,
-                                        size = 32.dp,
-                                        isVerified = if (chat?.is_group == true) false else otherUser?.is_verified ?: false
-                                    )
+                            Box(
+                                modifier = Modifier.clickable(enabled = !chatImage.isNullOrBlank()) {
+                                    navController.navigate(conectate.com.presentation.navigation.Screen.FullScreenImage.createRoute(chatImage!!))
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
+                            ) {
+                                conectate.com.presentation.components.CircularProfileImage(
+                                    imageUrl = chatImage,
+                                    size = 32.dp,
+                                    isVerified = if (chat?.is_group == true) false else otherUser?.is_verified ?: false,
+                                    fallbackName = chatName
+                                )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
                             
                             // Name and Status
                             Column(
@@ -951,7 +954,24 @@ fun ChatScreen(
                                     text = { Text("Programar mensaje") },
                                     onClick = {
                                         showMenu = false
+                                        scheduleMessageText = messageText
                                         showScheduleDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (scheduledMessages.isEmpty()) {
+                                                "Mensajes programados"
+                                            } else {
+                                                "Mensajes programados (${scheduledMessages.size})"
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.refreshScheduledMessages()
+                                        showScheduledMessagesDialog = true
                                     }
                                 )
                                 DropdownMenuItem(
@@ -1799,6 +1819,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
+                            scheduleMessageText = messageText
                             showScheduleDialog = true
                         }
                         .padding(8.dp),
@@ -1835,6 +1856,14 @@ fun ChatScreen(
             title = { Text("Programar mensaje") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = scheduleMessageText,
+                        onValueChange = { scheduleMessageText = it.take(4000) },
+                        label = { Text(if (scheduledMediaType == null) "Mensaje" else "Texto o caption") },
+                        placeholder = { Text("Escribe lo que se enviará") },
+                        minLines = 3,
+                        maxLines = 5
+                    )
                     OutlinedTextField(
                         value = scheduleDateText,
                         onValueChange = { scheduleDateText = it.trim().take(10) },
@@ -1894,6 +1923,7 @@ fun ChatScreen(
                         viewModel.scheduleMediaMessageAt(
                             mediaUri = mediaUri,
                             messageType = mediaType,
+                            content = scheduleMessageText,
                             dateIso = scheduleDateText,
                             time24h = scheduleTimeText,
                             selfDestructSeconds = selfDestruct,
@@ -1901,6 +1931,7 @@ fun ChatScreen(
                         )
                     } else {
                         viewModel.scheduleCurrentTextMessageAt(
+                            content = scheduleMessageText,
                             dateIso = scheduleDateText,
                             time24h = scheduleTimeText,
                             selfDestructSeconds = selfDestruct,
@@ -1909,6 +1940,7 @@ fun ChatScreen(
                     }
                     scheduledMediaUri = null
                     scheduledMediaType = null
+                    scheduleMessageText = ""
                     showScheduleDialog = false
                 }) {
                     Text("Programar")
@@ -1919,8 +1951,17 @@ fun ChatScreen(
                     showScheduleDialog = false
                     scheduledMediaUri = null
                     scheduledMediaType = null
+                    scheduleMessageText = ""
                 }) { Text("Cancelar") }
             }
+        )
+    }
+
+    if (showScheduledMessagesDialog) {
+        ScheduledMessagesDialog(
+            jobs = scheduledMessages,
+            onCancel = { viewModel.cancelScheduledMessage(it) },
+            onDismiss = { showScheduledMessagesDialog = false }
         )
     }
 
@@ -2114,6 +2155,96 @@ fun ChatScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ScheduledMessagesDialog(
+    jobs: List<ScheduledMessageJob>,
+    onCancel: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mensajes programados") },
+        text = {
+            if (jobs.isEmpty()) {
+                Text("No hay mensajes programados en este chat.")
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(jobs, key = { it.id }) { job ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = formatScheduledJobTitle(job),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = formatScheduledJobTime(job.scheduled_for),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (job.content.isNotBlank()) {
+                                Text(
+                                    text = job.content.take(180),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { onCancel(job.id) }) {
+                                    Text("Cancelar", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
+private fun formatScheduledJobTitle(job: ScheduledMessageJob): String {
+    val type = when (job.content_type.trim().lowercase(Locale.getDefault())) {
+        "image" -> "Imagen"
+        "video" -> "Video"
+        "audio" -> "Audio"
+        else -> "Texto"
+    }
+    val status = when (job.status.trim().lowercase(Locale.getDefault())) {
+        "failed" -> "fallido"
+        "pending" -> "pendiente"
+        else -> job.status.trim().ifBlank { "pendiente" }
+    }
+    return "$type $status"
+}
+
+private fun formatScheduledJobTime(value: String): String {
+    if (value.isBlank()) return "Sin fecha"
+    return try {
+        val instant = java.time.Instant.parse(value.trim())
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+        "Para ${instant.atZone(java.time.ZoneId.systemDefault()).format(formatter)}"
+    } catch (e: Exception) {
+        "Para ${value.take(16).replace("T", " ")}"
     }
 }
 

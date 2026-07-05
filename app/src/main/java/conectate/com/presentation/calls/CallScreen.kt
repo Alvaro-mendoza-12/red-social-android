@@ -685,7 +685,7 @@ private fun FloatingCallReaction(
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 9_500, easing = LinearOutSlowInEasing)
+            animationSpec = tween(durationMillis = 2_400, easing = LinearOutSlowInEasing)
         )
     }
     val p = progress.value

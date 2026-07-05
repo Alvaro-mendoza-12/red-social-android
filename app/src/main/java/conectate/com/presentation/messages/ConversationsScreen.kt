@@ -171,21 +171,24 @@ fun ConversationsScreen(
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = if (count > 0) 8.dp else 0.dp)
+                                        modifier = Modifier.padding(
+                                            start = 2.dp,
+                                            end = if (count > 0) 18.dp else 2.dp
+                                        )
                                     )
                                     if (count > 0) {
                                         Surface(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
-                                                .offset(x = 2.dp, y = 2.dp)
-                                                .height(17.dp)
-                                                .widthIn(min = 17.dp),
+                                                .offset(x = (-4).dp, y = (-5).dp)
+                                                .height(18.dp)
+                                                .widthIn(min = 18.dp),
                                             shape = CircleShape,
                                             color = Color(0xFFE53935),
                                             contentColor = Color.White
                                         ) {
                                             Box(
-                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                                modifier = Modifier.padding(horizontal = 5.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(

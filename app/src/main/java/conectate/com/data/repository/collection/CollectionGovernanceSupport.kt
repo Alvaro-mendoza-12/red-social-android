@@ -13,10 +13,10 @@ data class CollectionGovernancePrivileges(
         get() = memberRole == "admin" || memberRole == "owner"
 
     val canManageMembers: Boolean
-        get() = isGlobalAdmin || isCreator || isElevatedMember
+        get() = isCreator || isElevatedMember
 
     val canManageCollection: Boolean
-        get() = isGlobalAdmin || isCreator || isElevatedMember
+        get() = isCreator || isElevatedMember
 }
 
 object CollectionGovernanceSupport {

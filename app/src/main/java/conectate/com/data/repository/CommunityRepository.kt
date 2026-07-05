@@ -1021,6 +1021,8 @@ class CommunityRepository @Inject constructor(
         val now = java.time.Instant.now().toString()
         val updatedAt = item.updatedAt.ifBlank { now }
         val preview = item.subtitle.takeIf { it.isNotBlank() && it != "Sin actividad reciente" }
+        val creatorId = item.creatorId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: currentUserId
+        val isMember = item.isMember || creatorId == currentUserId
         return Community(
             id = cleanId,
             name = item.title.ifBlank { "Comunidad" },
@@ -1028,12 +1030,13 @@ class CommunityRepository @Inject constructor(
             description = item.subtitle.takeIf { it.isNotBlank() },
             is_public = item.isPublic,
             created_at = updatedAt,
-            creator_id = currentUserId,
+            creator_id = creatorId,
             last_message = preview,
             last_message_at = updatedAt,
-            is_member = true,
+            is_member = isMember,
             is_deleted = false,
-            only_admins_can_talk = item.onlyAdminsCanTalk
+            only_admins_can_talk = item.onlyAdminsCanTalk,
+            current_user_role = item.currentUserRole
         )
     }
 
@@ -1047,6 +1050,10 @@ class CommunityRepository @Inject constructor(
             val inbox = localFallbackApiClient.loadMessagesInbox(token, "communities").getOrThrow()
             val activeItems = inbox.items.filter { it.id.isNotBlank() }
             val activeIds = activeItems.map { it.id.trim().lowercase() }.distinct()
+            val joinedIds = activeItems
+                .filter { it.isMember || it.creatorId?.trim()?.equals(userId, ignoreCase = true) == true }
+                .map { it.id.trim().lowercase() }
+                .distinct()
             val localUnreadCounts = communityDao.getUnreadCountRows(userId)
                 .associate { row -> row.communityId.trim().lowercase() to row.unreadCount.coerceAtLeast(0) }
 
@@ -1066,12 +1073,20 @@ class CommunityRepository @Inject constructor(
                 }
             )
             communityDao.insertMembers(
-                activeIds.map { communityId ->
-                    CommunityMemberEntity(communityId, userId, "member", java.time.Instant.now().toString())
+                activeItems.mapNotNull { item ->
+                    val communityId = item.id.trim().lowercase()
+                    if (communityId.isBlank() || (!item.isMember && item.creatorId?.trim()?.equals(userId, ignoreCase = true) != true)) {
+                        null
+                    } else {
+                        val role = item.currentUserRole?.trim()?.lowercase()
+                            ?.takeIf { it == "admin" || it == "owner" || it == "creator" || it == "member" }
+                            ?: if (item.creatorId?.trim()?.equals(userId, ignoreCase = true) == true) "owner" else "member"
+                        CommunityMemberEntity(communityId, userId, role, java.time.Instant.now().toString())
+                    }
                 }
             )
-            communityDao.markOthersAsNotJoined(activeIds)
-            activeIds.forEach { cleanId -> syncCommunityMessages(cleanId, userId) }
+            communityDao.markOthersAsNotJoined(joinedIds)
+            joinedIds.forEach { cleanId -> syncCommunityMessages(cleanId, userId) }
             android.util.Log.d("CommunityRepository", "✅ [UBUNTU-SYNC] ${activeIds.size} comunidades sincronizadas desde Ubuntu")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -1247,7 +1262,7 @@ class CommunityRepository @Inject constructor(
                 buildJsonObject {
                     put("community_id", communityId)
                     put("user_id", creatorId.trim().lowercase())
-                    put("role", "admin")
+                    put("role", "owner")
                     put("joined_at", now)
                 }
             )
@@ -1279,7 +1294,7 @@ class CommunityRepository @Inject constructor(
                     CommunityMemberEntity(
                         community_id = communityId,
                         user_id = creatorId.trim().lowercase(),
-                        role = "admin",
+                        role = "owner",
                         joined_at = now
                     )
                 ))
@@ -1309,7 +1324,7 @@ class CommunityRepository @Inject constructor(
                     CommunityMemberEntity(
                         community_id = communityId,
                         user_id = creatorId,
-                        role = "admin",
+                        role = "owner",
                         joined_at = now
                     )
                 ))
@@ -1326,6 +1341,9 @@ class CommunityRepository @Inject constructor(
 
 
     private suspend fun getMemberRole(communityId: String, userId: String): String? {
+        if (authService.isLocalFallbackModeEnabled()) {
+            return communityDao.getUserRoleSync(communityId.trim().lowercase(), userId.trim().lowercase())
+        }
         return collectionAdminRemoteStore.getMemberRole(
             membershipTable = "community_members",
             scopeColumn = "community_id",
@@ -1508,6 +1526,28 @@ class CommunityRepository @Inject constructor(
 
     suspend fun searchCommunities(query: String): Result<List<Community>> = withContext(Dispatchers.IO) {
         try {
+            if (authService.isLocalFallbackModeEnabled() && localFallbackApiClient.isConfigured) {
+                val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+                    ?: return@withContext Result.failure(Exception("Not authenticated"))
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val cleanQuery = query.trim()
+                val communities = localFallbackApiClient.loadMessagesInbox(token, "communities")
+                    .getOrThrow()
+                    .items
+                    .asSequence()
+                    .filter { item -> item.isPublic && item.id.isNotBlank() }
+                    .map { item -> communityFromFallbackInbox(item, userId) }
+                    .filter { community ->
+                        cleanQuery.isBlank() ||
+                            community.name.contains(cleanQuery, ignoreCase = true) ||
+                            community.description?.contains(cleanQuery, ignoreCase = true) == true ||
+                            community.category?.contains(cleanQuery, ignoreCase = true) == true
+                    }
+                    .distinctBy { it.id.trim().lowercase() }
+                    .toList()
+                return@withContext Result.success(communities)
+            }
             var response = supabaseConfig.client.postgrest["communities"].select {
                 filter { 
                     ilike("name", "%$query%")
@@ -1714,6 +1754,22 @@ class CommunityRepository @Inject constructor(
                 errorMessage = "No tienes permisos para gestionar roles."
             )
 
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                localFallbackApiClient.joinCollection(token, "communities", cleanId, targetUserId, newRole).getOrThrow()
+                communityDao.insertMembers(listOf(
+                    CommunityMemberEntity(
+                        community_id = cleanId,
+                        user_id = targetUserId,
+                        role = newRole.trim().lowercase(),
+                        joined_at = java.time.Instant.now().toString()
+                    )
+                ))
+                scope.launch { syncCommunities() }
+                return@withContext Result.success(Unit)
+            }
+
             collectionAdminRemoteStore.updateMemberRole(
                 membershipTable = "community_members",
                 scopeColumn = "community_id",
@@ -1839,6 +1895,8 @@ class CommunityRepository @Inject constructor(
                 ?: return@withContext Result.failure(Exception("La comunidad ya no está disponible."))
             val isCreator = community.creator_id.trim().lowercase() == senderId
             var isMember = community.is_member || isCreator || isUserMember(cleanId, senderId)
+            val role = communityDao.getUserRoleSync(cleanId, senderId)?.trim()?.lowercase()
+            val isAdmin = isCreator || role == "admin" || role == "owner" || role == "creator"
             if (!isMember) {
                 return@withContext Result.failure(
                     Exception(
@@ -1849,6 +1907,9 @@ class CommunityRepository @Inject constructor(
                         }
                     )
                 )
+            }
+            if (community.only_admins_can_talk && !isAdmin) {
+                return@withContext Result.failure(Exception("Solo los administradores pueden escribir en esta comunidad."))
             }
 
             val guardDecision = operationGuard.acquire(

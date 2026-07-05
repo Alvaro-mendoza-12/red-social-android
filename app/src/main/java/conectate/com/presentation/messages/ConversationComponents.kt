@@ -75,7 +75,8 @@ fun ConversationItem(
             imageUrl = otherUserProfileImage,
             size = 54.dp,
             showBorder = false,
-            isVerified = if (conversation.chat.is_group) false else conversation.otherUserVerified
+            isVerified = if (conversation.chat.is_group) false else conversation.otherUserVerified,
+            fallbackName = otherUserName
         )
         
         Spacer(modifier = Modifier.width(14.dp))
@@ -363,11 +364,11 @@ fun ConversationItemWithSwipe(
     onReport: () -> Unit
 ) {
     val dismissState = rememberDismissState(
-        positionalThreshold = { totalDistance -> totalDistance * 0.93f },
+        positionalThreshold = { totalDistance -> totalDistance * 0.97f },
         confirmValueChange = { value ->
             if (value == DismissValue.DismissedToStart) {
                 onDelete()
-                true
+                false
             } else false
         }
     )

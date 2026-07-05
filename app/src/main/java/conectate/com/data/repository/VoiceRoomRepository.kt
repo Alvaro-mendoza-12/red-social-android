@@ -363,9 +363,20 @@ class VoiceRoomRepository @Inject constructor(
         Result.success(_currentRoom.value)
     }
 
+    private var isAudioSessionPrepared = false
+
     private fun prepareVoiceAudioSession(forceMicUnmute: Boolean = true) {
         var audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         try {
+            if (isAudioSessionPrepared) {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                if (forceMicUnmute) {
+                    audioManager.isMicrophoneMute = false
+                }
+                forceSpeakerOutput(audioManager)
+                return
+            }
+
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -395,6 +406,7 @@ class VoiceRoomRepository @Inject constructor(
                 audioManager.isMicrophoneMute = false
             }
             forceSpeakerOutput(audioManager)
+            isAudioSessionPrepared = true
         } catch (e: Exception) {
             android.util.Log.w("VoiceRoomRepository", "Failed to prepare voice audio session", e)
         }
@@ -1010,12 +1022,16 @@ class VoiceRoomRepository @Inject constructor(
             prepareVoiceAudioSession(forceMicUnmute = true)
             webRTCManager?.ensureLocalTracks()
             webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+            webRTCManager?.setAudioEnabled(!isSelfMuted())
+            emitCurrentMediaState()
+            flushPendingRoomSocketEvents(signalRoom)
             updateConnectionState(VoiceConnectionState.CONNECTED)
             appMetrics.incrementCounter(
                 metric = "voice_room_rejoin_preserved",
                 attributes = currentMetricAttributes(roomId = roomId)
             )
             startVoiceForegroundService(_currentRoom.value, signalRoom)
+            reinforceAudioAfterVideoTransition("voice-room-reentry")
             android.util.Log.w("VoiceRoomRepository", "📍 RE-ENTRY completed: Session preserved")
             return@withContext
         } else if (socket?.connected() == true) {
@@ -1414,18 +1430,21 @@ class VoiceRoomRepository @Inject constructor(
                     }
                     else -> ""
                 }
-                if (sid.isNotEmpty()) {
+                val senderUserId = data.optString("userId", "").trim()
+                if (sid.isNotBlank() || senderUserId.isNotBlank()) {
                     val isCamera = data.optBoolean("isCameraSharing", false)
                     var isScreen = data.optBoolean("isScreenSharing", false)
-                    var senderUserId = data.optString("userId", "")
+                    val resolvedSocketId = sid.ifBlank {
+                        _currentParticipants.value.firstOrNull { it.id == senderUserId }?.socketId.orEmpty()
+                    }
 
                     updateSharingState(
-                        socketId = sid,
+                        socketId = resolvedSocketId,
                         userId = senderUserId,
                         isCameraSharing = isCamera,
                         isScreenSharing = isScreen
                     )
-                    android.util.Log.d("VoiceRoomRepository", "🎥 Media status update for $sid: cam=$isCamera, screen=$isScreen")
+                    android.util.Log.d("VoiceRoomRepository", "🎥 Media status update for ${resolvedSocketId.ifBlank { senderUserId }}: cam=$isCamera, screen=$isScreen")
                 }
             }
 
@@ -1499,6 +1518,7 @@ class VoiceRoomRepository @Inject constructor(
                 val emojiPayload = data.optString("emoji").trim()
                 if (userIdPayload.isBlank() || emojiPayload.isBlank()) return@on
                 val reaction = conectate.com.presentation.voicerooms.ReactionEvent(
+                    id = data.optString("reactionId", data.optString("id", "")),
                     userId = userIdPayload,
                     emoji = emojiPayload,
                     timestamp = data.optLong("timestamp", System.currentTimeMillis())
@@ -1782,6 +1802,7 @@ class VoiceRoomRepository @Inject constructor(
             pendingConnectMetricName = null
             pendingConnectStartedAtMs = null
             reconnectFailureCount = 0
+            isAudioSessionPrepared = false
 
             if (!actualRoomId.isNullOrBlank() && authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 authService.getAccessTokenAwait()?.let { token ->
@@ -2121,7 +2142,7 @@ class VoiceRoomRepository @Inject constructor(
 
     suspend fun sendReaction(reaction: conectate.com.presentation.voicerooms.ReactionEvent) = withContext(Dispatchers.IO) {
         val roomId = getCurrentRoomId()
-        val reactionId = java.util.UUID.randomUUID().toString()
+        val reactionId = reaction.id.ifBlank { java.util.UUID.randomUUID().toString() }
         emitOrQueueRoomSocketEvent(roomId, "reaction") {
             put("roomId", (roomId ?: "") as String)
             put("userId", reaction.userId as String)
@@ -2227,7 +2248,12 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
-    fun sendReaction(roomId: String, emoji: String) {
+    fun sendReaction(
+        roomId: String,
+        emoji: String,
+        reactionId: String = UUID.randomUUID().toString(),
+        timestamp: Long = System.currentTimeMillis()
+    ) {
         var userId = authService.getCurrentUserId() ?: return
         scope.launch {
             try {
@@ -2235,15 +2261,9 @@ class VoiceRoomRepository @Inject constructor(
                     put("roomId", roomId)
                     put("userId", userId)
                     put("emoji", emoji)
-                    put("reactionId", UUID.randomUUID().toString())
+                    put("reactionId", reactionId)
+                    put("timestamp", timestamp)
                 }
-                _incomingReactions.tryEmit(
-                    conectate.com.presentation.voicerooms.ReactionEvent(
-                        userId = userId,
-                        emoji = emoji,
-                        timestamp = System.currentTimeMillis()
-                    )
-                )
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepo", "Failed to send reaction", e)
             }

@@ -36,7 +36,8 @@ fun CommentItem(
     Row(modifier = Modifier.fillMaxWidth().padding(start = (level * 24 + 16).dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
         CircularProfileImage(
             imageUrl = comment.userAvatar ?: "",
-            size = if (isReply) 32.dp else 40.dp
+            size = if (isReply) 32.dp else 40.dp,
+            fallbackName = comment.userName
         )
         
         Spacer(modifier = Modifier.width(8.dp))

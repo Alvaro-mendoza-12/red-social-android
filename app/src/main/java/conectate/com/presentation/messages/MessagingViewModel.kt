@@ -83,9 +83,10 @@ class MessagingViewModel @Inject constructor(
 
     fun selectListFilter(filter: ChatListFilter) {
         _selectedListFilter.value = filter
-        if (filter != ChatListFilter.ALL) {
-            _selectedFolderId.value = null
-        }
+        // Los chips "Todas/Favoritos/Archivados" son filtros globales.
+        // Si una carpeta queda seleccionada, el usuario toca "Todas" y parece
+        // que no pasa nada porque la carpeta sigue filtrando por debajo.
+        _selectedFolderId.value = null
     }
 
     // FILTERED UI STATE

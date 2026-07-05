@@ -18,12 +18,13 @@ async function publishRealtimeEvent(channel, payload) {
   }
 }
 
-async function publishChatMessageEvent({ chatId, message, recipientIds = [] }) {
+async function publishChatMessageEvent({ chatId, message, recipientIds = [], action = 'created' }) {
   const normalizedChatId = String(chatId || '').trim()
   if (!normalizedChatId) return
 
   const envelope = {
     event: 'message',
+    action,
     chatId: normalizedChatId,
     message: message || {},
   }

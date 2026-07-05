@@ -173,6 +173,7 @@
 
         <service
             android:name=".services.IncomingCallForegroundService"
+            android:foregroundServiceType="shortService"
             android:exported="false" />
 
         <service

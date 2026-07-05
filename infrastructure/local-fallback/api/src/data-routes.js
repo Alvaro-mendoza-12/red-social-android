@@ -233,6 +233,25 @@ function rowParticipantsContain(row, values) {
   return participants.some((participant) => set.has(normalizeId(participant)))
 }
 
+function messageVisibleTo(row, identity) {
+  if (boolOf(row, ['deleted_for_all', 'deletedForAll'], false)) return false
+  const deletedBy = cleanSet(arrayOf(row, ['deleted_by', 'deletedBy']))
+  if (deletedBy.size === 0 || !identity?.ids) return true
+  return !Array.from(identity.ids).some((id) => deletedBy.has(normalizeId(id)))
+}
+
+function normalizeMessageRow(row) {
+  const normalized = normalizeImportedRow(row)
+  normalized.deleted_by = arrayOf(normalized, ['deleted_by', 'deletedBy'])
+  normalized.deleted_for_all = boolOf(normalized, ['deleted_for_all', 'deletedForAll'], false)
+  normalized.is_edited = boolOf(normalized, ['is_edited', 'isEdited'], false)
+  normalized.reactions = normalized.reactions && typeof normalized.reactions === 'object' && !Array.isArray(normalized.reactions)
+    ? normalized.reactions
+    : {}
+  normalized.is_forwarded = boolOf(normalized, ['is_forwarded', 'isForwarded'], false)
+  return normalized
+}
+
 function profileName(row, fallback = 'Usuario') {
   return textOf(row, ['display_name', 'displayName', 'full_name', 'username', 'name', 'email'], fallback)
 }
@@ -322,6 +341,13 @@ async function localMessages(pool, chatIds) {
         reply_to_id,
         delivered_at,
         read_at,
+        reactions,
+        deleted_by,
+        deleted_for_all,
+        is_edited,
+        is_forwarded,
+        forwarded_from_message_id,
+        forwarded_from_user_id,
         created_at,
         updated_at
      FROM fallback_messages
@@ -329,7 +355,7 @@ async function localMessages(pool, chatIds) {
      ORDER BY created_at ASC`,
     [ids],
   )
-  return rows.map(normalizeImportedRow)
+  return rows.map(normalizeMessageRow)
 }
 
 function chatParticipantKey(participants) {
@@ -490,6 +516,167 @@ async function localNicknames(pool, userId) {
       .map((row) => [normalizeId(textOf(row, ['target_user_id', 'targetUserId'], '')), textOf(row, ['nickname'], '')])
       .filter(([target, nickname]) => target && nickname),
   )
+}
+
+async function privateChatAccessContext(pool, chatId, identity) {
+  const cleanChatId = normalizeId(chatId)
+  const [fallbackChatRows, importedChatRows, importedParticipants, fallbackParticipants] = await Promise.all([
+    localChats(pool, 5000),
+    importedRows(pool, 'chats', 5000),
+    importedRows(pool, 'chat_participants', 10_000),
+    localChatParticipants(pool, [cleanChatId]),
+  ])
+  const chat = [...fallbackChatRows, ...importedChatRows]
+    .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
+  const participantRows = [...importedParticipants, ...fallbackParticipants]
+    .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
+  const hasAccess =
+    (chat && rowParticipantsContain(chat, identity.ids)) ||
+    participantRows.some((row) => rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids))
+
+  return { chat, participantRows, hasAccess }
+}
+
+function recipientIdsForChat(chat, participantRows, identity = null) {
+  return Array.from(new Set([
+    ...participantRows
+      .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
+    ...arrayOf(chat || {}, ['participants']).map(normalizeId),
+    ...(identity?.values || []),
+  ].filter(Boolean)))
+}
+
+async function blockRelationshipForPair(pool, identity, targetUserId) {
+  const cleanTargetId = normalizeId(targetUserId)
+  if (!cleanTargetId || identity.ids.has(cleanTargetId)) {
+    return { blockedByMe: false, blockedMe: false, isBlocked: false }
+  }
+  const { rows } = await pool.query(
+    `SELECT lower(blocker_id) AS blocker_id, lower(blocked_id) AS blocked_id
+     FROM fallback_user_blocks
+     WHERE (
+        lower(blocker_id) = ANY($1::text[]) AND lower(blocked_id) = $2
+     ) OR (
+        lower(blocker_id) = $2 AND lower(blocked_id) = ANY($1::text[])
+     )`,
+    [identity.values, cleanTargetId],
+  )
+  const blockedByMe = rows.some((row) => identity.ids.has(normalizeId(row.blocker_id)) && normalizeId(row.blocked_id) === cleanTargetId)
+  const blockedMe = rows.some((row) => normalizeId(row.blocker_id) === cleanTargetId && identity.ids.has(normalizeId(row.blocked_id)))
+  return { blockedByMe, blockedMe, isBlocked: blockedByMe || blockedMe }
+}
+
+async function blockRelationshipForChat(pool, chat, participantRows, identity) {
+  if (boolOf(chat || {}, ['is_group', 'isGroup'], false)) {
+    return { blockedByMe: false, blockedMe: false, isBlocked: false }
+  }
+  const participants = recipientIdsForChat(chat, participantRows, null)
+  const targetIds = participants.filter((id) => id && !identity.ids.has(id))
+  for (const targetId of targetIds) {
+    const relationship = await blockRelationshipForPair(pool, identity, targetId)
+    if (relationship.isBlocked) return relationship
+  }
+  return { blockedByMe: false, blockedMe: false, isBlocked: false }
+}
+
+async function getFallbackMessage(pool, chatId, messageId) {
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        chat_id,
+        sender_id,
+        content,
+        content_type,
+        media_url,
+        media_size,
+        status,
+        reply_to_id,
+        delivered_at,
+        read_at,
+        reactions,
+        deleted_by,
+        deleted_for_all,
+        is_edited,
+        is_forwarded,
+        forwarded_from_message_id,
+        forwarded_from_user_id,
+        created_at,
+        updated_at
+     FROM fallback_messages
+     WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+     LIMIT 1`,
+    [normalizeId(chatId), normalizeId(messageId)],
+  )
+  return rows[0] ? normalizeMessageRow(rows[0]) : null
+}
+
+async function updateFallbackChatLastMessage(pool, chatId) {
+  const cleanChatId = normalizeId(chatId)
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        chat_id,
+        sender_id,
+        content,
+        content_type,
+        media_url,
+        media_size,
+        status,
+        reply_to_id,
+        delivered_at,
+        read_at,
+        reactions,
+        deleted_by,
+        deleted_for_all,
+        is_edited,
+        is_forwarded,
+        forwarded_from_message_id,
+        forwarded_from_user_id,
+        created_at,
+        updated_at
+     FROM fallback_messages
+     WHERE lower(chat_id) = $1 AND deleted_for_all = FALSE
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [cleanChatId],
+  )
+  const latest = rows[0] ? normalizeMessageRow(rows[0]) : null
+  await pool.query(
+    `UPDATE fallback_chats
+     SET last_message = $2,
+         last_message_at = $3::timestamptz,
+         last_message_sender_id = $4,
+         last_message_id = $5,
+         updated_at = NOW()
+     WHERE lower(id::text) = $1`,
+    [
+      cleanChatId,
+      latest ? previewFromMessage(latest) : null,
+      latest ? textOf(latest, ['created_at'], '') || null : null,
+      latest ? textOf(latest, ['sender_id'], '') : null,
+      latest ? textOf(latest, ['id'], '') : null,
+    ],
+  )
+  return latest
+}
+
+function toggleReactionMap(current, emoji, userId) {
+  const cleanEmoji = String(emoji || '').trim().slice(0, 16)
+  const cleanUserId = normalizeId(userId)
+  if (!cleanEmoji || !cleanUserId) return current || {}
+
+  const next = {}
+  let removedSameReaction = false
+  for (const [key, rawUsers] of Object.entries(current || {})) {
+    const users = asArray(rawUsers).map(normalizeId).filter(Boolean)
+    const withoutUser = users.filter((id) => id !== cleanUserId)
+    if (key === cleanEmoji && withoutUser.length !== users.length) removedSameReaction = true
+    if (withoutUser.length > 0) next[key] = Array.from(new Set(withoutUser))
+  }
+  if (!removedSameReaction) {
+    next[cleanEmoji] = Array.from(new Set([...(next[cleanEmoji] || []), cleanUserId]))
+  }
+  return next
 }
 
 async function localCollectionMessages(pool, kind, roomId) {
@@ -943,6 +1130,14 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
     user_profile_image:
       textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '') ||
       textOf(row, ['user_profile_image', 'userProfileImage'], ''),
+    avatar_media_type:
+      textOf(profile, ['avatar_media_type', 'avatarMediaType'], '') ||
+      textOf(row, ['avatar_media_type', 'avatarMediaType'], ''),
+    avatar_video_muted: boolOf(
+      profile,
+      ['avatar_video_muted', 'avatarVideoMuted'],
+      boolOf(row, ['avatar_video_muted', 'avatarVideoMuted'], true),
+    ),
     title: textOf(row, ['title', 'caption'], 'Video'),
     description: textOf(row, ['description', 'content'], ''),
     video_url: playbackUrlWithVersion(videoUrl, row),
@@ -1657,6 +1852,9 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     username: textOf(row, ['username', 'handle'], ''),
     bio: textOf(row, ['bio', 'description', 'about'], ''),
     avatar_url: profileAvatar(row),
+    avatar_media_type: textOf(row, ['avatar_media_type', 'avatarMediaType'], ''),
+    avatar_video_muted: boolOf(row, ['avatar_video_muted', 'avatarVideoMuted'], true),
+    avatar_duration_ms: numberOf(row, ['avatar_duration_ms', 'avatarDurationMs'], 0),
     cover_url: textOf(row, ['cover_url', 'banner_url'], ''),
     is_private: boolOf(row, ['is_private', 'private'], false),
     ...presenceFields(row),
@@ -1763,6 +1961,9 @@ function fallbackProfileRow(user) {
     display_name: user.display_name || user.email,
     full_name: user.display_name || user.email,
     avatar_url: user.avatar_url || '',
+    avatar_media_type: 'image',
+    avatar_video_muted: true,
+    avatar_duration_ms: 0,
     is_online: false,
     last_seen: user.last_login_at || user.updated_at || user.created_at,
     last_seen_visibility: 'everyone',
@@ -1785,6 +1986,9 @@ function buildProfileForUser(user, importedProfile = {}, overrideProfile = {}) {
     display_name: profileName(merged, user.display_name || user.email),
     full_name: textOf(merged, ['full_name'], profileName(merged, user.display_name || user.email)),
     avatar_url: profileAvatar(merged),
+    avatar_media_type: textOf(merged, ['avatar_media_type', 'avatarMediaType'], ''),
+    avatar_video_muted: boolOf(merged, ['avatar_video_muted', 'avatarVideoMuted'], true),
+    avatar_duration_ms: numberOf(merged, ['avatar_duration_ms', 'avatarDurationMs'], 0),
     ...presenceFields(merged),
     last_seen_visibility: textOf(merged, ['last_seen_visibility', 'lastSeenVisibility'], 'everyone'),
     online_status_visibility: textOf(merged, ['online_status_visibility', 'onlineStatusVisibility'], 'everyone'),
@@ -1803,6 +2007,7 @@ function profilePatchFromBody(body) {
     ['city', ['city']],
     ['status', ['status']],
     ['avatar_url', ['avatar_url', 'avatarUrl']],
+    ['avatar_media_type', ['avatar_media_type', 'avatarMediaType']],
     ['cover_url', ['cover_url', 'coverUrl']],
     ['profile_visibility', ['profile_visibility', 'profileVisibility']],
     ['last_seen_visibility', ['last_seen_visibility', 'lastSeenVisibility']],
@@ -1823,6 +2028,20 @@ function profilePatchFromBody(body) {
     patch.is_private = Boolean(body.is_private)
   } else if (Object.prototype.hasOwnProperty.call(body || {}, 'isPrivate')) {
     patch.is_private = Boolean(body.isPrivate)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'avatar_video_muted')) {
+    patch.avatar_video_muted = Boolean(body.avatar_video_muted)
+  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'avatarVideoMuted')) {
+    patch.avatar_video_muted = Boolean(body.avatarVideoMuted)
+  }
+
+  const rawAvatarDuration = Object.prototype.hasOwnProperty.call(body || {}, 'avatar_duration_ms')
+    ? body.avatar_duration_ms
+    : body?.avatarDurationMs
+  const avatarDurationMs = Number(rawAvatarDuration || 0)
+  if (Number.isFinite(avatarDurationMs) && avatarDurationMs >= 0) {
+    patch.avatar_duration_ms = Math.min(2_000, Math.round(avatarDurationMs))
   }
 
   if (patch.display_name && !patch.full_name) {
@@ -2107,11 +2326,12 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId) {
     participants: roomMembers.map((row) => {
       const id = memberUserId(row)
       const profile = id ? profilesById.get(id) : null
+      const isRoomCreator = normalizeId(textOf(room, ['creator_id', 'owner_id', 'user_id'], '')) === id
       return {
         id,
         name: textOf(row, ['user_name', 'display_name', 'name'], '') || profileName(profile, id || 'Usuario'),
         avatarUrl: textOf(row, ['user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
-        role: textOf(row, ['role'], 'member'),
+        role: isRoomCreator ? 'admin' : textOf(row, ['role'], 'member'),
         joinedAt: textOf(row, ['joined_at', 'created_at'], ''),
       }
     }),
@@ -2305,9 +2525,23 @@ async function ensureLocalDataTables(pool) {
       is_archived BOOLEAN NOT NULL DEFAULT FALSE,
       is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
       cleared_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (chat_id, user_id)
     )
   `)
+  for (const statement of [
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_chat_participants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_chat_participants_user
      ON fallback_chat_participants(lower(user_id), joined_at DESC)`,
@@ -2338,6 +2572,18 @@ async function ensureLocalDataTables(pool) {
      ON fallback_nicknames(lower(user_id), lower(target_user_id))`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_user_blocks (
+      blocker_id TEXT NOT NULL,
+      blocked_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (blocker_id, blocked_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_user_blocks_blocked
+     ON fallback_user_blocks(lower(blocked_id), lower(blocker_id))`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       chat_id TEXT NOT NULL,
@@ -2350,6 +2596,13 @@ async function ensureLocalDataTables(pool) {
       reply_to_id TEXT,
       delivered_at TIMESTAMPTZ,
       read_at TIMESTAMPTZ,
+      reactions JSONB NOT NULL DEFAULT '{}'::jsonb,
+      deleted_by JSONB NOT NULL DEFAULT '[]'::jsonb,
+      deleted_for_all BOOLEAN NOT NULL DEFAULT FALSE,
+      is_edited BOOLEAN NOT NULL DEFAULT FALSE,
+      is_forwarded BOOLEAN NOT NULL DEFAULT FALSE,
+      forwarded_from_message_id TEXT,
+      forwarded_from_user_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -2358,6 +2611,13 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS media_size BIGINT NOT NULL DEFAULT 0`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}'::jsonb`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS deleted_by JSONB NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS deleted_for_all BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS is_forwarded BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id TEXT`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS forwarded_from_user_id TEXT`,
   ]) {
     await pool.query(statement)
   }
@@ -2995,7 +3255,7 @@ async function ensureLocalDataTables(pool) {
 }
 
 function registerDataRoutes(app, { pool, authRequired }) {
-  const { publishChatMessageEvent } = require('./realtime-publish')
+  const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
   registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, createLocalNotification })
@@ -3401,6 +3661,58 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ],
       )
       res.status(201).json({ report: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/profiles/:profileId/block', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+      res.json(await blockRelationshipForPair(pool, identity, profileId))
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/profiles/:profileId/block', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+      if (identity.ids.has(profileId)) return res.status(400).json({ error: 'CANNOT_BLOCK_SELF' })
+      await pool.query(
+        `INSERT INTO fallback_user_blocks(blocker_id, blocked_id, created_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        [identity.displayUserId, profileId],
+      )
+      res.json(await blockRelationshipForPair(pool, identity, profileId))
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/profiles/:profileId/block', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const profileId = normalizeId(req.params.profileId)
+      if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
+      await pool.query(
+        `DELETE FROM fallback_user_blocks
+         WHERE lower(blocker_id) = ANY($1::text[])
+           AND lower(blocked_id) = $2`,
+        [identity.values, profileId],
+      )
+      res.json(await blockRelationshipForPair(pool, identity, profileId))
     } catch (error) {
       next(error)
     }
@@ -4091,10 +4403,29 @@ function registerDataRoutes(app, { pool, authRequired }) {
             .map(([roomId, rows]) => [roomId, rows[rows.length - 1]]),
         )
         const items = rooms
-          .filter((row) => roomIds.has(normalizeId(textOf(row, ['id'], ''))))
+          .filter((row) => {
+            const cleanId = normalizeId(textOf(row, ['id'], ''))
+            const creatorId = normalizeId(textOf(row, ['creator_id', 'owner_id', 'user_id'], ''))
+            const isMember = roomIds.has(cleanId)
+            const isCreator = creatorId && identity.ids.has(creatorId)
+            const isPublicRoom = boolOf(row, ['is_public', 'public'], config.kind === 'community') && !boolOf(row, ['is_private'], false)
+            return config.kind === 'community'
+              ? isMember || isCreator || isPublicRoom
+              : isMember
+          })
           .map((row) => {
           const id = textOf(row, ['id'], '')
           const cleanId = normalizeId(id)
+          const creatorId = normalizeId(textOf(row, ['creator_id', 'owner_id', 'user_id'], ''))
+          const isCreator = creatorId && identity.ids.has(creatorId)
+          const currentMembership = memberships.find((membership) =>
+            roomIdOf(membership, config.roomKey) === cleanId &&
+            rowMatchesAny(membership, ['user_id', 'profile_id', 'member_id'], identity.ids),
+          )
+          const currentRole = isCreator
+            ? 'owner'
+            : textOf(currentMembership || {}, ['role'], roomIds.has(cleanId) ? 'member' : '')
+          const isPublicRoom = boolOf(row, ['is_public', 'public'], config.kind === 'community') && !boolOf(row, ['is_private'], false)
           const importedLatest = importedLatestByRoom.get(cleanId)
           const localLatest = localLatestByRoom.get(cleanId)
           const latest = toMillis(textOf(localLatest || {}, ['created_at'], '')) > toMillis(textOf(importedLatest || {}, ['created_at'], ''))
@@ -4126,12 +4457,15 @@ function registerDataRoutes(app, { pool, authRequired }) {
             lastMessageId: textOf(latest || {}, ['id'], ''),
             lastMessageSenderId: textOf(latest || {}, ['sender_id'], ''),
             lastMessageContentType: textOf(latest || {}, ['content_type'], 'text') || 'text',
-            isMember: roomIds.has(cleanId),
+            isMember: roomIds.has(cleanId) || Boolean(isCreator),
             isPinned: false,
             isMuted: false,
             isArchived: false,
             isFavorite: false,
-            isPublic: !boolOf(row, ['is_private'], false),
+            isPublic: isPublicRoom,
+            onlyAdminsCanTalk: boolOf(row, ['only_admins_can_talk', 'onlyAdminsCanTalk'], false),
+            creator_id: creatorId || null,
+            current_user_role: currentRole || null,
             folders: [],
             openPath: `${config.openPathPrefix}${id}`,
           }
@@ -4171,10 +4505,11 @@ function registerDataRoutes(app, { pool, authRequired }) {
         return !isGroup && (rowParticipantsContain(row, identity.ids) || participantChatIds.has(chatId))
       })
       const chatIds = chatRows.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const chatIdSet = cleanSet(chatIds)
       const messages = [
-        ...importedMessages.filter((row) => cleanSet(chatIds).has(normalizeId(textOf(row, ['chat_id'], '')))),
+        ...importedMessages.filter((row) => chatIdSet.has(normalizeId(textOf(row, ['chat_id'], '')))),
         ...(await localMessages(pool, chatIds)),
-      ]
+      ].filter((message) => messageVisibleTo(message, identity))
       const profilesById = indexProfiles([...profiles, ...localProfiles])
 
       const participantByChat = new Map()
@@ -4198,12 +4533,15 @@ function registerDataRoutes(app, { pool, authRequired }) {
       for (const message of sortByDateDesc(messages, ['created_at', 'updated_at'])) {
         const chatId = normalizeId(textOf(message, ['chat_id'], ''))
         if (!chatId) continue
+        const messageAt = toMillis(textOf(message, ['created_at', 'updated_at'], ''))
+        const clearedAt = toMillis(textOf(participantByChat.get(chatId) || {}, ['cleared_at', 'clearedAt'], ''))
+        if (clearedAt && messageAt && messageAt <= clearedAt) continue
+
         if (!latestByChat.has(chatId)) latestByChat.set(chatId, message)
         const senderId = normalizeId(textOf(message, ['sender_id'], ''))
         const readAt = textOf(message, ['read_at'], '')
         const status = textOf(message, ['status'], '').toLowerCase()
         const lastReadAt = toMillis(lastReadByChat.get(chatId))
-        const messageAt = toMillis(textOf(message, ['created_at', 'updated_at'], ''))
         if (lastReadAt && messageAt && messageAt <= lastReadAt) continue
         if (senderId && !identity.ids.has(senderId) && !readAt && status !== 'read' && status !== 'seen') {
           unreadByChat.set(chatId, (unreadByChat.get(chatId) || 0) + 1)
@@ -4233,19 +4571,22 @@ function registerDataRoutes(app, { pool, authRequired }) {
           if (hiddenAt && toMillis(hiddenAt) >= toMillis(effectiveUpdatedAt)) return null
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name'], 'Chat privado')
           const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
+          const hasVisibleLatest = Boolean(textOf(latest, ['id'], ''))
+          if (!hasVisibleLatest) return null
           return {
             id,
             title: nickname || (otherProfile ? profileName(otherProfile, fallbackName) : fallbackName),
-            subtitle: previewFromMessage(latest) || (myClearedAt ? 'Sin mensajes' : textOf(row, ['last_message'], 'Sin mensajes')),
+            subtitle: hasVisibleLatest ? previewFromMessage(latest) : 'Sin mensajes',
             updatedAt: effectiveUpdatedAt,
             kind: 'chat',
             avatarUrl: otherProfile ? profileAvatar(otherProfile) : textOf(row, ['other_user_image', 'avatar_url'], ''),
             profileId: otherId || null,
             nickname: nickname || null,
+            clearedAt: myClearedAt ? textOf(participant, ['cleared_at', 'clearedAt'], '') : null,
             unreadCount: unreadByChat.get(cleanChatId) || 0,
-            lastMessageId: myClearedAt && !latest.id ? '' : textOf(latest, ['id'], '') || textOf(row, ['last_message_id'], ''),
-            lastMessageSenderId: myClearedAt && !latest.sender_id ? '' : textOf(latest, ['sender_id'], '') || textOf(row, ['last_message_sender_id'], ''),
-            lastMessageContentType: myClearedAt && !latest.content_type ? 'text' : textOf(latest, ['content_type'], 'text') || 'text',
+            lastMessageId: hasVisibleLatest ? textOf(latest, ['id'], '') : '',
+            lastMessageSenderId: hasVisibleLatest ? textOf(latest, ['sender_id'], '') : '',
+            lastMessageContentType: hasVisibleLatest ? textOf(latest, ['content_type'], 'text') || 'text' : 'text',
             isPinned: boolOf(participant, ['is_pinned'], false),
             isMuted: boolOf(participant, ['is_muted'], false),
             isArchived: boolOf(participant, ['is_archived'], false),
@@ -4398,7 +4739,12 @@ function registerDataRoutes(app, { pool, authRequired }) {
       await pool.query(
         `INSERT INTO fallback_chat_participants(chat_id, user_id, cleared_at, created_at, updated_at)
          VALUES ($1::uuid, $2, $3::timestamptz, NOW(), NOW())
-         ON CONFLICT (chat_id, user_id) DO UPDATE SET cleared_at = $3::timestamptz, updated_at = NOW()`,
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET
+           cleared_at = GREATEST(
+             COALESCE(fallback_chat_participants.cleared_at, 'epoch'::timestamptz),
+             EXCLUDED.cleared_at
+           ),
+           updated_at = NOW()`,
         [uuidChatId, identity.displayUserId, now],
       )
 
@@ -4442,12 +4788,19 @@ function registerDataRoutes(app, { pool, authRequired }) {
         [uuidChatId, identity.displayUserId],
       )
       await pool.query(
-        `UPDATE fallback_chat_participants
-         SET cleared_at = NOW(),
-             last_read_at = GREATEST(COALESCE(last_read_at, 'epoch'::timestamptz), NOW())
-         WHERE lower(chat_id::text) = $1
-           AND lower(user_id) = $2`,
-        [cleanChatId, identity.displayUserId],
+        `INSERT INTO fallback_chat_participants(chat_id, user_id, joined_at, cleared_at, last_read_at, created_at, updated_at)
+         VALUES ($1::uuid, $2, NOW(), NOW(), NOW(), NOW(), NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET
+           cleared_at = GREATEST(
+             COALESCE(fallback_chat_participants.cleared_at, 'epoch'::timestamptz),
+             EXCLUDED.cleared_at
+           ),
+           last_read_at = GREATEST(
+             COALESCE(fallback_chat_participants.last_read_at, 'epoch'::timestamptz),
+             EXCLUDED.last_read_at
+           ),
+           updated_at = NOW()`,
+        [uuidChatId, identity.displayUserId],
       )
       res.json({ ok: true, chatId: cleanChatId, hidden: true })
     } catch (error) {
@@ -4695,7 +5048,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
            VALUES ($1, $2, $3, $4, NOW())
            ON CONFLICT (room_kind, room_id, user_id)
            DO UPDATE SET role = EXCLUDED.role`,
-          [config.kind, roomId, memberId, memberId === identity.displayUserId ? 'admin' : 'member'],
+          [config.kind, roomId, memberId, memberId === identity.displayUserId ? 'owner' : 'member'],
         )
       }
 
@@ -4729,27 +5082,38 @@ function registerDataRoutes(app, { pool, authRequired }) {
 
       const identity = userIdentity(user)
       const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
-      const role = cleanText(req.body?.role, 40) || 'member'
+      const hasRequestedRole = Object.prototype.hasOwnProperty.call(req.body || {}, 'role')
+      const requestedRole = cleanText(req.body?.role, 40).toLowerCase()
+      const role = ['owner', 'admin', 'creator'].includes(requestedRole) ? requestedRole : 'member'
       const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
+      if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+      const roomRow = room.room || room.chat || {}
       const isSelf = identity.ids.has(targetUserId)
       if (!isSelf) {
-        if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
         const membersRows = await pool.query(
           `SELECT role FROM fallback_collection_members
            WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
           [config.kind, roomId, Array.from(identity.ids)],
         )
         const myRole = membersRows.rows[0]?.role?.toLowerCase()
-        const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+        const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
         const isAdmin = isCreator || ['owner', 'admin', 'creator'].includes(myRole)
         if (!isAdmin) return res.status(403).json({ error: 'ADD_MEMBER_DENIED' })
       }
+      const effectiveRole = isSelf && role !== 'member' ? 'member' : role
       await pool.query(
         `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
          VALUES ($1, $2, $3, $4, NOW(), FALSE)
          ON CONFLICT (room_kind, room_id, user_id)
-         DO UPDATE SET role = COALESCE(NULLIF(fallback_collection_members.role, ''), EXCLUDED.role), is_deleted = FALSE`,
-        [config.kind, roomId, targetUserId, role],
+         DO UPDATE SET
+            role = CASE
+              WHEN $5::boolean THEN EXCLUDED.role
+              WHEN EXCLUDED.role = 'member' AND fallback_collection_members.role IN ('owner', 'admin', 'creator')
+              THEN fallback_collection_members.role
+              ELSE EXCLUDED.role
+            END,
+            is_deleted = FALSE`,
+        [config.kind, roomId, targetUserId, effectiveRole, isSelf || hasRequestedRole],
       )
 
       if (targetUserId && !identity.ids.has(targetUserId)) {
@@ -4787,17 +5151,22 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const identity = userIdentity(user)
       const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
       const isSelf = identity.ids.has(targetUserId)
+      const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
+      if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+      const roomRow = room.room || room.chat || {}
+      const creatorId = normalizeId(textOf(roomRow, ['creator_id', 'owner_id', 'user_id'], ''))
+      if (creatorId && targetUserId === creatorId) {
+        return res.status(403).json({ error: 'CREATOR_CANNOT_BE_REMOVED' })
+      }
 
       if (!isSelf) {
-        const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-        if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
         const membersRows = await pool.query(
           `SELECT role FROM fallback_collection_members
            WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
           [config.kind, roomId, Array.from(identity.ids)],
         )
         const myRole = membersRows.rows[0]?.role?.toLowerCase()
-        const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+        const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
         const isAdmin = isCreator || ['owner', 'admin', 'creator'].includes(myRole)
         if (!isAdmin) return res.status(403).json({ error: 'REMOVE_MEMBER_DENIED' })
       }
@@ -4939,6 +5308,18 @@ function registerDataRoutes(app, { pool, authRequired }) {
       if (!existingRoom) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
 
       const identity = userIdentity(user)
+      const roomRow = existingRoom.room || existingRoom.chat || {}
+      const onlyAdminsCanTalk = boolOf(roomRow, ['only_admins_can_talk', 'onlyAdminsCanTalk'], false)
+      if (onlyAdminsCanTalk) {
+        const myParticipant = (existingRoom.participants || []).find((participant) =>
+          identity.ids.has(normalizeId(participant.id)),
+        )
+        const myRole = String(myParticipant?.role || '').toLowerCase()
+        const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+        if (!isCreator && !['owner', 'admin', 'creator'].includes(myRole)) {
+          return res.status(403).json({ error: 'ONLY_ADMINS_CAN_TALK' })
+        }
+      }
       const senderId = identity.displayUserId
       const { rows } = await pool.query(
         `INSERT INTO fallback_room_messages(
@@ -6409,35 +6790,11 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ...importedMessages.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === chatId),
         ...(await localMessages(pool, [chatId])),
       ].sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
+       .filter((msg) => messageVisibleTo(msg, identity))
        .filter((msg) => !myClearedAt || toMillis(textOf(msg, ['created_at'], '')) > myClearedAt)
 
-      if (messages.length === 0 && textOf(chat, ['last_message'], '')) {
-        const chatLastMsgAt = toMillis(textOf(chat, ['last_message_at', 'updated_at', 'created_at'], ''))
-        if (!myClearedAt || chatLastMsgAt > myClearedAt) {
-          messages.push({
-            id: textOf(chat, ['last_message_id'], '') || `summary-${chatId}`,
-            chat_id: textOf(chat, ['id'], chatId),
-            sender_id: textOf(chat, ['last_message_sender_id'], '') || otherId || '',
-            content: textOf(chat, ['last_message'], ''),
-            content_type: 'text',
-            media_url: '',
-            status: 'sent',
-            reply_to_id: '',
-            created_at: textOf(chat, ['last_message_at', 'updated_at', 'created_at'], ''),
-            updated_at: textOf(chat, ['updated_at', 'last_message_at', 'created_at'], ''),
-            reactions: {},
-            deleted_by: [],
-            deleted_for_all: false,
-            is_edited: false,
-            is_forwarded: false,
-            read_at: '',
-            delivered_at: '',
-          })
-        }
-      }
-
       res.json({
-        chat: { ...chat, nickname: nickname || null },
+        chat: { ...chat, nickname: nickname || null, cleared_at: textOf(myParticipantRow || {}, ['cleared_at', 'clearedAt'], '') || null },
         title: nickname || (otherProfile ? profileName(otherProfile, 'Chat privado') : textOf(chat, ['name', 'group_name'], 'Chat privado')),
         otherParticipant: otherId
           ? {
@@ -6473,16 +6830,46 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
       const replyToId = String(req.body?.replyToId || '').trim() || null
+      const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
+      const forwardedFromMessageId = cleanText(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id, 80) || null
+      const forwardedFromUserId = normalizeId(req.body?.forwardedFromUserId || req.body?.forwarded_from_user_id) || null
       const requestedId = validUuid(req.body?.id)
       if (!chatId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
       const identity = userIdentity(user)
+      const accessContext = await privateChatAccessContext(pool, chatId, identity)
+      if (!accessContext.hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+      const blockRelationship = await blockRelationshipForChat(
+        pool,
+        accessContext.chat,
+        accessContext.participantRows,
+        identity,
+      )
+      if (blockRelationship.isBlocked) {
+        return res.status(403).json({
+          error: 'CHAT_BLOCKED_BY_RECIPIENT',
+          blockedByMe: blockRelationship.blockedByMe,
+          blockedMe: blockRelationship.blockedMe,
+        })
+      }
       const senderId = identity.displayUserId
       const { rows } = await pool.query(
-        `INSERT INTO fallback_messages(id, chat_id, sender_id, content, content_type, media_url, media_size, reply_to_id)
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO fallback_messages(
+            id,
+            chat_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            reply_to_id,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id
+         )
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (id) DO UPDATE SET
             chat_id = EXCLUDED.chat_id,
             sender_id = EXCLUDED.sender_id,
@@ -6491,12 +6878,47 @@ function registerDataRoutes(app, { pool, authRequired }) {
             media_url = EXCLUDED.media_url,
             media_size = EXCLUDED.media_size,
             reply_to_id = EXCLUDED.reply_to_id,
+            is_forwarded = EXCLUDED.is_forwarded,
+            forwarded_from_message_id = EXCLUDED.forwarded_from_message_id,
+            forwarded_from_user_id = EXCLUDED.forwarded_from_user_id,
             status = 'sent',
             updated_at = NOW()
-         RETURNING id::text, chat_id, sender_id, content, content_type, media_url, media_size, status, reply_to_id, created_at, updated_at`,
-        [requestedId, chatId, senderId, content, contentType, mediaUrl || null, mediaSize, replyToId],
+         RETURNING
+            id::text,
+            chat_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            status,
+            reply_to_id,
+            delivered_at,
+            read_at,
+            reactions,
+            deleted_by,
+            deleted_for_all,
+            is_edited,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id,
+            created_at,
+            updated_at`,
+        [
+          requestedId,
+          chatId,
+          senderId,
+          content,
+          contentType,
+          mediaUrl || null,
+          mediaSize,
+          replyToId,
+          isForwarded,
+          forwardedFromMessageId,
+          forwardedFromUserId,
+        ],
       )
-      const insertedMessage = normalizeImportedRow(rows[0])
+      const insertedMessage = normalizeMessageRow(rows[0])
       await pool.query(
         `DELETE FROM fallback_chat_hidden
          WHERE lower(chat_id::text) = $1
@@ -6557,6 +6979,244 @@ function registerDataRoutes(app, { pool, authRequired }) {
         recipientIds: recipientList,
       })
       res.status(201).json({ message: insertedMessage })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/messages/chats/:chatId/messages/:messageId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const chatId = normalizeId(req.params.chatId)
+      const messageId = normalizeId(req.params.messageId)
+      const content = cleanText(req.body?.content, 4096)
+      if (!chatId || !messageId) return res.status(400).json({ error: 'MESSAGE_ID_REQUIRED' })
+      if (!content) return res.status(400).json({ error: 'MESSAGE_CONTENT_REQUIRED' })
+
+      const { chat, participantRows, hasAccess } = await privateChatAccessContext(pool, chatId, identity)
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+
+      const existing = await getFallbackMessage(pool, chatId, messageId)
+      if (!existing) return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' })
+      if (!rowMatchesAny(existing, ['sender_id'], identity.ids)) return res.status(403).json({ error: 'MESSAGE_EDIT_DENIED' })
+      if (boolOf(existing, ['deleted_for_all'], false)) return res.status(409).json({ error: 'MESSAGE_DELETED' })
+      if (textOf(existing, ['content_type'], 'text').toLowerCase() !== 'text') {
+        return res.status(400).json({ error: 'ONLY_TEXT_MESSAGES_CAN_BE_EDITED' })
+      }
+
+      const { rows } = await pool.query(
+        `UPDATE fallback_messages
+         SET content = $3,
+             is_edited = TRUE,
+             updated_at = NOW()
+         WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+         RETURNING
+            id::text,
+            chat_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            status,
+            reply_to_id,
+            delivered_at,
+            read_at,
+            reactions,
+            deleted_by,
+            deleted_for_all,
+            is_edited,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id,
+            created_at,
+            updated_at`,
+        [chatId, messageId, content],
+      )
+      const updatedMessage = normalizeMessageRow(rows[0])
+      await pool.query(
+        `UPDATE fallback_chats
+         SET last_message = $3,
+             updated_at = NOW()
+         WHERE lower(id::text) = $1 AND lower(COALESCE(last_message_id, '')) = $2`,
+        [chatId, messageId, previewFromMessage(updatedMessage)],
+      )
+
+      void publishChatMessageEvent({
+        chatId,
+        message: updatedMessage,
+        recipientIds: recipientIdsForChat(chat, participantRows, identity),
+        action: 'updated',
+      })
+      res.json({ message: updatedMessage })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/chats/:chatId/messages/:messageId/delete', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const chatId = normalizeId(req.params.chatId)
+      const messageId = normalizeId(req.params.messageId)
+      const forEveryone = Boolean(req.body?.forEveryone || req.body?.for_everyone)
+      if (!chatId || !messageId) return res.status(400).json({ error: 'MESSAGE_ID_REQUIRED' })
+
+      const { chat, participantRows, hasAccess } = await privateChatAccessContext(pool, chatId, identity)
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+
+      const existing = await getFallbackMessage(pool, chatId, messageId)
+      if (!existing) return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' })
+      const isSender = rowMatchesAny(existing, ['sender_id'], identity.ids)
+      if (forEveryone && !isSender) return res.status(403).json({ error: 'MESSAGE_DELETE_FOR_ALL_DENIED' })
+
+      let updatedMessage
+      if (forEveryone) {
+        const { rows } = await pool.query(
+          `UPDATE fallback_messages
+           SET deleted_for_all = TRUE,
+               updated_at = NOW()
+           WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+           RETURNING
+              id::text,
+              chat_id,
+              sender_id,
+              content,
+              content_type,
+              media_url,
+              media_size,
+              status,
+              reply_to_id,
+              delivered_at,
+              read_at,
+              reactions,
+              deleted_by,
+              deleted_for_all,
+              is_edited,
+              is_forwarded,
+              forwarded_from_message_id,
+              forwarded_from_user_id,
+              created_at,
+              updated_at`,
+          [chatId, messageId],
+        )
+        updatedMessage = normalizeMessageRow(rows[0])
+        await updateFallbackChatLastMessage(pool, chatId)
+        void publishChatMessageEvent({
+          chatId,
+          message: updatedMessage,
+          recipientIds: recipientIdsForChat(chat, participantRows, identity),
+          action: 'deleted',
+        })
+      } else {
+        const deletedBy = Array.from(new Set([
+          ...arrayOf(existing, ['deleted_by', 'deletedBy']).map(normalizeId),
+          identity.displayUserId,
+        ].filter(Boolean)))
+        const { rows } = await pool.query(
+          `UPDATE fallback_messages
+           SET deleted_by = $3::jsonb,
+               updated_at = NOW()
+           WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+           RETURNING
+              id::text,
+              chat_id,
+              sender_id,
+              content,
+              content_type,
+              media_url,
+              media_size,
+              status,
+              reply_to_id,
+              delivered_at,
+              read_at,
+              reactions,
+              deleted_by,
+              deleted_for_all,
+              is_edited,
+              is_forwarded,
+              forwarded_from_message_id,
+              forwarded_from_user_id,
+              created_at,
+              updated_at`,
+          [chatId, messageId, JSON.stringify(deletedBy)],
+        )
+        updatedMessage = normalizeMessageRow(rows[0])
+        void publishRealtimeEvent(`user:${identity.displayUserId}`, {
+          event: 'message',
+          action: 'deleted',
+          chatId,
+          message: updatedMessage,
+          scope: 'inbox',
+        })
+      }
+
+      res.json({ message: updatedMessage })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/chats/:chatId/messages/:messageId/reactions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const chatId = normalizeId(req.params.chatId)
+      const messageId = normalizeId(req.params.messageId)
+      const emoji = String(req.body?.emoji || '').trim().slice(0, 16)
+      if (!chatId || !messageId) return res.status(400).json({ error: 'MESSAGE_ID_REQUIRED' })
+      if (!emoji) return res.status(400).json({ error: 'REACTION_REQUIRED' })
+
+      const { chat, participantRows, hasAccess } = await privateChatAccessContext(pool, chatId, identity)
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+
+      const existing = await getFallbackMessage(pool, chatId, messageId)
+      if (!existing || !messageVisibleTo(existing, identity)) return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' })
+      const nextReactions = toggleReactionMap(existing.reactions || {}, emoji, identity.displayUserId)
+      const { rows } = await pool.query(
+        `UPDATE fallback_messages
+         SET reactions = $3::jsonb,
+             updated_at = NOW()
+         WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+         RETURNING
+            id::text,
+            chat_id,
+            sender_id,
+            content,
+            content_type,
+            media_url,
+            media_size,
+            status,
+            reply_to_id,
+            delivered_at,
+            read_at,
+            reactions,
+            deleted_by,
+            deleted_for_all,
+            is_edited,
+            is_forwarded,
+            forwarded_from_message_id,
+            forwarded_from_user_id,
+            created_at,
+            updated_at`,
+        [chatId, messageId, JSON.stringify(nextReactions)],
+      )
+      const updatedMessage = normalizeMessageRow(rows[0])
+      void publishChatMessageEvent({
+        chatId,
+        message: updatedMessage,
+        recipientIds: recipientIdsForChat(chat, participantRows, identity),
+        action: 'updated',
+      })
+      res.json({ message: updatedMessage })
     } catch (error) {
       next(error)
     }

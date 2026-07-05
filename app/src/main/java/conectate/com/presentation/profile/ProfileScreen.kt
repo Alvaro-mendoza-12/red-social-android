@@ -346,10 +346,16 @@ fun ProfileScreen(
                                     .offset(y = (-50).dp)
                             ) {
                                 Row(verticalAlignment = Alignment.Top) {
+                                    val nameToDisplay = user.display_name ?: user.full_name ?: user.username ?: "Usuario"
                                     Box(
                                         modifier = Modifier.clickable {
                                             user.avatar_url?.let {
-                                                (mainNavController ?: navController).navigate(Screen.FullScreenImage.createRoute(it))
+                                                val route = if (user.isProfileAvatarVideo) {
+                                                    Screen.FullScreenVideo.createRoute(it)
+                                                } else {
+                                                    Screen.FullScreenImage.createRoute(it)
+                                                }
+                                                (mainNavController ?: navController).navigate(route)
                                             }
                                         }
                                     ) {
@@ -359,14 +365,17 @@ fun ProfileScreen(
                                             showBorder = true,
                                             borderWidth = 4.dp,
                                             borderColor = MaterialTheme.colorScheme.surface,
-                                            isVerified = user.is_verified
+                                            isVerified = user.is_verified,
+                                            mediaType = user.avatar_media_type,
+                                            muted = user.avatar_video_muted,
+                                            allowSound = true,
+                                            fallbackName = nameToDisplay
                                         )
                                     }
                                     
                                     Spacer(modifier = Modifier.width(16.dp))
                                     
                                     Column(modifier = Modifier.weight(1f).padding(top = 64.dp)) {
-                                        val nameToDisplay = user.display_name ?: user.full_name ?: user.username ?: "Usuario"
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
                                                 text = nameToDisplay,

@@ -24,6 +24,10 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val voiceRoomRepository: VoiceRoomRepository,
     private val authService: AuthService
 ) : ViewModel() {
+    private companion object {
+        const val REACTION_VISIBLE_MS = 2_600L
+        const val LOCAL_ECHO_WINDOW_MS = 3_000L
+    }
 
     private val _room = MutableStateFlow<VoiceRoom?>(null)
     val room: StateFlow<VoiceRoom?> = _room.asStateFlow()
@@ -94,6 +98,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _activeReactions = MutableStateFlow<List<ReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<ReactionEvent>> = _activeReactions.asStateFlow()
+    private val reactionExpiryJobs = mutableMapOf<String, Job>()
     private var videoActionJob: Job? = null
 
     private val _inviteQuery = MutableStateFlow("")
@@ -193,11 +198,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
         }
         viewModelScope.launch {
             voiceRoomRepository.incomingReactions.collectLatest { reaction ->
-                _activeReactions.value = (_activeReactions.value + reaction).distinctBy { it.id }
-                launch {
-                    delay(10_000)
-                    _activeReactions.value = _activeReactions.value.filterNot { it.id == reaction.id }
-                }
+                if (isRecentLocalEcho(reaction)) return@collectLatest
+                appendReaction(reaction)
             }
         }
     }
@@ -355,13 +357,39 @@ class VoiceRoomActiveViewModel @Inject constructor(
             emoji = emoji,
             timestamp = System.currentTimeMillis()
         )
-        _activeReactions.value = (_activeReactions.value + reaction).distinctBy { it.id }
-        viewModelScope.launch {
-            delay(10_000)
-            _activeReactions.value = _activeReactions.value.filterNot { it.id == reaction.id }
-        }
+        appendReaction(reaction)
         _room.value?.id?.let { roomId ->
-            voiceRoomRepository.sendReaction(roomId, emoji)
+            voiceRoomRepository.sendReaction(roomId, emoji, reaction.id, reaction.timestamp)
+        }
+    }
+
+    private fun appendReaction(reaction: ReactionEvent) {
+        val enriched = reaction.copy(id = reaction.id.ifBlank { UUID.randomUUID().toString() })
+        if (_activeReactions.value.any { it.id == enriched.id }) return
+        _activeReactions.value = (_activeReactions.value + enriched).distinctBy { it.id }.takeLast(12)
+        scheduleReactionExpiry(enriched)
+    }
+
+    private fun scheduleReactionExpiry(reaction: ReactionEvent) {
+        val reactionId = reaction.id.trim()
+        if (reactionId.isBlank()) return
+        reactionExpiryJobs[reactionId]?.cancel()
+        reactionExpiryJobs[reactionId] = viewModelScope.launch {
+            delay(REACTION_VISIBLE_MS)
+            _activeReactions.value = _activeReactions.value.filterNot { it.id == reactionId }
+            reactionExpiryJobs.remove(reactionId)?.cancel()
+        }
+    }
+
+    private fun isRecentLocalEcho(reaction: ReactionEvent): Boolean {
+        val currentUserId = getCurrentUserId().trim().lowercase()
+        val reactionUserId = reaction.userId.trim().lowercase()
+        if (currentUserId.isBlank() || reactionUserId != currentUserId) return false
+        val now = System.currentTimeMillis()
+        return _activeReactions.value.any { active ->
+            active.userId.trim().lowercase() == currentUserId &&
+                active.emoji == reaction.emoji &&
+                now - active.timestamp in 0..LOCAL_ECHO_WINDOW_MS
         }
     }
 
@@ -443,6 +471,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        reactionExpiryJobs.values.forEach { it.cancel() }
+        reactionExpiryJobs.clear()
         super.onCleared()
     }
 }

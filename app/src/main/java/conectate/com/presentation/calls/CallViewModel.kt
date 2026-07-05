@@ -12,6 +12,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
@@ -21,14 +23,20 @@ class CallViewModel @Inject constructor(
     private val callRepository: CallRepository,
     private val authService: AuthService
 ) : ViewModel() {
+    private companion object {
+        const val REACTION_VISIBLE_MS = 2_600L
+        const val LOCAL_ECHO_WINDOW_MS = 3_000L
+    }
 
     val activeCall = callRepository.activeCall
     val endedCallSummary = callRepository.endedCallSummary
     val participants = callRepository.participants
     val isMuted = callRepository.isMuted
     val isSpeaker = callRepository.isSpeaker
-    val localVideoTrack = callRepository.localVideoTrack
-    val remoteVideoTracks = callRepository.remoteVideoTracks
+    val localVideoTrack: StateFlow<org.webrtc.VideoTrack?> = callRepository.localVideoTrack
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val remoteVideoTracks: StateFlow<Map<String, org.webrtc.VideoTrack>> = callRepository.remoteVideoTracks
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val eglContext get() = callRepository.eglContext
     private val _activeReactions = MutableStateFlow<List<CallReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<CallReactionEvent>> = _activeReactions.asStateFlow()
@@ -38,6 +46,7 @@ class CallViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             callRepository.incomingReactions.collect { reaction ->
+                if (isRecentLocalEcho(reaction)) return@collect
                 appendReaction(reaction)
             }
         }
@@ -81,7 +90,7 @@ class CallViewModel @Inject constructor(
             timestamp = System.currentTimeMillis()
         )
         appendReaction(reaction)
-        callRepository.sendReaction(emoji)
+        callRepository.sendReaction(emoji, reaction.id, reaction.timestamp)
     }
 
     fun refreshAudioSession() {
@@ -110,6 +119,7 @@ class CallViewModel @Inject constructor(
 
     private fun appendReaction(reaction: CallReactionEvent) {
         val enriched = reaction.copy(id = reaction.id.ifBlank { UUID.randomUUID().toString() })
+        if (_activeReactions.value.any { it.id == enriched.id }) return
         _activeReactions.value = (_activeReactions.value + enriched).distinctBy { it.id }.takeLast(12)
         scheduleReactionExpiry(enriched)
     }
@@ -119,9 +129,21 @@ class CallViewModel @Inject constructor(
         if (reactionId.isBlank()) return
         reactionExpiryJobs[reactionId]?.cancel()
         reactionExpiryJobs[reactionId] = viewModelScope.launch {
-            delay(10_000)
+            delay(REACTION_VISIBLE_MS)
             _activeReactions.value = _activeReactions.value.filterNot { it.id == reactionId }
             reactionExpiryJobs.remove(reactionId)?.cancel()
+        }
+    }
+
+    private fun isRecentLocalEcho(reaction: CallReactionEvent): Boolean {
+        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        val reactionUserId = reaction.userId.trim().lowercase()
+        if (currentUserId.isBlank() || reactionUserId != currentUserId) return false
+        val now = System.currentTimeMillis()
+        return _activeReactions.value.any { active ->
+            active.userId.trim().lowercase() == currentUserId &&
+                active.emoji == reaction.emoji &&
+                now - active.timestamp in 0..LOCAL_ECHO_WINDOW_MS
         }
     }
 }

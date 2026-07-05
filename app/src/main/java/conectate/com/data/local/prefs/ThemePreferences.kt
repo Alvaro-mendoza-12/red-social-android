@@ -16,6 +16,11 @@ class ThemePreferences @Inject constructor(
     private val _isDarkMode = MutableStateFlow(prefs.getBoolean("is_dark_mode", false))
     val isDarkMode: StateFlow<Boolean> = _isDarkMode
 
+    private val _profileAvatarVideosMuted = MutableStateFlow(
+        prefs.getBoolean("profile_avatar_videos_muted", true)
+    )
+    val profileAvatarVideosMuted: StateFlow<Boolean> = _profileAvatarVideosMuted
+
     private val _fontOption = MutableStateFlow(
         AppFontOption.fromStorage(
             prefs.getString("app_font_option", AppFontOption.DEFAULT.storageValue)
@@ -31,6 +36,11 @@ class ThemePreferences @Inject constructor(
     fun setDarkMode(enabled: Boolean) {
         prefs.edit().putBoolean("is_dark_mode", enabled).apply()
         _isDarkMode.value = enabled
+    }
+
+    fun setProfileAvatarVideosMuted(enabled: Boolean) {
+        prefs.edit().putBoolean("profile_avatar_videos_muted", enabled).apply()
+        _profileAvatarVideosMuted.value = enabled
     }
 
     fun setFontOption(option: AppFontOption) {
