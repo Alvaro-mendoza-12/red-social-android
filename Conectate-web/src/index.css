@@ -5329,13 +5329,23 @@ select:focus-visible {
   line-height: 1.48;
 }
 
+.bubble,
+.bubble p,
+.bubble strong,
+.bubble small,
+.bubble span,
+.bubble-me,
+.bubble-them {
+  color: #111b21 !important;
+}
+
 .bubble-me {
   background: linear-gradient(135deg, #dcfce7, #f0fdf4);
   border-color: #bbf7d0;
 }
 
 .bubble-them {
-  background: #fff;
+  background: #ffffff;
 }
 
 .reaction-chip,

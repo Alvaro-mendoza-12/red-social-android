@@ -167,6 +167,14 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
   let trimmed = pathOrUrl.trim()
   if (!trimmed) return ''
   
+  const marker = '/storage/v1/object/public/' + bucket + '/'
+  if (trimmed.includes(marker)) {
+    trimmed = trimmed.substring(trimmed.indexOf(marker) + marker.length)
+  } else if (trimmed.includes('/' + bucket + '/')) {
+    const parts = trimmed.split('/' + bucket + '/')
+    trimmed = parts[parts.length - 1]
+  }
+  
   if (
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
