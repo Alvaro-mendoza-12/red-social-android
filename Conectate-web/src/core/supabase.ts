@@ -164,7 +164,7 @@ export async function removeRealtimeChannel(channel: RealtimeChannelLike | null 
 
 export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): string {
   if (!pathOrUrl) return ''
-  const trimmed = pathOrUrl.trim()
+  let trimmed = pathOrUrl.trim()
   if (!trimmed) return ''
   
   if (
@@ -174,6 +174,15 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
     trimmed.startsWith('data:')
   ) {
     return trimmed
+  }
+  
+  const prefix1 = bucket + '/'
+  const prefix2 = 'public/' + bucket + '/'
+  
+  if (trimmed.startsWith(prefix1)) {
+    trimmed = trimmed.substring(prefix1.length)
+  } else if (trimmed.startsWith(prefix2)) {
+    trimmed = trimmed.substring(prefix2.length)
   }
   
   if (!supabase) return trimmed
