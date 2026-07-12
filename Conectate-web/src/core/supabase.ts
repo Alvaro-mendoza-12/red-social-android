@@ -161,3 +161,21 @@ export async function removeRealtimeChannel(channel: RealtimeChannelLike | null 
     // Best effort cleanup.
   }
 }
+
+export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): string {
+  if (!pathOrUrl) return ''
+  const trimmed = pathOrUrl.trim()
+  if (!trimmed) return ''
+  
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed
+  }
+  
+  if (!supabase) return trimmed
+  return supabase.storage.from(bucket).getPublicUrl(trimmed).data.publicUrl
+}

@@ -420,12 +420,14 @@ textarea {
   background: rgba(255, 255, 255, 0.84);
   color: var(--ink-700);
   font-weight: 700;
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
 }
 
 .chip-btn.active {
-  border-color: #fecdd3;
-  background: linear-gradient(135deg, #fff1f2, #ffedd5);
-  color: #be123c;
+  border-color: #10b981;
+  background: #10b981;
+  color: #ffffff;
 }
 
 .primary-btn:disabled {
@@ -1862,10 +1864,10 @@ textarea {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.58rem 0.85rem;
+  gap: 0.9rem;
+  padding: 0.75rem 1rem;
   cursor: pointer;
-  border-bottom: 1px solid #eceff1;
+  border-bottom: 1px solid #f0f2f5;
   background: transparent;
   transition: background 0.2s ease;
   position: relative;
@@ -1878,7 +1880,7 @@ button.conversation-row {
 }
 
 .conversation-row:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
 }
 
 .conversation-avatar {
@@ -2068,15 +2070,16 @@ button.conversation-row {
 
 .messages-split-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(350px, 420px) minmax(0, 1fr);
   gap: 0;
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 18px;
+  border: 1px solid #d1d7e0;
+  border-radius: 12px;
   overflow: hidden;
-  background: #f7f8fa;
+  background: #f0f2f5;
   height: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .compact-inbox-enabled {
@@ -3178,47 +3181,39 @@ button.conversation-row {
 }
 
 .bubble {
-  max-width: 80%;
-  border-radius: 20px;
-  padding: 0.8rem 1rem;
+  max-width: 75%;
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
   border: none;
   display: grid;
   gap: 0.25rem;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
-  transition: all 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
 }
 
 .bubble::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.5), transparent);
-  pointer-events: none;
+  display: none;
 }
 
 .bubble-me {
   margin-left: auto;
-  background: linear-gradient(135deg, #f43f5e 0%, #f97316 100%);
-  color: white;
+  background: #dcf8c6;
+  color: #111b21;
 }
 
 .bubble-me:hover {
-  box-shadow: 0 8px 32px rgba(244, 63, 94, 0.3);
-  transform: translateY(-2px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .bubble-them {
   margin-right: auto;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #111b21;
 }
 
 .bubble-them:hover {
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .chat-day-separator {
@@ -5660,7 +5655,86 @@ select:focus-visible {
 }
 
 
-/* 🎨 PASSWORD RESET MODAL STYLES */
+.left-nav-footer .account-nav {
+  display: grid;
+  gap: 0.3rem;
+  overflow: visible;
+}
+
+.shell-topbar {
+  min-height: 76px;
+  padding-block: 0.85rem;
+}
+
+.shell-heading-row {
+  align-items: center;
+}
+
+.shell-heading-row h1 {
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+}
+
+.shell-toolbar {
+  margin-left: auto;
+}
+
+.shell-icon-action {
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0.55rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  position: relative;
+}
+
+.shell-icon-action:hover {
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.shell-icon-action svg {
+  width: 20px;
+  height: 20px;
+}
+
+.shell-search-action {
+  padding-inline: 0.8rem;
+}
+
+.shell-icon-action .shell-inline-counter {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+}
+
+.app-shell.theme-dark .shell-icon-action {
+  border-color: #334155;
+  background: #111827;
+  color: #e2e8f0;
+}
+
+@media (max-width: 720px) {
+  .shell-topbar {
+    min-height: 64px;
+    padding: 0.7rem 0.8rem;
+  }
+
+  .shell-search-action span {
+    display: none;
+  }
+
+  .shell-search-action {
+    padding-inline: 0.55rem;
+  }
+}
+
+/* PASSWORD RESET MODAL STYLES */
 .password-reset-modal {
   position: fixed;
   inset: 0;

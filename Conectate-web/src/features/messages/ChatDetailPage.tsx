@@ -16,6 +16,7 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import {
@@ -1199,7 +1200,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         }
         const profile = ((profileRows ?? []) as GenericRow[])[0]
         const displayName = textOf(profile ?? {}, ['displayName', 'display_name', 'username'], 'Chat privado')
-        const avatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
+        const rawAvatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
+        const avatarUrl = resolveSupabasePublicUrl('avatars', rawAvatarUrl)
         const participant = ((participantRows ?? []) as GenericRow[])[0]
         if (!isStaleLoad()) {
           setTitle(displayName)

@@ -14,6 +14,7 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import {
@@ -176,7 +177,8 @@ function nameFromProfile(row: GenericRow): string {
 }
 
 function avatarFromProfile(row: GenericRow): string {
-  return textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
+  const url = textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
+  return resolveSupabasePublicUrl('avatars', url)
 }
 
 function usernameFromProfile(row: GenericRow): string {
@@ -335,11 +337,11 @@ async function loadCollection(
       subtitle: textOf(row, subtitleKeys, 'Sin actividad reciente'),
       updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
       kind,
-      avatarUrl: textOf(
+      avatarUrl: resolveSupabasePublicUrl('avatars', textOf(
         row,
         ['avatar_url', 'photo_url', 'profile_image', 'icon_url', 'cover_url', 'image_url', 'image', 'group_image', 'community_image'],
         '',
-      ),
+      )),
       profileId: null,
       unreadCount: 0,
       isPinned: false,
@@ -463,7 +465,7 @@ async function loadRoomCollectionByMembership(options: {
       subtitle: preview,
       updatedAt: textOf(lastMessage ?? {}, ['created_at'], '') || textOf(room, ['updated_at', 'created_at'], ''),
       kind: options.kind,
-      avatarUrl: textOf(
+      avatarUrl: resolveSupabasePublicUrl('avatars', textOf(
         room,
         [
           'avatar_url',
@@ -477,7 +479,7 @@ async function loadRoomCollectionByMembership(options: {
           'community_image',
         ],
         '',
-      ),
+      )),
       profileId: null,
       unreadCount: 0,
       isPinned: false,
@@ -854,7 +856,7 @@ export function MessagesPage() {
           const profile = other ? profileById.get(normalizeId(other)) : null
           const participant = participantByChat.get(id)
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'], 'Chat privado')
-          const fallbackAvatar = textOf(row, ['other_user_image', 'other_user_avatar', 'other_user_photo', 'avatar_url', 'photo_url', 'profile_image'], '')
+          const fallbackAvatar = resolveSupabasePublicUrl('avatars', textOf(row, ['other_user_image', 'other_user_avatar', 'other_user_photo', 'avatar_url', 'photo_url', 'profile_image'], ''))
           return {
             id,
             title: isGroup ? textOf(row, ['group_name', 'name'], 'Grupo') : profile?.name || fallbackName,

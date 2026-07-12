@@ -13,6 +13,7 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../core/supabase'
 import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
 import { textOf, type GenericRow } from '../core/utils'
@@ -815,7 +816,7 @@ export function AppLayout() {
       const profileRow = ((profileResult.data ?? []) as GenericRow[])[0]
       const primaryResolved = textOf(profileRow ?? {}, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
       if (primaryResolved) {
-        setSidebarAvatarUrl(primaryResolved)
+        setSidebarAvatarUrl(resolveSupabasePublicUrl('avatars', primaryResolved))
         return
       }
 
@@ -828,7 +829,7 @@ export function AppLayout() {
 
       const publicRow = ((publicResult.data ?? []) as GenericRow[])[0]
       const publicResolved = textOf(publicRow ?? {}, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
-      setSidebarAvatarUrl(publicResolved || metadataAvatar)
+      setSidebarAvatarUrl(resolveSupabasePublicUrl('avatars', publicResolved || metadataAvatar))
     }
 
     void loadAvatar()
