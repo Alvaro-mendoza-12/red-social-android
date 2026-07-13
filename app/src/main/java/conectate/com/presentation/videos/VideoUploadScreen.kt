@@ -68,44 +68,66 @@ class VideoUploadViewModel @Inject constructor(
     private val _uploadError = MutableStateFlow<String?>(null)
     val uploadError: StateFlow<String?> = _uploadError.asStateFlow()
 
+    private val _videoDurationMs = MutableStateFlow(0L)
+    val videoDurationMs: StateFlow<Long> = _videoDurationMs.asStateFlow()
+
+    private val _requiresEditing = MutableStateFlow(false)
+    val requiresEditing: StateFlow<Boolean> = _requiresEditing.asStateFlow()
+
     fun updateTitle(value: String) { _title.value = value }
     fun updateDescription(value: String) { _description.value = value }
     fun updateIsPublic(value: Boolean) { _isPublic.value = value }
     fun updateTags(value: String) { _tags.value = value }
 
-    fun setVideoUri(uri: Uri, context: android.content.Context) {
-        if (checkVideoDuration(uri, context)) {
-            _videoUri.value = uri
-            _uploadError.value = null
-        } else {
-            _videoUri.value = null
-            _uploadError.value = "El video no puede durar más de 45 segundos."
+    fun setVideoUri(uri: Uri, context: android.content.Context): Boolean {
+        val durationMs = readVideoDuration(uri, context)
+        val mustEdit = durationMs <= 0L || durationMs > MAX_VIDEO_DURATION_MS
+
+        _videoUri.value = uri
+        _videoDurationMs.value = durationMs
+        _requiresEditing.value = mustEdit
+        _uploadError.value = when {
+            durationMs <= 0L -> "No pudimos validar la duración. Ábrelo en el editor antes de publicar."
+            mustEdit -> "El video dura ${formatDuration(durationMs)}. Recorta una parte de máximo 45 segundos."
+            else -> null
         }
+        return mustEdit
     }
     
     fun setThumbnailUri(uri: Uri?) { _thumbnailUri.value = uri } // Allow nullable
 
-    private fun checkVideoDuration(uri: Uri, context: android.content.Context): Boolean {
+    private fun readVideoDuration(uri: Uri, context: android.content.Context): Long {
         return try {
             val retriever = android.media.MediaMetadataRetriever()
-            retriever.setDataSource(context, uri)
-            val time = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
-            val timeInMillisec = time?.toLong() ?: 0L
-            // Limit to 45 seconds plus a small capture/export tolerance.
-            timeInMillisec <= 46_000
+            try {
+                retriever.setDataSource(context, uri)
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?: 0L
+            } finally {
+                retriever.release()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            0L
         }
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        val totalSeconds = (durationMs / 1_000L).coerceAtLeast(0L)
+        return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
     }
 
     fun uploadVideo(onComplete: (Boolean) -> Unit) {
         val video = _videoUri.value
         val thumbnail = _thumbnailUri.value
         
-        if (video == null || _title.value.isBlank()) { 
-            _uploadError.value = "Por favor completa todos los campos (Video, Miniatura, Título)"
+        if (video == null || _title.value.isBlank()) {
+            _uploadError.value = "Selecciona un video y escribe un título."
+            return
+        }
+        if (_requiresEditing.value) {
+            _uploadError.value = "Recorta o procesa el video en el editor antes de publicarlo."
             return
         }
 
@@ -113,14 +135,6 @@ class VideoUploadViewModel @Inject constructor(
             _isUploading.value = true
             _uploadProgress.value = 0f
             _uploadError.value = null
-
-            // Simulated progress for UX
-            val progressJob = launch {
-                while (_uploadProgress.value < 0.9f) {
-                    kotlinx.coroutines.delay(500)
-                    _uploadProgress.value += 0.1f
-                }
-            }
 
             try {
                 // Parse tags
@@ -132,14 +146,13 @@ class VideoUploadViewModel @Inject constructor(
                     videoUri = video,
                     thumbnailUri = thumbnail,
                     isPublic = _isPublic.value,
-                    tags = tagsList
+                    tags = tagsList,
+                    onUploadProgress = { progress -> _uploadProgress.value = progress }
                 )
                 
-                progressJob.cancel()
-                _uploadProgress.value = 1.0f
-
                 result.fold(
                     onSuccess = {
+                        _uploadProgress.value = 1.0f
                         _isUploading.value = false
                         onComplete(true)
                     },
@@ -150,7 +163,6 @@ class VideoUploadViewModel @Inject constructor(
                     }
                 )
             } catch (e: Throwable) {
-                progressJob.cancel()
                 _isUploading.value = false
                 _uploadError.value = "Error al subir el video: ${e.message ?: "Memoria insuficiente o error de red"}"
                 onComplete(false)
@@ -164,9 +176,15 @@ class VideoUploadViewModel @Inject constructor(
         _isPublic.value = true
         _tags.value = ""
         _videoUri.value = null
+        _videoDurationMs.value = 0L
+        _requiresEditing.value = false
         _thumbnailUri.value = null
         _uploadError.value = null
         _uploadProgress.value = 0f
+    }
+
+    private companion object {
+        const val MAX_VIDEO_DURATION_MS = 45_000L
     }
 }
 
@@ -185,18 +203,26 @@ fun VideoUploadScreen(
     val isUploading by viewModel.isUploading.collectAsState()
     val uploadProgress by viewModel.uploadProgress.collectAsState()
     val uploadError by viewModel.uploadError.collectAsState()
+    val videoDurationMs by viewModel.videoDurationMs.collectAsState()
+    val requiresEditing by viewModel.requiresEditing.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> uri?.let { viewModel.setVideoUri(it, context) } }
+    ) { uri: Uri? ->
+        uri?.let {
+            val mustEdit = viewModel.setVideoUri(it, context)
+            if (mustEdit) {
+                navController.navigate(conectate.com.presentation.navigation.Screen.VideoEditor.createRoute(it))
+            }
+        }
+    }
 
     val thumbnailPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> uri?.let { viewModel.setThumbnailUri(it) } }
 
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
 
     // Handle result from Editor
     val editedVideoUri = navController.currentBackStackEntry
@@ -292,6 +318,31 @@ fun VideoUploadScreen(
                 }
 
                 if (videoUri != null) {
+                    if (requiresEditing) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.ContentCut, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = if (videoDurationMs > 0L) {
+                                        "Selecciona el fragmento de 45 segundos que quieres publicar."
+                                    } else {
+                                        "Procesa el video en el editor para poder publicarlo."
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+
                     OutlinedButton(
                         onClick = {
                             navController.navigate(conectate.com.presentation.navigation.Screen.VideoEditor.createRoute(videoUri!!))
@@ -302,7 +353,16 @@ fun VideoUploadScreen(
                     ) {
                         Icon(Icons.Default.Edit, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Editar Video (Opciones Pro)")
+                        Text(if (requiresEditing) "Recortar ahora" else "Editar video")
+                    }
+
+                    TextButton(
+                        onClick = { videoPickerLauncher.launch("video/*") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Cambiar video")
                     }
                 }
 
@@ -325,7 +385,7 @@ fun VideoUploadScreen(
                         )
                         // Remove button
                         IconButton(
-                            onClick = { viewModel.setThumbnailUri(Uri.EMPTY) }, // Logic to clear? Or just let them replace
+                            onClick = { viewModel.setThumbnailUri(null) },
                             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
                         ) {
                              Icon(Icons.Default.Close, contentDescription = "Quitar", tint = Color.White)
@@ -409,7 +469,7 @@ fun VideoUploadScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     // Validation: Only Video and Title required now
-                    enabled = videoUri != null && title.isNotBlank()
+                    enabled = videoUri != null && title.isNotBlank() && !requiresEditing
                 ) {
                     Text("Publicar Video")
                 }

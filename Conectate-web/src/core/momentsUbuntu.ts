@@ -67,3 +67,7 @@ export async function recordUbuntuMomentView(momentId: string) {
     body: JSON.stringify({}),
   })
 }
+
+export async function deleteUbuntuMoment(momentId: string) {
+  await fallbackApiJson(`/v1/data/moments/${encodeURIComponent(momentId)}`, { method: 'DELETE' })
+}

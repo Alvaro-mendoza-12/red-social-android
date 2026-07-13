@@ -36,15 +36,18 @@ fun CommunitiesTab(
     var selectedSection by rememberSaveable { mutableStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Search Bar with Loading Indicator
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.updateSearchQuery(it) },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                placeholder = { Text("Buscar todas las comunidades") },
+                    .weight(1f)
+                    .height(54.dp),
+                placeholder = { Text("Buscar comunidades", maxLines = 1) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
@@ -59,6 +62,7 @@ fun CommunitiesTab(
                 singleLine = true,
                 shape = CircleShape
             )
+            CollectionQrScannerButton(navController = navController)
         }
 
         when (val state = communitiesState) {
@@ -69,7 +73,7 @@ fun CommunitiesTab(
             }
             is CommunitiesUiState.Success -> {
                 val myCommunities = combinedCommunities.filter { it.community.is_member }
-                val exploreCommunities = combinedCommunities.filter { !it.community.is_member }
+                val exploreCommunities = combinedCommunities.filter { !it.community.is_deleted }
                 val visibleCommunities = if (selectedSection == 0) myCommunities else exploreCommunities
 
                 TabRow(
@@ -105,7 +109,7 @@ fun CommunitiesTab(
                                 text = when {
                                     searchQuery.isNotBlank() -> "No se encontraron comunidades"
                                     selectedSection == 0 -> "No perteneces a ninguna comunidad"
-                                    else -> "No hay comunidades públicas para explorar"
+                                    else -> "No hay comunidades para explorar"
                                 },
                                 style = MaterialTheme.typography.headlineSmall,
                                 textAlign = TextAlign.Center

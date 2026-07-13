@@ -258,7 +258,7 @@ class StickerRepository @Inject constructor(
             ?: return@withContext Result.failure(Exception("No se pudo leer la imagen"))
         if (bytes.isEmpty()) return@withContext Result.failure(Exception("Imagen vacía"))
 
-        var mimeType = resolveStickerMimeType(imageUri)
+        var mimeType = resolveStickerMimeType(imageUri, bytes)
         createStickerFromBytes(
             imageBytes = bytes,
             packId = packId,
@@ -310,7 +310,7 @@ class StickerRepository @Inject constructor(
             title = cleanTitle,
             media_url = mediaUrl,
             thumbnail_url = mediaUrl,
-            is_animated = cleanMime.equals("image/gif", ignoreCase = true) || cleanMime.equals("image/webp", ignoreCase = true),
+            is_animated = isAnimatedSticker(imageBytes, cleanMime),
             tags = cleanTags,
             source = "custom",
             pack_id = selectedPack
@@ -655,13 +655,12 @@ class StickerRepository @Inject constructor(
             .distinct()
     }
 
-    private fun resolveStickerMimeType(uri: Uri): String {
-        var fromResolver = context.contentResolver.getType(uri)?.trim()?.lowercase()
-        return when {
-            fromResolver == null -> "image/png"
-            fromResolver.startsWith("image/") -> fromResolver
-            else -> "image/png"
-        }
+    private fun resolveStickerMimeType(uri: Uri, bytes: ByteArray): String {
+        return StickerFormatSupport.detectMimeType(bytes, context.contentResolver.getType(uri))
+    }
+
+    private fun isAnimatedSticker(bytes: ByteArray, mimeType: String): Boolean {
+        return StickerFormatSupport.isAnimated(bytes, mimeType)
     }
 
     private fun mimeToExtension(mimeType: String): String {

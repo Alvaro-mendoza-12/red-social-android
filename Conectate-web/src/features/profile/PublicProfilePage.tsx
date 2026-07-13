@@ -202,10 +202,6 @@ export function PublicProfilePage() {
     setOpeningChat(true)
     setError(null)
     try {
-      if (useFallback) {
-        setError('En modo Ubuntu, abre el chat desde Mensajes mientras se activa creación directa desde perfil.')
-        return
-      }
       const chatId = await getOrCreateDirectChat(user.id, cleanProfileId)
       navigate(`/app/messages/${chatId}`)
     } catch (caught) {

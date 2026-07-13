@@ -263,6 +263,20 @@ export async function loadFallbackChat(chatId: string): Promise<FallbackChatResp
   )
 }
 
+export async function markFallbackChatRead(chatId: string): Promise<{ ok: boolean }> {
+  return fallbackApiJson<{ ok: boolean }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}/read`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export async function createFallbackDirectChat(participantId: string): Promise<{ chat: GenericRow }> {
+  return fallbackApiJson<{ chat: GenericRow }>('/v1/data/messages/chats', {
+    method: 'POST',
+    body: JSON.stringify({ participantId }),
+  })
+}
+
 export async function loadFallbackRoomChat(
   scope: 'group' | 'community',
   roomId: string,
@@ -281,6 +295,9 @@ export async function sendFallbackChatMessage(
     mediaUrl?: string | null
     mediaSize?: number
     replyToId?: string | null
+    isForwarded?: boolean
+    forwardedFromMessageId?: string | null
+    forwardedFromUserId?: string | null
   },
 ): Promise<{ message: GenericRow }> {
   return fallbackApiJson<{ message: GenericRow }>(
@@ -289,6 +306,39 @@ export async function sendFallbackChatMessage(
       method: 'POST',
       body: JSON.stringify(input),
     },
+  )
+}
+
+export async function editFallbackChatMessage(
+  chatId: string,
+  messageId: string,
+  content: string,
+): Promise<{ message: GenericRow }> {
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'PATCH', body: JSON.stringify({ content }) },
+  )
+}
+
+export async function deleteFallbackChatMessage(
+  chatId: string,
+  messageId: string,
+  forEveryone: boolean,
+): Promise<{ message: GenericRow }> {
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/delete`,
+    { method: 'POST', body: JSON.stringify({ forEveryone }) },
+  )
+}
+
+export async function toggleFallbackChatReaction(
+  chatId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ message: GenericRow }> {
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+    { method: 'POST', body: JSON.stringify({ emoji }) },
   )
 }
 
@@ -313,6 +363,32 @@ export async function sendFallbackRoomMessage(
       method: 'POST',
       body: JSON.stringify(input),
     },
+  )
+}
+
+export async function editFallbackRoomMessage(
+  scope: 'group' | 'community',
+  roomId: string,
+  messageId: string,
+  content: string,
+): Promise<{ message: GenericRow }> {
+  const collection = scope === 'group' ? 'groups' : 'communities'
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'PATCH', body: JSON.stringify({ content }) },
+  )
+}
+
+export async function deleteFallbackRoomMessage(
+  scope: 'group' | 'community',
+  roomId: string,
+  messageId: string,
+  forEveryone: boolean,
+): Promise<{ message: GenericRow }> {
+  const collection = scope === 'group' ? 'groups' : 'communities'
+  return fallbackApiJson<{ message: GenericRow }>(
+    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/delete`,
+    { method: 'POST', body: JSON.stringify({ forEveryone }) },
   )
 }
 

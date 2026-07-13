@@ -8,7 +8,7 @@ import {
   runWithRetry,
 } from '../../core/reliability'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { loadFallbackMessagesInbox } from '../../core/fallbackData'
+import { loadFallbackMessagesInbox, markFallbackChatRead } from '../../core/fallbackData'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
@@ -27,6 +27,7 @@ import {
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { ChatDetailPage } from './ChatDetailPage'
+import { dedupeInboxConversations } from './conversationInboxSupport'
 import { getOrCreateDirectChat } from './directChat'
 import { RoomChatPage } from './RoomChatPage'
 
@@ -723,8 +724,9 @@ export function MessagesPage() {
     try {
       if (isFallbackSession) {
         const response = await loadFallbackMessagesInbox(activeTab)
-        setItems(response.items)
-        writeCachedValue(inboxCacheKey, response.items)
+        const dedupedItems = dedupeInboxConversations(response.items)
+        setItems(dedupedItems)
+        writeCachedValue(inboxCacheKey, dedupedItems)
         return
       }
 
@@ -880,8 +882,9 @@ export function MessagesPage() {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
           return toMillis(b.updatedAt) - toMillis(a.updatedAt)
         })
-        setItems(mapped)
-        writeCachedValue(inboxCacheKey, mapped)
+        const dedupedItems = dedupeInboxConversations(mapped)
+        setItems(dedupedItems)
+        writeCachedValue(inboxCacheKey, dedupedItems)
       } else if (activeTab === 'groups') {
         const nextItems = await loadRoomCollectionByMembership({
           userId: user.id,
@@ -1036,7 +1039,16 @@ export function MessagesPage() {
       current.map((entry) => (entry.id === cleanChatId ? { ...entry, unreadCount: 0 } : entry)),
     )
 
-    if (isFallbackSession || !supabase) return
+    if (isFallbackSession) {
+      try {
+        await markFallbackChatRead(cleanChatId)
+        void loadCurrentTab({ silent: true })
+      } catch (caught) {
+        console.warn('markFallbackChatRead failed', caught)
+      }
+      return
+    }
+    if (!supabase) return
 
     const client = supabase
 

@@ -1,4 +1,5 @@
 import { textOf, type GenericRow } from '../../core/utils'
+import { rewriteRuntimeStorageUrl } from '../../core/runtimeBackend'
 
 export type MediaType = 'image' | 'video' | 'file' | 'none'
 
@@ -99,7 +100,7 @@ export function extractMediaUrls(row: GenericRow, extraKeys: string[] = []): str
     urls.push(...parseMediaCandidate(value))
   })
 
-  return uniqueUrls(urls)
+  return uniqueUrls(urls).map(rewriteRuntimeStorageUrl)
 }
 
 export function extractMediaEntries(row: GenericRow, extraKeys: string[] = []): MediaEntry[] {

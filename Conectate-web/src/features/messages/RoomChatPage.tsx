@@ -1,10 +1,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { MoreHorizontal } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { loadFallbackRoomChat, sendFallbackRoomMessage, uploadFallbackFile } from '../../core/fallbackData'
+import {
+  deleteFallbackRoomMessage,
+  editFallbackRoomMessage,
+  loadFallbackRoomChat,
+  sendFallbackRoomMessage,
+  uploadFallbackFile,
+} from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type RoomScope = 'group' | 'community'
@@ -246,6 +253,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [draft, setDraft] = useState('')
   const [replyToId, setReplyToId] = useState<string | null>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState('Si\nNo')
   const [showPollComposer, setShowPollComposer] = useState(false)
@@ -900,7 +908,28 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     if ((!text && pendingAttachments.length === 0) || sending || uploading) return
     setSending(true)
     try {
-      if (pendingAttachments.length > 0) {
+      if (editingMessageId) {
+        const response = useUbuntu
+          ? await editFallbackRoomMessage(scope, cleanRoomId, editingMessageId, text)
+          : null
+        if (response) {
+          upsertMessageInState(mapRoomMessage(response.message))
+        } else if (supabase && user) {
+          const nowIso = new Date().toISOString()
+          const { error: editError } = await supabase
+            .from(config.messageTable)
+            .update({ content: text, is_edited: true, updated_at: nowIso })
+            .eq('id', editingMessageId)
+            .eq(config.roomForeignKey, cleanRoomId)
+            .eq('sender_id', user.id)
+          if (editError) throw editError
+          setMessages((current) => current.map((entry) => entry.id === editingMessageId
+            ? { ...entry, content: text, isEdited: true, updatedAt: nowIso }
+            : entry))
+        }
+        setEditingMessageId(null)
+        setDraft('')
+      } else if (pendingAttachments.length > 0) {
         await sendPendingAttachments(text)
         setDraft('')
       } else {
@@ -1084,6 +1113,71 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para usar mensajes con Ubuntu." />
   }
 
+  async function deleteRoomMessage(message: RoomMessage, forEveryone: boolean) {
+    if (!user) return
+    try {
+      if (useUbuntu) {
+        const response = await deleteFallbackRoomMessage(scope, cleanRoomId, message.id, forEveryone)
+        upsertMessageInState(mapRoomMessage(response.message))
+        return
+      }
+      if (!supabase) return
+      const nowIso = new Date().toISOString()
+      if (forEveryone) {
+        const { error: deleteError } = await supabase
+          .from(config.messageTable)
+          .update({ deleted_for_all: true, content: '', media_url: null, updated_at: nowIso })
+          .eq('id', message.id)
+          .eq('sender_id', user.id)
+        if (deleteError) throw deleteError
+        setMessages((current) => current.map((entry) => entry.id === message.id
+          ? { ...entry, deletedForAll: true, content: '', mediaUrl: '', updatedAt: nowIso }
+          : entry))
+      } else {
+        const deletedBy = Array.from(new Set([...message.deletedBy, user.id]))
+        const { error: deleteError } = await supabase
+          .from(config.messageTable)
+          .update({ deleted_by: deletedBy, updated_at: nowIso })
+          .eq('id', message.id)
+        if (deleteError) throw deleteError
+        setMessages((current) => current.map((entry) => entry.id === message.id
+          ? { ...entry, deletedBy, updatedAt: nowIso }
+          : entry))
+      }
+    } catch (caught) {
+      setError(friendlyError(caught, forEveryone ? 'No se pudo borrar para todos' : 'No se pudo borrar para mi'))
+    }
+  }
+
+  async function importRoomSticker(file: File | null) {
+    if (!file || !user || !cleanRoomId) return
+    if (!file.type.startsWith('image/')) {
+      setError('El sticker debe ser una imagen PNG, WEBP, GIF, JPG o JPEG.')
+      return
+    }
+    setUploading(true)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath = `${scope}/stickers/${user.id}/${Date.now()}_${safeName}`
+      const mediaUrl = useUbuntu
+        ? (await uploadFallbackFile(config.mediaBucket, file, filePath)).publicUrl
+        : await (async () => {
+            if (!supabase) throw new Error('Backend no configurado')
+            const { error: uploadError } = await supabase.storage
+              .from(config.mediaBucket)
+              .upload(filePath, file, { contentType: file.type || undefined })
+            if (uploadError) throw uploadError
+            return supabase.storage.from(config.mediaBucket).getPublicUrl(filePath).data.publicUrl
+          })()
+      await sendMessage(file.name.replace(/\.[^.]+$/, '') || 'Sticker', mediaUrl, 'sticker', replyToId)
+      setReplyToId(null)
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo importar el sticker'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   if (loading) {
     return <StatusView title="Cargando sala" description="Espera un momento..." />
   }
@@ -1259,6 +1353,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           const pollMeta = pollRows[0]
           const consumed = consumedViewOnce[message.id] === true
           const receipts = receiptsByMessage[message.id] ?? []
+          const activeReactions = ['👍', '❤️', '😂'].filter(
+            (emoji) => reactionCount(message.reactions, emoji) > 0,
+          )
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -1318,8 +1415,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     ) : null}
                   </>
                 )}
-                <div className="reaction-row">
-                  {['👍', '❤️', '😂'].map((emoji) => (
+                {activeReactions.length > 0 ? (
+                  <div className="reaction-row">
+                  {activeReactions.map((emoji) => (
                     <button
                       key={emoji}
                       type="button"
@@ -1329,9 +1427,19 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                       {emoji} {reactionCount(message.reactions, emoji)}
                     </button>
                   ))}
-                </div>
+                  </div>
+                ) : null}
                 {!message.deletedForAll ? (
-                  <div className="row-actions">
+                  <details className={mine ? 'message-menu message-menu-mine' : 'message-menu'}>
+                    <summary title="Opciones del mensaje" aria-label="Opciones del mensaje">
+                      <MoreHorizontal aria-hidden="true" />
+                    </summary>
+                    <div className="message-menu-popover">
+                    {['👍', '❤️', '😂'].map((emoji) => (
+                      <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
+                        {emoji}
+                      </button>
+                    ))}
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
                     </button>
@@ -1341,7 +1449,24 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     <button className="mini-action-btn" type="button" onClick={() => void loadMessageReceipts(message.id)}>
                       Leidos
                     </button>
-                  </div>
+                    {mine && message.contentType === 'text' ? (
+                      <button className="mini-action-btn" type="button" onClick={() => {
+                        setEditingMessageId(message.id)
+                        setDraft(message.content)
+                      }}>
+                        Editar
+                      </button>
+                    ) : null}
+                    {mine ? (
+                      <button className="mini-action-btn danger" type="button" onClick={() => void deleteRoomMessage(message, true)}>
+                        Borrar todos
+                      </button>
+                    ) : null}
+                    <button className="mini-action-btn" type="button" onClick={() => void deleteRoomMessage(message, false)}>
+                      Borrar mi vista
+                    </button>
+                    </div>
+                  </details>
                 ) : null}
                 {receipts.length > 0 ? (
                   <div className="receipt-stack">
@@ -1378,6 +1503,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           <small>Respondiendo a: {replyToMessage.content || 'Archivo'}</small>
           <button className="mini-action-btn" type="button" onClick={() => setReplyToId(null)}>
             Quitar
+          </button>
+        </div>
+      ) : null}
+
+      {editingMessageId ? (
+        <div className="surface-subcard row-between">
+          <small>Editando mensaje</small>
+          <button className="mini-action-btn" type="button" onClick={() => {
+            setEditingMessageId(null)
+            setDraft('')
+          }}>
+            Cancelar
           </button>
         </div>
       ) : null}
@@ -1433,6 +1570,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       ) : null}
 
       <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+        <label className="icon-btn clickable" title="Importar sticker" aria-label="Importar sticker">
+          <span aria-hidden="true">☺</span>
+          <input
+            type="file"
+            hidden
+            accept="image/png,image/webp,image/gif,image/jpeg,.png,.webp,.gif,.jpg,.jpeg"
+            onChange={(event) => {
+              void importRoomSticker(event.target.files?.[0] ?? null)
+              event.currentTarget.value = ''
+            }}
+          />
+        </label>
         <label className="icon-btn clickable" title="Adjuntar archivo">
           <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
           <input

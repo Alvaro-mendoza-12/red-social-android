@@ -25,6 +25,27 @@ export function getRuntimeBackendUrl(): string {
   return currentUrl
 }
 
+export function rewriteRuntimeStorageUrl(value: string): string {
+  const clean = String(value ?? '').trim()
+  if (!clean || clean.startsWith('blob:') || clean.startsWith('data:')) return clean
+
+  const storageMarker = '/storage/v1/object/'
+  const markerIndex = clean.indexOf(storageMarker)
+  if (markerIndex < 0) return clean
+
+  const backendUrl = getRuntimeBackendUrl()
+  if (!backendUrl) return clean
+  if (clean.startsWith(storageMarker)) return `${backendUrl}${clean}`
+
+  try {
+    const source = new URL(clean)
+    if (source.hostname.endsWith('.supabase.co')) return clean
+    return `${backendUrl}${clean.slice(markerIndex)}`
+  } catch {
+    return clean
+  }
+}
+
 export function subscribeRuntimeBackend(listener: (url: string) => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)

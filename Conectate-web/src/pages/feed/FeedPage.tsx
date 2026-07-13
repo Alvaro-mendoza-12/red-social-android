@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Heart, ImagePlus, MessageCircle, MoreHorizontal, Send, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
@@ -9,6 +10,7 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
@@ -59,7 +61,10 @@ function mapPost(row: GenericRow): FeedItem {
     id: textOf(row, ['id'], crypto.randomUUID()),
     authorId: textOf(row, ['user_id', 'owner_id', 'author_id'], 'usuario'),
     authorName: textOf(row, ['user_name', 'displayName', 'display_name'], 'Usuario'),
-    authorAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
+    authorAvatarUrl: resolveSupabasePublicUrl(
+      'avatars',
+      textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
+    ),
     content: textOf(row, ['content', 'caption', 'description', 'text'], 'Publicación sin texto'),
     media,
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
@@ -69,7 +74,22 @@ function mapPost(row: GenericRow): FeedItem {
   }
 }
 
-export function FeedPage() {
+type FeedPageProps = {
+  composerOpen?: boolean
+  onCloseComposer?: () => void
+}
+
+function FeedAvatar({ url, name }: { url: string; name: string }) {
+  const [failedUrl, setFailedUrl] = useState('')
+
+  if (!url || failedUrl === url) {
+    return <span className="avatar-sm avatar-fallback">{initialsOf(name)}</span>
+  }
+
+  return <img src={url} alt={name} className="avatar-sm" onError={() => setFailedUrl(url)} />
+}
+
+export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProps) {
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
@@ -142,7 +162,10 @@ export function FeedPage() {
           if (!id) return
           profileById.set(id, {
             name: textOf(profile, ['display_name', 'username'], '') || id,
-            avatarUrl: textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+            avatarUrl: resolveSupabasePublicUrl(
+              'avatars',
+              textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+            ),
           })
         })
         mapped = mapped.map((item) => {
@@ -284,6 +307,7 @@ export function FeedPage() {
         })
         setNewPostText('')
         await loadFeed({ silent: true })
+        onCloseComposer?.()
         return
       }
 
@@ -299,6 +323,7 @@ export function FeedPage() {
       if (insertError) throw insertError
       setNewPostText('')
       await loadFeed({ silent: true })
+      onCloseComposer?.()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo crear la publicación'))
     } finally {
@@ -362,82 +387,45 @@ export function FeedPage() {
 
   return (
     <section className="section-stack feed-page">
-      <article className="surface-card feed-hero-card">
-        <div className="feed-hero-copy">
-          <div>
-            <span className="brand-tag">Comunidad</span>
-            <h3>Comparte algo con tu comunidad</h3>
-            <p>
-              Un feed ligero para leer, reaccionar y abrir conversaciones alrededor de cada historia.
-            </p>
-          </div>
-          <div className="feed-hero-stats">
-            <div className="feed-hero-stat">
-              <strong>{items.length}</strong>
-              <span>posts visibles</span>
-            </div>
-            <div className="feed-hero-stat">
-              <strong>{items.filter((item) => item.media.length > 0).length}</strong>
-              <span>con multimedia</span>
-            </div>
-            <div className="feed-hero-stat">
-              <strong>{webPreferences.lowDataMode ? 'ON' : 'OFF'}</strong>
-              <span>datos</span>
-            </div>
-          </div>
-        </div>
-      </article>
-
       {realtimeRefreshing ? <small>Actualizando novedades del feed...</small> : null}
 
-      <article className="surface-card feed-composer-card">
-        <div className="row-between feed-composer-head">
-          <div>
-            <h3>Crear publicación</h3>
-            <p>Texto, imagen o video para iniciar una conversación.</p>
-          </div>
-          {webPreferences.lowDataMode ? <span className="folder-tag">Ahorro de datos</span> : null}
-        </div>
-
-        <div className="composer feed-composer">
-          <textarea
-            className="text-input textarea-input feed-composer-input"
-            rows={3}
-            maxLength={2200}
-            placeholder="¿Qué está pasando en tu comunidad?"
-            aria-label="Texto de la publicación"
-            value={newPostText}
-            onChange={(event) => setNewPostText(event.target.value)}
-          />
-          <div className="row-between feed-composer-actions">
-            <small className="feed-composer-hint">
-              {newPostText.trim().length}/2200 caracteres
-            </small>
-            <div className="row-actions wrap">
-              <label className="ghost-btn file-pick-btn">
-                Adjuntar archivo
-                <input
-                  type="file"
-                  hidden
-                  onChange={(event) => {
+      {composerOpen ? (
+        <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
+          <article className="surface-card feed-composer-dialog" role="dialog" aria-modal="true" aria-labelledby="new-post-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="feed-composer-head row-between">
+              <h2 id="new-post-title">Nueva publicación</h2>
+              <button className="icon-btn" type="button" onClick={onCloseComposer} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button>
+            </header>
+            <textarea
+              className="text-input textarea-input feed-composer-input"
+              rows={5}
+              maxLength={2200}
+              autoFocus
+              placeholder="¿Qué estás pensando?"
+              aria-label="Texto de la publicación"
+              value={newPostText}
+              onChange={(event) => setNewPostText(event.target.value)}
+            />
+            <footer className="feed-composer-actions row-between">
+              <small>{newPostText.trim().length}/2200</small>
+              <div className="row-actions">
+                <label className="icon-btn file-pick-btn" title="Adjuntar imagen o video" aria-label="Adjuntar imagen o video">
+                  <ImagePlus aria-hidden="true" />
+                  <input type="file" accept="image/*,video/*" hidden onChange={(event) => {
                     const file = event.target.files?.[0] ?? null
                     void createPost(file)
                     event.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <button
-                className="primary-btn"
-                type="button"
-                disabled={posting || uploading || !newPostText.trim()}
-                onClick={() => void createPost(null)}
-              >
-                {posting ? 'Publicando...' : uploading ? 'Subiendo...' : 'Publicar'}
-              </button>
-            </div>
-          </div>
+                  }} />
+                </label>
+                <button className="primary-btn composer-publish-btn" type="button" disabled={posting || uploading || !newPostText.trim()} onClick={() => void createPost(null)}>
+                  <Send aria-hidden="true" />
+                  <span>{posting ? 'Publicando...' : uploading ? 'Subiendo...' : 'Publicar'}</span>
+                </button>
+              </div>
+            </footer>
+          </article>
         </div>
-      </article>
+      ) : null}
 
       {items.length === 0 ? (
         <article className="surface-card">
@@ -448,17 +436,21 @@ export function FeedPage() {
         <article key={item.id} className="surface-card feed-card">
           <div className="row-between feed-head">
             <Link className="identity-link" to={profilePathFor(item.authorId, user?.id)}>
-              {item.authorAvatarUrl ? (
-                <img src={item.authorAvatarUrl} alt={item.authorName} className="avatar-sm" />
-              ) : (
-                <span className="avatar-sm avatar-fallback">{initialsOf(item.authorName)}</span>
-              )}
+              <FeedAvatar url={item.authorAvatarUrl} name={item.authorName} />
               <span>
                 <strong>{item.authorName}</strong>
-                <small>@{item.authorId}</small>
               </span>
             </Link>
-            <span>{formatDateTime(item.createdAt)}</span>
+            <div className="feed-head-tools">
+              <span>{formatDateTime(item.createdAt)}</span>
+              <details className="feed-more-menu">
+                <summary className="icon-btn" title="Más opciones" aria-label="Más opciones"><MoreHorizontal aria-hidden="true" /></summary>
+                <div className="feed-more-popover">
+                  <Link to={`/app/feed/post/${item.id}`}>Abrir publicación</Link>
+                  <Link to={profilePathFor(item.authorId, user?.id)}>Ver perfil</Link>
+                </div>
+              </details>
+            </div>
           </div>
           <ExpandableText text={item.content} lines={3} className="feed-card-text" />
           {item.media.length > 0 ? (
@@ -503,11 +495,12 @@ export function FeedPage() {
           ) : null}
           <div className="row-actions feed-card-actions wrap">
             <button className={item.likedByMe ? 'ghost-btn active-action' : 'ghost-btn'} type="button" onClick={() => void toggleLike(item)}>
-              {item.likedByMe ? 'Te gusta' : 'Me gusta'} ({item.likeCount})
+              <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
+              <span>{item.likeCount}</span>
             </button>
-            <span>Comentarios: {item.commentCount}</span>
-            <Link className="ghost-btn" to={`/app/feed/post/${item.id}`}>
-              Ver post
+            <Link className="ghost-btn" to={`/app/feed/post/${item.id}#comments`}>
+              <MessageCircle aria-hidden="true" />
+              <span>{item.commentCount}</span>
             </Link>
           </div>
         </article>

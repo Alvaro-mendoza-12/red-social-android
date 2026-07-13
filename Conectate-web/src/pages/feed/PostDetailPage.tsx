@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import { addFallbackPostComment, loadFallbackPostDetail, shareFallbackPost } from '../../core/fallbackData'
-import { supabase } from '../../core/supabase'
+import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -71,7 +71,7 @@ export function PostDetailPage() {
           id: textOf(row, ['id'], ''),
           userId: postUserId,
           userName: textOf(row, ['user_name', 'display_name'], '') || 'Usuario',
-          userAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url'], ''),
+          userAvatarUrl: resolveSupabasePublicUrl('avatars', textOf(row, ['user_profile_image', 'avatar_url'], '')),
           content: textOf(row, ['content'], ''),
           media: extractMediaEntries(row),
           createdAt: textOf(row, ['created_at'], ''),
@@ -82,7 +82,7 @@ export function PostDetailPage() {
             postId: textOf(comment, ['post_id'], ''),
             userId: textOf(comment, ['user_id'], ''),
             userName: textOf(comment, ['user_name', 'display_name'], '') || 'Usuario',
-            userAvatarUrl: textOf(comment, ['user_avatar_url', 'avatar_url'], ''),
+            userAvatarUrl: resolveSupabasePublicUrl('avatars', textOf(comment, ['user_avatar_url', 'avatar_url'], '')),
             content: textOf(comment, ['content'], ''),
             createdAt: textOf(comment, ['created_at'], ''),
           })),
@@ -134,7 +134,7 @@ export function PostDetailPage() {
           if (!id) return
           profileById.set(id, {
             name: textOf(profile, ['display_name', 'username'], '') || id,
-            avatarUrl: textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+            avatarUrl: resolveSupabasePublicUrl('avatars', textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '')),
           })
         })
       }
@@ -144,7 +144,7 @@ export function PostDetailPage() {
         id: textOf(row, ['id'], ''),
         userId: postUserId,
         userName: textOf(row, ['user_name'], '') || postProfile?.name || 'Usuario',
-        userAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url'], '') || postProfile?.avatarUrl || '',
+        userAvatarUrl: resolveSupabasePublicUrl('avatars', textOf(row, ['user_profile_image', 'avatar_url'], '')) || postProfile?.avatarUrl || '',
         content: textOf(row, ['content'], ''),
         media: extractMediaEntries(row),
         createdAt: textOf(row, ['created_at'], ''),
@@ -256,7 +256,7 @@ export function PostDetailPage() {
   if (loading) return <StatusView title="Cargando publicación" description="Espera un momento..." />
   if (error && !post) {
     return (
-      <section className="section-stack">
+      <section className="section-stack" id="comments">
         <Link to="/app/feed" className="inline-link">
           ← Volver al feed
         </Link>

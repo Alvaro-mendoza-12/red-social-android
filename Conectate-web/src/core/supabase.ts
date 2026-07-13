@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { isFallbackAuthConfigured } from './auth/fallbackAuth'
+import { getRuntimeBackendUrl, rewriteRuntimeStorageUrl } from './runtimeBackend'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
@@ -166,6 +167,19 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
   if (!pathOrUrl) return ''
   let trimmed = pathOrUrl.trim()
   if (!trimmed) return ''
+
+  const rewrittenRuntimeUrl = rewriteRuntimeStorageUrl(trimmed)
+  if (rewrittenRuntimeUrl !== trimmed) return rewrittenRuntimeUrl
+  if (trimmed.includes('/storage/v1/object/') && /^https?:\/\//i.test(trimmed)) {
+    try {
+      const source = new URL(trimmed)
+      if (getRuntimeBackendUrl() && !source.hostname.endsWith('.supabase.co')) {
+        return rewrittenRuntimeUrl
+      }
+    } catch {
+      // Continue with path normalization.
+    }
+  }
   
   const marker = '/storage/v1/object/public/' + bucket + '/'
   if (trimmed.includes(marker)) {
@@ -193,6 +207,14 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
     trimmed = trimmed.substring(prefix2.length)
   }
   
-  if (!supabase) return trimmed
+  if (!supabase) {
+    const runtime = getRuntimeBackendUrl()
+    if (!runtime) return trimmed
+    const objectPath = trimmed
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    return `${runtime}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}`
+  }
   return supabase.storage.from(bucket).getPublicUrl(trimmed).data.publicUrl
 }

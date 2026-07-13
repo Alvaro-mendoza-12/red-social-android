@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -158,6 +159,16 @@ fun VideoFeedScreen(
     var sidePanelIndex by rememberSaveable { mutableStateOf(0) }
     val sidePanelState = sidePanels.getOrElse(sidePanelIndex) { VideoSidePanel.VIDEO }
     val performanceProfile = remember(context) { VideoPerformanceProfiles.detect(context) }
+    val playbackPreferences = remember(context) {
+        context.getSharedPreferences("video_playback_preferences", android.content.Context.MODE_PRIVATE)
+    }
+    var autoAdvanceEnabled by remember {
+        mutableStateOf(playbackPreferences.getBoolean("auto_advance", false))
+    }
+    var playbackSpeed by remember {
+        mutableFloatStateOf(playbackPreferences.getFloat("playback_speed", 1f))
+    }
+    var showPlaybackOptions by remember { mutableStateOf(false) }
 
     val currentVideos = if (isSearchMode) searchResults 
                          else (if (selectedTab == 0) forYouVideos else followingVideos)
@@ -261,13 +272,13 @@ fun VideoFeedScreen(
             }
     }
     
-    // Keep the current video looping until the user swipes.
-    DisposableEffect(exoPlayer, pagerState.currentPage) {
+    // Keep the pager synchronized when ExoPlayer advances to the next item.
+    DisposableEffect(exoPlayer, pagerState.currentPage, autoAdvanceEnabled) {
         val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    exoPlayer.seekTo(0)
-                    exoPlayer.play()
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val nextPage = exoPlayer.currentMediaItemIndex
+                if (autoAdvanceEnabled && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && nextPage != pagerState.currentPage) {
+                    navScope.launch { pagerState.animateScrollToPage(nextPage) }
                 }
             }
         }
@@ -275,6 +286,11 @@ fun VideoFeedScreen(
         onDispose {
             exoPlayer.removeListener(listener)
         }
+    }
+
+    LaunchedEffect(autoAdvanceEnabled, playbackSpeed) {
+        exoPlayer.repeatMode = if (autoAdvanceEnabled) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
+        exoPlayer.setPlaybackSpeed(playbackSpeed)
     }
 
     // ════════════════════════════════════════════════════════
@@ -452,6 +468,10 @@ fun VideoFeedScreen(
             audioProgress = audioProgress,
             currentUserId = currentUserId,
             onDeleteComment = { comment -> viewModel.deleteComment(videoIdForComments, comment) },
+            onAddSticker = { url, label -> viewModel.addStickerComment(videoIdForComments, url, label) },
+            onReactComment = { comment, reaction -> viewModel.reactToComment(videoIdForComments, comment, reaction) },
+            onEditComment = { comment, content -> viewModel.editComment(videoIdForComments, comment, content) },
+            onReportComment = { comment -> viewModel.reportComment(comment) },
             onProfileClick = { userId ->
                 setSidePanelIndex(2)
                 onNavigateToProfile(userId)
@@ -513,6 +533,52 @@ fun VideoFeedScreen(
         )
     }
 
+    if (showPlaybackOptions) {
+        ModalBottomSheet(onDismissRequest = { showPlaybackOptions = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Reproducción", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Velocidad", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val speeds = listOf(0.5f, 1f, 1.5f, 2f)
+                    speeds.forEach { speed ->
+                        FilterChip(
+                            selected = playbackSpeed == speed,
+                            onClick = {
+                                playbackSpeed = speed
+                                playbackPreferences.edit().putFloat("playback_speed", speed).apply()
+                            },
+                            label = { Text("${speed}x") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Pasar al siguiente automáticamente", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = autoAdvanceEnabled,
+                        onCheckedChange = { enabled ->
+                            autoAdvanceEnabled = enabled
+                            playbackPreferences.edit().putBoolean("auto_advance", enabled).apply()
+                        }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.Black
@@ -570,6 +636,8 @@ fun VideoFeedScreen(
                             onCommentClick = { 
                                 switchToCommentsPanel(currentVideos[page])
                             },
+                            onFavoriteClick = { viewModel.toggleFavorite(currentVideos[page]) },
+                            onLongPress = { showPlaybackOptions = true },
                             onProfileClick = { userId ->
                                 setSidePanelIndex(2)
                                 onNavigateToProfile(userId)
@@ -588,6 +656,7 @@ fun VideoFeedScreen(
                                 showInternalShareDialog = true
                             },
                             onToggleProfileShare = { viewModel.toggleShare(currentVideos[page]) },
+                            onDeleteVideo = { video -> viewModel.deleteVideo(video) },
                             isAlreadyReported = reportedVideoIds.contains(currentVideos[page].id),
                             onReportClick = { video ->
                                 viewModel.ensureVideoReportStatus(video.id)
@@ -604,7 +673,6 @@ fun VideoFeedScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
                         .align(Alignment.TopCenter)
                 ) {
                     // Search Switcher
@@ -656,7 +724,6 @@ fun VideoFeedScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
                         .padding(start = 8.dp, end = 8.dp)
                         .align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically
@@ -707,7 +774,6 @@ fun VideoFeedScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .statusBarsPadding()
                     .padding(end = 16.dp),
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -730,6 +796,8 @@ fun VideoItem(
     isSelected: Boolean, 
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onLongPress: () -> Unit,
     onProfileClick: (String) -> Unit,
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
@@ -738,6 +806,7 @@ fun VideoItem(
     getStatsFlow: (String) -> kotlinx.coroutines.flow.Flow<conectate.com.data.local.entity.VideoStatsEntity?>,
     onShareInternalClick: (Video) -> Unit,
     onToggleProfileShare: () -> Unit,
+    onDeleteVideo: (Video) -> Unit,
     isAlreadyReported: Boolean,
     onReportClick: (Video) -> Unit
 ) {
@@ -798,11 +867,15 @@ fun VideoItem(
                     }
                 )
             }
-            .clickable { 
-                // TAP TO PAUSE/PLAY
-                if (isSelected) {
-                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                }
+            .pointerInput(video.id, isSelected) {
+                detectTapGestures(
+                    onTap = {
+                        if (isSelected) {
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        }
+                    },
+                    onLongPress = { if (isSelected) onLongPress() }
+                )
             }
     ) {
         // Removed duplicate AndroidView - keeping only the one below with proper thumbnail management
@@ -869,7 +942,7 @@ fun VideoItem(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setKeepContentOnPlayerReset(true)
                         setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
@@ -904,7 +977,7 @@ fun VideoItem(
                 model = thumbnailRequest,
                 contentDescription = null,
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -930,8 +1003,8 @@ fun VideoItem(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(22.dp)
-                    .padding(horizontal = 2.dp),
+                    .padding(start = 2.dp, end = 2.dp, bottom = 78.dp)
+                    .height(22.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -944,12 +1017,14 @@ fun VideoItem(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 20.dp, end = 16.dp),
+                .padding(bottom = 94.dp, end = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             // Profile Pic with Follow Button
-            val isOwnVideo = video.userId == currentUserId
+            val normalizedCurrentUserId = currentUserId?.trim()?.lowercase()
+            val normalizedVideoUserId = video.userId.trim().lowercase()
+            val isOwnVideo = normalizedCurrentUserId != null && normalizedCurrentUserId == normalizedVideoUserId
             val isFollowing = followedUsers.contains(video.userId)
             val showFollowButton = !isOwnVideo && !isFollowing
 
@@ -999,6 +1074,13 @@ fun VideoItem(
                 icon = Icons.Filled.Message,
                 text = commentCount.toString(),
                 onClick = onCommentClick
+            )
+
+            InteractionButton(
+                icon = if (video.favoritedByMe) Icons.Filled.Star else Icons.Filled.StarBorder,
+                text = video.favoriteCount.toString(),
+                tint = if (video.favoritedByMe) Color(0xFFFFC107) else Color.White,
+                onClick = onFavoriteClick
             )
 
             // Share
@@ -1056,7 +1138,7 @@ fun VideoItem(
                             ) 
                         }
                     )
-                    if (currentUserId == null || currentUserId != video.userId) {
+                    if (!isOwnVideo) {
                         DropdownMenuItem(
                             text = { Text(if (isAlreadyReported) "Reportado" else "Reportar video") },
                             onClick = {
@@ -1073,6 +1155,25 @@ fun VideoItem(
                                     tint = if (isAlreadyReported) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                        )
+                    }
+                    if (isOwnVideo) {
+                        DropdownMenuItem(
+                            text = { Text("Eliminar video") },
+                            onClick = {
+                                showShareMenu = false
+                                exoPlayer.pause()
+                                onDeleteVideo(video)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.Red
+                                )
+                            },
+                            colors = MenuDefaults.itemColors(textColor = Color.Red)
                         )
                     }
                 }
@@ -1095,7 +1196,7 @@ fun VideoItem(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(bottom = 20.dp, start = 16.dp, end = 80.dp)
+                .padding(bottom = 94.dp, start = 16.dp, end = 80.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1140,6 +1241,11 @@ fun VideoItem(
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2
             )
+            Text(
+                text = formatVideoMonthYear(video.created_at),
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall
+            )
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -1157,6 +1263,17 @@ fun VideoItem(
             }
         }
     }
+}
+
+private fun formatVideoMonthYear(value: String): String {
+    if (value.isBlank()) return ""
+    return runCatching {
+        val instant = java.time.Instant.parse(value)
+        java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale("es"))
+            .withZone(java.time.ZoneId.systemDefault())
+            .format(instant)
+            .replaceFirstChar { it.uppercase() }
+    }.getOrDefault(value.take(7))
 }
 
 @Composable

@@ -1,9 +1,19 @@
 import { supabase } from '../../core/supabase'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { createFallbackDirectChat, sendFallbackChatMessage } from '../../core/fallbackData'
 import { textOf, type GenericRow } from '../../core/utils'
 
 export async function getOrCreateDirectChat(currentUserId: string, otherUserId: string): Promise<string> {
-  if (!supabase) throw new Error('SUPABASE_NOT_CONFIGURED')
   if (!currentUserId || !otherUserId) throw new Error('CHAT_PARTICIPANT_REQUIRED')
+
+  if (readFallbackSession()?.accessToken) {
+    const response = await createFallbackDirectChat(otherUserId)
+    const chatId = textOf(response.chat, ['id'], '')
+    if (!chatId) throw new Error('CHAT_CREATE_FAILED')
+    return chatId
+  }
+
+  if (!supabase) throw new Error('BACKEND_NOT_CONFIGURED')
 
   const client = supabase
 
@@ -90,9 +100,20 @@ export async function sendDirectMessage(
   contentType = 'text',
   mediaUrl: string | null = null,
 ): Promise<void> {
-  if (!supabase) throw new Error('SUPABASE_NOT_CONFIGURED')
   if (!chatId) throw new Error('CHAT_REQUIRED')
   if (!content.trim() && !mediaUrl) throw new Error('MESSAGE_EMPTY')
+
+  if (readFallbackSession()?.accessToken) {
+    await sendFallbackChatMessage(chatId, {
+      content,
+      contentType,
+      mediaUrl,
+      mediaSize: 0,
+    })
+    return
+  }
+
+  if (!supabase) throw new Error('BACKEND_NOT_CONFIGURED')
   const client = supabase
 
   const { error: rpcError } = await client.rpc('secure_send_message', {

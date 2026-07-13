@@ -25,6 +25,7 @@ import { formatDateTime, friendlyError, isMissingTableError, textOf, type Generi
 import { useAuth } from '../../core/auth/AuthProvider'
 import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
 import { isFallbackAuthConfigured, readFallbackSession } from '../../core/auth/fallbackAuth'
+import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
 import WebRTCManager from './WebRTCManager'
 
 type VoiceRoom = {

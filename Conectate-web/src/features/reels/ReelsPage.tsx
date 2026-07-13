@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Heart, MessageCircle, MoreHorizontal, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
@@ -7,12 +8,14 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
   loadFallbackVideos,
+  setFallbackVideoReaction,
   uploadFallbackFile,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
@@ -29,6 +32,8 @@ type ReelItem = {
   authorAvatarUrl: string
   createdAt: string
   likeCount: number
+  commentCount: number
+  likedByMe: boolean
   viewCount: number
   durationSeconds: number
   trimStartSeconds: number
@@ -72,18 +77,103 @@ function mapVideoRow(row: GenericRow): ReelItem {
     id: textOf(row, ['id'], crypto.randomUUID()),
     title: textOf(row, ['title', 'caption', 'description', 'content'], 'Video'),
     description: textOf(row, ['description'], ''),
-    videoUrl: textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
-    coverUrl: textOf(row, ['cover_url', 'coverUrl', 'thumbnail_url', 'thumb_url'], ''),
+    videoUrl: resolveSupabasePublicUrl(
+      'videos',
+      textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
+    ),
+    coverUrl: resolveSupabasePublicUrl(
+      'thumbnails',
+      textOf(row, ['cover_url', 'coverUrl', 'thumbnail_url', 'thumb_url'], ''),
+    ),
     authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'author_id'], 'usuario'),
     authorName: textOf(row, ['user_name', 'userName', 'author_name'], ''),
-    authorAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
+    authorAvatarUrl: resolveSupabasePublicUrl(
+      'avatars',
+      textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
+    ),
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     likeCount: Number(row.like_count ?? row.likeCount ?? 0),
+    commentCount: Number(row.comment_count ?? row.commentCount ?? 0),
+    likedByMe: Boolean(row.liked_by_me ?? row.likedByMe ?? false),
     viewCount: Number(row.views ?? row.view_count ?? row.viewCount ?? 0),
     durationSeconds,
     trimStartSeconds,
     trimEndSeconds,
   }
+}
+
+function ReelAvatar({ url, name }: { url: string; name: string }) {
+  const [failedUrl, setFailedUrl] = useState('')
+  if (!url || failedUrl === url) {
+    return <span className="reel-overlay-avatar avatar-fallback">{initialsOf(name)}</span>
+  }
+  return <img className="reel-overlay-avatar" src={url} alt={name} onError={() => setFailedUrl(url)} />
+}
+
+function ReelFeedCard({
+  item,
+  currentUserId,
+  onLike,
+}: {
+  item: ReelItem
+  currentUserId?: string
+  onLike: (item: ReelItem) => void
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && entry.intersectionRatio >= 0.72) {
+          void video.play().catch(() => undefined)
+        } else {
+          video.pause()
+        }
+      },
+      { threshold: [0.25, 0.72, 0.95] },
+    )
+    observer.observe(video)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <article className="reel-feed-item">
+      <video
+        ref={videoRef}
+        loop
+        muted
+        playsInline
+        controls
+        preload="metadata"
+        src={item.videoUrl}
+        poster={item.coverUrl || undefined}
+      />
+      <div className="reel-feed-shade" />
+      <div className="reel-feed-author">
+        <Link to={profilePathFor(item.authorId, currentUserId)}>
+          <ReelAvatar url={item.authorAvatarUrl} name={item.authorName || item.authorId} />
+          <strong>@{item.authorName || item.authorId}</strong>
+        </Link>
+        <h2>{item.title}</h2>
+        {item.description ? <p>{item.description}</p> : null}
+      </div>
+      <div className="reel-feed-actions">
+        <button className={item.likedByMe ? 'active' : ''} type="button" onClick={() => onLike(item)} aria-label="Me gusta">
+          <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
+          <span>{item.likeCount}</span>
+        </button>
+        <Link to={`/app/reels/${item.id}#comments`} aria-label="Comentarios">
+          <MessageCircle aria-hidden="true" />
+          <span>{item.commentCount}</span>
+        </Link>
+        <Link to={`/app/reels/${item.id}`} aria-label="Más opciones">
+          <MoreHorizontal aria-hidden="true" />
+        </Link>
+      </div>
+    </article>
+  )
 }
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
@@ -554,7 +644,10 @@ export function ReelsPage() {
             if (!id) return
             profileById.set(id, {
               name: textOf(profile, ['display_name', 'username'], '') || id,
-              avatarUrl: textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+              avatarUrl: resolveSupabasePublicUrl(
+                'avatars',
+                textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+              ),
             })
           })
           mapped = mapped.map((item) => {
@@ -1028,6 +1121,35 @@ export function ReelsPage() {
     }
   }
 
+  async function toggleVideoLike(item: ReelItem) {
+    if (!user) return
+    const nextLiked = !item.likedByMe
+    setItems((current) => current.map((entry) => entry.id === item.id
+      ? { ...entry, likedByMe: nextLiked, likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)) }
+      : entry))
+    try {
+      if (useUbuntu) {
+        await setFallbackVideoReaction(item.id, nextLiked)
+      } else if (supabase) {
+        if (nextLiked) {
+          const { error: likeError } = await supabase.from('video_likes').insert({ video_id: item.id, user_id: user.id })
+          if (likeError) throw likeError
+        } else {
+          const { error: unlikeError } = await supabase
+            .from('video_likes')
+            .delete()
+            .eq('video_id', item.id)
+            .eq('user_id', user.id)
+          if (unlikeError) throw unlikeError
+        }
+      }
+      await loadVideos({ silent: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el like'))
+      await loadVideos({ silent: true })
+    }
+  }
+
   if (loading) {
     return <StatusView title="Cargando reels" description="Buscando videos..." />
   }
@@ -1037,27 +1159,40 @@ export function ReelsPage() {
 
   return (
     <section className="section-stack reels-page">
-      <header className="section-header">
-        <h2>Reels / Videos</h2>
-        <p>Videos cortos para descubrir, publicar y revisar antes de compartir.</p>
-      </header>
       {syncing ? <small>Sincronizando videos...</small> : null}
 
       {error ? <StatusView title="Error de reels" description={error} /> : null}
 
-      <div className="row-between" style={{padding: '0.5rem 0'}}>
-        <strong style={{color: 'var(--ink-900)'}}>Explorar videos</strong>
-        <button
-          type="button"
-          className={showUploadForm ? 'chip-btn active' : 'primary-btn'}
-          onClick={() => setShowUploadForm((prev) => !prev)}
-        >
-          {showUploadForm ? '✕ Cancelar' : '+ Publicar video'}
-        </button>
+      <div className="reels-compact-toolbar">
+        <div className="reels-mode-switch" aria-label="Modo del feed">
+          <button type="button">Amigos</button>
+          <button className="active" type="button">Recomendado</button>
+        </div>
+        <div className="reels-toolbar-actions">
+          <label className="reels-search-control" title="Buscar videos">
+            <Search aria-hidden="true" />
+            <input placeholder="Buscar" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+          </label>
+          <details className="reels-filter-menu">
+            <summary className="icon-btn" title="Ordenar y filtrar" aria-label="Ordenar y filtrar"><SlidersHorizontal aria-hidden="true" /></summary>
+            <div className="reels-filter-popover">
+              <label>Orden
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value as FeedSort)}>
+                  <option value="new">Más recientes</option>
+                  <option value="likes">Más likes</option>
+                  <option value="views">Más vistas</option>
+                </select>
+              </label>
+              <label className="checkbox-inline"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />Solo mis videos</label>
+            </div>
+          </details>
+          <button className="primary-btn reels-publish-button" type="button" onClick={() => setShowUploadForm(true)} title="Publicar video" aria-label="Publicar video"><Plus aria-hidden="true" /><span>Publicar</span></button>
+        </div>
       </div>
 
-      {showUploadForm && <article className="surface-card section-stack">
-        <h3>Publicar reel</h3>
+      {showUploadForm ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowUploadForm(false)}>
+        <article className="surface-card section-stack video-upload-dialog" role="dialog" aria-modal="true" aria-label="Publicar video" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="row-between"><h3>Publicar reel</h3><button className="icon-btn" type="button" onClick={() => setShowUploadForm(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button></div>
         <form className="section-stack" onSubmit={createReel}>
           <div className="composer">
             <input
@@ -1296,37 +1431,8 @@ export function ReelsPage() {
             </div>
           ) : null}
         </form>
-      </article>}
-
-      <div className="surface-card section-stack">
-        <div className="composer">
-          <h3>Explorar videos</h3>
-          <input
-            className="text-input"
-            placeholder="Buscar por título, descripción o autor..."
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-          <select
-            className="text-input tiny-input"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as FeedSort)}
-          >
-            <option value="new">Más recientes</option>
-            <option value="likes">Más likes</option>
-            <option value="views">Más vistas</option>
-          </select>
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(event) => setOnlyMine(event.target.checked)}
-            />
-            Solo mis reels
-          </label>
-          <span className="folder-tag">{visibleItems.length} resultados</span>
-        </div>
-      </div>
+        </article>
+      </div> : null}
 
       {visibleItems.length === 0 ? (
         <StatusView
@@ -1334,49 +1440,8 @@ export function ReelsPage() {
           description="Aún no hay videos con esos filtros. Publica el primero desde esta pantalla."
         />
       ) : (
-        <div className="reels-feed">
-          {visibleItems.map((item) => (
-            <article key={item.id} className="surface-card reel-card">
-              <video
-                controls
-                preload="metadata"
-                src={item.videoUrl}
-                poster={item.coverUrl || undefined}
-                className="video-frame reel-video-frame"
-              />
-              <h3>{item.title}</h3>
-              {item.description ? <p>{item.description}</p> : null}
-              <div className="row-actions">
-                <span className="folder-tag">{item.viewCount} vistas</span>
-                <span className="folder-tag">{item.likeCount} likes</span>
-                {item.durationSeconds > 0 ? <span className="folder-tag">{item.durationSeconds}s</span> : null}
-                {item.durationSeconds > 0 &&
-                (item.trimStartSeconds > 0 || (item.trimEndSeconds > 0 && item.trimEndSeconds < item.durationSeconds)) ? (
-                  <span className="folder-tag">
-                    Recorte {formatSecondsClock(item.trimStartSeconds)} → {formatSecondsClock(item.trimEndSeconds)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="row-between">
-                <Link className="identity-link compact" to={profilePathFor(item.authorId, user?.id)}>
-                  {item.authorAvatarUrl ? (
-                    <img src={item.authorAvatarUrl} alt={item.authorName || item.authorId} className="avatar-sm" />
-                  ) : (
-                    <span className="avatar-sm avatar-fallback">
-                      {initialsOf(item.authorName || item.authorId)}
-                    </span>
-                  )}
-                  <span>@{item.authorName || item.authorId}</span>
-                </Link>
-                <span>{formatDateTime(item.createdAt)}</span>
-              </div>
-              <div className="row-actions">
-                <Link className="ghost-btn" to={`/app/reels/${item.id}`}>
-                  Ver detalle
-                </Link>
-              </div>
-            </article>
-          ))}
+        <div className="reels-vertical-feed">
+          {visibleItems.map((item) => <ReelFeedCard key={item.id} item={item} currentUserId={user?.id} onLike={(video) => void toggleVideoLike(video)} />)}
         </div>
       )}
     </section>

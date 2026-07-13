@@ -1,0 +1,11 @@
+*
+!Conectate-web
+!Conectate-web/**
+
+Conectate-web/node_modules/
+Conectate-web/dist/
+Conectate-web/tmp/
+Conectate-web/coverage/
+Conectate-web/cypress/screenshots/
+Conectate-web/cypress/videos/
+Conectate-web/*.log

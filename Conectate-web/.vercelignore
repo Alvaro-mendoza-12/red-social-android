@@ -1,5 +1,9 @@
-node_modules 
-.git 
-dist 
-.vercel 
-*.log 
+node_modules
+.git
+.vercel
+dist
+tmp
+coverage
+cypress/screenshots
+cypress/videos
+*.log

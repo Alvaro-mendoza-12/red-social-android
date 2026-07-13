@@ -67,6 +67,10 @@ fun HomeScreen(
         BottomNavItem.Social,
         BottomNavItem.Profile
     )
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val isVideoFeed = currentDestination?.hierarchy?.any { it.route == Screen.Videos.route } == true
+    val unreadBadge by homeViewModel.totalUnreadConversations.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -74,12 +78,7 @@ fun HomeScreen(
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp
             ) {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-
                 items.forEach { item ->
-                    val unreadBadge by homeViewModel.totalUnreadConversations.collectAsState()
-                    
                     NavigationBarItem(
                         icon = { 
                             BadgedBox(
@@ -142,11 +141,14 @@ fun HomeScreen(
         NavHost(
             navController = navController,
             startDestination = startTab ?: Screen.Messages.route,
-            modifier = Modifier.padding(bottom = padding.calculateBottomPadding())
+            modifier = Modifier.padding(
+                bottom = if (isVideoFeed) 0.dp else padding.calculateBottomPadding()
+            )
         ) {
             composable(Screen.Messages.route) {
                 ConversationsScreen(
                     navController = navController,
+                    sharedStickerUri = sharedUri.takeIf { startTab == Screen.Messages.route },
                     onNavigateToChat = { userId ->
                         mainNavController.navigate(Screen.Chat.createRoute(userId))
                     },
@@ -241,6 +243,10 @@ fun HomeScreen(
 
             composable(Screen.ChatSettings.route) {
                 conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
+            }
+
+            composable(Screen.CustomizeApp.route) {
+                conectate.com.presentation.settings.CustomizeAppScreen(navController = navController)
             }
 
             composable(Screen.AdminPanel.route) {

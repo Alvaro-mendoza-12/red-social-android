@@ -19,6 +19,10 @@ export function SocialPage() {
     setSearchParams({ tab: nextTab }, { replace: true })
   }
 
+  function closeComposer() {
+    setSearchParams({ tab: 'posts' }, { replace: true })
+  }
+
   return (
     <section className="section-stack">
       <div className="social-tab-bar">
@@ -28,7 +32,7 @@ export function SocialPage() {
           aria-pressed={activeTab === 'posts'}
           onClick={() => changeTab('posts')}
         >
-          Publicaciones
+          Social
         </button>
         <button
           type="button"
@@ -50,7 +54,7 @@ export function SocialPage() {
 
       <div className="social-shell">
         {activeTab === 'posts'
-          ? <FeedPage />
+          ? <FeedPage composerOpen={searchParams.get('compose') === '1'} onCloseComposer={closeComposer} />
           : activeTab === 'moments'
             ? <MomentsPage />
             : <ChallengesPage />}

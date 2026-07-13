@@ -6,6 +6,7 @@ import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
+  resolveSupabasePublicUrl,
   subscribeRealtimeChannel,
   supabase,
 } from '../../core/supabase'
@@ -78,7 +79,7 @@ function mapRoom(row: GenericRow): VoiceRoom {
     topic: textOf(row, ['topic', 'description'], 'Sin descripción'),
     creatorId: textOf(row, ['creator_id', 'owner_id'], ''),
     creatorName: textOf(row, ['creator_name', 'owner_name'], ''),
-    creatorAvatarUrl: textOf(row, ['creator_avatar_url', 'avatar_url'], ''),
+    creatorAvatarUrl: resolveSupabasePublicUrl('avatars', textOf(row, ['creator_avatar_url', 'avatar_url'], '')),
     participantCount: resolveParticipantCount(row),
     maxParticipants: Math.max(1, Number(row.max_participants ?? 10)),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
@@ -159,7 +160,7 @@ export function VoiceRoomsPage() {
           if (!id) return
           profileById.set(id, {
             name: textOf(profile, ['display_name', 'username'], '') || id,
-            avatarUrl: textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+            avatarUrl: resolveSupabasePublicUrl('avatars', textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '')),
           })
         })
         mapped = mapped.map((room) => {
@@ -241,7 +242,7 @@ export function VoiceRoomsPage() {
         <div className="voice-lobby-copy">
           <span className="shell-kicker">Voz en vivo</span>
           <h2>Salas de Voz</h2>
-          <p>Canales abiertos para conversar, escuchar y moverte entre comunidades sin perder contexto.</p>
+          <p>Canales para conversar con tu comunidad.</p>
         </div>
         <div className="voice-lobby-stats" aria-label="Resumen de salas">
           <span className="voice-lobby-stat">
@@ -290,7 +291,7 @@ export function VoiceRoomsPage() {
       ) : null}
 
       <div className="voice-list-toolbar">
-        <strong>Canales disponibles</strong>
+            <strong>Canales de voz</strong>
         <button className="ghost-btn" type="button" onClick={() => void loadRooms({ silent: true })}>
           <RefreshCw aria-hidden="true" size={16} />
           {syncing ? 'Actualizando' : 'Actualizar'}
@@ -298,7 +299,7 @@ export function VoiceRoomsPage() {
       </div>
 
       {rooms.length === 0 ? (
-        <StatusView title="No hay salas" description="Crea una sala desde móvil o backend para verla aquí." />
+        <StatusView title="No hay salas activas" description="Las salas creadas en la aplicación aparecerán aquí." />
       ) : (
         <div className="voice-room-grid">
           {rooms.map((room) => {
