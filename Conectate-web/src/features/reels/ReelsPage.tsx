@@ -435,6 +435,7 @@ export function ReelsPage() {
   const [coverFrameSecond, setCoverFrameSecond] = useState(0)
   const [generatingFrameCover, setGeneratingFrameCover] = useState(false)
   const [posting, setPosting] = useState(false)
+  const [showUploadForm, setShowUploadForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
   const [sortBy, setSortBy] = useState<FeedSort>('new')
@@ -1044,7 +1045,18 @@ export function ReelsPage() {
 
       {error ? <StatusView title="Error de reels" description={error} /> : null}
 
-      <article className="surface-card section-stack">
+      <div className="row-between" style={{padding: '0.5rem 0'}}>
+        <strong style={{color: 'var(--ink-900)'}}>Explorar videos</strong>
+        <button
+          type="button"
+          className={showUploadForm ? 'chip-btn active' : 'primary-btn'}
+          onClick={() => setShowUploadForm((prev) => !prev)}
+        >
+          {showUploadForm ? '✕ Cancelar' : '+ Publicar video'}
+        </button>
+      </div>
+
+      {showUploadForm && <article className="surface-card section-stack">
         <h3>Publicar reel</h3>
         <form className="section-stack" onSubmit={createReel}>
           <div className="composer">
@@ -1284,11 +1296,11 @@ export function ReelsPage() {
             </div>
           ) : null}
         </form>
-      </article>
+      </article>}
 
-      <article className="surface-card section-stack">
-        <h3>Explorar reels</h3>
+      <div className="surface-card section-stack">
         <div className="composer">
+          <h3>Explorar videos</h3>
           <input
             className="text-input"
             placeholder="Buscar por título, descripción o autor..."
@@ -1314,7 +1326,7 @@ export function ReelsPage() {
           </label>
           <span className="folder-tag">{visibleItems.length} resultados</span>
         </div>
-      </article>
+      </div>
 
       {visibleItems.length === 0 ? (
         <StatusView

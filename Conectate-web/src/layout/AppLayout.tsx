@@ -1103,16 +1103,7 @@ export function AppLayout() {
                 </div>
               </div>
             </div>
-            <div className="shell-status-strip">
-              <span className="shell-status-pill accent">Cuenta: {displayName}</span>
-              <span className="shell-status-pill">
-                {webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Modo web completo'}
-              </span>
-              <span className="shell-status-pill">
-                Tema {webPreferences.themeMode === 'system' ? 'automático' : webPreferences.themeMode}
-              </span>
-              <span className="shell-status-pill">Idioma {webPreferences.language.toUpperCase()}</span>
-            </div>
+            {/* Status strip removed — no existe en la APK móvil */}
           </header>
         ) : null}
 

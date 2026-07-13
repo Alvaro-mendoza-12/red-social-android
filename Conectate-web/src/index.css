@@ -5,6 +5,7 @@
   --brand-2: #f97316;
   --ink-900: #18181b;
   --ink-700: #3f3f46;
+  --ink-600: #52525b;
   --ink-500: #71717a;
   --surface-100: #fff7ed;
   --surface-200: #ffffff;
@@ -13,7 +14,7 @@
 
   font-family: 'DM Sans', sans-serif;
   color: var(--ink-900);
-  background: radial-gradient(circle at 20% 0%, #ffe4e6 0%, #fff7ed 45%, #ffffff 100%);
+  background: #f8fafc;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -539,7 +540,7 @@ textarea {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
   transition: grid-template-columns 0.22s ease;
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .app-shell.nav-collapsed {
@@ -760,12 +761,12 @@ textarea {
 }
 
 .left-nav.collapsed .nav-item.active {
-  background: #0f0f10;
-  color: #fff;
+  background: linear-gradient(120deg, #ffe4e6, #ffedd5);
+  color: #be123c;
 }
 
 .left-nav.collapsed .nav-item.active .nav-icon {
-  color: #fff;
+  color: #be123c;
 }
 
 .nav-counter {
@@ -946,9 +947,7 @@ textarea {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top right, rgba(251, 113, 133, 0.08), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0));
+  background: #ffffff;
 }
 
 .app-header {
@@ -2071,12 +2070,12 @@ button.conversation-row {
   gap: 0;
   flex: 1;
   min-height: 0;
-  border: 1px solid #d1d7e0;
+  border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  background: #f0f2f5;
+  background: #ffffff;
   height: 100%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .compact-inbox-enabled {
@@ -2089,7 +2088,7 @@ button.conversation-row {
 
 .messages-list-pane {
   border-right: 1px solid var(--line);
-  background: #f9fafb;
+  background: #ffffff;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -3195,7 +3194,7 @@ button.conversation-row {
 
 .bubble-me {
   margin-left: auto;
-  background: #dcf8c6;
+  background: #d9fdd3;
   color: #111b21;
 }
 
@@ -3205,8 +3204,9 @@ button.conversation-row {
 
 .bubble-them {
   margin-right: auto;
-  background: #ffffff;
+  background: #f0f2f5;
   color: #111b21;
+  border: 1px solid #e8eaed;
 }
 
 .bubble-them:hover {
@@ -4142,6 +4142,17 @@ button.conversation-row {
     linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(240, 253, 244, 0.94));
 }
 
+.social-tab-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
 .social-shell {
   display: grid;
   gap: 0.8rem;
@@ -5055,7 +5066,7 @@ button.conversation-row {
 
 body {
   overflow-x: hidden;
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 h1,
@@ -5089,8 +5100,7 @@ select:focus-visible {
 }
 
 .app-shell {
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.98));
+  background: #ffffff;
 }
 
 .left-nav {
