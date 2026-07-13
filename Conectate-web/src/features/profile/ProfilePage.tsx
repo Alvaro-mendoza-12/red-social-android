@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bookmark, Edit3, Grid3X3, MoreHorizontal, Share2, Video } from 'lucide-react'
+import { Edit3, Grid3X3, MoreHorizontal, Share2, Star, Video } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { loadFallbackProfileMe, loadFallbackVideos } from '../../core/fallbackData'
 import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
@@ -109,11 +110,7 @@ function ProfileVideoPreview({ item }: { item: ProfileVideo }) {
 }
 
 function ProfileAvatar({ url, name }: { url: string; name: string }) {
-  const [failedUrl, setFailedUrl] = useState('')
-  if (!url || failedUrl === url) {
-    return <span className="mobile-profile-avatar avatar-fallback">{initialsOf(name)}</span>
-  }
-  return <img className="mobile-profile-avatar" src={url} alt={name} onError={() => setFailedUrl(url)} />
+  return <SafeAvatar url={url} name={name} size="lg" className="mobile-profile-avatar" />
 }
 
 export function ProfilePage() {
@@ -270,7 +267,7 @@ export function ProfilePage() {
         <button className={activeTab === 'videos' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'videos'} onClick={() => setActiveTab('videos')} title="Videos"><Video aria-hidden="true" /></button>
         <button className={activeTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'posts'} onClick={() => setActiveTab('posts')} title="Publicaciones"><Grid3X3 aria-hidden="true" /></button>
         <button className={activeTab === 'shared' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'shared'} onClick={() => setActiveTab('shared')} title="Compartidos"><Share2 aria-hidden="true" /></button>
-        <button className={activeTab === 'favorites' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'favorites'} onClick={() => setActiveTab('favorites')} title="Favoritos"><Bookmark aria-hidden="true" /></button>
+        <button className={activeTab === 'favorites' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'favorites'} onClick={() => setActiveTab('favorites')} title="Favoritos"><Star aria-hidden="true" /></button>
       </div>
 
       {activeTab === 'posts' ? (

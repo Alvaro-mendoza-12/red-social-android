@@ -206,6 +206,23 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
   } else if (trimmed.startsWith(prefix2)) {
     trimmed = trimmed.substring(prefix2.length)
   }
+
+  const knownBuckets = [
+    'avatars',
+    'covers',
+    'thumbnails',
+    'videos',
+    'post-media',
+    'moments',
+    'groups',
+    'communities',
+    'stickers',
+  ]
+  const embeddedBucket = knownBuckets.find((candidate) => trimmed.startsWith(`${candidate}/`))
+  const resolvedBucket = embeddedBucket || bucket
+  if (embeddedBucket) {
+    trimmed = trimmed.substring(embeddedBucket.length + 1)
+  }
   
   if (!supabase) {
     const runtime = getRuntimeBackendUrl()
@@ -214,7 +231,7 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/')
-    return `${runtime}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}`
+    return `${runtime}/storage/v1/object/public/${encodeURIComponent(resolvedBucket)}/${objectPath}`
   }
-  return supabase.storage.from(bucket).getPublicUrl(trimmed).data.publicUrl
+  return supabase.storage.from(resolvedBucket).getPublicUrl(trimmed).data.publicUrl
 }

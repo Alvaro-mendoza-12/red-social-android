@@ -239,6 +239,7 @@ export const EnterpriseLayout: React.FC<EnterpriseLayoutProps> = ({ children }) 
                 {!isMobile && (
                   <button
                     onClick={toggleSidebar}
+                    aria-label={isSidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
                     className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   >
                     {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

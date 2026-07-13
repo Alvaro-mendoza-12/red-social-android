@@ -107,22 +107,7 @@ function initialsOf(name: string): string {
 }
 
 function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null)
-
-  if (url && failedUrl !== url) {
-    return (
-      <img
-        src={url}
-        alt={name}
-        className={className}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailedUrl(url)}
-      />
-    )
-  }
-
-  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
+  return <SafeAvatar url={url} name={name} className={className} size="md" />
 }
 
 function toMillis(value: string): number {

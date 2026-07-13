@@ -74,7 +74,7 @@ type IcePayload = {
   candidate: RTCIceCandidateInit
 }
 
-import { getRuntimeBackendUrl } from '../core/runtimeBackend'
+import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
 
 function normalizeBaseUrl(value?: string): string {
   const clean = String(value ?? '').trim().replace(/\/+$/, '')

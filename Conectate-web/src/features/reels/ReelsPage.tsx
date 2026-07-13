@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Heart, MessageCircle, MoreHorizontal, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Heart, MessageCircle, MoreHorizontal, Plus, Search, Send, Share2, SlidersHorizontal, Star, X, Repeat } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
@@ -15,6 +15,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
   loadFallbackVideos,
+  setFallbackVideoFavorite,
   setFallbackVideoReaction,
   uploadFallbackFile,
 } from '../../core/fallbackData'
@@ -33,7 +34,10 @@ type ReelItem = {
   createdAt: string
   likeCount: number
   commentCount: number
+  favoriteCount: number
   likedByMe: boolean
+  favoritedByMe: boolean
+  sharedByMe: boolean
   viewCount: number
   durationSeconds: number
   trimStartSeconds: number
@@ -45,7 +49,7 @@ type TrimPreviewFrame = {
   src: string
 }
 
-type FeedSort = 'new' | 'likes' | 'views'
+type FeedSort = 'random' | 'new' | 'likes' | 'views'
 type CoverInputMode = 'upload' | 'frame'
 type WatermarkDetectionResult = {
   detectedBrands: string[]
@@ -94,7 +98,10 @@ function mapVideoRow(row: GenericRow): ReelItem {
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     likeCount: Number(row.like_count ?? row.likeCount ?? 0),
     commentCount: Number(row.comment_count ?? row.commentCount ?? 0),
+    favoriteCount: Number(row.favorite_count ?? row.favoriteCount ?? 0),
     likedByMe: Boolean(row.liked_by_me ?? row.likedByMe ?? false),
+    favoritedByMe: Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite ?? false),
+    sharedByMe: Boolean(row.shared_by_me ?? row.sharedByMe ?? false),
     viewCount: Number(row.views ?? row.view_count ?? row.viewCount ?? 0),
     durationSeconds,
     trimStartSeconds,
@@ -114,12 +121,21 @@ function ReelFeedCard({
   item,
   currentUserId,
   onLike,
+  onFavorite,
+  onShare,
+  onToggleProfileShare,
+  isOwnVideo,
 }: {
   item: ReelItem
   currentUserId?: string
   onLike: (item: ReelItem) => void
+  onFavorite: (item: ReelItem) => void
+  onShare: (item: ReelItem) => void
+  onToggleProfileShare: (item: ReelItem) => void
+  isOwnVideo: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [shareMenuOpen, setShareMenuOpen] = useState(false)
 
   useEffect(() => {
     const video = videoRef.current
@@ -160,15 +176,91 @@ function ReelFeedCard({
         {item.description ? <p>{item.description}</p> : null}
       </div>
       <div className="reel-feed-actions">
-        <button className={item.likedByMe ? 'active' : ''} type="button" onClick={() => onLike(item)} aria-label="Me gusta">
+        <button className={item.likedByMe ? 'active' : ''} type="button" onClick={() => onLike(item)} aria-label="Me gusta" title="Me gusta">
           <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
           <span>{item.likeCount}</span>
         </button>
-        <Link to={`/app/reels/${item.id}#comments`} aria-label="Comentarios">
+        <Link to={`/app/reels/${item.id}#comments`} aria-label="Comentarios" title="Comentarios">
           <MessageCircle aria-hidden="true" />
           <span>{item.commentCount}</span>
         </Link>
-        <Link to={`/app/reels/${item.id}`} aria-label="Más opciones">
+        <button
+          className={item.favoritedByMe ? 'active' : ''}
+          type="button"
+          onClick={() => onFavorite(item)}
+          aria-label="Favorito"
+          title="Favorito"
+        >
+          <Star
+            aria-hidden="true"
+            fill={item.favoritedByMe ? 'currentColor' : 'none'}
+            color={item.favoritedByMe ? '#FFC107' : 'currentColor'}
+          />
+          <span>{item.favoriteCount}</span>
+        </button>
+        <div className="reel-share-wrapper">
+          <button
+            className="reel-share-trigger"
+            type="button"
+            onClick={() => setShareMenuOpen((current) => !current)}
+            aria-label="Compartir"
+            aria-haspopup="menu"
+            aria-expanded={shareMenuOpen}
+            title="Compartir"
+          >
+            <Share2 aria-hidden="true" />
+          </button>
+          {shareMenuOpen ? (
+            <div className="reel-share-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  onShare(item)
+                }}
+              >
+                <Send aria-hidden="true" />
+                <span>Enviar a amigo</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  if (typeof window !== 'undefined') {
+                    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
+                    const sendIntent = {
+                      title: item.title || 'Video de Conectate',
+                      text: `Mira este video en Conectate: ${shareUrl}`,
+                      url: shareUrl,
+                    }
+                    if (navigator.share) {
+                      void navigator.share(shareUrl).catch(() => undefined)
+                    } else {
+                      void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
+                    }
+                  }
+                }}
+              >
+                <Share2 aria-hidden="true" />
+                <span>Compartir enlace</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  onToggleProfileShare(item)
+                }}
+              >
+                <Repeat aria-hidden="true" />
+                <span>{item.sharedByMe ? 'Quitar de mi perfil' : 'Añadir a mi perfil'}</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <Link to={`/app/reels/${item.id}`} aria-label="Más opciones" title="Más opciones">
           <MoreHorizontal aria-hidden="true" />
         </Link>
       </div>
@@ -528,7 +620,7 @@ export function ReelsPage() {
   const [showUploadForm, setShowUploadForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
-  const [sortBy, setSortBy] = useState<FeedSort>('new')
+  const [sortBy, setSortBy] = useState<FeedSort>('random')
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
@@ -578,6 +670,10 @@ export function ReelsPage() {
     }
 
     return [...next].sort((a, b) => {
+      if (sortBy === 'random') {
+        // Fisher–Yates shuffle using Math.random so videos feel like a mixed feed.
+        return Math.random() - 0.5
+      }
       if (sortBy === 'likes') return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       if (sortBy === 'views') return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
@@ -1150,6 +1246,112 @@ export function ReelsPage() {
     }
   }
 
+  async function toggleVideoFavorite(item: ReelItem) {
+    if (!user) return
+    const nextFavorited = !item.favoritedByMe
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              favoritedByMe: nextFavorited,
+              favoriteCount: Math.max(0, entry.favoriteCount + (nextFavorited ? 1 : -1)),
+            }
+          : entry,
+      ),
+    )
+    try {
+      if (useUbuntu) {
+        await setFallbackVideoFavorite(item.id, nextFavorited)
+      } else if (supabase) {
+        const camelKey = 'video_favorites'
+        if (nextFavorited) {
+          const { error: favError } = await supabase
+            .from(camelKey)
+            .insert({ video_id: item.id, user_id: user.id })
+          if (favError && isMissingSchemaError(favError)) {
+            const { error: fallbackError } = await supabase
+              .from('video_favorites')
+              .insert({ videoId: item.id, userId: user.id })
+            if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+          } else if (favError) {
+            throw favError
+          }
+        } else {
+          const { error: unfavError } = await supabase
+            .from(camelKey)
+            .delete()
+            .eq('video_id', item.id)
+            .eq('user_id', user.id)
+          if (unfavError && isMissingSchemaError(unfavError)) {
+            const { error: fallbackError } = await supabase
+              .from('video_favorites')
+              .delete()
+              .eq('videoId', item.id)
+              .eq('userId', user.id)
+            if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+          } else if (unfavError) {
+            throw unfavError
+          }
+        }
+      }
+      await loadVideos({ silent: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el favorito'))
+      await loadVideos({ silent: true })
+    }
+  }
+
+  function shareVideo(item: ReelItem) {
+    if (typeof window === 'undefined') return
+    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
+    if (navigator.share) {
+      void navigator
+        .share({ title: item.title || 'Video de Conectate', text: item.description || '', url: shareUrl })
+        .catch(() => undefined)
+    } else {
+      void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
+    }
+  }
+
+  async function toggleProfileShare(item: ReelItem) {
+    if (!user) return
+    const nextShared = !item.sharedByMe
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id ? { ...entry, sharedByMe: nextShared } : entry,
+      ),
+    )
+    try {
+      if (useUbuntu) {
+        // The Ubuntu backend doesn't expose a dedicated share endpoint; keep optimistic update.
+        await loadVideos({ silent: true })
+      } else if (supabase) {
+        const { error: shareError } = await supabase
+          .from('video_shares')
+          .upsert(
+            { video_id: item.id, user_id: user.id, shared: nextShared },
+            { onConflict: 'video_id,user_id' },
+          )
+        if (shareError && isMissingSchemaError(shareError)) {
+          const { error: fallbackError } = await supabase
+            .from('video_shares')
+            .upsert(
+              { videoId: item.id, userId: user.id, shared: nextShared },
+              { onConflict: 'videoId,userId' },
+            )
+          if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+        } else if (shareError) {
+          throw shareError
+        }
+        await loadVideos({ silent: true })
+      }
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el compartido'))
+      await loadVideos({ silent: true })
+    }
+  }
+
   if (loading) {
     return <StatusView title="Cargando reels" description="Buscando videos..." />
   }
@@ -1178,6 +1380,7 @@ export function ReelsPage() {
             <div className="reels-filter-popover">
               <label>Orden
                 <select value={sortBy} onChange={(event) => setSortBy(event.target.value as FeedSort)}>
+                  <option value="random">Aleatorio</option>
                   <option value="new">Más recientes</option>
                   <option value="likes">Más likes</option>
                   <option value="views">Más vistas</option>
@@ -1441,7 +1644,18 @@ export function ReelsPage() {
         />
       ) : (
         <div className="reels-vertical-feed">
-          {visibleItems.map((item) => <ReelFeedCard key={item.id} item={item} currentUserId={user?.id} onLike={(video) => void toggleVideoLike(video)} />)}
+          {visibleItems.map((item) => (
+            <ReelFeedCard
+              key={item.id}
+              item={item}
+              currentUserId={user?.id}
+              isOwnVideo={Boolean(user && item.authorId && user.id === item.authorId)}
+              onLike={(video) => void toggleVideoLike(video)}
+              onFavorite={(video) => void toggleVideoFavorite(video)}
+              onShare={(video) => shareVideo(video)}
+              onToggleProfileShare={(video) => void toggleProfileShare(video)}
+            />
+          ))}
         </div>
       )}
     </section>

@@ -500,6 +500,24 @@ export async function setFallbackVideoReaction(videoId: string, liked: boolean):
   )
 }
 
+export async function setFallbackVideoFavorite(videoId: string, favorite: boolean): Promise<{
+  ok: boolean
+  favorited_by_me?: boolean
+  favorite_count?: number
+}> {
+  return fallbackApiJson<{
+    ok: boolean
+    favorited_by_me?: boolean
+    favorite_count?: number
+  }>(
+    `/v1/data/videos/${encodeURIComponent(videoId)}/favorite`,
+    {
+      method: favorite ? 'POST' : 'DELETE',
+      body: favorite ? JSON.stringify({}) : undefined,
+    },
+  )
+}
+
 export type FallbackFriendsResponse = {
   items: GenericRow[]
 }

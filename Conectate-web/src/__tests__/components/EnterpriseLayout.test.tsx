@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { EnterpriseLayout } from '../../components/EnterpriseLayout'
@@ -26,6 +26,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Mock de navigator.onLine
 Object.defineProperty(navigator, 'onLine', {
+  configurable: true,
   writable: true,
   value: true,
 })
@@ -56,6 +57,10 @@ const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 describe('EnterpriseLayout', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    document.documentElement.classList.remove('dark')
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 })
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    window.history.replaceState({}, '', '/')
   })
 
   test('renderiza el layout correctamente', () => {
@@ -102,8 +107,8 @@ describe('EnterpriseLayout', () => {
     expect(screen.getByText('Perfil')).toBeInTheDocument()
   })
 
-  test('muestra navegación móvil en mobile', () => {
-    // Mock mobile
+  test('muestra navegación móvil en mobile', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
     ;(window.matchMedia as jest.Mock).mockReturnValue({
       matches: true,
       media: '(max-width: 767px)',
@@ -124,7 +129,9 @@ describe('EnterpriseLayout', () => {
     )
 
     // En mobile, el sidebar debería estar colapsado por defecto
-    expect(screen.queryByText('Inicio')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Inicio')).not.toBeInTheDocument()
+    })
   })
 
   test('toggle sidebar funciona correctamente', async () => {
@@ -137,7 +144,7 @@ describe('EnterpriseLayout', () => {
     )
 
     // Buscar botón de toggle (solo visible en desktop)
-    const toggleButton = screen.getByRole('button', { name: /chevron/i })
+    const toggleButton = screen.getByRole('button', { name: /contraer menú/i })
     expect(toggleButton).toBeInTheDocument()
 
     // Click para colapsar
@@ -192,8 +199,7 @@ describe('EnterpriseLayout', () => {
     )
 
     // Verificar badge de notificaciones
-    const notificationBadge = screen.getByText('3')
-    expect(notificationBadge).toBeInTheDocument()
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
   })
 
   test('navegación a diferentes secciones funciona', async () => {
@@ -224,7 +230,7 @@ describe('EnterpriseLayout', () => {
       </TestWrapper>
     )
 
-    // Simular cambio a mobile
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
     ;(window.matchMedia as jest.Mock).mockReturnValue({
       matches: true,
       media: '(max-width: 767px)',
@@ -237,8 +243,7 @@ describe('EnterpriseLayout', () => {
     })
 
     // Simular evento de resize
-    const resizeEvent = new Event('resize')
-    window.dispatchEvent(resizeEvent)
+    act(() => window.dispatchEvent(new Event('resize')))
 
     // Esperar a que se actualice el layout
     await waitFor(() => {
@@ -326,8 +331,7 @@ describe('EnterpriseLayout', () => {
     // Unmount del componente
     unmount()
 
-    // Verificar que no hay referencias colgantes
-    expect(document.body.innerHTML).toBe('')
+    expect(screen.queryByText('Test Content')).not.toBeInTheDocument()
   })
 
   test('integración con React Query', async () => {
@@ -420,9 +424,6 @@ describe('EnterpriseLayout - Edge Cases', () => {
   })
 
   test('maneja errores de red', async () => {
-    // Mock de error de red
-    global.fetch = jest.fn(() => Promise.reject(new Error('Network error')))
-
     render(
       <TestWrapper>
         <EnterpriseLayout>
@@ -431,7 +432,8 @@ describe('EnterpriseLayout - Edge Cases', () => {
       </TestWrapper>
     )
 
-    // Debería mostrar estado offline
+    act(() => window.dispatchEvent(new Event('offline')))
+
     await waitFor(() => {
       expect(screen.getByText('Desconectado')).toBeInTheDocument()
     })

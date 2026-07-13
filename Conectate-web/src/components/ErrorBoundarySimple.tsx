@@ -57,12 +57,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
-    if (this.state.hasError && this.state.error && this.state.errorInfo) {
+    if (this.state.hasError && this.state.error) {
       const FallbackComponent = this.props.fallback || DefaultErrorFallback
       return (
         <FallbackComponent
           error={this.state.error}
-          errorInfo={this.state.errorInfo}
+          errorInfo={this.state.errorInfo || { componentStack: '' }}
           onRetry={this.handleRetry}
         />
       )
