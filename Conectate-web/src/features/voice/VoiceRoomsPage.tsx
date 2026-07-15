@@ -13,7 +13,7 @@ import {
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVoiceRooms } from '../../core/fallbackData'
-import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type VoiceRoom = {
   id: string
@@ -88,7 +88,7 @@ function mapRoom(row: GenericRow): VoiceRoom {
 
 export function VoiceRoomsPage() {
   const { user, isFallbackSession } = useAuth()
-  const useUbuntuVoice = isFallbackAuthConfigured || isFallbackSession
+  const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)

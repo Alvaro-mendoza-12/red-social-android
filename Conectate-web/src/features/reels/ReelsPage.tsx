@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Heart, MessageCircle, MoreHorizontal, Plus, Search, Send, Share2, SlidersHorizontal, Star, X, Repeat } from 'lucide-react'
+import { Heart, MessageCircle, MoreHorizontal, Plus, Repeat, Search, Send, Share2, Shuffle, SlidersHorizontal, Star, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
@@ -10,17 +11,26 @@ import {
   supabase,
   resolveSupabasePublicUrl,
 } from '../../core/supabase'
-import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
+import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
+  loadFallbackFollows,
   loadFallbackVideos,
   setFallbackVideoFavorite,
   setFallbackVideoReaction,
   uploadFallbackFile,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import {
+  avatarMediaTypeSource,
+  profileIdentityAliases,
+  profileVideoCoverSource,
+  profileVideoSource,
+  reelAuthorAvatarSource,
+} from '../../core/profileMediaFields'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { createShuffleSeed, filterFriendFeedItems, shuffleFeedItems } from './reelFeedOrder'
 
 type ReelItem = {
   id: string
@@ -31,6 +41,7 @@ type ReelItem = {
   authorId: string
   authorName: string
   authorAvatarUrl: string
+  authorAvatarMediaType: string
   createdAt: string
   likeCount: number
   commentCount: number
@@ -50,6 +61,7 @@ type TrimPreviewFrame = {
 }
 
 type FeedSort = 'random' | 'new' | 'likes' | 'views'
+type FeedMode = 'friends' | 'recommended'
 type CoverInputMode = 'upload' | 'frame'
 type WatermarkDetectionResult = {
   detectedBrands: string[]
@@ -70,6 +82,7 @@ const knownWatermarkBrands = [
 
 function mapVideoRow(row: GenericRow): ReelItem {
   const durationSeconds = Number(row.duration_seconds ?? row.duration ?? 0)
+  const authorAvatarSource = reelAuthorAvatarSource(row)
   const trimStartSeconds = Number(
     row.trim_start_seconds ?? row.trimStartSeconds ?? row.clip_start_seconds ?? row.clipStartSeconds ?? 0,
   )
@@ -83,18 +96,16 @@ function mapVideoRow(row: GenericRow): ReelItem {
     description: textOf(row, ['description'], ''),
     videoUrl: resolveSupabasePublicUrl(
       'videos',
-      textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
+      profileVideoSource(row),
     ),
     coverUrl: resolveSupabasePublicUrl(
       'thumbnails',
-      textOf(row, ['cover_url', 'coverUrl', 'thumbnail_url', 'thumb_url'], ''),
+      profileVideoCoverSource(row),
     ),
-    authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'author_id'], 'usuario'),
+    authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'], 'usuario'),
     authorName: textOf(row, ['user_name', 'userName', 'author_name'], ''),
-    authorAvatarUrl: resolveSupabasePublicUrl(
-      'avatars',
-      textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
-    ),
+    authorAvatarUrl: resolveSupabasePublicUrl('avatars', authorAvatarSource),
+    authorAvatarMediaType: avatarMediaTypeSource(row, authorAvatarSource),
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     likeCount: Number(row.like_count ?? row.likeCount ?? 0),
     commentCount: Number(row.comment_count ?? row.commentCount ?? 0),
@@ -109,12 +120,16 @@ function mapVideoRow(row: GenericRow): ReelItem {
   }
 }
 
-function ReelAvatar({ url, name }: { url: string; name: string }) {
-  const [failedUrl, setFailedUrl] = useState('')
-  if (!url || failedUrl === url) {
-    return <span className="reel-overlay-avatar avatar-fallback">{initialsOf(name)}</span>
-  }
-  return <img className="reel-overlay-avatar" src={url} alt={name} onError={() => setFailedUrl(url)} />
+function ReelAvatar({ url, name, mediaType }: { url: string; name: string; mediaType: string }) {
+  return (
+    <SafeAvatar
+      url={url}
+      mediaType={mediaType}
+      name={name}
+      size="sm"
+      className="reel-overlay-avatar"
+    />
+  )
 }
 
 function ReelFeedCard({
@@ -124,7 +139,6 @@ function ReelFeedCard({
   onFavorite,
   onShare,
   onToggleProfileShare,
-  isOwnVideo,
 }: {
   item: ReelItem
   currentUserId?: string
@@ -132,7 +146,6 @@ function ReelFeedCard({
   onFavorite: (item: ReelItem) => void
   onShare: (item: ReelItem) => void
   onToggleProfileShare: (item: ReelItem) => void
-  isOwnVideo: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
@@ -169,7 +182,11 @@ function ReelFeedCard({
       <div className="reel-feed-shade" />
       <div className="reel-feed-author">
         <Link to={profilePathFor(item.authorId, currentUserId)}>
-          <ReelAvatar url={item.authorAvatarUrl} name={item.authorName || item.authorId} />
+          <ReelAvatar
+            url={item.authorAvatarUrl}
+            mediaType={item.authorAvatarMediaType}
+            name={item.authorName || item.authorId}
+          />
           <strong>@{item.authorName || item.authorId}</strong>
         </Link>
         <h2>{item.title}</h2>
@@ -236,7 +253,7 @@ function ReelFeedCard({
                       url: shareUrl,
                     }
                     if (navigator.share) {
-                      void navigator.share(shareUrl).catch(() => undefined)
+                      void navigator.share(sendIntent).catch(() => undefined)
                     } else {
                       void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
                     }
@@ -273,12 +290,6 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
   if (!clean) return '/app/profile'
   if (currentUserId && clean === currentUserId) return '/app/profile'
   return `/app/profile/${clean}`
-}
-
-function initialsOf(name: string): string {
-  const clean = name.trim()
-  if (!clean) return 'U'
-  return clean[0]?.toUpperCase() ?? 'U'
 }
 
 function isMissingSchemaError(error: unknown): boolean {
@@ -620,7 +631,10 @@ export function ReelsPage() {
   const [showUploadForm, setShowUploadForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
+  const [feedMode, setFeedMode] = useState<FeedMode>('recommended')
+  const [followingIds, setFollowingIds] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<FeedSort>('random')
+  const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
@@ -660,6 +674,9 @@ export function ReelsPage() {
     const query = searchQuery.trim().toLowerCase()
     let next = items
 
+    if (feedMode === 'friends') {
+      next = filterFriendFeedItems(next, followingIds, user?.id)
+    }
     if (onlyMine && user) {
       next = next.filter((item) => item.authorId === user.id)
     }
@@ -669,16 +686,14 @@ export function ReelsPage() {
       )
     }
 
+    if (sortBy === 'random') return shuffleFeedItems(next, shuffleSeed)
+
     return [...next].sort((a, b) => {
-      if (sortBy === 'random') {
-        // Fisher–Yates shuffle using Math.random so videos feel like a mixed feed.
-        return Math.random() - 0.5
-      }
       if (sortBy === 'likes') return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       if (sortBy === 'views') return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
     })
-  }, [items, onlyMine, searchQuery, sortBy, user])
+  }, [feedMode, followingIds, items, onlyMine, searchQuery, shuffleSeed, sortBy, user])
 
   const loadVideos = useCallback(async (options?: { silent?: boolean }) => {
     if (useUbuntu) {
@@ -732,18 +747,17 @@ export function ReelsPage() {
         if (authorIds.length > 0) {
           const { data: profileRows } = await supabase
             .from('profiles')
-            .select('id,display_name,username,avatar_url,photo_url,profile_image')
+            .select('*')
             .in('id', authorIds)
-          const profileById = new Map<string, { name: string; avatarUrl: string }>()
+          const profileById = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
           ;((profileRows ?? []) as GenericRow[]).forEach((profile) => {
             const id = textOf(profile, ['id'], '')
             if (!id) return
+            const avatarSource = reelAuthorAvatarSource(profile)
             profileById.set(id, {
               name: textOf(profile, ['display_name', 'username'], '') || id,
-              avatarUrl: resolveSupabasePublicUrl(
-                'avatars',
-                textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
-              ),
+              avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
+              avatarMediaType: avatarMediaTypeSource(profile, avatarSource),
             })
           })
           mapped = mapped.map((item) => {
@@ -753,6 +767,7 @@ export function ReelsPage() {
               ...item,
               authorName: item.authorName.trim() || profile.name,
               authorAvatarUrl: item.authorAvatarUrl.trim() || profile.avatarUrl,
+              authorAvatarMediaType: item.authorAvatarMediaType.trim() || profile.avatarMediaType,
             }
           })
         }
@@ -776,6 +791,44 @@ export function ReelsPage() {
       setSyncing(false)
     }
   }, [reelsCacheKey, useUbuntu])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const userId = user.id
+    let cancelled = false
+
+    async function loadFollowingIds() {
+      try {
+        if (useUbuntu) {
+          const response = await loadFallbackFollows('following')
+          const ids = response.items.flatMap((profile) => profileIdentityAliases(profile))
+          if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
+          return
+        }
+
+        if (!supabase) return
+        const { data, error: followsError } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId)
+        if (followsError) {
+          if (!cancelled) setFollowingIds([])
+          return
+        }
+        const ids = ((data ?? []) as GenericRow[])
+          .map((row) => textOf(row, ['following_id', 'followingId'], ''))
+          .filter(Boolean)
+        if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
+      } catch {
+        if (!cancelled) setFollowingIds([])
+      }
+    }
+
+    void loadFollowingIds()
+    return () => {
+      cancelled = true
+    }
+  }, [useUbuntu, user?.id])
 
   useEffect(() => {
     const cached = readCachedValue<ReelItem[]>(reelsCacheKey, 1000 * 60 * 60 * 8)
@@ -1367,8 +1420,30 @@ export function ReelsPage() {
 
       <div className="reels-compact-toolbar">
         <div className="reels-mode-switch" aria-label="Modo del feed">
-          <button type="button">Amigos</button>
-          <button className="active" type="button">Recomendado</button>
+          <button
+            className={feedMode === 'friends' ? 'active' : ''}
+            type="button"
+            aria-pressed={feedMode === 'friends'}
+            onClick={() => {
+              setFeedMode('friends')
+              setSortBy('random')
+              setShuffleSeed(createShuffleSeed())
+            }}
+          >
+            Amigos
+          </button>
+          <button
+            className={feedMode === 'recommended' ? 'active' : ''}
+            type="button"
+            aria-pressed={feedMode === 'recommended'}
+            onClick={() => {
+              setFeedMode('recommended')
+              setSortBy('random')
+              setShuffleSeed(createShuffleSeed())
+            }}
+          >
+            Recomendado
+          </button>
         </div>
         <div className="reels-toolbar-actions">
           <label className="reels-search-control" title="Buscar videos">
@@ -1386,6 +1461,17 @@ export function ReelsPage() {
                   <option value="views">Más vistas</option>
                 </select>
               </label>
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => {
+                  setSortBy('random')
+                  setShuffleSeed(createShuffleSeed())
+                }}
+              >
+                <Shuffle aria-hidden="true" size={17} />
+                Mezclar videos
+              </button>
               <label className="checkbox-inline"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />Solo mis videos</label>
             </div>
           </details>
@@ -1639,8 +1725,12 @@ export function ReelsPage() {
 
       {visibleItems.length === 0 ? (
         <StatusView
-          title="Sin reels"
-          description="Aún no hay videos con esos filtros. Publica el primero desde esta pantalla."
+          title={feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
+          description={
+            feedMode === 'friends'
+              ? 'Cuando las personas que sigues publiquen videos, aparecerán aquí mezclados.'
+              : 'Aún no hay videos con esos filtros. Publica el primero desde esta pantalla.'
+          }
         />
       ) : (
         <div className="reels-vertical-feed">
@@ -1649,7 +1739,6 @@ export function ReelsPage() {
               key={item.id}
               item={item}
               currentUserId={user?.id}
-              isOwnVideo={Boolean(user && item.authorId && user.id === item.authorId)}
               onLike={(video) => void toggleVideoLike(video)}
               onFavorite={(video) => void toggleVideoFavorite(video)}
               onShare={(video) => shareVideo(video)}

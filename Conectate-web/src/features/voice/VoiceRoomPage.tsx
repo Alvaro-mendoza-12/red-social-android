@@ -24,9 +24,15 @@ import {
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
-import { isFallbackAuthConfigured, readFallbackSession } from '../../core/auth/fallbackAuth'
+import { readFallbackSession } from '../../core/auth/fallbackAuth'
 import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
+import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import WebRTCManager from './WebRTCManager'
+import {
+  normalizeSignalingParticipant,
+  normalizeSignalingParticipants,
+  type NormalizedSignalingParticipant,
+} from './voiceSignalingProtocol'
 
 type VoiceRoom = {
   id: string
@@ -51,13 +57,7 @@ type Participant = {
   joinedAt: string
 }
 
-type SignalingParticipant = {
-  socketId: string
-  userId: string
-  name?: string
-  avatarUrl?: string
-  isMuted?: boolean
-}
+type SignalingParticipant = NormalizedSignalingParticipant
 
 type SignalPayload = {
   sender: string
@@ -93,8 +93,9 @@ type ServerEvents = {
   connect: () => void
   disconnect: (reason: string) => void
   connect_error: (error: Error) => void
-  'current-participants': (participants: SignalingParticipant[]) => void
-  'user-joined': (participant: SignalingParticipant) => void
+  'room-joined': (payload: { roomId?: string; socketId?: string; participantCount?: number }) => void
+  'current-participants': (participants: unknown) => void
+  'user-joined': (participant: unknown) => void
   'user-left': (socketId: string) => void
   offer: (payload: OfferPayload) => void
   answer: (payload: AnswerPayload) => void
@@ -262,7 +263,7 @@ function RemoteAudio({ stream, muted }: { stream: MediaStream; muted: boolean })
 
 export function VoiceRoomPage() {
   const { user, isFallbackSession } = useAuth()
-  const useUbuntuVoice = isFallbackAuthConfigured || isFallbackSession
+  const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
   const [room, setRoom] = useState<VoiceRoom | null>(null)
@@ -467,7 +468,7 @@ export function VoiceRoomPage() {
         })
         setRoom((current) =>
           current && current.id === targetRoomId
-            ? { ...current, participantCount: Math.max(mapped.length, current.participantCount) }
+            ? { ...current, participantCount: mapped.length }
             : current,
         )
 
@@ -536,6 +537,11 @@ export function VoiceRoomPage() {
         const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
         return [...mapped, ...signalOnly]
       })
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: mapped.length }
+          : current,
+      )
 
       const self = mapped.find((participant) => participant.userId === user?.id)
       if (self) {
@@ -771,7 +777,19 @@ export function VoiceRoomPage() {
       setJoinError(payload.error || 'La señalización de voz rechazó la sesión')
     })
 
-    socket.on('current-participants', (signalParticipants) => {
+    socket.on('room-joined', (payload) => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      setConnectionLabel('Sala sincronizada')
+      if (Number.isFinite(Number(payload.participantCount))) {
+        setRoom((current) => current ? {
+          ...current,
+          participantCount: Math.max(0, Number(payload.participantCount)),
+        } : current)
+      }
+    })
+
+    socket.on('current-participants', (rawParticipants) => {
+      const signalParticipants = normalizeSignalingParticipants(rawParticipants)
       signalParticipants.forEach(upsertSignalParticipant)
       signalParticipants.forEach((participant) => {
         if (shouldOfferToPeer(participant.socketId)) {
@@ -780,7 +798,9 @@ export function VoiceRoomPage() {
       })
     })
 
-    socket.on('user-joined', (participant) => {
+    socket.on('user-joined', (rawParticipant) => {
+      const participant = normalizeSignalingParticipant(rawParticipant)
+      if (!participant) return
       upsertSignalParticipant(participant)
       if (shouldOfferToPeer(participant.socketId)) {
         void startPeerOffer(participant.socketId)

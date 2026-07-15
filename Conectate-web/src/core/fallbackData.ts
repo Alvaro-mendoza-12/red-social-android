@@ -31,6 +31,7 @@ export type FallbackInboxItem = {
   updatedAt: string
   kind: 'chat' | 'group' | 'community' | 'voice'
   avatarUrl: string
+  avatarMediaType?: string
   profileId: string | null
   unreadCount: number
   isPinned: boolean

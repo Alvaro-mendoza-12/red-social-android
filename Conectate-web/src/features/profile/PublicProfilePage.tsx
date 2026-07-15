@@ -2,10 +2,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { QrCodeTile } from '../../components/QrCodeTile'
-import { supabase } from '../../core/supabase'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import {
+  avatarMediaTypeSource,
+  findContentAvatarCandidate,
+  profileAvatarSource,
+  profileCoverSource,
+  profileIdentityAliases,
+} from '../../core/profileMediaFields'
+import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { loadFallbackPublicProfile, setFallbackProfileFollow, submitFallbackUserReport } from '../../core/fallbackData'
+import {
+  loadFallbackPublicProfile,
+  loadFallbackVideos,
+  setFallbackProfileFollow,
+  submitFallbackUserReport,
+} from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
@@ -17,7 +30,15 @@ type PublicProfileData = {
   username: string
   bio: string
   avatarUrl: string
+  avatarMediaType: string
+  coverUrl: string
   isPrivate: boolean
+}
+
+type PublicProfileStats = {
+  posts: number
+  followers: number
+  following: number
 }
 
 type PublicPost = {
@@ -37,14 +58,22 @@ function isMissingFunctionError(error: unknown): boolean {
   )
 }
 
-function mapPublicProfile(row: GenericRow, fallbackId: string): PublicProfileData {
+function mapPublicProfile(
+  row: GenericRow,
+  fallbackId: string,
+  fallbackAvatar = '',
+  fallbackAvatarMediaType = '',
+): PublicProfileData {
+  const avatarSource = profileAvatarSource(row, fallbackAvatar)
   return {
     id: textOf(row, ['id'], fallbackId),
     name: textOf(row, ['displayName', 'display_name', 'full_name', 'name'], 'Usuario'),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio', 'description'], ''),
-    avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
-    isPrivate: Boolean(row.is_private),
+    avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
+    avatarMediaType: avatarMediaTypeSource(row, avatarSource, fallbackAvatarMediaType),
+    coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
+    isPrivate: Boolean(row.is_private ?? row.isPrivate),
   }
 }
 
@@ -65,6 +94,7 @@ export function PublicProfilePage() {
 
   const [profile, setProfile] = useState<PublicProfileData | null>(null)
   const [posts, setPosts] = useState<PublicPost[]>([])
+  const [stats, setStats] = useState<PublicProfileStats>({ posts: 0, followers: 0, following: 0 })
   const [isFollowing, setIsFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -92,10 +122,30 @@ export function PublicProfilePage() {
       setLoading(true)
       setError(null)
       try {
-        const response = await loadFallbackPublicProfile(cleanProfileId)
-        setProfile(mapPublicProfile(response.profile, cleanProfileId))
+        const [profileResult, videoResult] = await Promise.allSettled([
+          loadFallbackPublicProfile(cleanProfileId),
+          loadFallbackVideos(200, 0),
+        ])
+        if (profileResult.status === 'rejected') throw profileResult.reason
+        const response = profileResult.value
+        const videoItems = videoResult.status === 'fulfilled' ? videoResult.value.items : []
+        const contentAvatar = findContentAvatarCandidate(
+          [...(response.posts ?? []), ...videoItems],
+          profileIdentityAliases(response.profile, [cleanProfileId]),
+        )
+        setProfile(mapPublicProfile(
+          response.profile,
+          cleanProfileId,
+          contentAvatar?.url,
+          contentAvatar?.mediaType,
+        ))
         setIsFollowing(Boolean(response.isFollowing))
         setPosts((response.posts ?? []).map(mapPublicPost))
+        setStats({
+          posts: Number(response.stats?.posts ?? response.posts?.length ?? 0),
+          followers: Number(response.stats?.followers ?? 0),
+          following: Number(response.stats?.following ?? 0),
+        })
       } catch (caught) {
         setError(friendlyError(caught, 'No se pudo cargar el perfil desde Ubuntu'))
       } finally {
@@ -128,6 +178,7 @@ export function PublicProfilePage() {
       const nextProfile = mapPublicProfile(profileRow, cleanProfileId)
       setProfile(nextProfile)
 
+      let nextIsFollowing = false
       if (!isSelf && user) {
         const { data: followRows, error: followError } = await supabase
           .from('follows')
@@ -136,21 +187,51 @@ export function PublicProfilePage() {
           .eq('following_id', cleanProfileId)
           .limit(1)
         if (followError) throw followError
-        setIsFollowing(Boolean((followRows ?? []).length))
+        nextIsFollowing = Boolean((followRows ?? []).length)
+        setIsFollowing(nextIsFollowing)
       } else {
         setIsFollowing(false)
       }
 
-      const { data: postRows, error: postsError } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('user_id', cleanProfileId)
-        .order('created_at', { ascending: false })
-        .limit(30)
+      const canLoadPosts = !nextProfile.isPrivate || isSelf || nextIsFollowing
+      const profileQueryId = nextProfile.id || cleanProfileId
+      const [postsResult, videosResult, followersResult, followingResult] = await Promise.all([
+        canLoadPosts
+          ? supabase
+              .from('posts')
+              .select('*', { count: 'exact' })
+              .eq('user_id', profileQueryId)
+              .order('created_at', { ascending: false })
+              .limit(30)
+          : Promise.resolve({ data: [] as GenericRow[], error: null, count: 0 }),
+        supabase.from('videos').select('*').eq('user_id', profileQueryId).limit(30),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileQueryId),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileQueryId),
+      ])
+      const { data: postRows, error: postsError } = postsResult
       if (postsError) throw postsError
-      setPosts(
-        ((postRows ?? []) as GenericRow[]).map(mapPublicPost),
+      const mappedPosts = ((postRows ?? []) as GenericRow[]).map(mapPublicPost)
+      const contentAvatar = findContentAvatarCandidate(
+        [
+          ...((postRows ?? []) as GenericRow[]),
+          ...((videosResult.data ?? []) as GenericRow[]),
+        ],
+        profileIdentityAliases(profileRow, [cleanProfileId, profileQueryId]),
       )
+      if (contentAvatar) {
+        setProfile(mapPublicProfile(
+          profileRow,
+          cleanProfileId,
+          contentAvatar.url,
+          contentAvatar.mediaType,
+        ))
+      }
+      setPosts(mappedPosts)
+      setStats({
+        posts: postsResult.count ?? mappedPosts.length,
+        followers: followersResult.count ?? 0,
+        following: followingResult.count ?? 0,
+      })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo cargar el perfil'))
     } finally {
@@ -170,6 +251,7 @@ export function PublicProfilePage() {
       if (useFallback) {
         const response = await setFallbackProfileFollow(cleanProfileId, !isFollowing)
         setIsFollowing(Boolean(response.isFollowing))
+        await loadProfile()
         return
       }
 
@@ -190,6 +272,7 @@ export function PublicProfilePage() {
         if (insertError) throw insertError
         setIsFollowing(true)
       }
+      await loadProfile()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo actualizar seguimiento'))
     } finally {
@@ -322,15 +405,31 @@ export function PublicProfilePage() {
 
       {error ? <StatusView title="Acción no completada" description={error} /> : null}
 
-      <article className="surface-card section-stack">
-        <div className="row-between">
-          <h3>{profile.name}</h3>
-          <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
+      <article className="surface-card section-stack public-profile-card">
+        <div className="public-profile-cover">
+          {profile.coverUrl ? <img src={profile.coverUrl} alt={`Portada de ${profile.name}`} /> : null}
+        </div>
+        <div className="public-profile-identity">
+          <SafeAvatar
+            url={profile.avatarUrl}
+            mediaType={profile.avatarMediaType}
+            name={profile.name || profile.id}
+            size="lg"
+            className="public-profile-avatar"
+          />
+          <div>
+            <h3>{profile.name}</h3>
+            <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
+          </div>
         </div>
         <p>{profile.bio || 'Sin biografía'}</p>
-        <div className="row-actions">
+        <nav className="public-profile-stats" aria-label="Estadísticas del perfil">
+          <span><strong>{stats.posts}</strong><small>Publicaciones</small></span>
+          <span><strong>{stats.followers}</strong><small>Seguidores</small></span>
+          <span><strong>{stats.following}</strong><small>Siguiendo</small></span>
+        </nav>
+        <div className="row-actions wrap">
           {profile.isPrivate ? <span className="folder-tag">Cuenta privada</span> : null}
-          <span className="folder-tag">Posts: {posts.length}</span>
         </div>
         {!isSelf ? (
           <div className="composer">

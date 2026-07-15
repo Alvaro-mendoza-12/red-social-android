@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Heart, ImagePlus, MessageCircle, MoreHorizontal, Send, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Heart, ImagePlus, MessageCircle, MoreHorizontal, Send, Shuffle, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
@@ -17,6 +17,7 @@ import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../co
 import { useWebPreferences } from '../../core/webPreferences'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaUtils'
+import { createShuffleSeed, shuffleFeedItems } from '../../features/reels/reelFeedOrder'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type FeedItem = {
@@ -101,7 +102,16 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
   const [posting, setPosting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [realtimeRefreshing, setRealtimeRefreshing] = useState(false)
+  const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shuffledItems = useMemo(() => shuffleFeedItems(items, shuffleSeed), [items, shuffleSeed])
+
+  function reshufflePosts() {
+    setShuffleSeed((currentSeed) => {
+      const nextSeed = createShuffleSeed()
+      return nextSeed === currentSeed ? (currentSeed + 1) >>> 0 : nextSeed
+    })
+  }
 
   const loadFeed = useCallback(async (options?: LoadFeedOptions) => {
     if (useUbuntu) {
@@ -389,6 +399,20 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
     <section className="section-stack feed-page">
       {realtimeRefreshing ? <small>Actualizando novedades del feed...</small> : null}
 
+      <div className="feed-shuffle-toolbar">
+        <button
+          className="ghost-btn"
+          type="button"
+          aria-label="Mezclar publicaciones"
+          title="Mostrar las publicaciones en un orden aleatorio nuevo"
+          disabled={items.length < 2}
+          onClick={reshufflePosts}
+        >
+          <Shuffle aria-hidden="true" />
+          <span>Mezclar publicaciones</span>
+        </button>
+      </div>
+
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
           <article className="surface-card feed-composer-dialog" role="dialog" aria-modal="true" aria-labelledby="new-post-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -432,7 +456,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
           <p>No hay publicaciones todavía. Cuando alguien publique, aparecerán aquí.</p>
         </article>
       ) : null}
-      {items.map((item) => (
+      {shuffledItems.map((item) => (
         <article key={item.id} className="surface-card feed-card">
           <div className="row-between feed-head">
             <Link className="identity-link" to={profilePathFor(item.authorId, user?.id)}>

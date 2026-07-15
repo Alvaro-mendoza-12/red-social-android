@@ -5,6 +5,15 @@ import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { loadFallbackProfileMe, loadFallbackVideos } from '../../core/fallbackData'
+import {
+  avatarMediaTypeSource,
+  findContentAvatarCandidate,
+  profileAvatarSource,
+  profileCoverSource,
+  profileIdentityAliases,
+  profileVideoCoverSource,
+  profileVideoSource,
+} from '../../core/profileMediaFields'
 import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -27,6 +36,7 @@ type ProfileData = {
   username: string
   bio: string
   avatarUrl: string
+  avatarMediaType: string
   coverUrl: string
   interests: string[]
   career: string
@@ -50,24 +60,24 @@ type ProfileVideo = {
   favoritedByMe: boolean
 }
 
-function initialsOf(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || 'U'
-}
-
 function stringArrayFrom(value: unknown): string[] {
   return Array.isArray(value) ? value.map((entry) => String(entry).trim()).filter(Boolean) : []
 }
 
-function mapProfile(row: GenericRow, fallbackName: string, fallbackAvatar: string): ProfileData {
+function mapProfile(
+  row: GenericRow,
+  fallbackName: string,
+  fallbackAvatar: string,
+  fallbackAvatarMediaType = '',
+): ProfileData {
+  const avatarSource = profileAvatarSource(row, fallbackAvatar)
   return {
     name: textOf(row, ['displayName', 'display_name', 'full_name'], fallbackName),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio'], ''),
-    avatarUrl: resolveSupabasePublicUrl(
-      'avatars',
-      textOf(row, ['avatar_url', 'photo_url', 'profile_image'], '') || fallbackAvatar,
-    ),
-    coverUrl: resolveSupabasePublicUrl('covers', textOf(row, ['cover_url', 'banner_url'], '')),
+    avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
+    avatarMediaType: avatarMediaTypeSource(row, avatarSource, fallbackAvatarMediaType),
+    coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
     interests: stringArrayFrom(row.interests),
     career: textOf(row, ['career'], ''),
     favoriteBook: textOf(row, ['favorite_book'], ''),
@@ -86,15 +96,15 @@ function mapPost(row: GenericRow): ProfilePost {
 function mapVideo(row: GenericRow): ProfileVideo {
   return {
     id: textOf(row, ['id'], crypto.randomUUID()),
-    ownerId: textOf(row, ['user_id', 'userId', 'owner_id'], ''),
+    ownerId: textOf(row, ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'], ''),
     title: textOf(row, ['title', 'description'], 'Video'),
     videoUrl: resolveSupabasePublicUrl(
       'videos',
-      textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
+      profileVideoSource(row),
     ),
     coverUrl: resolveSupabasePublicUrl(
       'thumbnails',
-      textOf(row, ['cover_url', 'coverUrl', 'thumbnail_url'], ''),
+      profileVideoCoverSource(row),
     ),
     sharedByMe: Boolean(row.shared_by_me ?? row.sharedByMe),
     favoritedByMe: Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite),
@@ -109,8 +119,8 @@ function ProfileVideoPreview({ item }: { item: ProfileVideo }) {
   return <video src={item.videoUrl} muted preload="metadata" playsInline />
 }
 
-function ProfileAvatar({ url, name }: { url: string; name: string }) {
-  return <SafeAvatar url={url} name={name} size="lg" className="mobile-profile-avatar" />
+function ProfileAvatar({ url, name, mediaType }: { url: string; name: string; mediaType: string }) {
+  return <SafeAvatar url={url} mediaType={mediaType} name={name} size="lg" className="mobile-profile-avatar" />
 }
 
 export function ProfilePage() {
@@ -132,7 +142,9 @@ export function ProfilePage() {
   const [shareStatus, setShareStatus] = useState('')
 
   const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
-  const metadataAvatar = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
+  const metadataRow = (user?.user_metadata ?? {}) as GenericRow
+  const metadataAvatar = profileAvatarSource(metadataRow)
+  const metadataAvatarMediaType = avatarMediaTypeSource(metadataRow, metadataAvatar)
   const visibleVideos = useMemo(() => {
     if (activeTab === 'shared') return videos.filter((item) => item.sharedByMe)
     if (activeTab === 'favorites') return videos.filter((item) => item.favoritedByMe)
@@ -153,7 +165,16 @@ export function ProfilePage() {
             loadFallbackProfileMe(),
             loadFallbackVideos(200, 0),
           ])
-          setProfile(mapProfile(profileResponse.profile, metadataName || user.email || 'Usuario', metadataAvatar))
+          const contentAvatar = findContentAvatarCandidate(
+            [...profileResponse.posts, ...videoResponse.items],
+            profileIdentityAliases(profileResponse.profile, [user.id, user.email ?? '']),
+          )
+          setProfile(mapProfile(
+            profileResponse.profile,
+            metadataName || user.email || 'Usuario',
+            contentAvatar?.url || metadataAvatar,
+            contentAvatar?.mediaType || metadataAvatarMediaType,
+          ))
           setPosts(profileResponse.posts.map(mapPost))
           setVideos(videoResponse.items.map(mapVideo))
           setStats(profileResponse.stats)
@@ -174,7 +195,19 @@ export function ProfilePage() {
         const profileRow = ((profileResult.data ?? []) as GenericRow[])[0] ?? {}
         const mappedPosts = ((postsResult.data ?? []) as GenericRow[]).map(mapPost)
         const mappedVideos = ((videosResult.data ?? []) as GenericRow[]).map(mapVideo)
-        setProfile(mapProfile(profileRow, metadataName || user.email || 'Usuario', metadataAvatar))
+        const contentAvatar = findContentAvatarCandidate(
+          [
+            ...((postsResult.data ?? []) as GenericRow[]),
+            ...((videosResult.data ?? []) as GenericRow[]),
+          ],
+          profileIdentityAliases(profileRow, [user.id, user.email ?? '']),
+        )
+        setProfile(mapProfile(
+          profileRow,
+          metadataName || user.email || 'Usuario',
+          contentAvatar?.url || metadataAvatar,
+          contentAvatar?.mediaType || metadataAvatarMediaType,
+        ))
         setPosts(mappedPosts)
         setVideos(mappedVideos)
         setStats((current) => ({
@@ -191,7 +224,7 @@ export function ProfilePage() {
       }
     }
     void loadProfile()
-  }, [isFallbackSession, metadataAvatar, metadataName, user])
+  }, [isFallbackSession, metadataAvatar, metadataAvatarMediaType, metadataName, user])
 
   async function shareProfile() {
     if (!user) return
@@ -223,7 +256,11 @@ export function ProfilePage() {
 
       <div className="mobile-profile-main">
         <div className="mobile-profile-avatar-row">
-          <ProfileAvatar url={profile?.avatarUrl || ''} name={displayName} />
+          <ProfileAvatar
+            url={profile?.avatarUrl || ''}
+            mediaType={profile?.avatarMediaType || ''}
+            name={displayName}
+          />
           <div className="mobile-profile-actions">
             <Link className="primary-btn" to="/app/settings"><Edit3 aria-hidden="true" />Editar perfil</Link>
             <button className="icon-btn" type="button" onClick={() => void shareProfile()} title="Compartir perfil" aria-label="Compartir perfil"><Share2 aria-hidden="true" /></button>

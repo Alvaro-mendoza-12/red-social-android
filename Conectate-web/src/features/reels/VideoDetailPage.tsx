@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { ArrowLeft, Flag, Heart, MessageCircle, Pencil, Share2, Star, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { loadFallbackVideo } from '../../core/fallbackData'
+import { loadFallbackVideo, setFallbackVideoFavorite, setFallbackVideoReaction } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
@@ -38,6 +39,11 @@ function isMissingFunctionError(error: unknown): boolean {
   )
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  return message.includes('column') || message.includes('relation') || message.includes('42p01') || message.includes('42703')
+}
+
 function profilePathFor(profileId: string, currentUserId?: string): string {
   const clean = profileId.trim()
   if (!clean) return '/app/profile'
@@ -61,6 +67,8 @@ export function VideoDetailPage() {
   const [comments, setComments] = useState<VideoComment[]>([])
   const [likedByMe, setLikedByMe] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
+  const [favoritedByMe, setFavoritedByMe] = useState(false)
+  const [favoriteCount, setFavoriteCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -102,6 +110,8 @@ export function VideoDetailPage() {
         setEditDescription(textOf(row, ['description'], ''))
         setLikeCount(Number(row.like_count ?? row.likeCount ?? 0))
         setLikedByMe(Boolean(row.liked_by_me ?? row.likedByMe ?? false))
+        setFavoriteCount(Number(row.favorite_count ?? row.favoriteCount ?? 0))
+        setFavoritedByMe(Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite ?? false))
         setComments([])
         return
       }
@@ -156,6 +166,7 @@ export function VideoDetailPage() {
       setEditTitle(textOf(row, ['title'], 'Video'))
       setEditDescription(textOf(row, ['description'], ''))
       setLikeCount(Number(row.likeCount ?? row.like_count ?? 0))
+      setFavoriteCount(Number(row.favoriteCount ?? row.favorite_count ?? 0))
 
       const camelComments = await supabase
         .from('video_comments')
@@ -219,15 +230,35 @@ export function VideoDetailPage() {
       )
 
       if (user) {
-        const { data: likeRows } = await supabase
-          .from('video_likes')
-          .select('id')
-          .eq('video_id', cleanVideoId)
-          .eq('user_id', user.id)
-          .limit(1)
+        const [{ data: likeRows }, favoriteResult] = await Promise.all([
+          supabase
+            .from('video_likes')
+            .select('id')
+            .eq('video_id', cleanVideoId)
+            .eq('user_id', user.id)
+            .limit(1),
+          supabase
+            .from('video_favorites')
+            .select('id')
+            .eq('video_id', cleanVideoId)
+            .eq('user_id', user.id)
+            .limit(1),
+        ])
         setLikedByMe(Boolean((likeRows ?? []).length))
+        if (!favoriteResult.error) {
+          setFavoritedByMe(Boolean((favoriteResult.data ?? []).length))
+        } else if (isMissingSchemaError(favoriteResult.error)) {
+          const legacyFavorite = await supabase
+            .from('video_favorites')
+            .select('id')
+            .eq('videoId', cleanVideoId)
+            .eq('userId', user.id)
+            .limit(1)
+          setFavoritedByMe(Boolean((legacyFavorite.data ?? []).length))
+        }
       } else {
         setLikedByMe(false)
+        setFavoritedByMe(false)
       }
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo cargar el video'))
@@ -281,8 +312,17 @@ export function VideoDetailPage() {
   }, [cleanVideoId, load])
 
   async function toggleLike() {
-    if (!supabase || !user || !cleanVideoId) return
+    if (!user || !cleanVideoId) return
+    const nextLiked = !likedByMe
+    setLikedByMe(nextLiked)
+    setLikeCount((current) => Math.max(0, current + (nextLiked ? 1 : -1)))
     try {
+      if (useUbuntu) {
+        await setFallbackVideoReaction(cleanVideoId, nextLiked)
+        await load()
+        return
+      }
+      if (!supabase) throw new Error('Backend no configurado')
       let delta = 0
       if (likedByMe) {
         const { error: deleteError } = await supabase
@@ -313,7 +353,41 @@ export function VideoDetailPage() {
 
       await load()
     } catch (caught) {
+      setLikedByMe(!nextLiked)
+      setLikeCount((current) => Math.max(0, current + (nextLiked ? -1 : 1)))
       setError(friendlyError(caught, 'No se pudo actualizar like'))
+    }
+  }
+
+  async function toggleFavorite() {
+    if (!user || !cleanVideoId) return
+    const nextFavorited = !favoritedByMe
+    setFavoritedByMe(nextFavorited)
+    setFavoriteCount((current) => Math.max(0, current + (nextFavorited ? 1 : -1)))
+    try {
+      if (useUbuntu) {
+        await setFallbackVideoFavorite(cleanVideoId, nextFavorited)
+        await load()
+        return
+      }
+      if (!supabase) throw new Error('Backend no configurado')
+
+      const snakeMutation = nextFavorited
+        ? await supabase.from('video_favorites').insert({ video_id: cleanVideoId, user_id: user.id })
+        : await supabase.from('video_favorites').delete().eq('video_id', cleanVideoId).eq('user_id', user.id)
+      if (snakeMutation.error && isMissingSchemaError(snakeMutation.error)) {
+        const legacyMutation = nextFavorited
+          ? await supabase.from('video_favorites').insert({ videoId: cleanVideoId, userId: user.id })
+          : await supabase.from('video_favorites').delete().eq('videoId', cleanVideoId).eq('userId', user.id)
+        if (legacyMutation.error) throw legacyMutation.error
+      } else if (snakeMutation.error) {
+        throw snakeMutation.error
+      }
+      await load()
+    } catch (caught) {
+      setFavoritedByMe(!nextFavorited)
+      setFavoriteCount((current) => Math.max(0, current + (nextFavorited ? -1 : 1)))
+      setError(friendlyError(caught, 'No se pudo actualizar el favorito'))
     }
   }
 
@@ -472,11 +546,11 @@ export function VideoDetailPage() {
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
   }
   if (loading) return <StatusView title="Cargando video" description="Espera un momento..." />
-  if (error) {
+  if (error && !video) {
     return (
       <section className="section-stack">
         <Link to="/app/reels" className="inline-link">
-          ← Volver a reels
+          <ArrowLeft aria-hidden="true" size={17} /> Volver a reels
         </Link>
         <StatusView title="No se pudo abrir el video" description={error} />
       </section>
@@ -488,10 +562,11 @@ export function VideoDetailPage() {
     <section className="section-stack">
       <div className="row-between">
         <Link to="/app/reels" className="inline-link">
-          ← Reels
+          <ArrowLeft aria-hidden="true" size={17} /> Reels
         </Link>
         <h2>Detalle del video</h2>
       </div>
+      {error ? <div className="voice-room-alert" role="status">{error}</div> : null}
       <article className="surface-card">
         <h3>{video.title}</h3>
         <small>{formatDateTime(video.createdAt)}</small>
@@ -508,24 +583,33 @@ export function VideoDetailPage() {
         <video controls preload="metadata" src={video.videoUrl} className="video-frame" />
         <p>{video.description || 'Sin descripción'}</p>
         <div className="row-actions">
-          <button className="ghost-btn" type="button" onClick={() => void toggleLike()}>
-            {likedByMe ? 'Quitar like' : 'Like'} ({likeCount})
+          <button className="ghost-btn" type="button" onClick={() => void toggleLike()} aria-label="Me gusta" aria-pressed={likedByMe} title="Me gusta">
+            <Heart aria-hidden="true" fill={likedByMe ? 'currentColor' : 'none'} size={18} />
+            <span>{likeCount}</span>
           </button>
-          <span>Comentarios: {comments.length}</span>
+          <button className={favoritedByMe ? 'ghost-btn active-action' : 'ghost-btn'} type="button" onClick={() => void toggleFavorite()} aria-label="Favorito" aria-pressed={favoritedByMe} title="Favorito">
+            <Star aria-hidden="true" fill={favoritedByMe ? 'currentColor' : 'none'} color={favoritedByMe ? '#FFC107' : 'currentColor'} size={18} />
+            <span>{favoriteCount}</span>
+          </button>
+          <span className="folder-tag"><MessageCircle aria-hidden="true" size={16} /> {comments.length}</span>
           <button className="chip-btn" type="button" onClick={() => void copyVideoLink()}>
+            <Share2 aria-hidden="true" size={17} />
             {shareCopied ? 'Enlace copiado' : 'Compartir enlace'}
           </button>
           {isOwner ? (
             <>
               <button className="chip-btn" type="button" onClick={() => setEditing((current) => !current)}>
+                <Pencil aria-hidden="true" size={16} />
                 {editing ? 'Cancelar edición' : 'Editar video'}
               </button>
               <button className="chip-btn" type="button" disabled={deleting} onClick={() => void deleteVideo()}>
+                <Trash2 aria-hidden="true" size={16} />
                 {deleting ? 'Eliminando...' : 'Eliminar video'}
               </button>
             </>
           ) : user ? (
             <button className="chip-btn" type="button" disabled={reporting} onClick={() => void submitVideoReport()}>
+              <Flag aria-hidden="true" size={16} />
               {reporting ? 'Reportando...' : 'Reportar video'}
             </button>
           ) : null}

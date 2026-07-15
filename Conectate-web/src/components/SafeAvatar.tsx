@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
+import { isVideoAvatarSource } from '../core/profileMediaFields'
 
 type AvatarSize = 'sm' | 'md' | 'lg'
 
@@ -8,6 +9,7 @@ type SafeAvatarProps = {
   size?: AvatarSize
   className?: string
   title?: string
+  mediaType?: string | null
 }
 
 const sizeClassByVariant: Record<AvatarSize, string> = {
@@ -33,29 +35,9 @@ function hashString(value: string): number {
   return Math.abs(hash)
 }
 
-function buildDiceBearUrl(seed: string, size: number): string {
-  // DiceBear avatars are deterministic per seed, free, and don't need auth.
-  // We embed the size to request a properly sized PNG.
-  const safeSeed = encodeURIComponent(seed.trim() || 'conectate')
-  return `https://api.dicebear.com/7.x/initials/png?seed=${safeSeed}&size=${size}&backgroundType=gradientLinear`
-}
-
-function buildUiAvatarsUrl(seed: string, size: number): string {
-  // UI Avatars renders initials with a colored background as a fallback.
-  const safeSeed = encodeURIComponent(seed.trim() || 'U')
-  return `https://ui-avatars.com/api/?name=${safeSeed}&size=${size}&background=5865F2&color=fff&bold=true&format=png`
-}
-
 /**
- * SafeAvatar: renders the provided image URL when available and falls back to a
- * generated avatar (DiceBear / UI Avatars / initials) when:
- *   - the URL is empty,
- *   - the URL returns a 404 or other network error.
- *
- * This is the central place to manage avatar resilience so the inbox, groups,
- * communities and the user profile all show a real picture instead of a blank
- * circle. The seed is derived from the user's id when available so the same
- * person always gets the same fallback image across the app.
+ * Renders a real image or video avatar and falls back to accessible initials
+ * only when that media source is absent or cannot be loaded.
  */
 export function SafeAvatar({
   url,
@@ -63,36 +45,36 @@ export function SafeAvatar({
   size = 'md',
   className,
   title,
+  mediaType,
 }: SafeAvatarProps) {
   const trimmedUrl = (url ?? '').trim()
   const initialName = name && name.trim().length > 0 ? name.trim() : 'Usuario'
-  const seed = useMemo(() => {
-    if (initialName && initialName !== 'Usuario' && !/^U$/.test(initialName)) {
-      return initialName
-    }
-    return `conectate-${initialName}`
-  }, [initialName])
-  const [stage, setStage] = useState<'remote' | 'dicebear' | 'ui-avatars' | 'initials'>(
-    trimmedUrl ? 'remote' : 'dicebear',
-  )
-  const [failedRemote, setFailedRemote] = useState<string | null>(null)
-  const [failedDicebear, setFailedDicebear] = useState(false)
-  const [failedUiAvatars, setFailedUiAvatars] = useState(false)
-
-  const pixelSize = size === 'sm' ? 64 : size === 'lg' ? 192 : 128
-
-  useEffect(() => {
-    // Reset the cascading fallback whenever the upstream inputs change.
-    setStage(trimmedUrl ? 'remote' : 'dicebear')
-    setFailedRemote(null)
-    setFailedDicebear(false)
-    setFailedUiAvatars(false)
-  }, [trimmedUrl, seed])
+  const normalizedMediaType = (mediaType ?? '').trim()
+  const signature = `${trimmedUrl}|${normalizedMediaType}`
+  const [failedSignature, setFailedSignature] = useState('')
+  const canRenderMedia = Boolean(trimmedUrl && failedSignature !== signature)
 
   const sizeClass = sizeClassByVariant[size]
   const combinedClassName = [sizeClass, 'safe-avatar', className].filter(Boolean).join(' ')
 
-  if (stage === 'remote' && trimmedUrl && failedRemote !== trimmedUrl) {
+  if (canRenderMedia && isVideoAvatarSource(trimmedUrl, normalizedMediaType)) {
+    return (
+      <video
+        className={combinedClassName}
+        src={trimmedUrl}
+        title={title ?? initialName}
+        aria-label={initialName}
+        muted
+        loop
+        playsInline
+        autoPlay
+        preload="metadata"
+        onError={() => setFailedSignature(signature)}
+      />
+    )
+  }
+
+  if (canRenderMedia) {
     return (
       <img
         className={combinedClassName}
@@ -101,56 +83,19 @@ export function SafeAvatar({
         title={title ?? initialName}
         loading="lazy"
         referrerPolicy="no-referrer"
-        onError={() => {
-          setFailedRemote(trimmedUrl)
-          setStage('dicebear')
-        }}
+        onError={() => setFailedSignature(signature)}
       />
     )
   }
 
-  if (stage === 'dicebear' && !failedDicebear) {
-    return (
-      <img
-        className={combinedClassName}
-        src={buildDiceBearUrl(seed, pixelSize)}
-        alt={initialName}
-        title={title ?? initialName}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => {
-          setFailedDicebear(true)
-          setStage('ui-avatars')
-        }}
-      />
-    )
-  }
-
-  if (stage === 'ui-avatars' && !failedUiAvatars) {
-    return (
-      <img
-        className={combinedClassName}
-        src={buildUiAvatarsUrl(initialName, pixelSize)}
-        alt={initialName}
-        title={title ?? initialName}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => {
-          setFailedUiAvatars(true)
-          setStage('initials')
-        }}
-      />
-    )
-  }
-
-  const hue = hashString(seed) % 360
+  const hue = hashString(initialName) % 360
   const backgroundStyle = {
     backgroundImage: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 40) % 360} 70% 45%))`,
   }
 
   return (
     <span
-      className={[sizeClass, 'avatar-fallback', className].filter(Boolean).join(' ')}
+      className={[sizeClass, 'safe-avatar', 'avatar-fallback', className].filter(Boolean).join(' ')}
       style={backgroundStyle}
       title={title ?? initialName}
       aria-label={initialName}
