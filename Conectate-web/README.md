@@ -39,7 +39,7 @@ Frontend web independiente de tu app móvil Conectate.
 - Variables opcionales para WebRTC:
   - `VITE_SIGNALING_URL`
   - `VITE_CALL_SIGNALING_URL`
-- Si no se definen, web usa el mismo signaling activo que Android: `https://voice.srv1495648.hstgr.cloud`.
+- Si no se definen, web usa el mismo signaling activo que Android
 - El build web ahora falla temprano si esas variables faltan o siguen con placeholders.
 
 ## Stack

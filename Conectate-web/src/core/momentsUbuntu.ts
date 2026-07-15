@@ -20,6 +20,8 @@ type FeedResponse = {
 }
 
 export async function fetchUbuntuMomentsFeed(_currentUserId: string): Promise<MomentItem[]> {
+  // The API identifies the viewer from the bearer token.
+  void _currentUserId
   const payload = await fallbackApiJson<FeedResponse>('/v1/data/moments/feed')
   return (payload.items ?? []).map((row) => ({
     id: row.id,
@@ -64,4 +66,8 @@ export async function recordUbuntuMomentView(momentId: string) {
     method: 'POST',
     body: JSON.stringify({}),
   })
+}
+
+export async function deleteUbuntuMoment(momentId: string) {
+  await fallbackApiJson(`/v1/data/moments/${encodeURIComponent(momentId)}`, { method: 'DELETE' })
 }

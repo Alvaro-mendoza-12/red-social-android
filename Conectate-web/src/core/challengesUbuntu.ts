@@ -52,6 +52,9 @@ function mapActive(row: GenericRow | null): UbuntuActiveChallenge | null {
 }
 
 export async function loadUbuntuChallengesBundle(userId: string) {
+  // The authenticated backend session determines voting state. Keep the
+  // argument for API compatibility with the Supabase implementation.
+  void userId
   const activeRows = await callUbuntuRpc<GenericRow[]>('get_or_generate_active_challenge', {})
   const activeRow = Array.isArray(activeRows) ? activeRows[0] ?? null : null
   const active = mapActive(activeRow)

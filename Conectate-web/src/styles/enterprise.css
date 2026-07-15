@@ -366,10 +366,48 @@ a:hover {
   object-fit: cover;
 }
 
+.avatar-fallback,
+.safe-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--gradient-brand);
+  background-size: cover;
+  background-position: center;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar-fallback {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.safe-avatar {
+  object-fit: cover;
+}
+
+.mobile-profile-avatar.avatar-fallback,
+.mobile-profile-avatar.safe-avatar {
+  background-color: #2c3142;
+  background-image: var(--gradient-brand, linear-gradient(135deg, #5865F2, #8b5cf6));
+}
+
 .avatar-sm {
   width: 32px;
   height: 32px;
   font-size: 12px;
+}
+
+.avatar-md {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
 }
 
 .avatar-lg {

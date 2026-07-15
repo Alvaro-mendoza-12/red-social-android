@@ -526,7 +526,7 @@ export function ChallengesPage() {
     }
   }
 
-  if (!supabase) {
+  if (!supabase && !isUbuntuPrimary) {
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para retos en Ubuntu." />
   }
 

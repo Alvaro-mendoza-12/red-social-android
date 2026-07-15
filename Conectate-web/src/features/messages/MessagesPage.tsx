@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import {
   enqueueDeferredMutation,
   isBrowserOnline,
@@ -8,12 +9,26 @@ import {
   runWithRetry,
 } from '../../core/reliability'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
-import { loadFallbackMessagesInbox } from '../../core/fallbackData'
+import {
+  loadFallbackFeed,
+  loadFallbackMessagesInbox,
+  loadFallbackVideos,
+  markFallbackChatRead,
+  searchFallbackProfiles,
+} from '../../core/fallbackData'
+import {
+  avatarMediaTypeSource,
+  conversationAvatarSource,
+  findContentAvatarCandidate,
+  profileAvatarSource,
+  profileIdentityAliases,
+} from '../../core/profileMediaFields'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import {
@@ -26,6 +41,7 @@ import {
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { ChatDetailPage } from './ChatDetailPage'
+import { dedupeInboxConversations } from './conversationInboxSupport'
 import { getOrCreateDirectChat } from './directChat'
 import { RoomChatPage } from './RoomChatPage'
 
@@ -39,6 +55,7 @@ type ConversationItem = {
   updatedAt: string
   kind: ConversationKind
   avatarUrl: string
+  avatarMediaType?: string
   profileId: string | null
   unreadCount: number
   isPinned: boolean
@@ -98,29 +115,18 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
   return `/app/profile/${clean}`
 }
 
-function initialsOf(name: string): string {
-  const clean = name.trim()
-  if (!clean) return 'U'
-  return clean[0]?.toUpperCase() ?? 'U'
-}
-
-function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null)
-
-  if (url && failedUrl !== url) {
-    return (
-      <img
-        src={url}
-        alt={name}
-        className={className}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailedUrl(url)}
-      />
-    )
-  }
-
-  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
+function FallbackAvatar({
+  url,
+  name,
+  className,
+  mediaType,
+}: {
+  url: string
+  name: string
+  className: string
+  mediaType?: string
+}) {
+  return <SafeAvatar url={url} mediaType={mediaType} name={name} className={className} size="md" />
 }
 
 function toMillis(value: string): number {
@@ -176,7 +182,70 @@ function nameFromProfile(row: GenericRow): string {
 }
 
 function avatarFromProfile(row: GenericRow): string {
-  return textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
+  return resolveSupabasePublicUrl('avatars', profileAvatarSource(row))
+}
+
+function normalizeConversationAvatar<T extends { avatarUrl: string }>(item: T): T {
+  const sourceRow = item as unknown as GenericRow
+  const avatarUrl = resolveSupabasePublicUrl(
+    'avatars',
+    conversationAvatarSource(sourceRow, item.avatarUrl),
+  )
+  const currentMediaType = 'avatarMediaType' in item ? String(item.avatarMediaType ?? '') : ''
+  const avatarMediaType = avatarMediaTypeSource(sourceRow, avatarUrl, currentMediaType)
+  return avatarUrl === item.avatarUrl && avatarMediaType === currentMediaType
+    ? item
+    : { ...item, avatarUrl, avatarMediaType }
+}
+
+async function normalizeFallbackInboxItems(items: ConversationItem[]): Promise<ConversationItem[]> {
+  const normalized = items.map(normalizeConversationAvatar)
+  const needsProfileLookup = normalized.some((item) => !item.avatarUrl && item.profileId)
+  if (!needsProfileLookup) return normalized
+
+  try {
+    const [profilesResult, videosResult, postsResult] = await Promise.allSettled([
+      searchFallbackProfiles('', 200),
+      loadFallbackVideos(200, 0),
+      loadFallbackFeed(80),
+    ])
+    const profileByAlias = new Map<string, GenericRow>()
+    if (profilesResult.status === 'fulfilled') {
+      profilesResult.value.items.forEach((profile) => {
+        profileIdentityAliases(profile).forEach((alias) => profileByAlias.set(alias, profile))
+      })
+    }
+    const contentRows = [
+      ...(videosResult.status === 'fulfilled' ? videosResult.value.items : []),
+      ...(postsResult.status === 'fulfilled' ? postsResult.value.items : []),
+    ]
+
+    return normalized.map((item) => {
+      if (item.avatarUrl || !item.profileId) return item
+      const profile = profileByAlias.get(normalizeId(item.profileId))
+      const profileAvatarUrl = profile ? avatarFromProfile(profile) : ''
+      if (profileAvatarUrl) {
+        return {
+          ...item,
+          avatarUrl: profileAvatarUrl,
+          avatarMediaType: avatarMediaTypeSource(profile ?? {}, profileAvatarUrl),
+        }
+      }
+
+      const aliases = profile
+        ? profileIdentityAliases(profile, [item.profileId])
+        : [item.profileId]
+      const contentAvatar = findContentAvatarCandidate(contentRows, aliases)
+      if (!contentAvatar) return item
+      return {
+        ...item,
+        avatarUrl: resolveSupabasePublicUrl('avatars', contentAvatar.url),
+        avatarMediaType: contentAvatar.mediaType,
+      }
+    })
+  } catch {
+    return normalized
+  }
 }
 
 function usernameFromProfile(row: GenericRow): string {
@@ -271,8 +340,8 @@ async function searchUsersGlobally(
     .slice(0, 25)
 }
 
-async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: string; avatarUrl: string }>> {
-  const map = new Map<string, { name: string; avatarUrl: string }>()
+async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>> {
+  const map = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
   if (!supabase || ids.length === 0) return map
 
   const uniqueIds = Array.from(new Set(ids.map(normalizeId).filter(Boolean)))
@@ -283,7 +352,12 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
     ; ((primary.data ?? []) as GenericRow[]).forEach((profile) => {
       const id = normalizeId(textOf(profile, ['id'], ''))
       if (!id) return
-      map.set(id, { name: nameFromProfile(profile), avatarUrl: avatarFromProfile(profile) })
+      const avatarUrl = avatarFromProfile(profile)
+      map.set(id, {
+        name: nameFromProfile(profile),
+        avatarUrl,
+        avatarMediaType: avatarMediaTypeSource(profile, avatarUrl),
+      })
     })
   }
 
@@ -295,7 +369,12 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
         ; ((fallback.data ?? []) as GenericRow[]).forEach((profile) => {
           const id = normalizeId(textOf(profile, ['id'], ''))
           if (!id) return
-          map.set(id, { name: nameFromProfile(profile), avatarUrl: avatarFromProfile(profile) })
+          const avatarUrl = avatarFromProfile(profile)
+          map.set(id, {
+            name: nameFromProfile(profile),
+            avatarUrl,
+            avatarMediaType: avatarMediaTypeSource(profile, avatarUrl),
+          })
         })
       }
     }
@@ -335,11 +414,8 @@ async function loadCollection(
       subtitle: textOf(row, subtitleKeys, 'Sin actividad reciente'),
       updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
       kind,
-      avatarUrl: textOf(
-        row,
-        ['avatar_url', 'photo_url', 'profile_image', 'icon_url', 'cover_url', 'image_url', 'image', 'group_image', 'community_image'],
-        '',
-      ),
+      avatarUrl: resolveSupabasePublicUrl('avatars', conversationAvatarSource(row)),
+      avatarMediaType: avatarMediaTypeSource(row, conversationAvatarSource(row)),
       profileId: null,
       unreadCount: 0,
       isPinned: false,
@@ -463,21 +539,8 @@ async function loadRoomCollectionByMembership(options: {
       subtitle: preview,
       updatedAt: textOf(lastMessage ?? {}, ['created_at'], '') || textOf(room, ['updated_at', 'created_at'], ''),
       kind: options.kind,
-      avatarUrl: textOf(
-        room,
-        [
-          'avatar_url',
-          'photo_url',
-          'profile_image',
-          'icon_url',
-          'cover_url',
-          'image_url',
-          'image',
-          'group_image',
-          'community_image',
-        ],
-        '',
-      ),
+      avatarUrl: resolveSupabasePublicUrl('avatars', conversationAvatarSource(room)),
+      avatarMediaType: avatarMediaTypeSource(room, conversationAvatarSource(room)),
       profileId: null,
       unreadCount: 0,
       isPinned: false,
@@ -721,8 +784,10 @@ export function MessagesPage() {
     try {
       if (isFallbackSession) {
         const response = await loadFallbackMessagesInbox(activeTab)
-        setItems(response.items)
-        writeCachedValue(inboxCacheKey, response.items)
+        const normalizedItems = await normalizeFallbackInboxItems(response.items)
+        const dedupedItems = dedupeInboxConversations(normalizedItems)
+        setItems(dedupedItems)
+        writeCachedValue(inboxCacheKey, dedupedItems)
         return
       }
 
@@ -854,7 +919,7 @@ export function MessagesPage() {
           const profile = other ? profileById.get(normalizeId(other)) : null
           const participant = participantByChat.get(id)
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'], 'Chat privado')
-          const fallbackAvatar = textOf(row, ['other_user_image', 'other_user_avatar', 'other_user_photo', 'avatar_url', 'photo_url', 'profile_image'], '')
+          const fallbackAvatar = resolveSupabasePublicUrl('avatars', conversationAvatarSource(row))
           return {
             id,
             title: isGroup ? textOf(row, ['group_name', 'name'], 'Grupo') : profile?.name || fallbackName,
@@ -862,6 +927,7 @@ export function MessagesPage() {
             updatedAt: textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
             kind: 'chat' as const,
             avatarUrl: profile?.avatarUrl || fallbackAvatar,
+            avatarMediaType: profile?.avatarMediaType || avatarMediaTypeSource(row, fallbackAvatar),
             profileId: other ?? null,
             unreadCount: unreadByChat.get(id) ?? 0,
             isMuted: participant?.isMuted ?? false,
@@ -878,8 +944,9 @@ export function MessagesPage() {
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
           return toMillis(b.updatedAt) - toMillis(a.updatedAt)
         })
-        setItems(mapped)
-        writeCachedValue(inboxCacheKey, mapped)
+        const dedupedItems = dedupeInboxConversations(mapped)
+        setItems(dedupedItems)
+        writeCachedValue(inboxCacheKey, dedupedItems)
       } else if (activeTab === 'groups') {
         const nextItems = await loadRoomCollectionByMembership({
           userId: user.id,
@@ -925,7 +992,7 @@ export function MessagesPage() {
   useEffect(() => {
     const cached = readCachedValue<ConversationItem[]>(inboxCacheKey, 1000 * 60 * 60 * 8)
     if (cached && cached.length > 0) {
-      setItems(cached)
+      setItems(cached.map(normalizeConversationAvatar))
       setLoading(false)
       void loadCurrentTab({ silent: true })
       return
@@ -1034,7 +1101,16 @@ export function MessagesPage() {
       current.map((entry) => (entry.id === cleanChatId ? { ...entry, unreadCount: 0 } : entry)),
     )
 
-    if (isFallbackSession || !supabase) return
+    if (isFallbackSession) {
+      try {
+        await markFallbackChatRead(cleanChatId)
+        void loadCurrentTab({ silent: true })
+      } catch (caught) {
+        console.warn('markFallbackChatRead failed', caught)
+      }
+      return
+    }
+    if (!supabase) return
 
     const client = supabase
 
@@ -1190,7 +1266,7 @@ export function MessagesPage() {
       }
       onClick={() => void openConversation(item)}
     >
-      <FallbackAvatar url={item.avatarUrl} name={item.title} className="conversation-avatar" />
+      <FallbackAvatar url={item.avatarUrl} mediaType={item.avatarMediaType} name={item.title} className="conversation-avatar" />
       <div className="conversation-copy">
         <div className="row-between">
           {item.profileId && item.kind === 'chat' ? (

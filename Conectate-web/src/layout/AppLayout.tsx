@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bell, Plus, Settings, Trophy, Users } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   type DeferredMutation,
@@ -42,29 +43,14 @@ type NavIconName =
 
 const primaryNavItems = [
   { to: '/app/messages', label: 'Mensajes', icon: 'messages' as NavIconName },
-  { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
   { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
-  { to: '/app/calls', label: 'Llamadas', icon: 'calls' as NavIconName },
+  { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
   { to: '/app/profile', label: 'Perfil', icon: 'profile' as NavIconName },
-]
-
-const secondaryNavItems = [
-  { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
-  { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
-  { to: '/app/notifications', label: 'Notificaciones', icon: 'notifications' as NavIconName },
-  { to: '/app/monetization', label: 'Monetización', icon: 'monetization' as NavIconName },
-  { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
 const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
-const mobileNavItems = [
-  primaryNavItems[0],
-  primaryNavItems[1],
-  primaryNavItems[2],
-  secondaryNavItems[0],
-  primaryNavItems[4],
-]
+const mobileNavItems = primaryNavItems
 
 type IncomingCallInvite = CallInvitePayload & {
   receivedAt: number
@@ -90,9 +76,9 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
   {
     match: (pathname) => pathname.startsWith('/app/social'),
     meta: {
-      kicker: 'Social',
-      title: 'Feed y comunidad',
-      subtitle: 'Publicaciones, momentos y retos pensados para leer, responder y descubrir sin ruido.',
+      kicker: '',
+      title: 'Conéctate',
+      subtitle: '',
       layout: 'wide',
     },
   },
@@ -135,9 +121,9 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
   {
     match: (pathname) => pathname.startsWith('/app/profile'),
     meta: {
-      kicker: 'Perfil',
-      title: 'Identidad compartida',
-      subtitle: 'Tu presencia pública, enlaces, momentos y opciones de creador en un solo lugar.',
+      kicker: '',
+      title: 'Perfil',
+      subtitle: '',
       layout: 'wide',
     },
   },
@@ -204,14 +190,6 @@ function resolveShellRouteMeta(pathname: string): ShellRouteMeta {
       layout: 'wide',
     }
   )
-}
-
-function displayNameOf(userEmail: string | undefined, metadataDisplayName: unknown): string {
-  const metadataName = String(metadataDisplayName ?? '').trim()
-  if (metadataName) return metadataName
-  const email = String(userEmail ?? '').trim()
-  if (!email) return 'Tu cuenta'
-  return email.split('@')[0] || email
 }
 
 function metadataBoolean(value: unknown): boolean {
@@ -323,7 +301,6 @@ export function AppLayout() {
   const [isOnline, setIsOnline] = useState(isBrowserOnline())
   const [pendingDeferredMutations, setPendingDeferredMutations] = useState(getDeferredMutationCount())
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
-  const [sidebarAvatarUrl, setSidebarAvatarUrl] = useState('')
   const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
   const [migrationPasswordOpen, setMigrationPasswordOpen] = useState(false)
@@ -748,11 +725,9 @@ export function AppLayout() {
   }, [isNavCollapsed])
 
   const isMessagesRoute = location.pathname.startsWith('/app/messages')
+  const isSocialRoute = location.pathname.startsWith('/app/social')
+  const isProfileRoute = location.pathname === '/app/profile'
   const shellMeta = useMemo(() => resolveShellRouteMeta(location.pathname), [location.pathname])
-  const displayName = useMemo(
-    () => displayNameOf(user?.email, user?.user_metadata?.display_name ?? user?.user_metadata?.full_name),
-    [user?.email, user?.user_metadata?.display_name, user?.user_metadata?.full_name],
-  )
   const contentShellClassName = shellMeta.layout === 'full' ? 'content-shell full' : 'content-shell wide'
   const requiresMigrationPasswordChange = Boolean(
     isFallbackSession && metadataBoolean(user?.user_metadata?.password_change_required),
@@ -794,48 +769,6 @@ export function AppLayout() {
     migrationNewPassword,
     savingMigrationPassword,
   ])
-
-  useEffect(() => {
-    const client = supabase
-    if (!client || !user) {
-      setSidebarAvatarUrl('')
-      return
-    }
-    let cancelled = false
-    const metadataAvatar = String(user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? '').trim()
-
-    const loadAvatar = async () => {
-      const profileResult = await client
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .limit(1)
-      if (cancelled) return
-
-      const profileRow = ((profileResult.data ?? []) as GenericRow[])[0]
-      const primaryResolved = textOf(profileRow ?? {}, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
-      if (primaryResolved) {
-        setSidebarAvatarUrl(primaryResolved)
-        return
-      }
-
-      const publicResult = await client
-        .from('profiles_public')
-        .select('*')
-        .eq('id', user.id)
-        .limit(1)
-      if (cancelled) return
-
-      const publicRow = ((publicResult.data ?? []) as GenericRow[])[0]
-      const publicResolved = textOf(publicRow ?? {}, ['avatar_url', 'photo_url', 'profile_image', 'image'], '')
-      setSidebarAvatarUrl(publicResolved || metadataAvatar)
-    }
-
-    void loadAvatar()
-    return () => {
-      cancelled = true
-    }
-  }, [user])
 
   const navBadgeByPath: Record<string, number> = {
     '/app/messages': messageUnreadCount,
@@ -927,45 +860,7 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className={isNavCollapsed ? 'nav-section-label rail-hidden' : 'nav-section-label'}>
-          Explorar
-        </div>
-        <nav>
-          {secondaryNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-              title={isNavCollapsed ? item.label : undefined}
-            >
-              <span className="nav-item-inner">
-                <span className="nav-item-label">
-                  <span className="nav-icon">
-                    <ShellIcon name={item.icon} />
-                  </span>
-                  {!isNavCollapsed ? <span>{item.label}</span> : null}
-                </span>
-                {item.to === '/app/notifications' && navBadgeByPath['/app/social'] > 0
-                  ? isNavCollapsed
-                    ? <span className="nav-dot" />
-                    : <span className="nav-counter">{navBadgeByPath['/app/social'] > 99 ? '99+' : navBadgeByPath['/app/social']}</span>
-                  : null}
-              </span>
-            </NavLink>
-          ))}
-        </nav>
-
         <div className="left-nav-footer">
-          <Link className="rail-profile-link" to="/app/profile" title="Perfil">
-            {sidebarAvatarUrl ? (
-              <img src={sidebarAvatarUrl} alt="Mi perfil" className="rail-profile-avatar" />
-            ) : (
-              <span className="rail-profile-avatar avatar-fallback">
-                {(user?.email ?? 'U').trim().charAt(0).toUpperCase()}
-              </span>
-            )}
-            {!isNavCollapsed ? <span>Mi perfil</span> : null}
-          </Link>
           <button
             className="rail-logout-btn"
             type="button"
@@ -1075,43 +970,40 @@ export function AppLayout() {
         {!isMessagesRoute ? (
           <header className="shell-topbar">
             <div className="shell-topbar-copy">
-              <span className="shell-kicker">{shellMeta.kicker}</span>
+              {shellMeta.kicker ? <span className="shell-kicker">{shellMeta.kicker}</span> : null}
               <div className="shell-heading-row">
                 <div>
                   <h1>{shellMeta.title}</h1>
-                  <p>{shellMeta.subtitle}</p>
+                  {shellMeta.subtitle ? <p>{shellMeta.subtitle}</p> : null}
                 </div>
                 <div className="shell-toolbar">
-                  <Link className="shell-search-link" to="/app/search">
-                    Buscar usuarios, chats o contenido
-                  </Link>
-                  <Link className="shell-quick-link" to="/app/calls">
-                    Llamadas
-                  </Link>
-                  <Link className="shell-quick-link" to="/app/voice">
-                    Salas
-                  </Link>
-                  <Link className="shell-quick-link" to="/app/notifications">
-                    Alertas
-                    {notificationUnreadCount > 0 ? (
-                      <span className="shell-inline-counter">
-                        {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
-                      </span>
-                    ) : null}
-                  </Link>
+                  {isSocialRoute ? (
+                    <>
+                      <Link className="shell-tool-link" to="/app/challenges/ranking" title="Ranking" aria-label="Ranking">
+                        <Trophy aria-hidden="true" />
+                      </Link>
+                      <Link className="shell-tool-link" to="/app/friend-requests" title="Solicitudes de amistad" aria-label="Solicitudes de amistad">
+                        <Users aria-hidden="true" />
+                      </Link>
+                      <Link className="shell-tool-link" to="/app/notifications" title="Notificaciones" aria-label="Notificaciones">
+                        <Bell aria-hidden="true" />
+                        {notificationUnreadCount > 0 ? <span className="shell-inline-counter">{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span> : null}
+                      </Link>
+                      <Link className="shell-tool-link" to="/app/social?tab=posts&compose=1" title="Nueva publicación" aria-label="Nueva publicación">
+                        <Plus aria-hidden="true" />
+                      </Link>
+                    </>
+                  ) : isProfileRoute ? (
+                    <>
+                      <Link className="shell-tool-link" to="/app/notifications" title="Notificaciones" aria-label="Notificaciones"><Bell aria-hidden="true" /></Link>
+                      <Link className="shell-tool-link" to="/app/follows" title="Amigos" aria-label="Amigos"><Users aria-hidden="true" /></Link>
+                      <Link className="shell-tool-link" to="/app/settings" title="Ajustes" aria-label="Ajustes"><Settings aria-hidden="true" /></Link>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
-            <div className="shell-status-strip">
-              <span className="shell-status-pill accent">Cuenta: {displayName}</span>
-              <span className="shell-status-pill">
-                {webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Modo web completo'}
-              </span>
-              <span className="shell-status-pill">
-                Tema {webPreferences.themeMode === 'system' ? 'automático' : webPreferences.themeMode}
-              </span>
-              <span className="shell-status-pill">Idioma {webPreferences.language.toUpperCase()}</span>
-            </div>
+            {/* Status strip removed — no existe en la APK móvil */}
           </header>
         ) : null}
 

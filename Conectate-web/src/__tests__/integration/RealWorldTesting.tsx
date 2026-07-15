@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ErrorBoundarySimple } from '../../components/ErrorBoundarySimple'
+import ErrorBoundarySimple from '../../components/ErrorBoundarySimple'
 
 /**
  * 🔥 REAL WORLD TESTING - TESTING REALISTA DE FUNCIONALIDADES
@@ -122,10 +122,6 @@ const TestableApp: React.FC = () => {
   const handleJoinDiscoRoom = (roomId: string) => {
     console.log('Join disco room:', roomId)
   }
-
-  useEffect(() => {
-    loadData()
-  }, [])
 
   if (isLoading) {
     return (
@@ -563,27 +559,22 @@ describe('Real World Testing - Conectate App', () => {
 
   // 🔥 TEST 7: MANEJO DE ERRORES
   test('debe manejar errores correctamente', async () => {
-    // Mockear error
     const originalConsoleError = console.error
     console.error = jest.fn()
-
-    render(
-      <ErrorBoundarySimple>
-        <TestableApp />
-      </ErrorBoundarySimple>
-    )
-
-    // Simular error crítico
-    await act(async () => {
-      // Forzar un error en el componente
-      const error = new Error('Test error')
-      throw error
-    })
-
-    // Verificar que el error boundary se activa
-    // Esto depende de la implementación específica del ErrorBoundary
-
-    console.error = originalConsoleError
+    const ThrowingComponent = () => {
+      throw new Error('Test error')
+    }
+    try {
+      render(
+        <ErrorBoundarySimple>
+          <ThrowingComponent />
+        </ErrorBoundarySimple>
+      )
+      expect(await screen.findByText('Oops! Algo salió mal')).toBeInTheDocument()
+      expect(screen.getByText('Test error')).toBeInTheDocument()
+    } finally {
+      console.error = originalConsoleError
+    }
   })
 
   // 🔥 TEST 8: PERFORMANCE Y RESPONSIVE

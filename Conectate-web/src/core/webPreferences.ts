@@ -4,7 +4,7 @@ export type WebPreferences = {
   compactInbox: boolean
   lowDataMode: boolean
   themeMode: 'system' | 'light' | 'dark'
-  accentTheme: 'conectate' | 'ocean' | 'violet' | 'emerald' | 'midnight'
+  accentTheme: 'conectate' | 'ocean' | 'violet' | 'emerald' | 'midnight' | 'ruby' | 'cyan' | 'amber' | 'graphite'
   textScale: 'compact' | 'normal' | 'large'
   language: string
 }
@@ -15,7 +15,7 @@ const changeEventName = 'conectate-web-preferences-changed'
 const defaultPreferences: WebPreferences = {
   compactInbox: false,
   lowDataMode: false,
-  themeMode: 'system',
+  themeMode: 'dark',
   accentTheme: 'conectate',
   textScale: 'normal',
   language: 'es',
@@ -33,13 +33,17 @@ export function readWebPreferences(): WebPreferences {
       themeMode:
         parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'system'
           ? parsed.themeMode
-          : 'system',
+          : 'dark',
       accentTheme:
         parsed.accentTheme === 'conectate' ||
         parsed.accentTheme === 'ocean' ||
         parsed.accentTheme === 'violet' ||
         parsed.accentTheme === 'emerald' ||
-        parsed.accentTheme === 'midnight'
+        parsed.accentTheme === 'midnight' ||
+        parsed.accentTheme === 'ruby' ||
+        parsed.accentTheme === 'cyan' ||
+        parsed.accentTheme === 'amber' ||
+        parsed.accentTheme === 'graphite'
           ? parsed.accentTheme
           : 'conectate',
       textScale:

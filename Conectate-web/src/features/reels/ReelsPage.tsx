@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Heart, MessageCircle, MoreHorizontal, Plus, Repeat, Search, Send, Share2, Shuffle, SlidersHorizontal, Star, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
@@ -7,16 +9,28 @@ import {
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
-import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
+import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
+  loadFallbackFollows,
   loadFallbackVideos,
+  setFallbackVideoFavorite,
+  setFallbackVideoReaction,
   uploadFallbackFile,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import {
+  avatarMediaTypeSource,
+  profileIdentityAliases,
+  profileVideoCoverSource,
+  profileVideoSource,
+  reelAuthorAvatarSource,
+} from '../../core/profileMediaFields'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { createShuffleSeed, filterFriendFeedItems, shuffleFeedItems } from './reelFeedOrder'
 
 type ReelItem = {
   id: string
@@ -27,8 +41,14 @@ type ReelItem = {
   authorId: string
   authorName: string
   authorAvatarUrl: string
+  authorAvatarMediaType: string
   createdAt: string
   likeCount: number
+  commentCount: number
+  favoriteCount: number
+  likedByMe: boolean
+  favoritedByMe: boolean
+  sharedByMe: boolean
   viewCount: number
   durationSeconds: number
   trimStartSeconds: number
@@ -40,7 +60,8 @@ type TrimPreviewFrame = {
   src: string
 }
 
-type FeedSort = 'new' | 'likes' | 'views'
+type FeedSort = 'random' | 'new' | 'likes' | 'views'
+type FeedMode = 'friends' | 'recommended'
 type CoverInputMode = 'upload' | 'frame'
 type WatermarkDetectionResult = {
   detectedBrands: string[]
@@ -61,6 +82,7 @@ const knownWatermarkBrands = [
 
 function mapVideoRow(row: GenericRow): ReelItem {
   const durationSeconds = Number(row.duration_seconds ?? row.duration ?? 0)
+  const authorAvatarSource = reelAuthorAvatarSource(row)
   const trimStartSeconds = Number(
     row.trim_start_seconds ?? row.trimStartSeconds ?? row.clip_start_seconds ?? row.clipStartSeconds ?? 0,
   )
@@ -72,13 +94,25 @@ function mapVideoRow(row: GenericRow): ReelItem {
     id: textOf(row, ['id'], crypto.randomUUID()),
     title: textOf(row, ['title', 'caption', 'description', 'content'], 'Video'),
     description: textOf(row, ['description'], ''),
-    videoUrl: textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], ''),
-    coverUrl: textOf(row, ['cover_url', 'coverUrl', 'thumbnail_url', 'thumb_url'], ''),
-    authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'author_id'], 'usuario'),
+    videoUrl: resolveSupabasePublicUrl(
+      'videos',
+      profileVideoSource(row),
+    ),
+    coverUrl: resolveSupabasePublicUrl(
+      'thumbnails',
+      profileVideoCoverSource(row),
+    ),
+    authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'], 'usuario'),
     authorName: textOf(row, ['user_name', 'userName', 'author_name'], ''),
-    authorAvatarUrl: textOf(row, ['user_profile_image', 'avatar_url', 'photo_url', 'profile_image'], ''),
+    authorAvatarUrl: resolveSupabasePublicUrl('avatars', authorAvatarSource),
+    authorAvatarMediaType: avatarMediaTypeSource(row, authorAvatarSource),
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     likeCount: Number(row.like_count ?? row.likeCount ?? 0),
+    commentCount: Number(row.comment_count ?? row.commentCount ?? 0),
+    favoriteCount: Number(row.favorite_count ?? row.favoriteCount ?? 0),
+    likedByMe: Boolean(row.liked_by_me ?? row.likedByMe ?? false),
+    favoritedByMe: Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite ?? false),
+    sharedByMe: Boolean(row.shared_by_me ?? row.sharedByMe ?? false),
     viewCount: Number(row.views ?? row.view_count ?? row.viewCount ?? 0),
     durationSeconds,
     trimStartSeconds,
@@ -86,17 +120,176 @@ function mapVideoRow(row: GenericRow): ReelItem {
   }
 }
 
+function ReelAvatar({ url, name, mediaType }: { url: string; name: string; mediaType: string }) {
+  return (
+    <SafeAvatar
+      url={url}
+      mediaType={mediaType}
+      name={name}
+      size="sm"
+      className="reel-overlay-avatar"
+    />
+  )
+}
+
+function ReelFeedCard({
+  item,
+  currentUserId,
+  onLike,
+  onFavorite,
+  onShare,
+  onToggleProfileShare,
+}: {
+  item: ReelItem
+  currentUserId?: string
+  onLike: (item: ReelItem) => void
+  onFavorite: (item: ReelItem) => void
+  onShare: (item: ReelItem) => void
+  onToggleProfileShare: (item: ReelItem) => void
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [shareMenuOpen, setShareMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && entry.intersectionRatio >= 0.72) {
+          void video.play().catch(() => undefined)
+        } else {
+          video.pause()
+        }
+      },
+      { threshold: [0.25, 0.72, 0.95] },
+    )
+    observer.observe(video)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <article className="reel-feed-item">
+      <video
+        ref={videoRef}
+        loop
+        muted
+        playsInline
+        controls
+        preload="metadata"
+        src={item.videoUrl}
+        poster={item.coverUrl || undefined}
+      />
+      <div className="reel-feed-shade" />
+      <div className="reel-feed-author">
+        <Link to={profilePathFor(item.authorId, currentUserId)}>
+          <ReelAvatar
+            url={item.authorAvatarUrl}
+            mediaType={item.authorAvatarMediaType}
+            name={item.authorName || item.authorId}
+          />
+          <strong>@{item.authorName || item.authorId}</strong>
+        </Link>
+        <h2>{item.title}</h2>
+        {item.description ? <p>{item.description}</p> : null}
+      </div>
+      <div className="reel-feed-actions">
+        <button className={item.likedByMe ? 'active' : ''} type="button" onClick={() => onLike(item)} aria-label="Me gusta" title="Me gusta">
+          <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
+          <span>{item.likeCount}</span>
+        </button>
+        <Link to={`/app/reels/${item.id}#comments`} aria-label="Comentarios" title="Comentarios">
+          <MessageCircle aria-hidden="true" />
+          <span>{item.commentCount}</span>
+        </Link>
+        <button
+          className={item.favoritedByMe ? 'active' : ''}
+          type="button"
+          onClick={() => onFavorite(item)}
+          aria-label="Favorito"
+          title="Favorito"
+        >
+          <Star
+            aria-hidden="true"
+            fill={item.favoritedByMe ? 'currentColor' : 'none'}
+            color={item.favoritedByMe ? '#FFC107' : 'currentColor'}
+          />
+          <span>{item.favoriteCount}</span>
+        </button>
+        <div className="reel-share-wrapper">
+          <button
+            className="reel-share-trigger"
+            type="button"
+            onClick={() => setShareMenuOpen((current) => !current)}
+            aria-label="Compartir"
+            aria-haspopup="menu"
+            aria-expanded={shareMenuOpen}
+            title="Compartir"
+          >
+            <Share2 aria-hidden="true" />
+          </button>
+          {shareMenuOpen ? (
+            <div className="reel-share-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  onShare(item)
+                }}
+              >
+                <Send aria-hidden="true" />
+                <span>Enviar a amigo</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  if (typeof window !== 'undefined') {
+                    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
+                    const sendIntent = {
+                      title: item.title || 'Video de Conectate',
+                      text: `Mira este video en Conectate: ${shareUrl}`,
+                      url: shareUrl,
+                    }
+                    if (navigator.share) {
+                      void navigator.share(sendIntent).catch(() => undefined)
+                    } else {
+                      void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
+                    }
+                  }
+                }}
+              >
+                <Share2 aria-hidden="true" />
+                <span>Compartir enlace</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShareMenuOpen(false)
+                  onToggleProfileShare(item)
+                }}
+              >
+                <Repeat aria-hidden="true" />
+                <span>{item.sharedByMe ? 'Quitar de mi perfil' : 'Añadir a mi perfil'}</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <Link to={`/app/reels/${item.id}`} aria-label="Más opciones" title="Más opciones">
+          <MoreHorizontal aria-hidden="true" />
+        </Link>
+      </div>
+    </article>
+  )
+}
+
 function profilePathFor(profileId: string, currentUserId?: string): string {
   const clean = profileId.trim()
   if (!clean) return '/app/profile'
   if (currentUserId && clean === currentUserId) return '/app/profile'
   return `/app/profile/${clean}`
-}
-
-function initialsOf(name: string): string {
-  const clean = name.trim()
-  if (!clean) return 'U'
-  return clean[0]?.toUpperCase() ?? 'U'
 }
 
 function isMissingSchemaError(error: unknown): boolean {
@@ -435,9 +628,13 @@ export function ReelsPage() {
   const [coverFrameSecond, setCoverFrameSecond] = useState(0)
   const [generatingFrameCover, setGeneratingFrameCover] = useState(false)
   const [posting, setPosting] = useState(false)
+  const [showUploadForm, setShowUploadForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
-  const [sortBy, setSortBy] = useState<FeedSort>('new')
+  const [feedMode, setFeedMode] = useState<FeedMode>('recommended')
+  const [followingIds, setFollowingIds] = useState<string[]>([])
+  const [sortBy, setSortBy] = useState<FeedSort>('random')
+  const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
@@ -477,6 +674,9 @@ export function ReelsPage() {
     const query = searchQuery.trim().toLowerCase()
     let next = items
 
+    if (feedMode === 'friends') {
+      next = filterFriendFeedItems(next, followingIds, user?.id)
+    }
     if (onlyMine && user) {
       next = next.filter((item) => item.authorId === user.id)
     }
@@ -486,12 +686,14 @@ export function ReelsPage() {
       )
     }
 
+    if (sortBy === 'random') return shuffleFeedItems(next, shuffleSeed)
+
     return [...next].sort((a, b) => {
       if (sortBy === 'likes') return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       if (sortBy === 'views') return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
     })
-  }, [items, onlyMine, searchQuery, sortBy, user])
+  }, [feedMode, followingIds, items, onlyMine, searchQuery, shuffleSeed, sortBy, user])
 
   const loadVideos = useCallback(async (options?: { silent?: boolean }) => {
     if (useUbuntu) {
@@ -545,15 +747,17 @@ export function ReelsPage() {
         if (authorIds.length > 0) {
           const { data: profileRows } = await supabase
             .from('profiles')
-            .select('id,display_name,username,avatar_url,photo_url,profile_image')
+            .select('*')
             .in('id', authorIds)
-          const profileById = new Map<string, { name: string; avatarUrl: string }>()
+          const profileById = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
           ;((profileRows ?? []) as GenericRow[]).forEach((profile) => {
             const id = textOf(profile, ['id'], '')
             if (!id) return
+            const avatarSource = reelAuthorAvatarSource(profile)
             profileById.set(id, {
               name: textOf(profile, ['display_name', 'username'], '') || id,
-              avatarUrl: textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], ''),
+              avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
+              avatarMediaType: avatarMediaTypeSource(profile, avatarSource),
             })
           })
           mapped = mapped.map((item) => {
@@ -563,6 +767,7 @@ export function ReelsPage() {
               ...item,
               authorName: item.authorName.trim() || profile.name,
               authorAvatarUrl: item.authorAvatarUrl.trim() || profile.avatarUrl,
+              authorAvatarMediaType: item.authorAvatarMediaType.trim() || profile.avatarMediaType,
             }
           })
         }
@@ -586,6 +791,44 @@ export function ReelsPage() {
       setSyncing(false)
     }
   }, [reelsCacheKey, useUbuntu])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const userId = user.id
+    let cancelled = false
+
+    async function loadFollowingIds() {
+      try {
+        if (useUbuntu) {
+          const response = await loadFallbackFollows('following')
+          const ids = response.items.flatMap((profile) => profileIdentityAliases(profile))
+          if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
+          return
+        }
+
+        if (!supabase) return
+        const { data, error: followsError } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId)
+        if (followsError) {
+          if (!cancelled) setFollowingIds([])
+          return
+        }
+        const ids = ((data ?? []) as GenericRow[])
+          .map((row) => textOf(row, ['following_id', 'followingId'], ''))
+          .filter(Boolean)
+        if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
+      } catch {
+        if (!cancelled) setFollowingIds([])
+      }
+    }
+
+    void loadFollowingIds()
+    return () => {
+      cancelled = true
+    }
+  }, [useUbuntu, user?.id])
 
   useEffect(() => {
     const cached = readCachedValue<ReelItem[]>(reelsCacheKey, 1000 * 60 * 60 * 8)
@@ -1027,6 +1270,141 @@ export function ReelsPage() {
     }
   }
 
+  async function toggleVideoLike(item: ReelItem) {
+    if (!user) return
+    const nextLiked = !item.likedByMe
+    setItems((current) => current.map((entry) => entry.id === item.id
+      ? { ...entry, likedByMe: nextLiked, likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)) }
+      : entry))
+    try {
+      if (useUbuntu) {
+        await setFallbackVideoReaction(item.id, nextLiked)
+      } else if (supabase) {
+        if (nextLiked) {
+          const { error: likeError } = await supabase.from('video_likes').insert({ video_id: item.id, user_id: user.id })
+          if (likeError) throw likeError
+        } else {
+          const { error: unlikeError } = await supabase
+            .from('video_likes')
+            .delete()
+            .eq('video_id', item.id)
+            .eq('user_id', user.id)
+          if (unlikeError) throw unlikeError
+        }
+      }
+      await loadVideos({ silent: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el like'))
+      await loadVideos({ silent: true })
+    }
+  }
+
+  async function toggleVideoFavorite(item: ReelItem) {
+    if (!user) return
+    const nextFavorited = !item.favoritedByMe
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              favoritedByMe: nextFavorited,
+              favoriteCount: Math.max(0, entry.favoriteCount + (nextFavorited ? 1 : -1)),
+            }
+          : entry,
+      ),
+    )
+    try {
+      if (useUbuntu) {
+        await setFallbackVideoFavorite(item.id, nextFavorited)
+      } else if (supabase) {
+        const camelKey = 'video_favorites'
+        if (nextFavorited) {
+          const { error: favError } = await supabase
+            .from(camelKey)
+            .insert({ video_id: item.id, user_id: user.id })
+          if (favError && isMissingSchemaError(favError)) {
+            const { error: fallbackError } = await supabase
+              .from('video_favorites')
+              .insert({ videoId: item.id, userId: user.id })
+            if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+          } else if (favError) {
+            throw favError
+          }
+        } else {
+          const { error: unfavError } = await supabase
+            .from(camelKey)
+            .delete()
+            .eq('video_id', item.id)
+            .eq('user_id', user.id)
+          if (unfavError && isMissingSchemaError(unfavError)) {
+            const { error: fallbackError } = await supabase
+              .from('video_favorites')
+              .delete()
+              .eq('videoId', item.id)
+              .eq('userId', user.id)
+            if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+          } else if (unfavError) {
+            throw unfavError
+          }
+        }
+      }
+      await loadVideos({ silent: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el favorito'))
+      await loadVideos({ silent: true })
+    }
+  }
+
+  function shareVideo(item: ReelItem) {
+    if (typeof window === 'undefined') return
+    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
+    if (navigator.share) {
+      void navigator
+        .share({ title: item.title || 'Video de Conectate', text: item.description || '', url: shareUrl })
+        .catch(() => undefined)
+    } else {
+      void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
+    }
+  }
+
+  async function toggleProfileShare(item: ReelItem) {
+    if (!user) return
+    const nextShared = !item.sharedByMe
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id ? { ...entry, sharedByMe: nextShared } : entry,
+      ),
+    )
+    try {
+      if (useUbuntu) {
+        // The Ubuntu backend doesn't expose a dedicated share endpoint; keep optimistic update.
+        await loadVideos({ silent: true })
+      } else if (supabase) {
+        const { error: shareError } = await supabase
+          .from('video_shares')
+          .upsert(
+            { video_id: item.id, user_id: user.id, shared: nextShared },
+            { onConflict: 'video_id,user_id' },
+          )
+        if (shareError && isMissingSchemaError(shareError)) {
+          const { error: fallbackError } = await supabase
+            .from('video_shares')
+            .upsert(
+              { videoId: item.id, userId: user.id, shared: nextShared },
+              { onConflict: 'videoId,userId' },
+            )
+          if (fallbackError && !isMissingSchemaError(fallbackError)) throw fallbackError
+        } else if (shareError) {
+          throw shareError
+        }
+        await loadVideos({ silent: true })
+      }
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el compartido'))
+      await loadVideos({ silent: true })
+    }
+  }
+
   if (loading) {
     return <StatusView title="Cargando reels" description="Buscando videos..." />
   }
@@ -1036,16 +1414,74 @@ export function ReelsPage() {
 
   return (
     <section className="section-stack reels-page">
-      <header className="section-header">
-        <h2>Reels / Videos</h2>
-        <p>Videos cortos para descubrir, publicar y revisar antes de compartir.</p>
-      </header>
       {syncing ? <small>Sincronizando videos...</small> : null}
 
       {error ? <StatusView title="Error de reels" description={error} /> : null}
 
-      <article className="surface-card section-stack">
-        <h3>Publicar reel</h3>
+      <div className="reels-compact-toolbar">
+        <div className="reels-mode-switch" aria-label="Modo del feed">
+          <button
+            className={feedMode === 'friends' ? 'active' : ''}
+            type="button"
+            aria-pressed={feedMode === 'friends'}
+            onClick={() => {
+              setFeedMode('friends')
+              setSortBy('random')
+              setShuffleSeed(createShuffleSeed())
+            }}
+          >
+            Amigos
+          </button>
+          <button
+            className={feedMode === 'recommended' ? 'active' : ''}
+            type="button"
+            aria-pressed={feedMode === 'recommended'}
+            onClick={() => {
+              setFeedMode('recommended')
+              setSortBy('random')
+              setShuffleSeed(createShuffleSeed())
+            }}
+          >
+            Recomendado
+          </button>
+        </div>
+        <div className="reels-toolbar-actions">
+          <label className="reels-search-control" title="Buscar videos">
+            <Search aria-hidden="true" />
+            <input placeholder="Buscar" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+          </label>
+          <details className="reels-filter-menu">
+            <summary className="icon-btn" title="Ordenar y filtrar" aria-label="Ordenar y filtrar"><SlidersHorizontal aria-hidden="true" /></summary>
+            <div className="reels-filter-popover">
+              <label>Orden
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value as FeedSort)}>
+                  <option value="random">Aleatorio</option>
+                  <option value="new">Más recientes</option>
+                  <option value="likes">Más likes</option>
+                  <option value="views">Más vistas</option>
+                </select>
+              </label>
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => {
+                  setSortBy('random')
+                  setShuffleSeed(createShuffleSeed())
+                }}
+              >
+                <Shuffle aria-hidden="true" size={17} />
+                Mezclar videos
+              </button>
+              <label className="checkbox-inline"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />Solo mis videos</label>
+            </div>
+          </details>
+          <button className="primary-btn reels-publish-button" type="button" onClick={() => setShowUploadForm(true)} title="Publicar video" aria-label="Publicar video"><Plus aria-hidden="true" /><span>Publicar</span></button>
+        </div>
+      </div>
+
+      {showUploadForm ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowUploadForm(false)}>
+        <article className="surface-card section-stack video-upload-dialog" role="dialog" aria-modal="true" aria-label="Publicar video" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="row-between"><h3>Publicar reel</h3><button className="icon-btn" type="button" onClick={() => setShowUploadForm(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button></div>
         <form className="section-stack" onSubmit={createReel}>
           <div className="composer">
             <input
@@ -1284,86 +1720,30 @@ export function ReelsPage() {
             </div>
           ) : null}
         </form>
-      </article>
-
-      <article className="surface-card section-stack">
-        <h3>Explorar reels</h3>
-        <div className="composer">
-          <input
-            className="text-input"
-            placeholder="Buscar por título, descripción o autor..."
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-          <select
-            className="text-input tiny-input"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as FeedSort)}
-          >
-            <option value="new">Más recientes</option>
-            <option value="likes">Más likes</option>
-            <option value="views">Más vistas</option>
-          </select>
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(event) => setOnlyMine(event.target.checked)}
-            />
-            Solo mis reels
-          </label>
-          <span className="folder-tag">{visibleItems.length} resultados</span>
-        </div>
-      </article>
+        </article>
+      </div> : null}
 
       {visibleItems.length === 0 ? (
         <StatusView
-          title="Sin reels"
-          description="Aún no hay videos con esos filtros. Publica el primero desde esta pantalla."
+          title={feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
+          description={
+            feedMode === 'friends'
+              ? 'Cuando las personas que sigues publiquen videos, aparecerán aquí mezclados.'
+              : 'Aún no hay videos con esos filtros. Publica el primero desde esta pantalla.'
+          }
         />
       ) : (
-        <div className="reels-feed">
+        <div className="reels-vertical-feed">
           {visibleItems.map((item) => (
-            <article key={item.id} className="surface-card reel-card">
-              <video
-                controls
-                preload="metadata"
-                src={item.videoUrl}
-                poster={item.coverUrl || undefined}
-                className="video-frame reel-video-frame"
-              />
-              <h3>{item.title}</h3>
-              {item.description ? <p>{item.description}</p> : null}
-              <div className="row-actions">
-                <span className="folder-tag">{item.viewCount} vistas</span>
-                <span className="folder-tag">{item.likeCount} likes</span>
-                {item.durationSeconds > 0 ? <span className="folder-tag">{item.durationSeconds}s</span> : null}
-                {item.durationSeconds > 0 &&
-                (item.trimStartSeconds > 0 || (item.trimEndSeconds > 0 && item.trimEndSeconds < item.durationSeconds)) ? (
-                  <span className="folder-tag">
-                    Recorte {formatSecondsClock(item.trimStartSeconds)} → {formatSecondsClock(item.trimEndSeconds)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="row-between">
-                <Link className="identity-link compact" to={profilePathFor(item.authorId, user?.id)}>
-                  {item.authorAvatarUrl ? (
-                    <img src={item.authorAvatarUrl} alt={item.authorName || item.authorId} className="avatar-sm" />
-                  ) : (
-                    <span className="avatar-sm avatar-fallback">
-                      {initialsOf(item.authorName || item.authorId)}
-                    </span>
-                  )}
-                  <span>@{item.authorName || item.authorId}</span>
-                </Link>
-                <span>{formatDateTime(item.createdAt)}</span>
-              </div>
-              <div className="row-actions">
-                <Link className="ghost-btn" to={`/app/reels/${item.id}`}>
-                  Ver detalle
-                </Link>
-              </div>
-            </article>
+            <ReelFeedCard
+              key={item.id}
+              item={item}
+              currentUserId={user?.id}
+              onLike={(video) => void toggleVideoLike(video)}
+              onFavorite={(video) => void toggleVideoFavorite(video)}
+              onShare={(video) => shareVideo(video)}
+              onToggleProfileShare={(video) => void toggleProfileShare(video)}
+            />
           ))}
         </div>
       )}

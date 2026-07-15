@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { searchFallbackProfiles, submitFallbackUserReport } from '../../core/fallbackData'
@@ -12,6 +13,7 @@ type ProfileCard = {
   name: string
   username: string
   bio: string
+  avatarUrl: string
 }
 
 function mapProfile(row: GenericRow): ProfileCard {
@@ -20,6 +22,7 @@ function mapProfile(row: GenericRow): ProfileCard {
     name: textOf(row, ['displayName', 'display_name', 'full_name'], 'Usuario'),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio'], ''),
+    avatarUrl: resolveSupabasePublicUrl('avatars', textOf(row, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'], '')),
   }
 }
 
@@ -192,11 +195,16 @@ export function SearchPage() {
         <div className="list-stack">
           {filtered.map((profile) => (
             <article className="surface-card" key={profile.id}>
-              <div className="row-between">
-                <Link className="inline-link" to={`/app/profile/${profile.id}`}>
-                  <h3>{profile.name}</h3>
+              <div className="profile-search-identity">
+                <Link to={`/app/profile/${profile.id}`} aria-label={`Ver perfil de ${profile.name}`}>
+                  <SafeAvatar url={profile.avatarUrl} name={profile.name || profile.id} size="md" />
                 </Link>
-                <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
+                <div>
+                  <Link className="inline-link" to={`/app/profile/${profile.id}`}>
+                    <h3>{profile.name}</h3>
+                  </Link>
+                  <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
+                </div>
               </div>
               <p>{profile.bio || 'Sin biografía'}</p>
               <div className="row-actions">

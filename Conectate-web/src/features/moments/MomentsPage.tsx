@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Camera, Plus, X } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
   removeRealtimeChannel,
@@ -9,14 +10,9 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { fetchMomentsFeed, publishMoment, recordMomentView, type MomentItem } from './momentsData'
+import { fetchMomentsFeed, publishMoment, recordMomentView, removeMoment, type MomentItem } from './momentsData'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
-
-function inferMomentMediaType(file: File): 'image' | 'video' {
-  if (file.type.startsWith('video/')) return 'video'
-  return 'image'
-}
 
 function toMillis(value: string): number {
   if (!value) return 0
@@ -43,6 +39,7 @@ export function MomentsPage() {
   const [durationHours, setDurationHours] = useState(24)
   const [visibility, setVisibility] = useState('all')
   const [allowReplies, setAllowReplies] = useState(true)
+  const [showComposer, setShowComposer] = useState(false)
   const sortedMoments = useMemo(() => {
     const me = user?.id ?? ''
     const own = items
@@ -126,7 +123,7 @@ export function MomentsPage() {
   }
 
   async function markViewed(moment: MomentItem) {
-    if (!supabase || !user || moment.userId === user.id) return
+    if (!user || moment.userId === user.id) return
     try {
       await recordMomentView(moment.id, user.id)
       await loadMoments()
@@ -136,14 +133,9 @@ export function MomentsPage() {
   }
 
   async function deleteMoment(momentId: string) {
-    if (!supabase || !user || !momentId) return
+    if (!user || !momentId) return
     try {
-      const { error: deleteError } = await supabase
-        .from('moments')
-        .delete()
-        .eq('id', momentId)
-        .eq('user_id', user.id)
-      if (deleteError) throw deleteError
+      await removeMoment(momentId, user.id)
       await loadMoments()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo eliminar el momento'))
@@ -156,13 +148,26 @@ export function MomentsPage() {
 
   return (
     <section className="section-stack">
-      <header className="section-header">
-        <h2>Momentos</h2>
-        <p>Historias efímeras compartidas entre móvil y web.</p>
+      <header className="section-header row-between moments-header">
+        <div><h2>Momentos</h2><p>Historias de tu comunidad</p></div>
+        <button className="primary-btn moments-create-button" type="button" onClick={() => setShowComposer(true)}><Plus aria-hidden="true" />Crear</button>
       </header>
 
-      <article className="surface-card section-stack">
-        <h3>Publicar momento</h3>
+      <div className="moments-rail" aria-label="Momentos activos">
+        <button className="moment-rail-item moment-rail-create" type="button" onClick={() => setShowComposer(true)}>
+          <span><Camera aria-hidden="true" /></span><strong>Tu momento</strong>
+        </button>
+        {sortedMoments.map((moment) => (
+          <Link key={moment.id} className={moment.viewedByMe ? 'moment-rail-item viewed' : 'moment-rail-item'} to={`/app/moments/view/${moment.id}`}>
+            <span>{moment.mediaType === 'video' ? <video src={moment.mediaUrl} muted preload="metadata" /> : <img src={moment.mediaUrl} alt="" />}</span>
+            <strong>{moment.userId === user?.id ? 'Tu momento' : moment.ownerName}</strong>
+          </Link>
+        ))}
+      </div>
+
+      {showComposer ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowComposer(false)}>
+      <article className="surface-card section-stack moments-composer-dialog" role="dialog" aria-modal="true" aria-label="Publicar momento" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="row-between"><h3>Publicar momento</h3><button className="icon-btn" type="button" onClick={() => setShowComposer(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button></div>
         <div className="composer">
           <input
             className="text-input"
@@ -207,11 +212,13 @@ export function MomentsPage() {
                 const file = event.target.files?.[0] ?? null
                 void handlePublish(file)
                 event.currentTarget.value = ''
+                setShowComposer(false)
               }}
             />
           </label>
         </div>
       </article>
+      </div> : null}
 
       {loading ? (
         <StatusView title="Cargando momentos" description="Espera un momento..." />

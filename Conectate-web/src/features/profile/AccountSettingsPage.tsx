@@ -917,6 +917,10 @@ export function AccountSettingsPage() {
               <option value="violet">Violeta</option>
               <option value="emerald">Esmeralda</option>
               <option value="midnight">Midnight</option>
+              <option value="ruby">Rubí</option>
+              <option value="cyan">Cian</option>
+              <option value="amber">Ámbar</option>
+              <option value="graphite">Grafito</option>
             </select>
           </label>
           <label className="settings-toggle-card vertical">

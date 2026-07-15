@@ -1,15 +1,11 @@
 import { isFallbackAuthConfigured, readFallbackSession } from './auth/fallbackAuth'
+import { getRuntimeBackendUrl, subscribeRuntimeBackend } from './runtimeBackend'
 
 export type UbuntuRealtimeEvent = {
   type: 'event'
   channel: string
   payload: Record<string, unknown>
   ts?: string
-}
-
-type UbuntuRealtimeSubscription = {
-  channels: string[]
-  close: () => void
 }
 
 let sharedSocket: WebSocket | null = null
@@ -19,8 +15,14 @@ const pendingChannels = new Set<string>()
 let reconnectTimer: number | null = null
 
 function fallbackApiOrigin(): string {
-  return (import.meta.env.VITE_FALLBACK_API_URL?.trim() || '').replace(/\/+$/, '')
+  return getRuntimeBackendUrl()
 }
+
+subscribeRuntimeBackend(() => {
+  sharedSocket?.close()
+  sharedSocket = null
+  sharedToken = ''
+})
 
 export function getUbuntuRealtimeWsUrl(): string | null {
   const origin = fallbackApiOrigin()

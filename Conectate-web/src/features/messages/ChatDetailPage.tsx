@@ -9,13 +9,23 @@ import {
   type FormEvent,
 } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { MoreHorizontal } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
-import { loadFallbackChat, sendFallbackChatMessage, uploadFallbackFile } from '../../core/fallbackData'
+import {
+  deleteFallbackChatMessage,
+  editFallbackChatMessage,
+  loadFallbackChat,
+  markFallbackChatRead,
+  sendFallbackChatMessage,
+  toggleFallbackChatReaction,
+  uploadFallbackFile,
+} from '../../core/fallbackData'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
   subscribeRealtimeChannel,
   supabase,
+  resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import {
@@ -1024,7 +1034,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
 
   const markAsDeliveredAndRead = useCallback(async () => {
-    if (!supabase || !user || !cleanChatId) return
+    if (!user || !cleanChatId) return
+    if (useUbuntu) {
+      try {
+        await markFallbackChatRead(cleanChatId)
+      } catch (caught) {
+        console.warn('markFallbackChatRead failed', caught)
+      }
+      return
+    }
+    if (!supabase) return
     const nowIso = new Date().toISOString()
     try {
       const [{ error: deliveredError }, { error: readError }] = await Promise.all([
@@ -1064,7 +1083,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     } catch (caught) {
       console.warn('markAsDeliveredAndRead failed', caught)
     }
-  }, [cleanChatId, user])
+  }, [cleanChatId, useUbuntu, user])
 
   const loadChatSettings = useCallback(async () => {
     if (!supabase || !user || !cleanChatId) return
@@ -1199,7 +1218,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         }
         const profile = ((profileRows ?? []) as GenericRow[])[0]
         const displayName = textOf(profile ?? {}, ['displayName', 'display_name', 'username'], 'Chat privado')
-        const avatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
+        const rawAvatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
+        const avatarUrl = resolveSupabasePublicUrl('avatars', rawAvatarUrl)
         const participant = ((participantRows ?? []) as GenericRow[])[0]
         if (!isStaleLoad()) {
           setTitle(displayName)
@@ -1389,6 +1409,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         mediaUrl: input.mediaUrl ?? null,
         mediaSize: input.mediaSize ?? 0,
         replyToId: input.replyToId ?? null,
+        isForwarded: input.isForwarded,
+        forwardedFromMessageId: input.forwardedFromMessageId,
+        forwardedFromUserId: input.forwardedFromUserId,
       })
       upsertMessageInState(mapMessage(response.message))
       return
@@ -1499,7 +1522,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     try {
       if (editingMessageId) {
         if (useUbuntu) {
-          setError('La edicion de mensajes en modo respaldo queda para la siguiente etapa.')
+          const response = await editFallbackChatMessage(cleanChatId, editingMessageId, text)
+          upsertMessageInState(mapMessage(response.message))
+          setEditingMessageId(null)
+          setEditingDraft('')
+          setDraft('')
           return
         }
         if (!supabase) return
@@ -1542,7 +1569,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
-    if (useUbuntu) return
+    if (useUbuntu) {
+      try {
+        const response = await toggleFallbackChatReaction(cleanChatId, messageId, emoji)
+        upsertMessageInState(mapMessage(response.message))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo reaccionar'))
+      }
+      return
+    }
     if (!supabase) return
     const { error: reactionError } = await supabase.rpc('secure_toggle_message_reaction', {
       p_message_id: messageId,
@@ -1571,7 +1606,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForAll(message: ChatMessage) {
-    if (useUbuntu) return
+    if (useUbuntu) {
+      try {
+        const response = await deleteFallbackChatMessage(cleanChatId, message.id, true)
+        upsertMessageInState(mapMessage(response.message))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo borrar para todos'))
+      }
+      return
+    }
     if (!supabase || !user || message.senderId !== user.id) return
     try {
       const nowIso = new Date().toISOString()
@@ -1594,7 +1637,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
-    if (useUbuntu) return
+    if (useUbuntu) {
+      try {
+        const response = await deleteFallbackChatMessage(cleanChatId, message.id, false)
+        upsertMessageInState(mapMessage(response.message))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudo borrar para mi'))
+      }
+      return
+    }
     if (!supabase || !user) return
     try {
       const nextDeletedBy = Array.from(new Set([...message.deletedBy, user.id]))
@@ -1884,6 +1935,43 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para usar mensajes con Ubuntu." />
   }
 
+  async function importSticker(file: File | null) {
+    if (!file || !user || !cleanChatId) return
+    if (!file.type.startsWith('image/')) {
+      setError('El sticker debe ser una imagen PNG, WEBP, GIF, JPG o JPEG.')
+      return
+    }
+    setUploading(true)
+    setError(null)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath = `stickers/${user.id}/${Date.now()}_${safeName}`
+      const mediaUrl = useUbuntu
+        ? (await uploadFallbackFile('chat-media', file, filePath)).publicUrl
+        : await (async () => {
+            if (!supabase) throw new Error('Backend no configurado')
+            const { error: uploadError } = await supabase.storage
+              .from('chat-media')
+              .upload(filePath, file, { contentType: file.type || undefined })
+            if (uploadError) throw uploadError
+            return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
+          })()
+      await sendMessage({
+        content: file.name.replace(/\.[^.]+$/, '') || 'Sticker',
+        mediaUrl,
+        mediaSize: file.size,
+        contentType: 'sticker',
+        replyToId,
+      })
+      setReplyToId(null)
+      setShowStickers(false)
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo importar el sticker'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   if (loading) {
     return <StatusView title="Cargando conversacion" description="Espera un momento..." />
   }
@@ -2153,6 +2241,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(message.createdAt)
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
           const showMessageText = shouldRenderMessageText(message)
+          const activeReactions = ['👍', '❤️', '😂'].filter(
+            (emoji) => reactionCount(message.reactions, emoji) > 0,
+          )
 
           return (
             <Fragment key={message.id}>
@@ -2226,8 +2317,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   </>
                 )}
 
-                <div className="reaction-row">
-                  {['👍', '❤️', '😂'].map((emoji) => (
+                {activeReactions.length > 0 ? (
+                  <div className="reaction-row">
+                  {activeReactions.map((emoji) => (
                     <button
                       key={emoji}
                       type="button"
@@ -2237,10 +2329,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                       {emoji} {reactionCount(message.reactions, emoji)}
                     </button>
                   ))}
-                </div>
+                  </div>
+                ) : null}
 
                 {!message.deletedForAll ? (
-                  <div className="row-actions">
+                  <details className={mine ? 'message-menu message-menu-mine' : 'message-menu'}>
+                    <summary title="Opciones del mensaje" aria-label="Opciones del mensaje">
+                      <MoreHorizontal aria-hidden="true" />
+                    </summary>
+                    <div className="message-menu-popover">
+                    {['👍', '❤️', '😂'].map((emoji) => (
+                      <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
+                        {emoji}
+                      </button>
+                    ))}
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
                     </button>
@@ -2267,7 +2369,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                     <button className="mini-action-btn" type="button" onClick={() => void deleteMessageForMe(message)}>
                       Borrar mi vista
                     </button>
-                  </div>
+                    </div>
+                  </details>
                 ) : null}
 
                 <small className="message-meta">
@@ -2345,6 +2448,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                 void loadStickers(e.target.value)
               }}
             />
+            <label className="ghost-btn file-pick-btn">
+              Importar
+              <input
+                type="file"
+                hidden
+                accept="image/png,image/webp,image/gif,image/jpeg,.png,.webp,.gif,.jpg,.jpeg"
+                onChange={(event) => {
+                  void importSticker(event.target.files?.[0] ?? null)
+                  event.currentTarget.value = ''
+                }}
+              />
+            </label>
             <button className="icon-btn-sm" onClick={() => setShowStickers(false)}>✕</button>
           </div>
           <div className="sticker-grid-compact">

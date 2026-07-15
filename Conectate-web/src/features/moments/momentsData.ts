@@ -1,5 +1,5 @@
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
-import { fetchUbuntuMomentsFeed, publishUbuntuMoment, recordUbuntuMomentView } from '../../core/momentsUbuntu'
+import { deleteUbuntuMoment, fetchUbuntuMomentsFeed, publishUbuntuMoment, recordUbuntuMomentView } from '../../core/momentsUbuntu'
 import { getDataClient } from '../../core/ubuntuDataClient'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { uploadFallbackFile } from '../../core/fallbackData'
@@ -166,6 +166,17 @@ export async function recordMomentView(momentId: string, currentUserId: string):
     { onConflict: 'moment_id,user_id' },
   )
   if (viewError) throw viewError
+}
+
+export async function removeMoment(momentId: string, currentUserId: string): Promise<void> {
+  if (isUbuntuPrimary || isFallbackAuthConfigured) {
+    await deleteUbuntuMoment(momentId)
+    return
+  }
+  const client = getDataClient()
+  if (!client) return
+  const { error } = await client.from('moments').delete().eq('id', momentId).eq('user_id', currentUserId)
+  if (error) throw error
 }
 
 export async function publishMoment(input: {

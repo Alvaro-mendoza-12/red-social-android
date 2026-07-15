@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js'
+import { getRuntimeBackendUrl, subscribeRuntimeBackend } from '../runtimeBackend'
 
 export type FallbackUser = {
   id: string
@@ -55,11 +56,16 @@ export class MigratedAccountPasswordSetupRequiredError extends Error {
   }
 }
 
-const fallbackApiUrl = import.meta.env.VITE_FALLBACK_API_URL?.trim().replace(/\/+$/, '') ?? ''
+let fallbackApiUrl = getRuntimeBackendUrl()
 const storageKey = 'conectate:fallback-session'
 const eventName = 'conectate:fallback-auth-changed'
 
-export const isFallbackAuthConfigured = fallbackApiUrl.length > 0
+export let isFallbackAuthConfigured = fallbackApiUrl.length > 0
+
+subscribeRuntimeBackend((url) => {
+  fallbackApiUrl = url
+  isFallbackAuthConfigured = url.length > 0
+})
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -77,7 +83,7 @@ function fallbackErrorMessage(error: unknown): string {
 }
 
 function fallbackConnectionErrorMessage(): string {
-  return 'No se pudo conectar con el servidor Ubuntu. Revisa que la VM, Docker y ngrok estén encendidos, y que VITE_FALLBACK_API_URL apunte a tu URL pública actual.'
+  return 'No se pudo conectar con el servidor Ubuntu. Revisa el estado del servidor y tu conexión a Internet.'
 }
 
 async function parseFallbackResponse(response: Response) {

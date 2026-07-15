@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { isFallbackAuthConfigured } from './auth/fallbackAuth'
+import { getRuntimeBackendUrl, rewriteRuntimeStorageUrl } from './runtimeBackend'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
@@ -160,4 +161,77 @@ export async function removeRealtimeChannel(channel: RealtimeChannelLike | null 
   } catch {
     // Best effort cleanup.
   }
+}
+
+export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): string {
+  if (!pathOrUrl) return ''
+  let trimmed = pathOrUrl.trim()
+  if (!trimmed) return ''
+
+  const rewrittenRuntimeUrl = rewriteRuntimeStorageUrl(trimmed)
+  if (rewrittenRuntimeUrl !== trimmed) return rewrittenRuntimeUrl
+  if (trimmed.includes('/storage/v1/object/') && /^https?:\/\//i.test(trimmed)) {
+    try {
+      const source = new URL(trimmed)
+      if (getRuntimeBackendUrl() && !source.hostname.endsWith('.supabase.co')) {
+        return rewrittenRuntimeUrl
+      }
+    } catch {
+      // Continue with path normalization.
+    }
+  }
+
+  const marker = '/storage/v1/object/public/' + bucket + '/'
+  if (trimmed.includes(marker)) {
+    trimmed = trimmed.substring(trimmed.indexOf(marker) + marker.length)
+  } else if (trimmed.includes('/' + bucket + '/')) {
+    const parts = trimmed.split('/' + bucket + '/')
+    trimmed = parts[parts.length - 1]
+  }
+
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed
+  }
+
+  const prefix1 = bucket + '/'
+  const prefix2 = 'public/' + bucket + '/'
+
+  if (trimmed.startsWith(prefix1)) {
+    trimmed = trimmed.substring(prefix1.length)
+  } else if (trimmed.startsWith(prefix2)) {
+    trimmed = trimmed.substring(prefix2.length)
+  }
+
+  const knownBuckets = [
+    'avatars',
+    'covers',
+    'thumbnails',
+    'videos',
+    'post-media',
+    'moments',
+    'groups',
+    'communities',
+    'stickers',
+  ]
+  const embeddedBucket = knownBuckets.find((candidate) => trimmed.startsWith(`${candidate}/`))
+  const resolvedBucket = embeddedBucket || bucket
+  if (embeddedBucket) {
+    trimmed = trimmed.substring(embeddedBucket.length + 1)
+  }
+
+  if (!supabase) {
+    const runtime = getRuntimeBackendUrl()
+    if (!runtime) return trimmed
+    const objectPath = trimmed
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    return `${runtime}/storage/v1/object/public/${encodeURIComponent(resolvedBucket)}/${objectPath}`
+  }
+  return supabase.storage.from(resolvedBucket).getPublicUrl(trimmed).data.publicUrl
 }

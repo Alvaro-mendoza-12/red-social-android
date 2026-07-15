@@ -5,6 +5,9 @@ import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat } from '../../features/messages/directChat'
+import { loadUbuntuChallengesBundle } from '../../core/challengesUbuntu'
+import { isUbuntuPrimary } from '../../core/ubuntuBackend'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
 type RankingEntry = {
   userId: string
@@ -53,7 +56,7 @@ export function ChallengesRankingPage() {
   }, [ranking, searchQuery])
 
   const loadRanking = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
@@ -61,6 +64,19 @@ export function ChallengesRankingPage() {
     setError(null)
 
     try {
+      if (isUbuntuPrimary) {
+        const bundle = await loadUbuntuChallengesBundle(user.id)
+        setRanking(bundle.ranking)
+        const active = bundle.activeChallenge
+        setPodiums(active?.status === 'completed' ? [{
+          challengeId: active.challengeId,
+          challengeTitle: bundle.challengeMeta?.title || 'Reto',
+          completedAt: active.createdAt,
+          winners: bundle.winnerProfiles,
+        }] : [])
+        return
+      }
+      if (!supabase) return
       const { data: submissionsRows, error: submissionsError } = await supabase
         .from('challenge_submissions')
         .select('id,user_id,vote_count,created_at,active_challenge_id')
@@ -193,6 +209,12 @@ export function ChallengesRankingPage() {
   }, [loadRanking])
 
   useEffect(() => {
+    if (isUbuntuPrimary) {
+      return subscribeUbuntuRealtime({
+        channel: 'challenges:live',
+        onEvent: () => void loadRanking(),
+      })
+    }
     const client = supabase
     if (!client || !user) return
     const channel = client
@@ -209,7 +231,7 @@ export function ChallengesRankingPage() {
     }
   }, [loadRanking, user])
 
-  if (!supabase) {
+  if (!supabase && !isUbuntuPrimary) {
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para ranking en Ubuntu." />
   }
 
