@@ -98,14 +98,8 @@ fun CircularProfileImage(
     }
     val request = remember(resolvedImageUrl) {
         resolvedImageUrl?.let {
-            val decoderFactory = if (Build.VERSION.SDK_INT >= 28) {
-                ImageDecoderDecoder.Factory()
-            } else {
-                GifDecoder.Factory()
-            }
             ImageRequest.Builder(context)
                 .data(it)
-                .decoderFactory(decoderFactory)
                 .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
                 .diskCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
                 .crossfade(false)
