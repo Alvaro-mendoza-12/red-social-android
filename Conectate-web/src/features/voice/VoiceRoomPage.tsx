@@ -681,16 +681,165 @@ export function VoiceRoomPage() {
         name: displayName,
       })
       await drainIceCandidates(peerId)
+
+      const self = mapped.find((participant) => participant.userId === user?.id)
+      if (self) {
+        setIsJoined(true)
+        joinedRef.current = true
+        setIsMuted(self.isMuted)
+      }
+    } catch (caught) {
+      if (!isMissingTableError(caught)) {
+        reportSupabaseServiceRestrictionIfPresent('voice-participants-load', caught)
+        setJoinError(friendlyError(caught, 'No se pudieron cargar los participantes'))
+      }
+    } finally {
+      setSyncingParticipants(false)
+    }
+  }, [useUbuntuVoice, user?.id])
+
+  const fallbackParticipantUpdate = useCallback(async (targetRoomId: string, delta: number) => {
+    if (useUbuntuVoice) {
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
+          : current,
+      )
+      return
+    }
+    if (!supabase) return
+    const { data, error: readError } = await supabase.from('voice_rooms').select('*').eq('id', targetRoomId).limit(1)
+    if (readError) {
+      if (isMissingColumnError(readError)) return
+      throw readError
+    }
+
+    const row = ((data ?? []) as GenericRow[])[0] ?? {}
+    const columns = ['current_participants', 'participant_count', 'active_participants']
+    for (const column of columns) {
+      const currentCount = Number(row[column] ?? 0)
+      const nextCount = Math.max(0, (Number.isFinite(currentCount) ? currentCount : 0) + delta)
+      const { error: updateError } = await supabase
+        .from('voice_rooms')
+        .update({ [column]: nextCount })
+        .eq('id', targetRoomId)
+      if (updateError) {
+        if (isMissingColumnError(updateError)) continue
+        throw updateError
+      }
+      setRoom((current) => current && current.id === targetRoomId ? { ...current, participantCount: nextCount } : current)
+      return
+    }
+  }, [useUbuntuVoice])
+
+  const syncParticipantCounter = useCallback(async (targetRoomId: string, delta: number) => {
+    if (useUbuntuVoice) {
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
+          : current,
+      )
+      return
+    }
+    if (!supabase) return
+    const rpcName = delta > 0 ? 'increment_participant_count' : 'decrement_participant_count'
+    const rpcResult = await supabase.rpc(rpcName, { room_id: targetRoomId })
+    if (!rpcResult.error) {
+      setRoom((current) =>
+        current && current.id === targetRoomId
+          ? { ...current, participantCount: Math.max(0, current.participantCount + delta) }
+          : current,
+      )
+      return
+    }
+    if (!isMissingFunctionError(rpcResult.error)) throw rpcResult.error
+    await fallbackParticipantUpdate(targetRoomId, delta)
+  }, [fallbackParticipantUpdate, useUbuntuVoice])
+
+  const upsertSignalParticipant = useCallback((participant: SignalingParticipant) => {
+    const socketId = String(participant.socketId ?? '').trim()
+    const userId = String(participant.userId ?? '').trim()
+    if (!socketId || !userId || userId === user?.id) return
+    socketToUserIdRef.current.set(socketId, userId)
+    setParticipants((current) => {
+      const nextParticipant: Participant = {
+        id: `signal-${socketId}`,
+        socketId,
+        userId,
+        userName: String(participant.name ?? '').trim() || userId,
+        userAvatarUrl: String(participant.avatarUrl ?? '').trim(),
+        isMuted: Boolean(participant.isMuted),
+        isSpeaking: false,
+        joinedAt: new Date().toISOString(),
+      }
+      const withoutDuplicate = current.filter((item) => item.userId !== userId && item.socketId !== socketId)
+      return [...withoutDuplicate, nextParticipant]
+    })
+  }, [user?.id])
+
+  const drainIceCandidates = useCallback(async (peerId: string) => {
+    const manager = webrtcManagerRef.current
+    const candidates = pendingIceRef.current.get(peerId) ?? []
+    if (!manager || candidates.length === 0) return
+    pendingIceRef.current.delete(peerId)
+    for (const candidate of candidates) {
+      try {
+        await manager.handleIceCandidate(peerId, candidate)
+      } catch {
+        pendingIceRef.current.set(peerId, [candidate, ...(pendingIceRef.current.get(peerId) ?? [])])
+        return
+      }
+    }
+  }, [])
+
+  const queueOrAddIceCandidate = useCallback(async (peerId: string, candidate: RTCIceCandidateInit) => {
+    const manager = webrtcManagerRef.current
+    if (!manager || !manager.hasPeerConnection(peerId)) {
+      pendingIceRef.current.set(peerId, [...(pendingIceRef.current.get(peerId) ?? []), candidate])
+      return
+    }
+    try {
+      await manager.handleIceCandidate(peerId, candidate)
+    } catch {
+      pendingIceRef.current.set(peerId, [...(pendingIceRef.current.get(peerId) ?? []), candidate])
+    }
+  }, [])
+
+  const startPeerOffer = useCallback(async (peerId: string) => {
+    const manager = webrtcManagerRef.current
+    const socket = socketRef.current
+    if (!manager || !socket || !user || !peerId || manager.hasPeerConnection(peerId)) return
+
+    try {
+      manager.createPeerConnection(peerId, true)
+      const offer = await manager.createOffer(peerId)
+      socket.emit('offer', {
+        target: peerId,
+        offer,
+        userId: user.id,
+        name: displayName,
+      })
+      await drainIceCandidates(peerId)
     } catch (caught) {
       setJoinError(friendlyError(caught, 'No se pudo iniciar la conexión de voz'))
     }
   }, [displayName, drainIceCandidates, user])
 
-  const shouldOfferToPeer = useCallback((peerId: string) => {
+  const shouldOfferToPeer = useCallback((peerSocketId: string, peerUserId?: string) => {
     const ownSocketId = socketRef.current?.id
-    if (!ownSocketId || !peerId) return false
-    return ownSocketId.localeCompare(peerId) > 0
-  }, [])
+    const ownUserId = user?.id
+    if (!ownSocketId || !peerSocketId || !ownUserId) return false
+    
+    const resolvedPeerUserId = peerUserId || socketToUserIdRef.current.get(peerSocketId) || peerSocketId
+    
+    // WebRTC Perfect Negotiation Parity with Android
+    // Android isPolite: (currentUserId < remoteUserId) || (currentUserId == remoteUserId && localSocketId < remoteSocketId)
+    // The "impolite" peer (who sends the offer) is the one where isPolite == false.
+    if (ownUserId !== resolvedPeerUserId) {
+      return ownUserId.localeCompare(resolvedPeerUserId) > 0
+    }
+    return ownSocketId.localeCompare(peerSocketId) > 0
+  }, [user?.id])
 
   const configureIceServers = useCallback(async (manager: WebRTCManager, accessToken: string) => {
     const signalingUrl = readSignalingUrl()
@@ -792,7 +941,7 @@ export function VoiceRoomPage() {
       const signalParticipants = normalizeSignalingParticipants(rawParticipants)
       signalParticipants.forEach(upsertSignalParticipant)
       signalParticipants.forEach((participant) => {
-        if (shouldOfferToPeer(participant.socketId)) {
+        if (shouldOfferToPeer(participant.socketId, participant.userId)) {
           void startPeerOffer(participant.socketId)
         }
       })
@@ -802,13 +951,6 @@ export function VoiceRoomPage() {
       const participant = normalizeSignalingParticipant(rawParticipant)
       if (!participant) return
       upsertSignalParticipant(participant)
-      if (shouldOfferToPeer(participant.socketId)) {
-        void startPeerOffer(participant.socketId)
-      }
-    })
-
-    socket.on('user-left', (socketId) => {
-      const userIdForSocket = socketToUserIdRef.current.get(socketId)
       socketToUserIdRef.current.delete(socketId)
       manager.disconnectPeer(socketId)
       setRemoteStreams((current) => {
