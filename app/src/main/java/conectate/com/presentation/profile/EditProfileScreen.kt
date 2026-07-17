@@ -55,8 +55,15 @@ fun EditProfileScreen(
     var coverImageUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateDurationMs by remember { mutableStateOf(0L) }
-    var isTrimmingAvatar by remember { mutableStateOf(false) }
+    var fullScreenPreviewUrl by remember { mutableStateOf<String?>(null) }
     var initialized by remember { mutableStateOf(false) }
+
+    var isTrimmingAvatar by remember { mutableStateOf(false) }
+
+    var showUnifiedMediaPicker by remember { mutableStateOf(false) }
+    var unifiedPickerTarget by remember { mutableStateOf(ProfileImageTarget.AVATAR) }
+    val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
 
     LaunchedEffect(profileState) {
         if (!initialized && profileState is ProfileUiState.Success) {
@@ -78,7 +85,7 @@ fun EditProfileScreen(
     }
 
     val profileImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching {
@@ -113,7 +120,7 @@ fun EditProfileScreen(
     }
     
     val coverImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         coverImageUri = uri
     }
@@ -152,6 +159,8 @@ fun EditProfileScreen(
             }
         )
     }
+
+    Box(modifier = Modifier.fillMaxSize()) {
 
     Scaffold(
         topBar = {
@@ -203,7 +212,11 @@ fun EditProfileScreen(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                    .clickable { coverImageLauncher.launch("image/*") },
+                                    .clickable { 
+                                        unifiedPickerTarget = ProfileImageTarget.COVER
+                                        mediaPickerViewModel.loadGalleryMedia(context)
+                                        showUnifiedMediaPicker = true 
+                                    },
                                 contentScale = ContentScale.Crop
                             )
                             
@@ -213,7 +226,11 @@ fun EditProfileScreen(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                        .clickable { coverImageLauncher.launch("image/*") }
+                                        .clickable { 
+                                            unifiedPickerTarget = ProfileImageTarget.COVER
+                                            mediaPickerViewModel.loadGalleryMedia(context)
+                                            showUnifiedMediaPicker = true
+                                        }
                                         .background(MaterialTheme.colorScheme.primaryContainer),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -226,7 +243,11 @@ fun EditProfileScreen(
                             
                             // Edit button
                             Button(
-                                onClick = { coverImageLauncher.launch("image/*") },
+                                onClick = { 
+                                    unifiedPickerTarget = ProfileImageTarget.COVER
+                                    mediaPickerViewModel.loadGalleryMedia(context)
+                                    showUnifiedMediaPicker = true 
+                                },
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(8.dp)
@@ -254,7 +275,11 @@ fun EditProfileScreen(
                                 allowSound = true
                             )
                             Button(
-                                onClick = { profileImageLauncher.launch(arrayOf("image/*", "video/*")) },
+                                onClick = { 
+                                    unifiedPickerTarget = ProfileImageTarget.AVATAR
+                                    mediaPickerViewModel.loadGalleryMedia(context)
+                                    showUnifiedMediaPicker = true
+                                },
                                 modifier = Modifier.offset(y = 10.dp)
                             ) {
                                 Text("Cambiar")
@@ -413,6 +438,60 @@ fun EditProfileScreen(
             }
         }
     }
+
+    if (showUnifiedMediaPicker) {
+        conectate.com.presentation.components.UnifiedMediaPickerScreen(
+            galleryMedia = galleryMedia,
+            isMultipleSelection = false,
+            maxSelection = 1,
+            onMediaSelected = { selected ->
+                showUnifiedMediaPicker = false
+                if (selected.isNotEmpty()) {
+                    val uri = selected.first().uri
+                    if (unifiedPickerTarget == ProfileImageTarget.AVATAR) {
+                        val mimeType = context.contentResolver.getType(uri)?.substringBefore(";")?.lowercase().orEmpty()
+                        val uriText = uri.toString().substringBefore("?").lowercase()
+                        val isVideo = mimeType.startsWith("video/") ||
+                            uriText.endsWith(".mp4") ||
+                            uriText.endsWith(".m4v") ||
+                            uriText.endsWith(".mov")
+                        if (isVideo) {
+                            val durationMs = viewModel.getProfileVideoDurationMs(uri)
+                            if (durationMs > PROFILE_AVATAR_MAX_VIDEO_MS) {
+                                trimCandidateUri = uri
+                                trimCandidateDurationMs = durationMs
+                            } else {
+                                imageUri = uri
+                                avatarMediaType = "video"
+                                avatarDurationMs = durationMs.takeIf { it > 0L }?.coerceAtMost(PROFILE_AVATAR_MAX_VIDEO_MS)
+                                avatarVideoMuted = true
+                            }
+                        } else {
+                            imageUri = uri
+                            avatarMediaType = if (mimeType == "image/gif" || uriText.endsWith(".gif")) "gif" else "image"
+                            avatarDurationMs = null
+                            avatarVideoMuted = true
+                        }
+                    } else {
+                        coverImageUri = uri
+                    }
+                }
+            },
+            onCancel = { showUnifiedMediaPicker = false },
+            onCameraClick = {
+                showUnifiedMediaPicker = false
+                if (unifiedPickerTarget == ProfileImageTarget.AVATAR) {
+                    profileImageLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                } else {
+                    coverImageLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+            },
+            onLoadMedia = {
+                mediaPickerViewModel.loadGalleryMedia(it)
+            }
+        )
+    }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -525,4 +604,9 @@ private fun formatAvatarTrimTime(ms: Long): String {
     val seconds = totalTenths / 10L
     val tenths = totalTenths % 10L
     return "$seconds.${tenths}s"
+}
+
+enum class ProfileImageTarget {
+    AVATAR,
+    COVER
 }
