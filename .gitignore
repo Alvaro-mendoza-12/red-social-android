@@ -143,3 +143,7 @@ infrastructure/local-fallback/imports/*.csv
 # Nota: /security/ (raiz) era buzzword y se elimino; NO confundir con
 # app/src/main/java/conectate/com/core/security (codigo real, se mantiene).
 /security/
+
+# Config de herramientas externas (no del proyecto)
+blackbox_mcp_settings.json
+.blackbox/
