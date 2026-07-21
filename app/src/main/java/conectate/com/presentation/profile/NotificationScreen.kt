@@ -254,6 +254,13 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
     val resolvedVideoId = extraVideoId ?: n.targetId
     val resolvedPostId = extraPostId ?: n.targetId
 
+    // Algunas notificaciones se abren desde un NavHost anidado (pestañas de HomeScreen) cuyo
+    // grafo no contiene todos los destinos (p. ej. moment_viewer). Antes esto lanzaba
+    // IllegalArgumentException ("destination cannot be found") y cerraba la app. Se protege la
+    // navegación para degradar a un log en vez de crashear cuando el destino no existe en el grafo.
+    // Nota: se usa try/catch (no runCatching) para que el `when` siga siendo una sentencia y no
+    // requiera ser exhaustivo.
+    try {
     when (type) {
         "follow", "friend_request_accepted" -> navController.navigate(Screen.UserProfile.createRoute(n.actorId))
         "friend_request" -> navController.navigate(Screen.FriendRequests.route)
@@ -309,6 +316,13 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
         "voice_access_request" -> {
             navController.navigate(Screen.UserProfile.createRoute(n.actorId))
         }
+    }
+    } catch (error: Exception) {
+        android.util.Log.w(
+            "NotificationNav",
+            "Destino de notificación no disponible en el grafo de navegación actual (tipo='$type')",
+            error
+        )
     }
 }
 

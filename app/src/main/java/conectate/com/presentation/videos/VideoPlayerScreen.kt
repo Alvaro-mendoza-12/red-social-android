@@ -54,6 +54,7 @@ import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.ConnectivityViewModel
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.OfflineNoticeBar
+import conectate.com.presentation.video.RealPlaybackViewTracker
 import conectate.com.util.AudioRecorder
 import conectate.com.util.UbuntuMedia
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -64,6 +65,7 @@ import kotlinx.coroutines.launch
 import android.media.MediaPlayer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -135,6 +137,7 @@ class VideoPlayerViewModel @Inject constructor(
     private var commentsSubscriptionJob: Job? = null
     private var statsJob: Job? = null
     private var mentionSearchJob: Job? = null
+    private val playbackViewTracker = RealPlaybackViewTracker()
     private val likeRequestInFlight = MutableStateFlow(false)
     private val shareRequestInFlight = MutableStateFlow(false)
     private val reportRequestsInFlight = mutableSetOf<String>()
@@ -150,9 +153,6 @@ class VideoPlayerViewModel @Inject constructor(
     private fun loadVideo() {
         viewModelScope.launch {
             try {
-                // Increment view count
-                videoRepository.incrementViews(videoId)
-
                 // Load video and comments
                 val videoResult = videoRepository.getVideoById(videoId)
                 videoResult.fold(
@@ -185,7 +185,7 @@ class VideoPlayerViewModel @Inject constructor(
                 if (stats != null) {
                     _likeCount.value = stats.likeCount
                     _commentCount.value = stats.commentCount
-                    _viewCount.value = maxOf(_viewCount.value, stats.viewCount)
+                    _viewCount.value = stats.viewCount
                     _shareCount.value = stats.shareCount
                 }
             }
@@ -253,6 +253,22 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
+    fun onVideoPlaybackSample(isActuallyPlaying: Boolean, elapsedRealtimeMs: Long) {
+        if (!playbackViewTracker.sample(videoId, isActuallyPlaying, elapsedRealtimeMs)) return
+
+        viewModelScope.launch {
+            videoRepository.incrementViews(videoId)
+                .onFailure { error ->
+                    playbackViewTracker.allowRetry(videoId)
+                    android.util.Log.e(
+                        "VideoPlayerVM",
+                        "Failed to increment video views for $videoId",
+                        error
+                    )
+                }
+        }
+    }
+
     private fun refreshCommentsAfterWrite() {
         viewModelScope.launch {
             delay(250)
@@ -284,7 +300,11 @@ class VideoPlayerViewModel @Inject constructor(
                 isLiked = _isLiked.value
             )
         }
-        _commentCount.value = maxOf(_commentCount.value, nextComments.size)
+        _commentCount.value = if (preserveCurrent) {
+            maxOf(_commentCount.value, nextComments.size)
+        } else {
+            nextComments.size
+        }
     }
 
     private fun mergeComments(
@@ -446,16 +466,57 @@ class VideoPlayerViewModel @Inject constructor(
     fun seekDraftPreview(fraction: Float) = voiceMessageManager.seekPreview(fraction)
 
     fun deleteComment(comment: VideoComment) {
+        val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return
+        val previousComments = currentState.comments
+        val nextComments = previousComments.filterNot { it.id.equals(comment.id, ignoreCase = true) }
+        _uiState.value = currentState.copy(comments = nextComments)
+        _commentCount.value = nextComments.size
+
         viewModelScope.launch {
             videoRepository.deleteComment(comment.id).onSuccess {
-                val currentState = _uiState.value
-                if (currentState is VideoPlayerUiState.Success) {
-                    val nextComments = currentState.comments.filterNot { it.id.equals(comment.id, ignoreCase = true) }
-                    _uiState.value = currentState.copy(comments = nextComments)
-                    _commentCount.value = nextComments.size
+                delay(250)
+                refreshComments(currentState.video, preserveCurrent = false)
+            }.onFailure { error ->
+                android.util.Log.e("VideoPlayerVM", "Error deleting comment", error)
+                val latestState = _uiState.value
+                if (latestState is VideoPlayerUiState.Success) {
+                    val restored = mergeComments(latestState.comments, previousComments)
+                    _uiState.value = latestState.copy(comments = restored)
+                    _commentCount.value = restored.size
                 }
-                refreshCommentsAfterWrite()
             }
+        }
+    }
+
+    fun reactToComment(comment: VideoComment, reaction: String?) {
+        viewModelScope.launch {
+            videoRepository.setCommentReaction(comment.id, reaction)
+                .onSuccess { refreshCommentsAfterWrite() }
+                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo reaccionar" }
+        }
+    }
+
+    fun editComment(comment: VideoComment, content: String) {
+        viewModelScope.launch {
+            videoRepository.editComment(comment.id, content)
+                .onSuccess { refreshCommentsAfterWrite() }
+                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo editar" }
+        }
+    }
+
+    fun reportComment(comment: VideoComment) {
+        viewModelScope.launch {
+            videoRepository.reportComment(comment.id, "Contenido inapropiado")
+                .onSuccess { _reportActionMessage.value = "Comentario reportado" }
+                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo reportar" }
+        }
+    }
+
+    fun addStickerComment(url: String, label: String) {
+        viewModelScope.launch {
+            videoRepository.addStickerComment(videoId, url, label)
+                .onSuccess { refreshCommentsAfterWrite() }
+                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo enviar el sticker" }
         }
     }
 
@@ -604,11 +665,25 @@ fun VideoPlayerScreen(
     
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
+    var showStickerPanel by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var lifecycleResumed by remember(lifecycleOwner) {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        )
+    }
+    var playbackRequested by remember { mutableStateOf(true) }
+    val currentVideo = (uiState as? VideoPlayerUiState.Success)?.video
+    val playbackGateOpen = lifecycleResumed &&
+        !showInternalShareDialog &&
+        !showReportDialog &&
+        currentVideo != null
+    val playbackGateOpenRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    SideEffect { playbackGateOpenRef.set(playbackGateOpen) }
 
     LaunchedEffect(reportActionMessage) {
         val message = reportActionMessage ?: return@LaunchedEffect
@@ -616,38 +691,87 @@ fun VideoPlayerScreen(
         viewModel.consumeReportActionMessage()
     }
 
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build()
-    }
-
-    LaunchedEffect(uiState) {
-        if (uiState is VideoPlayerUiState.Success) {
-            val state = uiState as VideoPlayerUiState.Success
-            if (exoPlayer.mediaItemCount == 0) {
-                exoPlayer.setMediaItem(UbuntuMedia.mediaItem(state.video.videoUrl))
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
-            }
+    val exoPlayer = remember(context) {
+        ExoPlayer.Builder(context).build().apply {
+            playWhenReady = false
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
+    LaunchedEffect(currentVideo?.id, currentVideo?.videoUrl) {
+        val video = currentVideo ?: return@LaunchedEffect
+        if (exoPlayer.mediaItemCount == 0) {
+            exoPlayer.setMediaItem(UbuntuMedia.mediaItem(video.videoUrl))
+            exoPlayer.prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playbackGateOpenRef.get()) {
+                    playbackRequested = playWhenReady
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (playbackGateOpenRef.get() && isPlaying) {
+                    playbackRequested = true
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    playbackRequested = false
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    DisposableEffect(lifecycleOwner, exoPlayer) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+            lifecycleResumed = lifecycleOwner.lifecycle.currentState
+                .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+            if (!lifecycleResumed) {
+                playbackGateOpenRef.set(false)
                 exoPlayer.pause()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            exoPlayer.release()
+            exoPlayer.pause()
         }
     }
 
-    // Pause playback when internal share dialog is shown
-    LaunchedEffect(showInternalShareDialog) {
-        if (showInternalShareDialog) {
+    DisposableEffect(exoPlayer) {
+        onDispose { exoPlayer.release() }
+    }
+
+    LaunchedEffect(playbackGateOpen, playbackRequested, currentVideo?.id) {
+        if (playbackGateOpen && playbackRequested) {
+            exoPlayer.play()
+        } else {
             exoPlayer.pause()
+        }
+    }
+
+    LaunchedEffect(currentVideo?.id, exoPlayer) {
+        if (currentVideo == null) return@LaunchedEffect
+        try {
+            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+                viewModel.onVideoPlaybackSample(
+                    isActuallyPlaying = exoPlayer.isPlaying,
+                    elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
+                )
+                delay(250L)
+            }
+        } finally {
+            viewModel.onVideoPlaybackSample(
+                isActuallyPlaying = false,
+                elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
+            )
         }
     }
 
@@ -1029,6 +1153,9 @@ fun VideoPlayerScreen(
                                     },
                                     videoCreatorId = state.video.userId,
                                     onReplyClick = { target -> viewModel.onReplyClick(target) },
+                                    onReactComment = { target, reaction -> viewModel.reactToComment(target, reaction) },
+                                    onEditComment = { target, content -> viewModel.editComment(target, content) },
+                                    onReportComment = { target -> viewModel.reportComment(target) },
                                     initiallyExpanded = focusParentId != null &&
                                         focusParentId.equals(comment.id, ignoreCase = true) &&
                                         !focusCommentId.equals(comment.id, ignoreCase = true)
@@ -1211,6 +1338,9 @@ fun VideoPlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.Bottom
                                     ) {
+                                        IconButton(onClick = { showStickerPanel = true }) {
+                                            Icon(Icons.Default.EmojiEmotions, contentDescription = "Sticker")
+                                        }
                                         OutlinedTextField(
                                             value = commentText,
                                             onValueChange = { viewModel.updateCommentText(it) },
@@ -1278,6 +1408,16 @@ fun VideoPlayerScreen(
         }
         }
     }
+
+    conectate.com.presentation.messages.stickers.StickerPanel(
+        visible = showStickerPanel,
+        onDismiss = { showStickerPanel = false },
+        onStickerSelected = { sticker ->
+            showStickerPanel = false
+            val url = sticker.media_url.orEmpty()
+            if (url.isNotBlank()) viewModel.addStickerComment(url, sticker.title.ifBlank { "Sticker" })
+        }
+    )
 }
 
 // Local CommentItem removed, using VideoCommentItem from CommentSheet.kt

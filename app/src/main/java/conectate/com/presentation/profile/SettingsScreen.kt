@@ -9,10 +9,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,11 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.compose.ui.platform.LocalContext
 import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,20 +48,39 @@ fun SettingsScreen(
     val webSessions by viewModel.webSessions.collectAsState()
     val webSessionsLoading by viewModel.webSessionsLoading.collectAsState()
     val webSessionMessage by viewModel.webSessionMessage.collectAsState()
+    val adminPanelAccess by viewModel.adminPanelAccess.collectAsState()
+    val isDeletingAccount by viewModel.isDeletingAccount.collectAsState()
+    val deleteAccountMessage by viewModel.deleteAccountMessage.collectAsState()
+    val accountDeleted by viewModel.accountDeleted.collectAsState()
     val storedAccounts by authViewModel.storedAccounts.collectAsState()
     val accountSwitchMessage by authViewModel.accountSwitchMessage.collectAsState()
+    val currentUserId by authViewModel.currentUserId.collectAsState()
     
     // Local state for immediate UI feedback, synced with DB
     var isPrivate by remember { mutableStateOf(false) }
+    var favoritesPublic by remember { mutableStateOf(false) }
+    var breakMode by remember { mutableStateOf("off") }
     var visibility by remember { mutableStateOf("everyone") }
     var initialized by remember { mutableStateOf(false) }
     var newAdditionalEmail by remember { mutableStateOf("") }
     var showCloseAllWebSessionsDialog by remember { mutableStateOf(false) }
+    var showBreakModeDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(accountDeleted) {
+        if (accountDeleted) {
+            viewModel.consumeAccountDeleted()
+            authViewModel.forceLocalLogout()
+            onLogout()
+        }
+    }
 
     LaunchedEffect(settingsState) {
         if (!initialized && settingsState is SettingsUiState.Success) {
             val user = (settingsState as SettingsUiState.Success).user
             isPrivate = user.is_private
+            favoritesPublic = user.favorites_public
+            breakMode = user.break_mode
             visibility = user.profile_visibility
             initialized = true
         }
@@ -108,10 +132,42 @@ fun SettingsScreen(
                     Switch(
                         checked = isPrivate,
                         onCheckedChange = { 
+                            val previous = isPrivate
                             isPrivate = it
-                            viewModel.updatePrivacy(isPrivate = it)
+                            viewModel.updatePrivacy(isPrivate = it) { saved ->
+                                if (!saved) isPrivate = previous
+                            }
                         }
                     )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Favoritos públicos", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Permite que otros usuarios vean tus videos favoritos.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    if (!initialized) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Switch(
+                            checked = favoritesPublic,
+                            onCheckedChange = {
+                                val previous = favoritesPublic
+                                favoritesPublic = it
+                                viewModel.updateFavoritesVisibility(it) { saved ->
+                                    if (!saved) favoritesPublic = previous
+                                }
+                            }
+                        )
+                    }
                 }
             }
             
@@ -126,8 +182,11 @@ fun SettingsScreen(
                     RadioButton(
                         selected = visibility == "everyone",
                         onClick = { 
+                            val previous = visibility
                             visibility = "everyone"
-                            viewModel.updateVisibility("everyone")
+                            viewModel.updateVisibility("everyone") { saved ->
+                                if (!saved) visibility = previous
+                            }
                         }
                     )
                     Text("Todos")
@@ -136,8 +195,11 @@ fun SettingsScreen(
                     RadioButton(
                         selected = visibility == "connections",
                         onClick = { 
+                            val previous = visibility
                             visibility = "connections"
-                            viewModel.updateVisibility("connections")
+                            viewModel.updateVisibility("connections") { saved ->
+                                if (!saved) visibility = previous
+                            }
                         }
                     )
                     Text("Solo Conexiones") // o "Amigos"
@@ -223,6 +285,120 @@ fun SettingsScreen(
             }
 
             Divider()
+
+            SettingsSection(title = "Cuenta y seguridad") {
+                FilledTonalButton(
+                    onClick = { navController.navigate(Screen.AccountSettings.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Datos del perfil")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { mainNavController.navigate(Screen.ChangePassword.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Cambiar contraseña")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.ChatSettings.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Message, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Preferencias de chat")
+                }
+            }
+
+            Divider()
+
+            SettingsSection(title = "Ambiente") {
+                FilledTonalButton(
+                    onClick = { navController.navigate(Screen.CustomizeApp.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Palette, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Temas y perfil")
+                }
+            }
+
+            Divider()
+
+            SettingsSection(title = "Contenido sin conexión") {
+                FilledTonalButton(
+                    onClick = { navController.navigate(Screen.OfflineVideos.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Videos descargados")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Las descargas son privadas para esta cuenta y permanecen disponibles cuando no hay internet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+
+            Divider()
+
+            SettingsSection(title = "Tomar un descanso") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            when (breakMode) {
+                                "mute" -> "Silenciando todo"
+                                "hidden" -> "Perfil oculto"
+                                else -> "Desactivado"
+                            },
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            when (breakMode) {
+                                "mute" -> "No recibirás nuevas notificaciones hasta que regreses."
+                                "hidden" -> "Tu perfil no aparecerá en búsquedas ni podrá abrirse desde otras cuentas."
+                                else -> "Reduce las interrupciones sin cerrar tu sesión."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = breakMode != "off",
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                showBreakModeDialog = true
+                            } else {
+                                val previous = breakMode
+                                breakMode = "off"
+                                viewModel.updateBreakMode("off") { saved ->
+                                    if (!saved) breakMode = previous
+                                }
+                            }
+                        }
+                    )
+                }
+                if (breakMode != "off") {
+                    TextButton(onClick = { showBreakModeDialog = true }) {
+                        Text("Cambiar modo")
+                    }
+                }
+            }
 
             Divider()
             
@@ -401,8 +577,6 @@ fun SettingsScreen(
             Divider()
 
             SettingsSection(title = "Cambio rápido de cuenta") {
-                val scope = rememberCoroutineScope()
-
                 Button(
                     onClick = { authViewModel.saveCurrentAccount() },
                     modifier = Modifier.fillMaxWidth()
@@ -420,6 +594,7 @@ fun SettingsScreen(
                     )
                 } else {
                     storedAccounts.forEach { account ->
+                        val isCurrentAccount = account.user_id?.trim()?.lowercase() == currentUserId?.trim()?.lowercase()
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -445,13 +620,14 @@ fun SettingsScreen(
                                         Text("Quitar")
                                     }
                                     TextButton(onClick = {
-                                        authViewModel.switchAccount(account.id)
-                                        scope.launch {
-                                            kotlinx.coroutines.delay(1200)
-                                            viewModel.refreshSettings()
+                                        authViewModel.switchAccount(account.id) {
+                                            mainNavController.navigate(Screen.Home.createRoute(startTab = Screen.Profile.route)) {
+                                                popUpTo(mainNavController.graph.findStartDestination().id) { inclusive = true }
+                                                launchSingleTop = true
+                                            }
                                         }
-                                    }) {
-                                        Text("Usar cuenta")
+                                    }, enabled = !isCurrentAccount) {
+                                        Text(if (isCurrentAccount) "Actual" else "Usar cuenta")
                                     }
                                 }
                             }
@@ -471,7 +647,7 @@ fun SettingsScreen(
             Divider()
 
             // Section: Admin Panel (solo visible para admins)
-            if (viewModel.isAdmin) {
+            if (adminPanelAccess) {
                 SettingsSection(title = "Administración") {
                     Button(
                         onClick = { mainNavController.navigate(Screen.AdminPanel.route) },
@@ -488,25 +664,69 @@ fun SettingsScreen(
 
             // Section: General
             SettingsSection(title = "General") {
-                val scope = rememberCoroutineScope()
-                
                 Button(
-                    onClick = { 
-                        scope.launch {
-                            authViewModel.signOut()
-                            onLogout()
-                        }
+                    onClick = {
+                        authViewModel.forceLocalLogout()
+                        onLogout()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Cerrar Sesión")
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
+
+                // La eliminación de cuenta se retira del ajuste del usuario final: ahora es una
+                // operación exclusiva del panel de administración (los administradores buscan la
+                // cuenta y la eliminan por completo mediante el hard-delete del backend). Esto evita
+                // bajas accidentales/irreversibles por parte de usuarios y centraliza la operación
+                // sensible en administradores, como requiere el flujo de producción.
             }
         }
+    }
+
+    if (showBreakModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showBreakModeDialog = false },
+            title = { Text("Tomar un descanso") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Elige cómo quieres reducir la actividad. Puedes desactivarlo en cualquier momento.")
+                    FilledTonalButton(
+                        onClick = {
+                            showBreakModeDialog = false
+                            val previous = breakMode
+                            breakMode = "mute"
+                            viewModel.updateBreakMode("mute") { saved ->
+                                if (!saved) breakMode = previous
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Silenciar todo")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showBreakModeDialog = false
+                            val previous = breakMode
+                            breakMode = "hidden"
+                            viewModel.updateBreakMode("hidden") { saved ->
+                                if (!saved) breakMode = previous
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Ocultar perfil")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showBreakModeDialog = false }) { Text("Cancelar") }
+            }
+        )
     }
 
     if (showCloseAllWebSessionsDialog) {
@@ -528,6 +748,35 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCloseAllWebSessionsDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            title = { Text("Eliminar cuenta") },
+            text = {
+                Text(
+                    "Esta accion es irreversible. Se eliminaran tu perfil, publicaciones, " +
+                        "videos, mensajes y archivos asociados a la cuenta."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        viewModel.deleteOwnAccount()
+                    },
+                    enabled = !isDeletingAccount
+                ) {
+                    Text("Eliminar definitivamente", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) {
                     Text("Cancelar")
                 }
             }

@@ -169,6 +169,9 @@ fun HomeScreen(
                     onNavigateToCreateVoiceRoom = {
                         mainNavController.navigate(Screen.CreateVoiceRoom.route)
                     },
+                    onNavigateToNovvin = {
+                        mainNavController.navigate(Screen.Novvin.route)
+                    },
                     onNavigateToGroupChat = { groupId ->
                         mainNavController.navigate(Screen.GroupChat.createRoute(groupId))
                     },
@@ -196,6 +199,18 @@ fun HomeScreen(
                     },
                     onNavigateToChat = { route ->
                         mainNavController.navigate(route)
+                    },
+                    // Los directos (LiveSetup/LiveDiscovery/LiveViewer) viven en el NavHost raíz, no
+                    // en el grafo anidado de pestañas. Se navega con mainNavController para evitar el
+                    // crash "destination cannot be found" al crear/ver directos desde la pestaña Videos.
+                    onNavigateToLiveSetup = {
+                        mainNavController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveDiscovery = {
+                        mainNavController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveViewer = { streamId ->
+                        mainNavController.navigate(Screen.LiveViewer.createRoute(streamId))
                     }
                 )
             }
@@ -243,6 +258,10 @@ fun HomeScreen(
 
             composable(Screen.ChatSettings.route) {
                 conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
+            }
+
+            composable(Screen.OfflineVideos.route) {
+                conectate.com.presentation.videos.OfflineVideosScreen(navController = navController)
             }
 
             composable(Screen.CustomizeApp.route) {
