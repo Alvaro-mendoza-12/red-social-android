@@ -1,7 +1,0 @@
-metric_name,warning_count,critical_count,window_seconds,cooldown_seconds,enabled,updated_at
-community_message_send_failure,8,16,300,300,true,2026-02-23 03:56:11.363527+00
-dm_send_failure,8,16,300,300,true,2026-02-23 03:56:11.363527+00
-group_message_send_failure,8,16,300,300,true,2026-02-23 03:56:11.363527+00
-media_upload_failure,12,24,300,300,true,2026-02-23 03:56:11.363527+00
-moderation_block_failure,25,50,300,300,true,2026-02-23 03:56:11.363527+00
-sync_cycle_failure,6,12,600,600,true,2026-02-23 03:56:11.363527+00

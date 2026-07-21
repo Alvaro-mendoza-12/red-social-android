@@ -1,7 +1,0 @@
-id,reporter_id,reported_user_id,reported_user_name,reason,description,evidence_url,status,created_at,reporter_name
-202a534a-269b-4c9a-aa81-118b1a8613c7,a3d6f99c-7dd9-45a5-9755-bf8cca6ed096,a3d6f99c-7dd9-45a5-9755-bf8cca6ed096,Mendoza,Solicitud de Acceso a Voz,El usuario solicita acceso a la sección de salas de voz en desarrollo.,,finalizado,2026-01-15 22:02:08.741254+00,Mendoza
-25ee8886-d249-4673-b232-b53f74b69609,78eccac8-0838-418f-a2bd-326cb187b901,78eccac8-0838-418f-a2bd-326cb187b901,Fabricio,Solicitud de Acceso a Voz,El usuario solicita acceso a la sección de salas de voz en desarrollo.,,finalizado,2026-01-17 14:07:31.532763+00,Fabricio
-6f3fb42a-20a7-42e7-aa98-5a83cb40124b,fb2d97bb-9d2b-46fd-b8a6-a40ec41814f9,740fb63e-a3a1-4955-947f-ccd5eb1693f1,Bonny,"nose ",dmdkdk,,finalizado,2026-01-13 21:54:54.618334+00,gamergamerff017
-ae4e643e-dcfb-432e-bc02-4a274d6c5db6,740fb63e-a3a1-4955-947f-ccd5eb1693f1,74d923b6-fe46-4ad4-bd2e-39c6bf74b1b3,Adolf,big,nn,,en_proceso,2026-01-15 22:00:49.746041+00,Bonny
-c3359124-a7ac-4b65-8e8e-118580ccdd17,74d923b6-fe46-4ad4-bd2e-39c6bf74b1b3,74d923b6-fe46-4ad4-bd2e-39c6bf74b1b3,Adolf,Solicitud de Acceso a Voz,El usuario solicita acceso a la sección de salas de voz en desarrollo.,,finalizado,2026-01-16 03:30:28.597232+00,Adolf
-e3f5c8cf-e5dd-4fd9-92d2-5e0469daa4ae,24eecc96-1c29-4183-bae9-bc6dd951e25b,740fb63e-a3a1-4955-947f-ccd5eb1693f1,Bonny,ds,fgds,,finalizado,2026-01-13 21:53:44.990825+00,Alvaro

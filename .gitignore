@@ -40,6 +40,9 @@ app/local.properties
 **/outputs/
 *.log
 build*.txt
+last_build_log.txt
+logcat*.txt
+crash_log.txt
 compile*.txt
 *.tmp
 *.temp
@@ -59,6 +62,7 @@ supabase/*firebase-adminsdk*.json
 # Local Ubuntu fallback runtime data
 infrastructure/local-fallback/api/storage-data/
 infrastructure/local-fallback/storage-data/
+infrastructure/local-fallback/ai-chatbot-data/
 infrastructure/local-fallback/secrets/
 storage-data/
 
@@ -75,3 +79,67 @@ signaling-server*.zip
 .vercel
 .env*
 .aider*
+llaves de mi apk conecta
+
+# ============================================================
+# Limpieza / organizacion (2026-07): basura, backups y scratch
+# ============================================================
+# Directorios de scratch/depuracion (regenerables)
+/tmp/
+diff_*.txt
+temp_*.js
+temp_*.kt
+temp_*.txt
+temp_*.yml
+temp_*.json
+
+# Snapshots y worktrees de herramientas (NO son codigo vivo)
+/backup/
+/backups/
+/app_backup_before_restore/
+/.codex-backups/
+/.codex-worktrees/
+/.worktrees/
+/.kilo/
+/.blackbox/
+
+# Scripts one-off de arreglo/parcheo acumulados en la raiz
+/fix_*.ps1
+/patch_*.js
+/patch_*.py
+/patch_*.ps1
+/find_*.ps1
+/inject_logs*.py
+/resize_assets.py
+/query.js
+/fix.js
+/fix2.js
+/check.sh
+
+# Exportaciones de datos con PII (NO deben estar en git)
+IMPORTACION DE SUPABASE POR CSV/
+infrastructure/local-fallback/imports/*.csv
+
+# Codigo muerto "buzzword" (scaffolding IA sin referencias, uncompiled)
+/quantum/
+/photonic/
+/neuromorphic/
+/space/
+/dna/
+/ai/
+/network/
+/bio/
+/enterprise/
+/performance/
+/devops/
+/build-system/
+/testing/
+/scratch/
+/infrastructure/quantum/
+/infrastructure/edge/
+/infrastructure/blockchain/
+/infrastructure/analytics/
+/infrastructure/caching/
+# Nota: /security/ (raiz) era buzzword y se elimino; NO confundir con
+# app/src/main/java/conectate/com/core/security (codigo real, se mantiene).
+/security/
