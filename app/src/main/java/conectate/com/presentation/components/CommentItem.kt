@@ -8,6 +8,9 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,9 +33,19 @@ fun CommentItem(
     onReplyClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
     onEditClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onLikeClick: () -> Unit = {},
+    onDislikeClick: () -> Unit = {},
+    onReportClick: () -> Unit = {},
+    showReportAction: Boolean = false
 ) {
     val isReply = level > 0
+    val canEdit = remember(comment.createdAt) {
+        runCatching {
+            val created = java.time.OffsetDateTime.parse(comment.createdAt).toInstant()
+            java.time.Duration.between(created, java.time.Instant.now()).toHours() < 5
+        }.getOrDefault(false)
+    }
     Row(modifier = Modifier.fillMaxWidth().padding(start = (level * 24 + 16).dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
         CircularProfileImage(
             imageUrl = comment.userAvatar ?: "",
@@ -77,7 +90,7 @@ fun CommentItem(
                         }
                     }
 
-                    if (comment.audioUrl.isNullOrEmpty() || comment.content != "[Audio]") {
+                    if (comment.mediaType != "sticker" && (comment.audioUrl.isNullOrEmpty() || comment.content != "[Audio]")) {
                         ClickableText(
                             text = annotatedContent,
                             style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -91,7 +104,15 @@ fun CommentItem(
                     }
                     
                     // Audio Player for Comments
-                    if (!comment.audioUrl.isNullOrEmpty()) {
+                    if (comment.mediaType == "sticker" && !comment.audioUrl.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        coil.compose.AsyncImage(
+                            model = comment.audioUrl,
+                            contentDescription = "Sticker",
+                            modifier = Modifier.size(120.dp),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    } else if (!comment.audioUrl.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         CommentAudioPlayer(
                             audioUrl = comment.audioUrl,
@@ -110,7 +131,31 @@ fun CommentItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.Gray
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                IconButton(onClick = onLikeClick, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.ThumbUp,
+                        contentDescription = "Me gusta",
+                        tint = if (comment.myReaction == "LIKE") MaterialTheme.colorScheme.primary else Color.Gray,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Text((comment.reactionCounts["LIKE"] ?: 0).toString(), style = MaterialTheme.typography.labelSmall)
+                Spacer(modifier = Modifier.width(6.dp))
+                IconButton(onClick = onDislikeClick, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.ThumbDown,
+                        contentDescription = "No me gusta",
+                        tint = if (comment.myReaction == "DISLIKE") MaterialTheme.colorScheme.error else Color.Gray,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Text((comment.reactionCounts["DISLIKE"] ?: 0).toString(), style = MaterialTheme.typography.labelSmall)
+            }
+            Row(
+                modifier = Modifier.padding(start = 12.dp, top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "Responder",
                     style = MaterialTheme.typography.labelSmall,
@@ -121,7 +166,7 @@ fun CommentItem(
                 
                 if (comment.isMine || isPostOwner) {
                     Spacer(modifier = Modifier.width(16.dp))
-                    if (comment.isMine) {
+                    if (comment.isMine && canEdit) {
                         IconButton(onClick = onEditClick, modifier = Modifier.size(18.dp)) {
                             Icon(
                                 imageVector = androidx.compose.material.icons.Icons.Default.Edit,
@@ -136,6 +181,16 @@ fun CommentItem(
                         Icon(
                             imageVector = Icons.Default.Delete, 
                             contentDescription = "Eliminar",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                } else if (showReportAction) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    IconButton(onClick = onReportClick, modifier = Modifier.size(18.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Report,
+                            contentDescription = "Reportar",
                             tint = Color.Gray,
                             modifier = Modifier.size(14.dp)
                         )

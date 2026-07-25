@@ -4,8 +4,10 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_ROOT="${BACKUP_ROOT:-$HOME/conectate-backups}"
 MAX_DISK_PERCENT="${MAX_DISK_PERCENT:-85}"
-EXPECTED_SERVICES=(db api signaling edge realtime-gateway)
+EXPECTED_SERVICES=(db api ai-chatbot signaling edge realtime-gateway)
+COMPOSE_LOCK="${CONECTATE_COMPOSE_LOCK:-$HOME/.cache/conectate-compose.lock}"
 
+mkdir -p "$(dirname "$COMPOSE_LOCK")"
 cd "$ROOT_DIR"
 
 healthy() {
@@ -15,11 +17,15 @@ healthy() {
   for service in "${EXPECTED_SERVICES[@]}"; do
     docker compose ps --status running --services | grep -Fxq "$service" || return 1
   done
+  local ai_container
+  ai_container="$(docker compose ps -q ai-chatbot)"
+  [ -n "$ai_container" ] || return 1
+  [ "$(docker inspect --format '{{.State.Health.Status}}' "$ai_container" 2>/dev/null)" = "healthy" ] || return 1
 }
 
 if ! healthy; then
   echo "WARN: stack degradado; intentando recuperacion controlada"
-  docker compose up -d --remove-orphans
+  flock --wait 240 "$COMPOSE_LOCK" docker compose up -d --remove-orphans
   for _ in $(seq 1 12); do
     sleep 5
     healthy && break
@@ -29,7 +35,7 @@ fi
 if ! healthy; then
   echo "ERROR: backend Ubuntu no se recupero"
   docker compose ps
-  docker compose logs --tail=80 api edge signaling realtime-gateway
+  docker compose logs --tail=80 api ai-chatbot edge signaling realtime-gateway
   exit 1
 fi
 

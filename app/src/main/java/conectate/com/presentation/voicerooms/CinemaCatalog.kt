@@ -21,16 +21,16 @@ import kotlinx.coroutines.sync.withPermit
  */
 class CinemaCatalog(
     private val tmdbApiKey: String,
-    private val realDebridToken: String = "BJVCQF5D4RUZC74SYAISZOXDOM3JU5LITI5AYYZRWZWAGXSEWVLA" // Premium Token Integrated
+    private val realDebridToken: String = ""
 ) {
     private val client = OkHttpClient()
     
     init {
         // v23.6: Validate RD Token at startup
         if (realDebridToken.isNotEmpty()) {
-            Log.i("CinemaCatalog", "💎 Real-Debrid Token configurado: ${realDebridToken.take(10)}...")
+            Log.i("CinemaCatalog", "Real-Debrid resolver configured")
         } else {
-            Log.w("CinemaCatalog", "⚠️ Real-Debrid Token NO configurado - solo VidSrc disponible (con anuncios)")
+            Log.i("CinemaCatalog", "Premium resolution delegated to the authenticated server")
         }
     }
 

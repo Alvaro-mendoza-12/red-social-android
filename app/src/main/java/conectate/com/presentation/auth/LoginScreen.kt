@@ -324,7 +324,7 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Escanear QR de Conectate Web",
+                    text = "Escanear QR de Novvin Web",
                     style = MaterialTheme.typography.titleMedium
                 )
             }

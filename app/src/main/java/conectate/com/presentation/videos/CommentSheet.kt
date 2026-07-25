@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,6 +46,9 @@ import conectate.com.presentation.components.CreatorBadge
 import java.text.SimpleDateFormat
 import java.util.*
 import conectate.com.presentation.messages.VoiceState
+import conectate.com.presentation.messages.stickers.StickerPanel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,12 +87,17 @@ fun CommentSheet(
     videoCreatorId: String? = null,
     replyingTo: VideoComment? = null,
     onReplyClick: (VideoComment) -> Unit = {},
-    cancelReply: () -> Unit = {}
+    cancelReply: () -> Unit = {},
+    onAddSticker: (String, String) -> Unit = { _, _ -> },
+    onReactComment: (VideoComment, String?) -> Unit = { _, _ -> },
+    onEditComment: (VideoComment, String) -> Unit = { _, _ -> },
+    onReportComment: (VideoComment) -> Unit = {}
 ) {
     var newCommentText by remember { mutableStateOf("") }
     var pendingSentText by remember { mutableStateOf<String?>(null) }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    var showStickerPanel by remember { mutableStateOf(false) }
     
     // Group comments
     val commentIds = remember(comments) { comments.map { it.id.trim().lowercase() }.toSet() }
@@ -196,7 +207,10 @@ fun CommentSheet(
                             onDeleteComment = onDeleteComment,
                             onProfileClick = onProfileClick,
                             videoCreatorId = videoCreatorId,
-                            onReplyClick = onReplyClick
+                            onReplyClick = onReplyClick,
+                            onReactComment = onReactComment,
+                            onEditComment = onEditComment,
+                            onReportComment = onReportComment
                         )
                     }
                 }
@@ -332,6 +346,12 @@ fun CommentSheet(
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
+
+                    if (voiceState == VoiceState.IDLE) {
+                        IconButton(onClick = { showStickerPanel = true }) {
+                            Icon(Icons.Default.EmojiEmotions, "Sticker")
+                        }
+                    }
                     
                     // Actions
                     if (voiceState != VoiceState.IDLE) {
@@ -404,6 +424,16 @@ fun CommentSheet(
             }
         }
     }
+
+    StickerPanel(
+        visible = showStickerPanel,
+        onDismiss = { showStickerPanel = false },
+        onStickerSelected = { sticker ->
+            showStickerPanel = false
+            val url = sticker.media_url.orEmpty()
+            if (url.isNotBlank()) onAddSticker(url, sticker.title.ifBlank { "Sticker" })
+        }
+    )
 }
 
 private fun replaceActiveMention(currentText: String, username: String): String {
@@ -439,6 +469,9 @@ fun CommentThreadItem(
     onProfileClick: (String) -> Unit,
     videoCreatorId: String?,
     onReplyClick: (VideoComment) -> Unit,
+    onReactComment: (VideoComment, String?) -> Unit = { _, _ -> },
+    onEditComment: (VideoComment, String) -> Unit = { _, _ -> },
+    onReportComment: (VideoComment) -> Unit = {},
     initiallyExpanded: Boolean = false
 ) {
     var expanded by remember(comment.id, initiallyExpanded) { mutableStateOf(initiallyExpanded) }
@@ -459,7 +492,10 @@ fun CommentThreadItem(
             onDelete = { onDeleteComment(comment) },
             onProfileClick = { onProfileClick(comment.userId) },
             isCreator = comment.userId == videoCreatorId,
-            onReplyClick = { onReplyClick(comment) }
+            onReplyClick = { onReplyClick(comment) },
+            onReaction = { reaction -> onReactComment(comment, reaction) },
+            onEdit = { content -> onEditComment(comment, content) },
+            onReport = { onReportComment(comment) }
         )
 
         // Replies Toggle
@@ -506,7 +542,10 @@ fun CommentThreadItem(
                         onProfileClick = { onProfileClick(reply.userId) },
                         isCreator = reply.userId == videoCreatorId,
                         onReplyClick = { onReplyClick(reply) }, // Reply to reply? Usually replies to original parent or flat structure. Let's keep it simple.
-                        isReply = true
+                        isReply = true,
+                        onReaction = { reaction -> onReactComment(reply, reaction) },
+                        onEdit = { content -> onEditComment(reply, content) },
+                        onReport = { onReportComment(reply) }
                     )
                 }
             }
@@ -527,8 +566,13 @@ fun VideoCommentItem(
     onProfileClick: () -> Unit = {},
     isCreator: Boolean = false,
     onReplyClick: () -> Unit = {},
-    isReply: Boolean = false
+    isReply: Boolean = false,
+    onReaction: (String?) -> Unit = {},
+    onEdit: (String) -> Unit = {},
+    onReport: () -> Unit = {}
 ) {
+    var showEditDialog by remember(comment.id) { mutableStateOf(false) }
+    var editText by remember(comment.id) { mutableStateOf(comment.content) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -582,6 +626,13 @@ fun VideoCommentItem(
                              isPlaying = isPlaying,
                              progress = progress
                          )
+                     } else if (comment.contentType == "sticker" && !comment.mediaUrl.isNullOrBlank()) {
+                         AsyncImage(
+                             model = comment.mediaUrl,
+                             contentDescription = "Sticker",
+                             contentScale = ContentScale.Fit,
+                             modifier = Modifier.size(112.dp)
+                         )
                      } else {
                          Text(
                             text = comment.content,
@@ -591,11 +642,35 @@ fun VideoCommentItem(
                      }
                  }
              }
+
+             Row(
+                 modifier = Modifier
+                     .padding(start = 8.dp, top = 4.dp)
+                     .horizontalScroll(rememberScrollState()),
+                 horizontalArrangement = Arrangement.spacedBy(4.dp)
+             ) {
+                 listOf("LIKE" to "👍", "LOVE" to "❤️", "LAUGH" to "😂", "WOW" to "😮", "SAD" to "😢")
+                     .forEach { (type, emoji) ->
+                         val selected = comment.myReaction == type
+                         val count = comment.reactions[type] ?: 0
+                         Text(
+                             text = if (count > 0) "$emoji $count" else emoji,
+                             modifier = Modifier
+                                 .clip(CircleShape)
+                                 .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                                 .clickable { onReaction(if (selected) null else type) }
+                                 .padding(horizontal = 6.dp, vertical = 3.dp),
+                             style = MaterialTheme.typography.labelSmall
+                         )
+                     }
+             }
              
              // Footer (Time, Reply, Delete)
              Row(
                  verticalAlignment = Alignment.CenterVertically,
-                 modifier = Modifier.padding(start = 12.dp, top = 2.dp)
+                 modifier = Modifier
+                     .padding(start = 12.dp, top = 2.dp)
+                     .horizontalScroll(rememberScrollState())
              ) {
                  Text(
                     text = comment.created_at.take(10), // You might want a relative time formatter here (e.g. "2h")
@@ -610,22 +685,63 @@ fun VideoCommentItem(
                      style = MaterialTheme.typography.labelSmall,
                      color = MaterialTheme.colorScheme.onSurfaceVariant,
                      fontWeight = FontWeight.Bold,
-                     modifier = Modifier.clickable { onReplyClick() }
+                     modifier = Modifier
+                         .clip(RoundedCornerShape(4.dp))
+                         .clickable { onReplyClick() }
+                         .padding(horizontal = 8.dp, vertical = 4.dp)
                  )
                  
                  if (canDelete) {
-                     Spacer(modifier = Modifier.width(16.dp))
+                     Spacer(modifier = Modifier.width(8.dp))
                      Text(
                          text = "Eliminar",
                          style = MaterialTheme.typography.labelSmall,
                          color = MaterialTheme.colorScheme.error,
-                         modifier = Modifier.clickable { onDelete() }
+                         modifier = Modifier
+                             .clip(RoundedCornerShape(4.dp))
+                             .clickable { onDelete() }
+                             .padding(horizontal = 8.dp, vertical = 4.dp)
+                     )
+                 }
+                 if (isOwnComment && comment.contentType == "text" && canEditVideoComment(comment.created_at)) {
+                     Text(
+                         text = "Editar",
+                         style = MaterialTheme.typography.labelSmall,
+                         modifier = Modifier.clickable { showEditDialog = true }.padding(horizontal = 8.dp, vertical = 4.dp)
+                     )
+                 } else if (!isOwnComment) {
+                     Text(
+                         text = "Reportar",
+                         style = MaterialTheme.typography.labelSmall,
+                         color = MaterialTheme.colorScheme.error,
+                         modifier = Modifier.clickable(onClick = onReport).padding(horizontal = 8.dp, vertical = 4.dp)
                      )
                  }
              }
         }
     }
+
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Editar comentario") },
+            text = { OutlinedTextField(value = editText, onValueChange = { editText = it }, maxLines = 5) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clean = editText.trim()
+                    if (clean.isNotBlank()) onEdit(clean)
+                    showEditDialog = false
+                }) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = { showEditDialog = false }) { Text("Cancelar") } }
+        )
+    }
 }
+
+private fun canEditVideoComment(createdAt: String): Boolean = runCatching {
+    val created = java.time.Instant.parse(createdAt)
+    java.time.Duration.between(created, java.time.Instant.now()).toHours() < 5
+}.getOrDefault(false)
 
 @Composable
 fun AudioCommentPlayer(

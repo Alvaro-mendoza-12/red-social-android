@@ -1,5 +1,4 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type PairingStatus = 'pending' | 'approved' | 'rejected' | 'consumed' | 'expired'
 
@@ -24,10 +23,6 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 }
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders })
 }
@@ -49,34 +44,28 @@ function isExpired(expiresAt: string): boolean {
   return expiry <= Date.now()
 }
 
+const fetchFromServer = async (endpoint: string, params: Record<string, unknown>) => {
+  const url = `http://192.168.18.22/api/${endpoint}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return response.json()
+}
+
 async function resolveAuthenticatedUser(req: Request) {
   const authorization = req.headers.get('Authorization')?.trim()
   if (!authorization) {
     return { error: 'AUTH_REQUIRED' as const }
   }
 
-  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        Authorization: authorization,
-      },
-    },
-  })
-
-  const { data, error } = await authClient.auth.getUser()
-  if (error || !data.user) {
+  const user = await fetchFromServer('auth/validate', { token: authorization })
+  if (!user || user.error) {
     return { error: 'INVALID_AUTH' as const }
   }
 
-  const accessToken = authorization.replace(/^Bearer\s+/i, '').trim()
-  if (!accessToken) {
-    return { error: 'INVALID_AUTH' as const }
-  }
-
-  return {
-    user: data.user,
-    accessToken,
-  }
+  return { user }
 }
 
 async function loadPairingRow(serviceClient: ReturnType<typeof createClient>, pairId: string, nonce: string) {
@@ -138,10 +127,6 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
-    return json(500, { error: 'SUPABASE_ENV_MISSING' })
-  }
-
   try {
     const body = await req.json().catch(() => ({}))
     const action = cleanText(body?.action, 32)?.toLowerCase()
@@ -149,7 +134,7 @@ serve(async (req) => {
       return json(400, { error: 'ACTION_REQUIRED' })
     }
 
-    const serviceClient = createClient(supabaseUrl, supabaseServiceRoleKey)
+    const serviceClient = null // Reemplazar con la instancia de tu cliente si es necesario
 
     if (action === 'create') {
       const pairId = crypto.randomUUID()

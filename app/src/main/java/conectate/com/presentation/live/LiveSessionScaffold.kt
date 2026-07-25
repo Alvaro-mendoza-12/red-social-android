@@ -239,12 +239,12 @@ private fun LiveVideoBackground(
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                                contentDescription = "Conéctate",
+                                contentDescription = "Novvin",
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Conéctate",
+                                text = "Novvin",
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold
@@ -321,12 +321,12 @@ private fun LiveTopBar(
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                                contentDescription = "Conéctate",
+                                contentDescription = "Novvin",
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Conéctate",
+                                text = "Novvin",
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold

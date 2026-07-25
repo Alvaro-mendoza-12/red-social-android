@@ -29,7 +29,7 @@ serve(async (req) => {
         )
 
         let recipientIds: string[] = []
-        let notificationTitle = "Conéctate"
+        let notificationTitle = "Novvin"
         let notificationBody = ""
         let fcmData: any = {}
         const getExtraDataValue = (key: string): string => {

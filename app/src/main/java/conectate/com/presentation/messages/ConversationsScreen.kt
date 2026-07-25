@@ -1,5 +1,6 @@
 package conectate.com.presentation.messages
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.background
@@ -9,13 +10,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -25,23 +29,24 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import conectate.com.presentation.navigation.Screen
+import conectate.com.R
 
-private val InboxBackground = Color(0xFF050505)
-private val InboxHeader = Color(0xFF101010)
-private val InboxChip = Color(0xFF1A1A1A)
-private val InboxMutedIcon = Color(0xFFCED0D7)
+// Colors now resolved via MaterialTheme.colorScheme for light/dark compatibility
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationsScreen(
     navController: NavController,
     viewModel: MessagingViewModel = hiltViewModel(),
+    stickerImportViewModel: StickerPickerViewModel = hiltViewModel(),
+    sharedStickerUri: String? = null,
     onNavigateToChat: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToCallHistory: () -> Unit,
     onNavigateToCreateGroup: () -> Unit,
     onNavigateToCreateCommunity: () -> Unit,
     onNavigateToCreateVoiceRoom: () -> Unit,
+    onNavigateToNovvin: () -> Unit,
     onNavigateToGroupChat: (String) -> Unit,
     onNavigateToCommunityChat: (String) -> Unit,
     onNavigateToRoomDetail: (String) -> Unit
@@ -53,6 +58,23 @@ fun ConversationsScreen(
     
     val tabs = listOf("Mensajes", "Grupos", "Comunidades", "Voz")
     val tabBadges = listOf(unreadDmsCount, unreadGroupsCount, unreadCommunitiesCount, 0)
+    val stickerImportMessage by stickerImportViewModel.actionMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var stickerImportHandled by rememberSaveable(sharedStickerUri) { mutableStateOf(false) }
+
+    LaunchedEffect(sharedStickerUri) {
+        if (!stickerImportHandled && !sharedStickerUri.isNullOrBlank()) {
+            stickerImportHandled = true
+            stickerImportViewModel.createStickerFromImage(Uri.parse(sharedStickerUri), preferredPackId = null)
+        }
+    }
+
+    LaunchedEffect(stickerImportMessage) {
+        stickerImportMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            stickerImportViewModel.clearActionMessage()
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -71,45 +93,48 @@ fun ConversationsScreen(
     CompositionLocalProvider(
         LocalDensity provides Density(baseDensity.density, fontScale = 1f)
     ) {
+        val colorScheme = MaterialTheme.colorScheme
         Scaffold(
-            containerColor = InboxBackground,
+            containerColor = colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                Column(modifier = Modifier.background(InboxHeader)) {
-                    Box(
+                Column(modifier = Modifier.background(colorScheme.surface)) {
+                    Row(
                         modifier = Modifier
                             .statusBarsPadding()
                             .height(56.dp)
                             .fillMaxWidth()
-                            .padding(horizontal = 18.dp)
+                            .padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
                             onClick = { navController.navigate(Screen.Settings.route) },
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .size(38.dp)
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ManageAccounts,
                                 contentDescription = "Cambiar cuenta",
-                                tint = Color.White,
+                                tint = colorScheme.onSurface,
                                 modifier = Modifier.size(25.dp)
                             )
                         }
 
                         Text(
-                            text = "Bandeja  de entrada",
+                            text = "Bandeja de entrada",
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 19.sp,
-                            color = Color.White,
+                            fontSize = 17.sp,
+                            color = colorScheme.onSurface,
                             maxLines = 1,
-                            overflow = TextOverflow.Clip,
-                            modifier = Modifier.align(Alignment.Center)
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
                         )
 
                         Row(
-                            modifier = Modifier.align(Alignment.CenterEnd),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -120,7 +145,7 @@ fun ConversationsScreen(
                                 Icon(
                                     imageVector = Icons.Default.Search,
                                     contentDescription = "Buscar",
-                                    tint = InboxMutedIcon,
+                                    tint = colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
@@ -132,7 +157,7 @@ fun ConversationsScreen(
                                 Icon(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = "Filtros",
-                                    tint = InboxMutedIcon,
+                                    tint = colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
@@ -151,8 +176,8 @@ fun ConversationsScreen(
                             Surface(
                                 onClick = { viewModel.onTabSelected(index) },
                                 shape = CircleShape,
-                                color = if (selected) Color.White else InboxChip,
-                                contentColor = if (selected) Color.Black else Color.White,
+                                color = if (selected) colorScheme.primary else colorScheme.surfaceVariant,
+                                contentColor = if (selected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(38.dp)
@@ -223,25 +248,44 @@ fun ConversationsScreen(
                     else -> ""
                 }
 
-                FloatingActionButton(
-                    onClick = fabAction,
-                    modifier = Modifier.size(56.dp),
-                    containerColor = Color.White,
-                    contentColor = Color.Black,
-                    shape = CircleShape
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = fabDescription,
-                        modifier = Modifier.size(30.dp)
-                    )
+                    FloatingActionButton(
+                        onClick = onNavigateToNovvin,
+                        modifier = Modifier.size(50.dp),
+                        containerColor = colorScheme.tertiaryContainer,
+                        contentColor = colorScheme.onTertiaryContainer,
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_novvin),
+                            contentDescription = "Abrir Novvin",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(25.dp)
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = fabAction,
+                        modifier = Modifier.size(56.dp),
+                        containerColor = colorScheme.primary,
+                        contentColor = colorScheme.onPrimary,
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = fabDescription,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
                 }
             }
         ) { padding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(InboxBackground)
+                    .background(colorScheme.background)
                     .padding(padding)
             ) {
                 when (selectedTab) {

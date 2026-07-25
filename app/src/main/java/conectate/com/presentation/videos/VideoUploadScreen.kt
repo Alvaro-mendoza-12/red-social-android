@@ -80,15 +80,24 @@ class VideoUploadViewModel @Inject constructor(
     fun updateTags(value: String) { _tags.value = value }
 
     fun setVideoUri(uri: Uri, context: android.content.Context): Boolean {
-        val durationMs = readVideoDuration(uri, context)
-        val mustEdit = durationMs <= 0L || durationMs > MAX_VIDEO_DURATION_MS
+        val info = readVideoInfo(uri, context)
+        val durationMs = info.durationMs
+        val tooLargeForUpload = info.width > 0 && info.height > 0 && (
+            maxOf(info.width, info.height) > 1920 ||
+                minOf(info.width, info.height) > 1080 ||
+                info.width.toLong() * info.height.toLong() > 2_073_600L
+            )
+        val tooManyFrames = info.fps > 31f
+        val mustEdit = durationMs <= 0L || durationMs > MAX_VIDEO_DURATION_MS || tooLargeForUpload || tooManyFrames
 
         _videoUri.value = uri
         _videoDurationMs.value = durationMs
         _requiresEditing.value = mustEdit
         _uploadError.value = when {
             durationMs <= 0L -> "No pudimos validar la duración. Ábrelo en el editor antes de publicar."
-            mustEdit -> "El video dura ${formatDuration(durationMs)}. Recorta una parte de máximo 45 segundos."
+            durationMs > MAX_VIDEO_DURATION_MS -> "El video dura ${formatDuration(durationMs)}. Recorta una parte de máximo 45 segundos."
+            tooLargeForUpload -> "El video supera 1080p. La app lo preparará en el editor antes de publicar."
+            tooManyFrames -> "El video supera 30 FPS. La app lo preparará en el editor antes de publicar."
             else -> null
         }
         return mustEdit
@@ -96,20 +105,37 @@ class VideoUploadViewModel @Inject constructor(
     
     fun setThumbnailUri(uri: Uri?) { _thumbnailUri.value = uri } // Allow nullable
 
-    private fun readVideoDuration(uri: Uri, context: android.content.Context): Long {
+    private data class VideoPickInfo(
+        val durationMs: Long = 0L,
+        val width: Int = 0,
+        val height: Int = 0,
+        val fps: Float = 0f
+    )
+
+    private fun readVideoInfo(uri: Uri, context: android.content.Context): VideoPickInfo {
         return try {
             val retriever = android.media.MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, uri)
-                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                     ?.toLongOrNull()
                     ?: 0L
+                val width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                    ?.toIntOrNull()
+                    ?: 0
+                val height = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    ?.toIntOrNull()
+                    ?: 0
+                val fps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                    ?.toFloatOrNull()
+                    ?: 0f
+                VideoPickInfo(durationMs = durationMs, width = width, height = height, fps = fps)
             } finally {
                 retriever.release()
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            0L
+            VideoPickInfo()
         }
     }
 
@@ -333,7 +359,11 @@ fun VideoUploadScreen(
                                 Spacer(Modifier.width(10.dp))
                                 Text(
                                     text = if (videoDurationMs > 0L) {
-                                        "Selecciona el fragmento de 45 segundos que quieres publicar."
+                                        if (videoDurationMs > 45_000L) {
+                                            "Selecciona el fragmento de 45 segundos que quieres publicar."
+                                        } else {
+                                            "Prepara el video para publicarlo en calidad compatible."
+                                        }
                                     } else {
                                         "Procesa el video en el editor para poder publicarlo."
                                     },
@@ -353,7 +383,7 @@ fun VideoUploadScreen(
                     ) {
                         Icon(Icons.Default.Edit, null)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (requiresEditing) "Recortar ahora" else "Editar video")
+                        Text(if (requiresEditing) "Preparar video" else "Editar video")
                     }
 
                     TextButton(

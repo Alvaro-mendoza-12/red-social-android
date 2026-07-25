@@ -46,7 +46,15 @@ class CommunitiesViewModel @Inject constructor(
                 (it.community.description?.contains(query, ignoreCase = true) ?: false)
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+        .catch { error ->
+            android.util.Log.e("CommunitiesViewModel", "Error cargando comunidades", error)
+            _communitiesState.value = CommunitiesUiState.Error(
+                error.message ?: "No se pudieron cargar las comunidades."
+            )
+            emit(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val combinedCommunities: StateFlow<List<CommunityWithLastMessage>> = combine(
         filteredCommunities,
@@ -60,7 +68,15 @@ class CommunitiesViewModel @Inject constructor(
         refreshExploreSnapshot()
         
         viewModelScope.launch {
-            communityRepository.getDiscoverableCommunitiesFlow().collect { communities ->
+            communityRepository.getDiscoverableCommunitiesFlow()
+                .catch { error ->
+                    android.util.Log.e("CommunitiesViewModel", "Flow de comunidades falló", error)
+                    _communitiesState.value = CommunitiesUiState.Error(
+                        error.message ?: "No se pudieron cargar las comunidades."
+                    )
+                    emit(emptyList())
+                }
+                .collect { communities ->
                 android.util.Log.d("CommunitiesViewModel", "[FLOW] Received ${communities.size} communities from repository")
                 if (communities.isNotEmpty()) {
                     val first = communities.first()
@@ -92,7 +108,11 @@ class CommunitiesViewModel @Inject constructor(
                         CommunityWithLastMessage(community = it, unreadCount = 0)
                     } ?: emptyList()
                     _globalSearchResults.value = searchItems
+                } else {
+                    android.util.Log.w("CommunitiesViewModel", "Búsqueda de comunidades falló: ${result.exceptionOrNull()?.message}")
                 }
+            } catch (error: Exception) {
+                android.util.Log.e("CommunitiesViewModel", "Error buscando comunidades", error)
             } finally {
                 _isSearching.value = false
             }
@@ -106,9 +126,13 @@ class CommunitiesViewModel @Inject constructor(
                 val result = communityRepository.searchCommunities("")
                 if (result.isSuccess) {
                     _globalSearchResults.value = result.getOrDefault(emptyList())
-                        .filter { it.is_public && !it.is_deleted }
+                        .filter { !it.is_deleted }
                         .map { CommunityWithLastMessage(community = it, unreadCount = 0) }
+                } else {
+                    android.util.Log.w("CommunitiesViewModel", "Snapshot explorar falló: ${result.exceptionOrNull()?.message}")
                 }
+            } catch (error: Exception) {
+                android.util.Log.e("CommunitiesViewModel", "Error refrescando explorar", error)
             } finally {
                 _isSearching.value = false
             }
@@ -126,9 +150,16 @@ class CommunitiesViewModel @Inject constructor(
 
     fun refreshCommunities() {
         viewModelScope.launch {
-            communityRepository.syncCommunities()
-            if (_searchQuery.value.isBlank()) {
-                refreshExploreSnapshot()
+            try {
+                communityRepository.syncCommunities()
+                if (_searchQuery.value.isBlank()) {
+                    refreshExploreSnapshot()
+                }
+            } catch (error: Exception) {
+                android.util.Log.e("CommunitiesViewModel", "Error sincronizando comunidades", error)
+                _communitiesState.value = CommunitiesUiState.Error(
+                    error.message ?: "No se pudieron sincronizar las comunidades."
+                )
             }
         }
     }

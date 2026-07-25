@@ -63,14 +63,29 @@ class WebRTCManager(
 
     private fun routeSpeakerphone(audioManager: AudioManager, enabled: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!enabled) {
-                audioManager.clearCommunicationDevice()
-                return }
-            var speaker = audioManager.availableCommunicationDevices.firstOrNull {
-                it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            val preferredDeviceTypes = if (enabled) {
+                listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+            } else {
+                // Keep wired/Bluetooth headsets when present. Otherwise route a
+                // normal audio call through the earpiece instead of leaving the
+                // platform free to select the loudspeaker again.
+                listOf(
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                )
             }
-            if (speaker != null) {
-                audioManager.setCommunicationDevice(speaker)
+
+            val targetDevice = preferredDeviceTypes.firstNotNullOfOrNull { type ->
+                audioManager.availableCommunicationDevices.firstOrNull { it.type == type }
+            }
+            if (targetDevice != null) {
+                audioManager.setCommunicationDevice(targetDevice)
+            } else if (!enabled) {
+                audioManager.clearCommunicationDevice()
             }
             return
         }
@@ -146,6 +161,7 @@ class WebRTCManager(
     private val iceRetryCount = ConcurrentHashMap<String, Int>()
     private val disconnectRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val offerRetryJobs = ConcurrentHashMap<String, Job>()
+    private val localOfferTimeoutJobs = ConcurrentHashMap<String, Job>()
     private val glareRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val ignoreOffer = mutableMapOf<String, Boolean>()
     private val isSettingRemoteAnswerPending = mutableMapOf<String, Boolean>()
@@ -160,6 +176,11 @@ class WebRTCManager(
     private val managedIceRefreshLock = Any()
     @Volatile
     private var managedIceRefreshLatch = java.util.concurrent.CountDownLatch(0)
+    @Volatile
+    private var managedIceExpiresAtEpochSeconds: Long = 0L
+    private var managedIceRefreshJob: Job? = null
+    private val managedIceRefreshSkewSeconds = 5 * 60L
+    private val managedIceRefreshRetryMs = 30_000L
     
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     
@@ -251,6 +272,8 @@ class WebRTCManager(
             disconnectRecoveryJobs.clear()
             offerRetryJobs.values.forEach { it.cancel() }
             offerRetryJobs.clear()
+            localOfferTimeoutJobs.values.forEach { it.cancel() }
+            localOfferTimeoutJobs.clear()
             glareRecoveryJobs.values.forEach { it.cancel() }
             glareRecoveryJobs.clear()
             remoteUserIds.clear() // v7.2.4: Clear User ID mapping
@@ -387,6 +410,8 @@ class WebRTCManager(
         disconnectRecoveryJobs.clear()
         offerRetryJobs.values.forEach { it.cancel() }
         offerRetryJobs.clear()
+        localOfferTimeoutJobs.values.forEach { it.cancel() }
+        localOfferTimeoutJobs.clear()
         glareRecoveryJobs.values.forEach { it.cancel() }
         glareRecoveryJobs.clear()
         
@@ -407,6 +432,7 @@ class WebRTCManager(
         localAudioSource = null
 
         statsScope.cancel()
+        managedIceRefreshJob?.cancel()
         asyncScope.cancel()
     }
 
@@ -458,12 +484,7 @@ class WebRTCManager(
                 .filter { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }
                 .forEach { transceiver ->
                     transceiver.sender.setTrack(track, false)
-                    transceiver.direction =
-                        if (track != null) {
-                            RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-                        } else {
-                            RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
-                        }
+                    transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                 }
         }
     }
@@ -488,7 +509,7 @@ class WebRTCManager(
             ?: pc.addTransceiver(
                 MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
                 RtpTransceiver.RtpTransceiverInit(
-                    RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
+                    RtpTransceiver.RtpTransceiverDirection.SEND_RECV,
                     listOf("stream")
                 )
             )
@@ -567,6 +588,7 @@ class WebRTCManager(
         }
         disconnectRecoveryJobs.remove(cleanOldKey)?.let { disconnectRecoveryJobs[cleanNewKey] = it }
         offerRetryJobs.remove(cleanOldKey)?.let { offerRetryJobs[cleanNewKey] = it }
+        localOfferTimeoutJobs.remove(cleanOldKey)?.let { localOfferTimeoutJobs[cleanNewKey] = it }
         glareRecoveryJobs.remove(cleanOldKey)?.let { glareRecoveryJobs[cleanNewKey] = it }
         ignoreOffer.remove(cleanOldKey)?.let { ignoreOffer[cleanNewKey] = it }
         isSettingRemoteAnswerPending.remove(cleanOldKey)?.let { isSettingRemoteAnswerPending[cleanNewKey] = it }
@@ -770,18 +792,17 @@ class WebRTCManager(
             Log.i("WebRTC", "🎤 Audio track attached to $requestedKey")
         } ?: Log.w("WebRTC", "⚠️ No local audio track available for $requestedKey")
 
-        // 2. Video: Start as SEND_RECV but only attach track if active
+        // 2. Negotiate video in both directions from the beginning. A camera or
+        // screen track can then be attached later without a new SDP exchange.
         var videoTransceiver = pc.addTransceiver(
             MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV, listOf("stream"))
         )
         activeOutgoingVideoTrack()?.let { track ->
             videoTransceiver.sender.setTrack(track, false)
-            videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
             Log.i("WebRTC", "📹 Video track attached to $requestedKey")
         } ?: run {
-            videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
-            Log.d("WebRTC", "📹 No local video track, setting to RECV_ONLY for $requestedKey")
+            Log.d("WebRTC", "📹 No local video track; keeping SEND_RECV m-line for $requestedKey")
         }
 
         pc.setAudioRecording(localAudioTrack?.enabled() ?: true)
@@ -820,8 +841,9 @@ class WebRTCManager(
     }
 
     private fun fetchManagedIceServers() {
+        var loaded = false
         try {
-            fetchSelfHostedIceServers()
+            loaded = fetchSelfHostedIceServers()
         } catch (e: Exception) {
             Log.e("WebRTC", "Managed TURN fetch exception: ${e.message}")
             e.printStackTrace()
@@ -830,6 +852,24 @@ class WebRTCManager(
                 "WebRTC",
                 "Managed TURN setup finished. Using ${if (dynamicIceServers.isNotEmpty()) "managed TURN + fallback" else "fallback ICE only"}"
             )
+            if (!loaded && hasManagedTurnConfigured) {
+                scheduleManagedIceRefresh(managedIceRefreshRetryMs)
+            }
+        }
+    }
+
+    private fun scheduleManagedIceRefresh(delayMs: Long? = null) {
+        if (!hasManagedTurnConfigured) return
+        val nowSeconds = System.currentTimeMillis() / 1_000L
+        val calculatedDelayMs = delayMs ?: (
+            (managedIceExpiresAtEpochSeconds - nowSeconds - managedIceRefreshSkewSeconds)
+                .coerceAtLeast(30L) * 1_000L
+        )
+        managedIceRefreshJob?.cancel()
+        managedIceRefreshJob = asyncScope.launch {
+            delay(calculatedDelayMs)
+            Log.i("WebRTC", "Refreshing managed TURN credentials before expiration")
+            refreshManagedIceServers(force = true)
         }
     }
 
@@ -904,6 +944,8 @@ class WebRTCManager(
             return false
         }
 
+        managedIceExpiresAtEpochSeconds = envelope.optLong("expiresAtEpochSeconds", 0L)
+
         synchronized(dynamicIceServers) {
             dynamicIceServers.clear()
             val iceServersObj = envelope.get("iceServers")
@@ -917,6 +959,9 @@ class WebRTCManager(
         }
 
         Log.i("WebRTC", "Managed TURN configuration loaded: ${dynamicIceServers.size} servers")
+        if (managedIceExpiresAtEpochSeconds > 0L) {
+            scheduleManagedIceRefresh()
+        }
         executor.execute {
             applyUpdatedIceConfigurationToActivePeers()
         }
@@ -1008,6 +1053,10 @@ class WebRTCManager(
             override fun onRenegotiationNeeded() {
                 executor.execute {
                     var pc = peerConnections[socketId] ?: return@execute
+                    if (localSocketId.isBlank()) {
+                        Log.w("WebRTC", "Skipping offer: localSocketId not yet set")
+                        return@execute
+                    }
                     var sigState = pc.signalingState()
                     var iceState = pc.iceConnectionState()
                     
@@ -1090,11 +1139,7 @@ class WebRTCManager(
                             } else if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
                                 var activeVideoTrack = activeOutgoingVideoTrack()
                                 t.sender.setTrack(activeVideoTrack, false)
-                                t.direction = if (activeVideoTrack != null) {
-                                    RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-                                } else {
-                                    RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
-                                }
+                                t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                             }
                         }
                         pc?.setAudioPlayout(remoteAudioPlaybackEnabled)
@@ -1131,11 +1176,7 @@ class WebRTCManager(
                             var videoTransceiver = getOrAddVideoTransceiver(pc)
                             var activeVideoTrack = activeOutgoingVideoTrack()
                             videoTransceiver.sender.setTrack(activeVideoTrack, false)
-                            videoTransceiver.direction = if (activeVideoTrack != null) {
-                                RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-                            } else {
-                                RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
-                            }
+                            videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
 
                             requestOffer(
                                 socketId = socketId,
@@ -1162,16 +1203,22 @@ class WebRTCManager(
                             Log.w("WebRTC", "🔄 Attempting ICE RESTART for $socketId (Attempt ${retries + 1}/$MAX_ICE_RETRIES)...")
                             iceRetryCount[socketId] = retries + 1
                             
-                            // Re-fetch configuration so an ICE restart uses the latest managed TURN credentials.
-                            val refreshedIceServers = currentIceServersSnapshot()
-                            pc.setConfiguration(buildRtcConfiguration(refreshedIceServers))
-
                             asyncScope.launch {
-                                delay(2000) // 2s wait before retry
-                                executor.execute {
+                                // A network hand-off or a long session may outlive the
+                                // credential used by the original allocation. Refresh it
+                                // before ICE restart instead of reusing stale ICE servers.
+                                refreshManagedIceServers(force = true)
+                                activeManagedIceRefreshLatch()?.await(
+                                    managedIceWaitTimeoutMs,
+                                    java.util.concurrent.TimeUnit.MILLISECONDS
+                                )
+                                delay(500)
+                                executor.execute retryPeerConnection@{
+                                    val activePc = peerConnections[socketId] ?: return@retryPeerConnection
+                                    activePc.setConfiguration(buildRtcConfiguration(currentIceServersSnapshot()))
                                     requestOffer(
                                         socketId = socketId,
-                                        pc = pc,
+                                        pc = activePc,
                                         iceRestart = true,
                                         reason = "ice-failed-recovery",
                                         retryDelayMs = 600L
@@ -1199,7 +1246,12 @@ class WebRTCManager(
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                 Log.d("WebRTC", "📡 ICE Gathering State: $state ($socketId)")
             }
-            override fun onAddStream(stream: MediaStream) {}
+            override fun onAddStream(stream: MediaStream) {
+                // Compatibility with Play Store builds that still publish a
+                // legacy MediaStream instead of Unified Plan transceivers.
+                stream.audioTracks.forEach { handleIncomingTrack(socketId, it) }
+                stream.videoTracks.forEach { handleIncomingTrack(socketId, it) }
+            }
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
             override fun onRemoveStream(stream: MediaStream) {}
         })
@@ -1286,6 +1338,7 @@ class WebRTCManager(
             Log.d("WebRTC", "Setting Remote Description (ANSWER) for $peerKey")
             isSettingRemoteAnswerPending[peerKey] = true
             offerRetryJobs.remove(peerKey)?.cancel()
+            localOfferTimeoutJobs.remove(peerKey)?.cancel()
             pc.setRemoteDescription(object : SdpObserverAdapter() {
                 override fun onSetSuccess() {
                     Log.d("WebRTC", "Remote Description (ANSWER) SET successfully for $peerKey")
@@ -1432,6 +1485,27 @@ class WebRTCManager(
                             put("userId", currentUserId)
                         })
                         makingOffer[socketId] = false
+                        localOfferTimeoutJobs.remove(socketId)?.cancel()
+                        localOfferTimeoutJobs[socketId] = asyncScope.launch {
+                            delay(5_000L)
+                            executor.execute {
+                                localOfferTimeoutJobs.remove(socketId)
+                                val activePc = peerConnections[socketId] ?: return@execute
+                                if (activePc.signalingState() != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
+                                    return@execute
+                                }
+                                Log.w("WebRTC", "Offer answer timeout for $socketId; rolling back")
+                                activePc.setLocalDescription(object : SdpObserverAdapter() {
+                                    override fun onSetSuccess() {
+                                        makingOffer[socketId] = false
+                                    }
+
+                                    override fun onSetFailure(s: String?) {
+                                        Log.e("WebRTC", "Offer timeout rollback failed for $socketId: $s")
+                                    }
+                                }, SessionDescription(SessionDescription.Type.ROLLBACK, ""))
+                            }
+                        }
                     }
                     override fun onSetFailure(s: String?) {
                         makingOffer[socketId] = false
@@ -1507,9 +1581,18 @@ class WebRTCManager(
         isFront: Boolean = true,
         targetWidth: Int? = null,
         targetHeight: Int? = null,
-        targetFps: Int? = null
+        targetFps: Int? = null,
+        onProjectionStopped: () -> Unit = {},
+        onComplete: (Boolean) -> Unit = {}
     ) {
         executor.execute {
+            var completionSent = false
+            fun complete(success: Boolean) {
+                if (!completionSent) {
+                    completionSent = true
+                    onComplete(success)
+                }
+            }
             try {
                 Log.d("WebRTCManager", "Starting video: screen=$isScreen")
 
@@ -1519,17 +1602,36 @@ class WebRTCManager(
                 var previousTrack = _localVideoTrackFlow.value
 
                 // 1. Build the new pipeline first so source switches do not blank the UI.
+                var screenCapturerRef: VideoCapturer? = null
                 var capturer = if (isScreen) {
                     val projectionIntent = intent ?: run {
                         Log.e("WebRTCManager", "Screen share requested without MediaProjection intent")
+                        complete(false)
                         return@execute
                     }
-                    ScreenCapturerAndroid(projectionIntent, object : MediaProjection.Callback() {})
+                    ScreenCapturerAndroid(
+                        projectionIntent,
+                        object : MediaProjection.Callback() {
+                            override fun onStop() {
+                                executor.execute {
+                                    if (videoCapturer === screenCapturerRef) {
+                                        onProjectionStopped()
+                                    }
+                                }
+                            }
+                        }
+                    ).also { screenCapturerRef = it }
                 } else {
                     createCameraCapturer(isFront)
-                } ?: return@execute
+                } ?: run {
+                    complete(false)
+                    return@execute
+                }
 
-                var f = factory ?: return@execute
+                var f = factory ?: run {
+                    complete(false)
+                    return@execute
+                }
                 var source = f.createVideoSource(isScreen)
                 var helper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.eglBaseContext)
 
@@ -1592,6 +1694,7 @@ class WebRTCManager(
                 if (!startedCapture) {
                     releaseVideoPipeline(capturer, helper, source)
                     Log.e("WebRTCManager", "No compatible capture profile could be started")
+                    complete(false)
                     return@execute
                 }
 
@@ -1612,13 +1715,12 @@ class WebRTCManager(
                     }
                 releaseVideoPipeline(previousCapturer, previousHelper, previousSource)
                 
-                // v4.7.1: Wrap suspend call properly
-                asyncScope.launch {
-                    delay(300)
-                    renegotiateAll(iceRestart = false, force = true)
-                }
+                // replaceTrack publishes through the video m-line negotiated at
+                // connection setup and avoids an offer/answer glare race.
+                complete(true)
             } catch (e: Exception) {
                 Log.e("WebRTCManager", "Error starting video: ${e.message}")
+                complete(false)
             }
         }
     }
@@ -1639,7 +1741,6 @@ class WebRTCManager(
                 _localVideoTrackFlow.value = null
                 updateLocalVideoSenders(null)
                 releaseVideoPipeline(previousCapturer, previousHelper, previousSource)
-                renegotiateAll(iceRestart = false, force = true)
             } catch (e: Exception) {
                 Log.e("WebRTCManager", "Error in stopVideo: ${e.message}")
             }
@@ -1662,11 +1763,7 @@ class WebRTCManager(
                     val previousTrackId = videoTransceiver.sender.track()?.id()
                     videoTransceiver.sender.setTrack(vt, false)
                     val oldDir = videoTransceiver.direction
-                    val newDirection = if (vt != null) {
-                        RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-                    } else {
-                        RtpTransceiver.RtpTransceiverDirection.RECV_ONLY
-                    }
+                    val newDirection = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                     videoTransceiver.direction = newDirection
                     
                     Log.d("WebRTCManager", "Connection $id: Video direction set to ${videoTransceiver.direction}")
@@ -1747,6 +1844,7 @@ class WebRTCManager(
             iceCandidateQueue.remove(peerKey)
             disconnectRecoveryJobs.remove(peerKey)?.cancel()
             offerRetryJobs.remove(peerKey)?.cancel()
+            localOfferTimeoutJobs.remove(peerKey)?.cancel()
             glareRecoveryJobs.remove(peerKey)?.cancel()
             ignoreOffer.remove(peerKey)
             isSettingRemoteAnswerPending.remove(peerKey)
@@ -1781,7 +1879,7 @@ class WebRTCManager(
             outgoingVideoEnabled = enabled
             updateLocalVideoSenders(activeOutgoingVideoTrack())
             if (renegotiate) {
-                renegotiateAll(iceRestart = false, force = true)
+                renegotiateAll(iceRestart = false, force = false)
             }
         }
     }

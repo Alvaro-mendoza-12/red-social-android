@@ -13,6 +13,8 @@ BACKUP_ROOT="${BACKUP_ROOT:-$HOME/conectate-backups}"
 SYSTEMD_DIR="/etc/systemd/system"
 
 chmod +x \
+  "$ROOT_DIR/scripts/apply-root-ops-hotfix.sh" \
+  "$ROOT_DIR/scripts/start-stack.sh" \
   "$ROOT_DIR/scripts/backup-ubuntu-primary.sh" \
   "$ROOT_DIR/scripts/verify-backup.sh" \
   "$ROOT_DIR/scripts/health-watchdog.sh" \
@@ -34,9 +36,9 @@ Type=oneshot
 User=$RUN_USER
 Group=$RUN_GROUP
 WorkingDirectory=$ROOT_DIR
-ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStart=$ROOT_DIR/scripts/start-stack.sh
 RemainAfterExit=yes
-TimeoutStartSec=180
+TimeoutStartSec=600
 
 [Install]
 WantedBy=multi-user.target

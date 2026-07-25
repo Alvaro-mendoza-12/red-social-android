@@ -1414,6 +1414,9 @@ export function MessagesPage() {
           </div>
         </div>
         <div className="row-actions wrap messages-overview-actions">
+          <Link className="primary-btn" to="/app/messages/novvin">
+            Abrir Novvin
+          </Link>
           <button
             className="ghost-btn"
             type="button"
@@ -1434,6 +1437,9 @@ export function MessagesPage() {
           <Link className="ghost-btn" to="/app/voice">
             Salas de voz
           </Link>
+          <Link className="ghost-btn" to="/app/proximity">
+            Personas cerca
+          </Link>
           <Link className="ghost-btn" to="/app/notifications">
             Notificaciones
           </Link>
@@ -1453,6 +1459,28 @@ export function MessagesPage() {
                 <p className="messages-inbox-subtitle">Chats, grupos y comunidad.</p>
               </div>
               <div className="row-actions messages-head-actions">
+                <Link
+                  className="icon-btn-sm header-icon-btn"
+                  to="/app/messages/novvin"
+                  title="Abrir Novvin"
+                  aria-label="Abrir Novvin"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3zm6 10l.8 2.7L21 17l-2.2 1.3L18 21l-.8-2.7L15 17l2.2-1.3L18 13z" fill="currentColor" />
+                  </svg>
+                </Link>
+                <Link
+                  className="icon-btn-sm header-icon-btn"
+                  to="/app/proximity"
+                  title="Personas cerca"
+                  aria-label="Abrir radar de proximidad"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <circle cx="12" cy="12" r="2" fill="currentColor" />
+                    <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                  </svg>
+                </Link>
                 <button
                   className="icon-btn-sm header-icon-btn"
                   type="button"
@@ -1586,6 +1614,9 @@ export function MessagesPage() {
                 <h3>Tus mensajes</h3>
                 <p>Selecciona una conversación o entra por un atajo rápido para seguir hablando.</p>
                 <div className="messages-empty-actions">
+                  <Link className="primary-btn" to="/app/messages/novvin">
+                    Hablar con Novvin
+                  </Link>
                   <button
                     className="ghost-btn"
                     type="button"
@@ -1604,6 +1635,9 @@ export function MessagesPage() {
                   </Link>
                   <Link className="ghost-btn" to="/app/voice">
                     Ir a voz
+                  </Link>
+                  <Link className="ghost-btn" to="/app/proximity">
+                    Personas cerca
                   </Link>
                 </div>
                 <div className="messages-empty-grid">

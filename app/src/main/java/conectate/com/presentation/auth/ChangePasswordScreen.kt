@@ -118,14 +118,14 @@ fun ChangePasswordScreen(
 
             Button(
                 onClick = {
-                    if (password.length >= 6 && password == confirmPassword) {
+                    if (password.length >= 8 && password == confirmPassword) {
                         viewModel.updatePassword(password)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                enabled = authState !is AuthState.Loading && password.isNotEmpty() && password == confirmPassword,
+                enabled = authState !is AuthState.Loading && password.length >= 8 && password == confirmPassword,
                 shape = MaterialTheme.shapes.medium
             ) {
                 if (authState is AuthState.Loading) {

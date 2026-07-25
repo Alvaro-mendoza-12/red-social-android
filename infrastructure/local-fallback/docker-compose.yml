@@ -32,11 +32,17 @@ services:
       STORAGE_ROOT: /data/storage
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
+      AI_INTERNAL_URL: http://ai-chatbot:3010
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-3000}
+      AI_CHAT_REQUEST_TIMEOUT_MS: ${AI_CHAT_REQUEST_TIMEOUT_MS:-3000}
+      TRANSLATION_INTERNAL_URL: http://host.docker.internal:5000
       FIREBASE_SERVICE_ACCOUNT_FILE: /run/secrets/firebase-service-account.json
     volumes:
       - ./imports:/imports:ro
       - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
       - conectate-fallback-storage:/data/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${FALLBACK_API_PORT:-3001}:3001"
     depends_on:
@@ -51,6 +57,55 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ai-chatbot:
+    build:
+      context: ./ai-chatbot
+    container_name: conectate-local-fallback-ai-main
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+      AI_DATA_DIR: /data/ai
+      AI_MODEL_FILE: /data/ai/model.json
+      AI_FEEDBACK_FILE: /data/ai/feedback.jsonl
+      AI_CONFIDENCE_THRESHOLD: ${AI_CONFIDENCE_THRESHOLD:-0.34}
+      AI_HIDDEN_SIZE: ${AI_HIDDEN_SIZE:-512}
+      AI_TRAIN_EPOCHS: ${AI_TRAIN_EPOCHS:-100}
+      AI_LEARNING_RATE: ${AI_LEARNING_RATE:-0.06}
+      AI_FEEDBACK_MAX_BYTES: ${AI_FEEDBACK_MAX_BYTES:-16777216}
+      AI_KNOWLEDGE_ENABLED: ${AI_KNOWLEDGE_ENABLED:-true}
+      AI_KNOWLEDGE_THRESHOLD: ${AI_KNOWLEDGE_THRESHOLD:-0.34}
+      AI_KNOWLEDGE_HIDDEN_SIZE: ${AI_KNOWLEDGE_HIDDEN_SIZE:-96}
+      AI_KNOWLEDGE_EPOCHS: ${AI_KNOWLEDGE_EPOCHS:-140}
+      AI_KNOWLEDGE_LEARNING_RATE: ${AI_KNOWLEDGE_LEARNING_RATE:-0.055}
+      NODE_OPTIONS: --max-old-space-size=${AI_NODE_HEAP_MB:-320}
+    volumes:
+      - ${AI_DATA_ROOT:-./ai-chatbot-data}:/data/ai
+    mem_limit: ${AI_MEMORY_LIMIT:-512m}
+    cpus: "${AI_CPU_LIMIT:-0.75}"
+    pids_limit: 64
+    networks:
+      default:
+        aliases:
+          - ai-chatbot
+          - conectate-ai-chatbot
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   signaling:
     build:
@@ -134,7 +189,8 @@ services:
     profiles: ["turn"]
     network_mode: host
     command:
-      - -n
+      - -c
+      - /dev/null
       - --log-file=stdout
       - --listening-port=${TURN_PORT:-3478}
       - --min-port=${TURN_MIN_PORT:-49160}
@@ -146,8 +202,16 @@ services:
       - --fingerprint
       - --no-multicast-peers
       - --no-cli
+      - --no-tls
+      - --no-dtls
       - --stale-nonce=600
       - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+    healthcheck:
+      test: ["CMD-SHELL", "turnutils_stunclient -p ${TURN_PORT:-3478} 127.0.0.1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   conectate-fallback-db:

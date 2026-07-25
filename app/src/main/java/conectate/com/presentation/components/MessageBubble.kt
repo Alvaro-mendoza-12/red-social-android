@@ -68,6 +68,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.ContentScale
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.data.localfallback.UbuntuStorageUrl
 
 @Composable
 @androidx.compose.foundation.ExperimentalFoundationApi
@@ -78,6 +82,7 @@ fun ImageMessageBubble(
     onClick: () -> Unit,
     onResolveUrl: suspend (String) -> String? = { it }
 ) {
+    val context = LocalContext.current
     var resolvedUrl by remember(message.media_url) { mutableStateOf<String?>(null) }
     
     LaunchedEffect(message.media_url) {
@@ -111,8 +116,12 @@ fun ImageMessageBubble(
                          )
                     }
                 } else {
+                    val imageUrl = UbuntuStorageUrl.rewrite(resolvedUrl ?: message.media_url)
+                    val imageRequest = remember(imageUrl) {
+                        MediaImageRequestFactory.preview(context, imageUrl)
+                    }
                     SubcomposeAsyncImage(
-                        model = resolvedUrl ?: message.media_url,
+                        model = imageRequest,
                         contentDescription = "Imagen",
                         modifier = Modifier
                             .fillMaxWidth()
@@ -303,6 +312,7 @@ fun MessageBubble(
     onOpenContactChat: (ChatContactPayload) -> Unit = {},
     onAddToDeviceContacts: (ChatContactPayload) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var offsetX by remember { mutableStateOf(0f) }
     val replyThreshold = 100f
     
@@ -310,12 +320,7 @@ fun MessageBubble(
     
     LaunchedEffect(message.media_url) {
         if (message.media_url != null) {
-            // Resolve if it's a relative path OR a Supabase URL (that needs signing/refreshing)
-            if (!message.media_url.startsWith("http") || message.media_url.contains("supabase")) {
-                resolvedUrl = onResolveUrl(message.media_url)
-            } else {
-                resolvedUrl = message.media_url
-            }
+            resolvedUrl = onResolveUrl(message.media_url) ?: message.media_url
         }
     }
 
@@ -544,6 +549,9 @@ fun MessageBubble(
                          )
                     }
                 } else {
+                    val mediaPreviewRequest = remember(resolvedUrl, message.media_url) {
+                        MediaImageRequestFactory.preview(context, resolvedUrl ?: message.media_url)
+                    }
                     when (message.content_type) {
                     "view_once_image", "view_once_video" -> {
                         Row(
@@ -583,7 +591,7 @@ fun MessageBubble(
                     "image", "gif" -> {
                         Box(modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
                             SubcomposeAsyncImage(
-                                model = resolvedUrl ?: message.media_url, 
+                                model = mediaPreviewRequest,
                                 contentDescription = "Imagen",
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -629,7 +637,7 @@ fun MessageBubble(
                         if (!message.media_url.isNullOrBlank()) {
                             Box(modifier = Modifier.clip(RoundedCornerShape(10.dp))) {
                                 SubcomposeAsyncImage(
-                                    model = resolvedUrl ?: message.media_url,
+                                    model = mediaPreviewRequest,
                                     contentDescription = "Sticker",
                                     modifier = Modifier
                                         .sizeIn(maxWidth = 112.dp, maxHeight = 112.dp),

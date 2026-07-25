@@ -16,6 +16,13 @@ class ThemePreferences @Inject constructor(
     private val _isDarkMode = MutableStateFlow(prefs.getBoolean("is_dark_mode", false))
     val isDarkMode: StateFlow<Boolean> = _isDarkMode
 
+    private val _appTheme = MutableStateFlow(
+        AppThemeOption.fromStorage(
+            prefs.getString("app_theme", AppThemeOption.CONECTATE.storageValue)
+        )
+    )
+    val appTheme: StateFlow<AppThemeOption> = _appTheme
+
     private val _profileAvatarVideosMuted = MutableStateFlow(
         prefs.getBoolean("profile_avatar_videos_muted", true)
     )
@@ -36,6 +43,11 @@ class ThemePreferences @Inject constructor(
     fun setDarkMode(enabled: Boolean) {
         prefs.edit().putBoolean("is_dark_mode", enabled).apply()
         _isDarkMode.value = enabled
+    }
+
+    fun setAppTheme(theme: AppThemeOption) {
+        prefs.edit().putString("app_theme", theme.storageValue).apply()
+        _appTheme.value = theme
     }
 
     fun setProfileAvatarVideosMuted(enabled: Boolean) {

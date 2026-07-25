@@ -297,8 +297,12 @@ class StickerRepository @Inject constructor(
             return@withContext Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir sticker"))
         }
 
-        val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", remotePath)).orEmpty()
+        val remoteKey = upload.getOrThrow().Key ?: remotePath
+        val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", remoteKey)).orEmpty()
         if (mediaUrl.isBlank()) {
+            storageService.deleteFile("chat-media", remoteKey).onFailure { error ->
+                android.util.Log.w("StickerRepository", "No se pudo limpiar el sticker sin URL", error)
+            }
             return@withContext Result.failure(Exception("No se pudo generar URL del sticker"))
         }
 

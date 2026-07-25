@@ -3,6 +3,8 @@ package conectate.com.data.local.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import conectate.com.data.model.VideoComment
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 
 @Entity(tableName = "video_comments")
 data class VideoCommentEntity(
@@ -17,7 +19,10 @@ data class VideoCommentEntity(
     val createdAt: String,
     val isPosted: Boolean = true, // False if pending upload
     val contentType: String = "text",
-    val mediaUrl: String? = null
+    val mediaUrl: String? = null,
+    val reactionsJson: String = "{}",
+    val myReaction: String? = null,
+    val updatedAt: String = ""
 ) {
     fun toDomain(): VideoComment {
         return VideoComment(
@@ -31,7 +36,12 @@ data class VideoCommentEntity(
             created_at = createdAt,
             parentId = parentId,
             contentType = contentType,
-            mediaUrl = mediaUrl
+            mediaUrl = mediaUrl,
+            reactions = runCatching {
+                kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(reactionsJson)
+            }.getOrDefault(emptyMap()),
+            myReaction = myReaction,
+            updatedAt = updatedAt
         )
     }
 
@@ -58,7 +68,10 @@ data class VideoCommentEntity(
                 createdAt = domain.created_at,
                 isPosted = true,
                 contentType = domain.contentType,
-                mediaUrl = domain.mediaUrl
+                mediaUrl = domain.mediaUrl,
+                reactionsJson = kotlinx.serialization.json.Json.encodeToString(domain.reactions),
+                myReaction = domain.myReaction,
+                updatedAt = domain.updatedAt
             )
         }
 

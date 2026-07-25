@@ -51,6 +51,44 @@ type SuspendedProfile = {
   suspensionCount: number
 }
 
+type AdminBadge = {
+  id: string
+  name: string
+  description: string
+  icon: string
+  color: string
+}
+
+type AdminFrame = { id: string; name: string }
+
+type AdminUser = {
+  id: string
+  local_id: string
+  email: string
+  display_name: string
+  username: string
+  avatar_url: string
+  created_at: string | null
+  last_login_at: string | null
+  sync_source: string
+  is_admin: boolean
+  is_test_account: boolean
+  is_verified: boolean
+  is_suspended: boolean
+  suspended_until: string | null
+  suspension_reason: string | null
+  badges: AdminBadge[]
+  profile_frame: string
+  content?: {
+    posts: number
+    videos: number
+    moments: number
+    reports: number
+    storage_objects: number
+    storage_bytes: string | number
+  }
+}
+
 type ModerationEvent = {
   id: string
   actorId: string
@@ -178,6 +216,17 @@ export function AdminModerationPage() {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [adminUsersTotal, setAdminUsersTotal] = useState(0)
+  const [adminUsersQuery, setAdminUsersQuery] = useState('')
+  const [selectedAdminUser, setSelectedAdminUser] = useState<AdminUser | null>(null)
+  const [adminBadges, setAdminBadges] = useState<AdminBadge[]>([])
+  const [adminFrames, setAdminFrames] = useState<AdminFrame[]>([])
+  const [adminUserLoading, setAdminUserLoading] = useState(false)
+  const [adminMutationUserId, setAdminMutationUserId] = useState<string | null>(null)
+  const [deleteAdminUser, setDeleteAdminUser] = useState<AdminUser | null>(null)
+  const [deleteAdminReason, setDeleteAdminReason] = useState('')
+  const [deleteAdminConfirmation, setDeleteAdminConfirmation] = useState('')
   const [videoReports, setVideoReports] = useState<VideoReport[]>([])
   const [videoStatusById, setVideoStatusById] = useState<Record<string, string>>({})
   const [videoNoteById, setVideoNoteById] = useState<Record<string, string>>({})
@@ -314,39 +363,77 @@ export function AdminModerationPage() {
   }, [filteredUserReports, userSelectedById])
 
   const loadAdminState = useCallback(async () => {
-    const client = getDataClient()
-    if (!client || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
     setLoading(true)
+    setError(null)
     try {
-      const { data, error: rpcError } = await client.rpc('is_current_user_admin', { p_user_id: user.id })
-      if (!rpcError) {
-        setIsAdmin(Boolean(data))
+      if (isUbuntuPrimary) {
+        await fallbackApiJson<{ isAdmin: true }>('/v1/data/admin/access')
+        setIsAdmin(true)
         return
       }
-
-      const { data: profileRows, error: profileError } = await client
-        .from('profiles')
-        .select('is_admin,email')
-        .eq('id', user.id)
-        .limit(1)
-      if (profileError) throw profileError
-      const profile = ((profileRows ?? []) as GenericRow[])[0] ?? {}
-      const email = textOf(profile, ['email'], '').toLowerCase()
-      setIsAdmin(
-        Boolean(profile.is_admin) ||
-          email === 'gamergamerff004@gmail.com' ||
-          email === 'alvaromendozamarin004@gmail.com' ||
-          email === 'gamergamerff017@gmail.com',
-      )
+      const client = getDataClient()
+      if (!client) throw new Error('Backend de datos no configurado')
+      const { data, error: rpcError } = await client.rpc('is_current_user_admin', { p_user_id: user.id })
+      if (rpcError) throw rpcError
+      setIsAdmin(Boolean(data))
     } catch (caught) {
+      setIsAdmin(false)
       setError(friendlyError(caught, 'No se pudo validar admin'))
     } finally {
       setLoading(false)
     }
   }, [user])
+
+  const loadAdminCatalog = useCallback(async () => {
+    if (!isUbuntuPrimary || !isAdmin) return
+    try {
+      const payload = await fallbackApiJson<{ badges: AdminBadge[]; frames: AdminFrame[] }>('/v1/data/admin/catalog')
+      setAdminBadges(payload.badges ?? [])
+      setAdminFrames(payload.frames ?? [])
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo cargar el catálogo de insignias y marcos'))
+    }
+  }, [isAdmin])
+
+  const loadAdminUsers = useCallback(async (search = '') => {
+    if (!isUbuntuPrimary || !isAdmin) return
+    setAdminUserLoading(true)
+    try {
+      const params = new URLSearchParams({ limit: '100' })
+      if (search.trim()) params.set('search', search.trim())
+      const payload = await fallbackApiJson<{ items: AdminUser[]; total: number }>(
+        `/v1/data/admin/users?${params.toString()}`,
+      )
+      setAdminUsers(payload.items ?? [])
+      setAdminUsersTotal(Number(payload.total) || 0)
+      setSelectedAdminUser((current) =>
+        current && (payload.items ?? []).some((entry) => entry.id === current.id) ? current : null,
+      )
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudieron cargar los usuarios'))
+    } finally {
+      setAdminUserLoading(false)
+    }
+  }, [isAdmin])
+
+  const loadAdminUserDetail = useCallback(async (userId: string) => {
+    setAdminUserLoading(true)
+    setError(null)
+    try {
+      const payload = await fallbackApiJson<{ user: AdminUser }>(
+        `/v1/data/admin/users/${encodeURIComponent(userId)}`,
+      )
+      setSelectedAdminUser(payload.user)
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo cargar el detalle del usuario'))
+    } finally {
+      setAdminUserLoading(false)
+    }
+  }, [])
 
   const loadVideoReports = useCallback(async () => {
     const client = getDataClient()
@@ -448,15 +535,28 @@ export function AdminModerationPage() {
 
   useEffect(() => {
     if (!isAdmin) return
-    void Promise.all([loadVideoReports(), loadUserReports(), loadSuspendedProfiles(), loadEvents()])
-  }, [isAdmin, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
+    void Promise.all([
+      loadAdminCatalog(),
+      loadAdminUsers(''),
+      loadVideoReports(),
+      loadUserReports(),
+      loadSuspendedProfiles(),
+      loadEvents(),
+    ])
+  }, [isAdmin, loadAdminCatalog, loadAdminUsers, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
 
   useEffect(() => {
     if (isUbuntuPrimary) {
       return subscribeUbuntuRealtime({
         channel: 'admin:live',
         onEvent: () => {
-          void Promise.all([loadVideoReports(), loadUserReports(), loadSuspendedProfiles(), loadEvents()])
+          void Promise.all([
+            loadAdminUsers(adminUsersQuery),
+            loadVideoReports(),
+            loadUserReports(),
+            loadSuspendedProfiles(),
+            loadEvents(),
+          ])
         },
       })
     }
@@ -479,7 +579,7 @@ export function AdminModerationPage() {
     return () => {
       void supabase?.removeChannel(channel)
     }
-  }, [isAdmin, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
+  }, [adminUsersQuery, isAdmin, loadAdminUsers, loadEvents, loadSuspendedProfiles, loadUserReports, loadVideoReports])
 
   useEffect(() => {
     const validIds = new Set(filteredVideoReports.map((report) => report.id))
@@ -527,6 +627,26 @@ export function AdminModerationPage() {
     const durationUnit = options?.durationUnit ?? suspendDurationUnit
     const permanent = options?.permanent ?? suspendPermanent
     const reason = options?.reason ?? (suspendReason.trim() || null)
+
+    if (isUbuntuPrimary) {
+      if (!reason) throw new Error('La razón de suspensión es obligatoria')
+      const days = permanent
+        ? 0
+        : Math.max(1, Math.ceil(
+            durationUnit === 'minutes'
+              ? durationValue / 1440
+              : durationUnit === 'hours'
+                ? durationValue / 24
+                : durationUnit === 'years'
+                  ? durationValue * 365
+                  : durationValue,
+          ))
+      await fallbackApiJson('/v1/data/admin/suspend', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, reason, days }),
+      })
+      return
+    }
 
     const extendedResult = await client.rpc('secure_admin_set_user_suspension', {
       p_user_id: userId,
@@ -663,6 +783,14 @@ export function AdminModerationPage() {
     setSuspensionLoadingById((current) => ({ ...current, [userId]: true }))
     setError(null)
     try {
+      if (isUbuntuPrimary) {
+        await fallbackApiJson('/v1/data/admin/unsuspend', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: userId.trim(), reason: 'Reactivación desde el panel web' }),
+        })
+        await Promise.all([loadSuspendedProfiles(), loadAdminUsers(adminUsersQuery)])
+        return
+      }
       const { error: suspendError } = await client.rpc('secure_admin_set_user_suspension', {
         p_user_id: userId.trim(),
         p_suspend: false,
@@ -674,6 +802,69 @@ export function AdminModerationPage() {
     } finally {
       setSuspending(false)
       setSuspensionLoadingById((current) => ({ ...current, [userId]: false }))
+    }
+  }
+
+  async function updateAdminUserDecorations(
+    target: AdminUser,
+    next: { verified?: boolean; badgeIds?: string[]; profileFrame?: string },
+  ) {
+    setAdminMutationUserId(target.id)
+    setError(null)
+    try {
+      const payload = await fallbackApiJson<{ user: AdminUser }>(
+        `/v1/data/admin/users/${encodeURIComponent(target.id)}/decorations`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            verified: next.verified ?? target.is_verified,
+            badge_ids: next.badgeIds ?? target.badges.map((badge) => badge.id),
+            profile_frame: next.profileFrame ?? target.profile_frame,
+          }),
+        },
+      )
+      setAdminUsers((current) => current.map((entry) => (entry.id === payload.user.id ? payload.user : entry)))
+      setSelectedAdminUser((current) => (current?.id === payload.user.id ? payload.user : current))
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo actualizar el usuario'))
+    } finally {
+      setAdminMutationUserId(null)
+    }
+  }
+
+  async function hardDeleteUser() {
+    const target = deleteAdminUser
+    if (!target || target.is_admin || (!target.is_test_account && !target.is_suspended) || !deleteAdminReason.trim()) return
+    const expected = target.is_test_account
+      ? `ELIMINAR ${target.id}`
+      : `ELIMINAR ${target.id} ${target.email.trim().toLowerCase()}`
+    if (deleteAdminConfirmation !== expected) return
+    setAdminMutationUserId(target.id)
+    setError(null)
+    try {
+      await fallbackApiJson(`/v1/data/admin/users/${encodeURIComponent(target.id)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({
+          reason: deleteAdminReason.trim(),
+          confirmation: deleteAdminConfirmation,
+          hard_delete: true,
+          expected_email: target.email.trim().toLowerCase(),
+          allow_suspended_account_delete: !target.is_test_account,
+          acknowledge_irreversible: true,
+          acknowledge_full_purge: true,
+        }),
+      })
+      setAdminUsers((current) => current.filter((entry) => entry.id !== target.id))
+      setAdminUsersTotal((current) => Math.max(0, current - 1))
+      setSelectedAdminUser(null)
+      setDeleteAdminUser(null)
+      setDeleteAdminReason('')
+      setDeleteAdminConfirmation('')
+      await Promise.all([loadSuspendedProfiles(), loadAdminUsers(adminUsersQuery)])
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo eliminar la cuenta'))
+    } finally {
+      setAdminMutationUserId(null)
     }
   }
 
@@ -1038,7 +1229,7 @@ export function AdminModerationPage() {
     }
   }
 
-  if (!getDataClient()) {
+  if (!isUbuntuPrimary && !getDataClient()) {
     return (
       <StatusView
         title="Backend no configurado"
@@ -1057,6 +1248,7 @@ export function AdminModerationPage() {
       </header>
 
       <div className="row-actions">
+        <span className="folder-tag">Usuarios: {adminUsersTotal}</span>
         <span className="folder-tag">Video: {videoReports.length}</span>
         <span className="folder-tag">Reportes usuario: {userReports.length}</span>
         <span className="folder-tag">Suspendidos: {suspendedProfiles.length}</span>
@@ -1078,6 +1270,221 @@ export function AdminModerationPage() {
           )}
         </article>
       ) : null}
+
+      {isUbuntuPrimary ? (
+        <article className="surface-card section-stack">
+          <div className="row-between">
+            <div>
+              <h3>Gestión de usuarios</h3>
+              <p className="muted-line">Permisos, verificación y eliminación se validan nuevamente en el servidor.</p>
+            </div>
+            <span className="folder-tag">{adminUsersTotal} cuentas</span>
+          </div>
+          <form
+            className="composer"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void loadAdminUsers(adminUsersQuery)
+            }}
+          >
+            <input
+              className="text-input"
+              placeholder="Buscar por nombre, usuario, correo o UUID"
+              value={adminUsersQuery}
+              onChange={(event) => setAdminUsersQuery(event.target.value.slice(0, 120))}
+            />
+            <button className="ghost-btn" type="submit" disabled={adminUserLoading}>
+              {adminUserLoading ? 'Buscando...' : 'Buscar'}
+            </button>
+          </form>
+
+          {adminUsers.length === 0 && !adminUserLoading ? <p>No se encontraron usuarios.</p> : null}
+          <div className="list-stack">
+            {adminUsers.map((summary) => {
+              const target = selectedAdminUser?.id === summary.id ? selectedAdminUser : summary
+              const expanded = selectedAdminUser?.id === summary.id
+              const mutating = adminMutationUserId === target.id
+              const badgeIds = target.badges.map((badge) => badge.id)
+              return (
+                <article key={target.id} className="surface-subcard section-stack">
+                  <div className="row-between">
+                    <div>
+                      <strong>{target.display_name || target.username || target.email}</strong>
+                      <p className="muted-line">{target.email} {target.username ? `· @${target.username}` : ''}</p>
+                    </div>
+                    <div className="row-actions">
+                      {target.is_admin ? <span className="folder-tag">Admin</span> : null}
+                      {target.is_verified ? <span className="folder-tag">Verificado</span> : null}
+                      {target.is_suspended ? <span className="folder-tag">Suspendido</span> : null}
+                      {target.is_test_account ? <span className="folder-tag">PRUEBA</span> : null}
+                    </div>
+                  </div>
+                  <div className="row-actions">
+                    <button
+                      className="ghost-btn"
+                      type="button"
+                      disabled={adminUserLoading}
+                      onClick={() => {
+                        if (expanded) setSelectedAdminUser(null)
+                        else void loadAdminUserDetail(target.id)
+                      }}
+                    >
+                      {expanded ? 'Cerrar detalle' : 'Ver detalle'}
+                    </button>
+                    <Link className="inline-link" to={`/app/profile/${target.id}`}>Ver perfil público</Link>
+                  </div>
+
+                  {expanded ? (
+                    <div className="section-stack">
+                      <small>ID: {target.id} · Origen: {target.sync_source} · Alta: {formatDateTime(target.created_at ?? '')}</small>
+                      {target.content ? (
+                        <small>
+                          {target.content.posts} publicaciones · {target.content.videos} videos · {target.content.moments} momentos ·{' '}
+                          {target.content.storage_objects} archivos · {target.content.reports} reportes
+                        </small>
+                      ) : null}
+                      <label className="checkbox-inline">
+                        <input
+                          type="checkbox"
+                          checked={target.is_verified}
+                          disabled={mutating}
+                          onChange={(event) => void updateAdminUserDecorations(target, { verified: event.target.checked })}
+                        />
+                        Cuenta verificada
+                      </label>
+                      <div>
+                        <strong>Insignias</strong>
+                        <div className="row-actions">
+                          {adminBadges.map((badge) => (
+                            <label className="checkbox-inline" key={badge.id}>
+                              <input
+                                type="checkbox"
+                                checked={badgeIds.includes(badge.id)}
+                                disabled={mutating}
+                                onChange={(event) => {
+                                  const next = event.target.checked
+                                    ? [...badgeIds, badge.id]
+                                    : badgeIds.filter((id) => id !== badge.id)
+                                  void updateAdminUserDecorations(target, { badgeIds: next })
+                                }}
+                              />
+                              {badge.icon} {badge.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <label>
+                        <strong>Marco de perfil</strong>
+                        <select
+                          className="text-input"
+                          value={target.profile_frame}
+                          disabled={mutating}
+                          onChange={(event) => void updateAdminUserDecorations(target, { profileFrame: event.target.value })}
+                        >
+                          <option value="">Sin marco</option>
+                          {adminFrames.map((frame) => <option key={frame.id} value={frame.id}>{frame.name}</option>)}
+                        </select>
+                      </label>
+                      <div className="row-actions">
+                        {!target.is_admin && target.is_suspended ? (
+                          <button className="ghost-btn" type="button" disabled={mutating} onClick={() => void removeSuspension(target.id)}>
+                            Reactivar
+                          </button>
+                        ) : null}
+                        {!target.is_admin && !target.is_suspended ? (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            onClick={() => {
+                              setSuspendUserId(target.id)
+                              setSuspendReason('Moderación manual desde gestión de usuarios')
+                            }}
+                          >
+                            Preparar suspensión
+                          </button>
+                        ) : null}
+                        {!target.is_admin && (target.is_test_account || target.is_suspended) ? (
+                          <button
+                            className="danger-btn"
+                            type="button"
+                            disabled={mutating}
+                            onClick={() => {
+                              setDeleteAdminUser(target)
+                              setDeleteAdminReason('')
+                              setDeleteAdminConfirmation('')
+                            }}
+                          >
+                            {target.is_test_account ? 'Eliminar cuenta de prueba' : 'Eliminar cuenta suspendida'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              )
+            })}
+          </div>
+
+          {deleteAdminUser ? (
+            <article className="surface-subcard section-stack">
+              <h4>Confirmar eliminación irreversible</h4>
+              <p>
+                {deleteAdminUser.is_test_account
+                  ? <>La cuenta <strong>{deleteAdminUser.email}</strong> está marcada como ficticia.</>
+                  : <>La cuenta real <strong>{deleteAdminUser.email}</strong> solo puede eliminarse mientras siga suspendida.</>}
+              </p>
+              <input
+                className="text-input"
+                placeholder="Motivo obligatorio"
+                value={deleteAdminReason}
+                onChange={(event) => setDeleteAdminReason(event.target.value)}
+              />
+              <label>
+                Escribe exactamente:{' '}
+                <strong>
+                  {deleteAdminUser.is_test_account
+                    ? `ELIMINAR ${deleteAdminUser.id}`
+                    : `ELIMINAR ${deleteAdminUser.id} ${deleteAdminUser.email.trim().toLowerCase()}`}
+                </strong>
+                <input
+                  className="text-input"
+                  value={deleteAdminConfirmation}
+                  onChange={(event) => setDeleteAdminConfirmation(event.target.value)}
+                />
+              </label>
+              <div className="row-actions">
+                <button
+                  className="danger-btn"
+                  type="button"
+                  disabled={
+                    adminMutationUserId === deleteAdminUser.id ||
+                    !deleteAdminReason.trim() ||
+                    deleteAdminConfirmation !== (deleteAdminUser.is_test_account
+                      ? `ELIMINAR ${deleteAdminUser.id}`
+                      : `ELIMINAR ${deleteAdminUser.id} ${deleteAdminUser.email.trim().toLowerCase()}`)
+                  }
+                  onClick={() => void hardDeleteUser()}
+                >
+                  {adminMutationUserId === deleteAdminUser.id ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  disabled={adminMutationUserId === deleteAdminUser.id}
+                  onClick={() => setDeleteAdminUser(null)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </article>
+          ) : null}
+        </article>
+      ) : (
+        <StatusView
+          title="Gestión de usuarios disponible en Ubuntu"
+          description="El backend legado no expone el contrato seguro de usuarios, insignias, marcos y borrado completo."
+        />
+      )}
 
       <article className="surface-card section-stack">
         <h3>Suspender usuario</h3>

@@ -4,6 +4,8 @@ import java.net.URLEncoder
 
 object UbuntuStorageUrl {
     private const val PUBLIC_MARKER = "/storage/v1/object/public/"
+    private const val SIGNED_MARKER = "/storage/v1/object/sign/"
+    private val cacheVariantParameters = setOf("format", "quality", "width")
     const val NGROK_SKIP_BROWSER_WARNING = "ngrok-skip-browser-warning"
 
     private val knownBuckets = setOf(
@@ -22,7 +24,9 @@ object UbuntuStorageUrl {
         "challenges",
         "group-media",
         "community-media",
-        "post-comments-media"
+        "post-comments-media",
+        "group-audio",
+        "report-evidence"
     )
 
     val baseUrl: String
@@ -78,12 +82,43 @@ object UbuntuStorageUrl {
     fun stableCacheKey(value: String?): String? {
         val raw = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val normalized = raw.replace("\\", "/")
-        val markerIndex = normalized.indexOf(PUBLIC_MARKER, ignoreCase = true)
+        val publicMarkerIndex = normalized.indexOf(PUBLIC_MARKER, ignoreCase = true)
+        val signedMarkerIndex = normalized.indexOf(SIGNED_MARKER, ignoreCase = true)
+        val markerIndex = listOf(publicMarkerIndex, signedMarkerIndex).filter { it >= 0 }.minOrNull() ?: -1
         return if (markerIndex >= 0) {
-            "ubuntu-storage:${normalized.substring(markerIndex).lowercase()}"
+            val referenceWithQuery = normalized
+                .substring(markerIndex)
+                .substringBefore('#')
+            val objectReference = referenceWithQuery.substringBefore('?')
+                .replace(SIGNED_MARKER, PUBLIC_MARKER, ignoreCase = true)
+            val variantQuery = referenceWithQuery.substringAfter('?', missingDelimiterValue = "")
+                .split('&')
+                .mapNotNull { parameter ->
+                    val key = parameter.substringBefore('=').trim().lowercase()
+                    parameter.takeIf { key in cacheVariantParameters && parameter.contains('=') }
+                }
+                .sorted()
+                .joinToString("&")
+            "ubuntu-storage:$objectReference" + variantQuery.takeIf(String::isNotBlank)?.let { "?$it" }.orEmpty()
         } else {
             normalized
         }
+    }
+
+    /**
+     * Requests a bounded WebP preview from the Ubuntu storage endpoint. Other
+     * origins are left untouched because they may not implement this contract.
+     */
+    fun thumbnail(value: String?, width: Int = 1080, quality: Int = 78): String? {
+        val rewritten = rewrite(value) ?: return null
+        val root = baseUrl.trimEnd('/').takeIf { it.startsWith("http", ignoreCase = true) }
+            ?: return rewritten
+        if (!rewritten.startsWith("$root$PUBLIC_MARKER", ignoreCase = true)) return rewritten
+        val safeWidth = width.coerceIn(64, 1920)
+        val safeQuality = quality.coerceIn(40, 90)
+        val withoutFragment = rewritten.substringBefore('#')
+        val separator = if (withoutFragment.contains('?')) '&' else '?'
+        return "$withoutFragment${separator}width=$safeWidth&quality=$safeQuality&format=webp"
     }
 
     fun publicObjectUrl(bucketName: String, objectPath: String): String {

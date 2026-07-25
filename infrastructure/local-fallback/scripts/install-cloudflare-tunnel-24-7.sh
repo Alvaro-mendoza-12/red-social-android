@@ -35,6 +35,8 @@ LOCAL_EDGE="${LOCAL_EDGE:-http://127.0.0.1:3080}"
 BIN="$HOME/bin/cloudflared"
 LOG="$HOME/cloudflared-conectate.log"
 URL_FILE="$HOME/conectate-public-url.txt"
+COMPOSE_LOCK="${CONECTATE_COMPOSE_LOCK:-$HOME/.cache/conectate-compose.lock}"
+mkdir -p "$(dirname "$COMPOSE_LOCK")"
 
 env_value() {
   [ -f "$ROOT_DIR/.env" ] || return 0
@@ -44,14 +46,18 @@ env_value() {
 update_public_base_url() {
   local url="$1"
   [ -n "$url" ] || return 1
-  cd "$ROOT_DIR"
-  if grep -q '^PUBLIC_BASE_URL=' .env 2>/dev/null; then
-    sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=$url|" .env
-  else
-    printf 'PUBLIC_BASE_URL=%s\n' "$url" >> .env
-  fi
-  docker compose up -d --no-deps --force-recreate api >/dev/null 2>&1 || true
-  echo "$url" > "$URL_FILE"
+  (
+    flock --wait 240 9 || exit 1
+    cd "$ROOT_DIR"
+    if grep -q '^PUBLIC_BASE_URL=' .env 2>/dev/null; then
+      sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=$url|" .env
+    else
+      printf 'PUBLIC_BASE_URL=%s\n' "$url" >> .env
+    fi
+    docker compose up -d --remove-orphans >/dev/null 2>&1
+    wait_backend
+    echo "$url" > "$URL_FILE"
+  ) 9>"$COMPOSE_LOCK"
 }
 
 publish_duckdns_txt() {
@@ -72,6 +78,30 @@ wait_backend() {
     sleep 2
   done
   return 1
+}
+
+wait_stack_startup() {
+  local state uptime_seconds
+  for _ in $(seq 1 120); do
+    state="$(systemctl show conectate-stack.service -p ActiveState --value 2>/dev/null || true)"
+    case "$state" in
+      activating|reloading|deactivating)
+        sleep 2
+        ;;
+      inactive)
+        uptime_seconds="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 999)"
+        if [ "${uptime_seconds:-999}" -lt 180 ]; then
+          sleep 2
+        else
+          return 0
+        fi
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
+  echo 'WARN: conectate-stack no termino de activar; continuando con recuperacion del tunel' >&2
 }
 
 extract_tunnel_url() {
@@ -111,6 +141,7 @@ while true; do
     continue
   fi
 
+  wait_stack_startup
   existing_url="$(cat "$URL_FILE" 2>/dev/null || true)"
   if pgrep -x cloudflared >/dev/null 2>&1 \
     && [[ "$existing_url" =~ ^https://[-a-zA-Z0-9.]+\.trycloudflare\.com$ ]] \
@@ -169,6 +200,14 @@ SCRIPT
 
 chmod +x "$BIN_DIR/conectate-cloudflare-tunnel.sh"
 
+# Keep the runtime script versioned. The heredoc above remains only for
+# compatibility with older deployment bundles that do not include this file.
+if [ -f "$ROOT_DIR/scripts/conectate-cloudflare-tunnel.sh" ]; then
+  install -m 755 \
+    "$ROOT_DIR/scripts/conectate-cloudflare-tunnel.sh" \
+    "$BIN_DIR/conectate-cloudflare-tunnel.sh"
+fi
+
 cat > "$SYSTEMD_DIR/conectate-cloudflare-tunnel.service" <<EOF
 [Unit]
 Description=Conectate Cloudflare Quick Tunnel (CGNAT)
@@ -189,6 +228,7 @@ EOF
 loginctl enable-linger "$RUN_USER" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now conectate-cloudflare-tunnel.service
+systemctl --user restart conectate-cloudflare-tunnel.service
 
 echo "CLOUDFLARE_TUNNEL_SERVICE=enabled"
 echo "URL_FILE=$URL_FILE"

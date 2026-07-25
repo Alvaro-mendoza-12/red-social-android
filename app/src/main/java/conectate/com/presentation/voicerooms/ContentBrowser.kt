@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.foundation.text.KeyboardActions
+import conectate.com.BuildConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -42,7 +43,7 @@ fun ContentBrowser(
     onResolveUrl: suspend (String) -> conectate.com.data.repository.VoiceRoomRepository.CinemaResolvedItem? = { null }
 ) {
     val context = LocalContext.current
-    val tmdbApiKey = "cafce0be2d371c964acd937d58621e6a"
+    val tmdbApiKey = BuildConfig.TMDB_API_KEY
     val catalog = remember { CinemaCatalog(tmdbApiKey) }
     
     val scope = rememberCoroutineScope()

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
@@ -102,7 +103,7 @@ class LiveChatHeadService : Service() {
         layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            overlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
@@ -242,6 +243,14 @@ class LiveChatHeadService : Service() {
         windowManager.addView(root, layoutParams)
     }
 
+    @Suppress("DEPRECATION")
+    private fun overlayWindowType(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
     private fun updateOverlay(
         title: String,
         viewerCount: Int,
@@ -256,7 +265,11 @@ class LiveChatHeadService : Service() {
         val titleView = headerColumn?.getChildAt(0) as? TextView
         val subtitleView = headerColumn?.getChildAt(1) as? TextView
         titleView?.text = title.ifBlank { getString(R.string.live_overlay_title_default) }
-        subtitleView?.text = getString(R.string.live_overlay_status, viewerCount)
+        subtitleView?.text = resources.getQuantityString(
+            R.plurals.live_overlay_status,
+            viewerCount,
+            viewerCount
+        )
         minimizedBubble?.text = getString(R.string.live_overlay_bubble_status, viewerCount)
 
         commentsView.removeAllViews()

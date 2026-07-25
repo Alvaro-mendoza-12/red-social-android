@@ -42,14 +42,14 @@ function isPlaceholder(value) {
 const envFileValues = readEnvFile(envPath)
 const fallbackApiUrl = resolveValue('VITE_FALLBACK_API_URL', envFileValues)
 const hasFallbackBackend =
-  !isPlaceholder(fallbackApiUrl) && /^https?:\/\//i.test(fallbackApiUrl)
+  !isPlaceholder(fallbackApiUrl) && /^https:\/\//i.test(fallbackApiUrl)
 const supabaseKeys = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']
 const configuredSupabaseKeys = supabaseKeys.filter((key) =>
   !isPlaceholder(resolveValue(key, envFileValues)),
 )
 
 if (!hasFallbackBackend) {
-  console.error('[ensure-web-build-env] Falta VITE_FALLBACK_API_URL para compilar Conectate-web con Ubuntu.')
+  console.error('[ensure-web-build-env] Falta una VITE_FALLBACK_API_URL HTTPS para compilar Conectate-web con Ubuntu.')
   console.error(
     `[ensure-web-build-env] Define VITE_FALLBACK_API_URL en el entorno o en ${path.relative(process.cwd(), envPath)}. Supabase legacy ya no es un backend valido para este build.`,
   )

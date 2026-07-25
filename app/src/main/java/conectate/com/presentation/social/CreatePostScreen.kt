@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,13 +40,39 @@ fun CreatePostScreen(
 ) {
     var caption by remember { mutableStateOf("") }
     val selectedMediaUris = remember { mutableStateListOf<Uri>() }
+    var pendingCropUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isCreating by viewModel.isCreating.collectAsState()
     val error by viewModel.error.collectAsState()
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
-        selectedMediaUris.addAll(uris)
+        val accepted = uris.take((7 - selectedMediaUris.size).coerceAtLeast(0))
+        val (images, videos) = accepted.partition { uri ->
+            context.contentResolver.getType(uri)?.startsWith("image/") != false
+        }
+        selectedMediaUris.addAll(videos)
+        pendingCropUris = images
+    }
+
+    pendingCropUris.firstOrNull()?.let { sourceUri ->
+        SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar publicación",
+            presets = listOf(
+                ImageCropPreset.ORIGINAL,
+                ImageCropPreset.SQUARE,
+                ImageCropPreset.PORTRAIT,
+                ImageCropPreset.WIDE
+            ),
+            initialPreset = ImageCropPreset.ORIGINAL,
+            onDismiss = { pendingCropUris = pendingCropUris.drop(1) },
+            onCropped = { croppedUri ->
+                selectedMediaUris.add(croppedUri)
+                pendingCropUris = pendingCropUris.drop(1)
+            }
+        )
     }
 
     LaunchedEffect(Unit) {

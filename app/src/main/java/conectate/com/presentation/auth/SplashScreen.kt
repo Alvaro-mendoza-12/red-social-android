@@ -54,7 +54,7 @@ fun SplashScreen() {
             Spacer(modifier = Modifier.height(24.dp))
             
             Text(
-                text = "Conectate",
+                text = "Novvin",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,

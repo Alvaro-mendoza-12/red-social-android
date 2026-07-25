@@ -72,17 +72,47 @@ class FeedRankingEngineTest {
         assertNotEquals(setOf("a"), topThreeAuthors)
     }
 
+    @Test
+    fun `profile interests promote matching social content`() {
+        val now = Instant.now()
+        val generic = post(
+            id = "generic",
+            userId = "u1",
+            createdAt = now.minusSeconds(300),
+            likeCount = 3,
+            content = "Una publicación general"
+        )
+        val matching = post(
+            id = "matching",
+            userId = "u2",
+            createdAt = now.minusSeconds(300),
+            likeCount = 2,
+            content = "Consejos de fotografía nocturna"
+        )
+
+        val ranked = engine.rankPosts(
+            posts = listOf(generic, matching),
+            currentUserId = "viewer",
+            friendIds = emptySet(),
+            signalSnapshot = FeedSignalSnapshot.EMPTY,
+            interestTerms = setOf("fotografía")
+        )
+
+        assertEquals("matching", ranked.first().id)
+    }
+
     private fun post(
         id: String,
         userId: String,
         createdAt: Instant,
-        likeCount: Int
+        likeCount: Int,
+        content: String = "content_$id"
     ): Post {
         return Post(
             id = id,
             userId = userId,
             userName = "user_$userId",
-            content = "content_$id",
+            content = content,
             createdAt = createdAt.toString(),
             likeCount = likeCount
         )

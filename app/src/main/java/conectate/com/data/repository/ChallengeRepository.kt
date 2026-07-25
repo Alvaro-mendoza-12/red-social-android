@@ -54,7 +54,10 @@ class ChallengeRepository @Inject constructor(
         var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType)
 
         if (uploadResult.isSuccess) {
-            var url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, storagePath)).orEmpty()
+            val remoteKey = uploadResult.getOrThrow().Key ?: storagePath
+            var url = versionedChallengeUrl(
+                UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, remoteKey)).orEmpty()
+            )
 
             if (supabaseConfig.isLocalFallbackPrimary) {
                 return@withContext localFallbackApiClient.submitChallenge(
@@ -480,8 +483,13 @@ class ChallengeRepository @Inject constructor(
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
+            val drawableLines = lines.filter { it.points.isNotEmpty() }
+            if (drawableLines.isEmpty()) {
+                return@withContext Result.failure(Exception("Dibuja algo antes de enviarlo."))
+            }
+
             // 1. Convertir dibujo a imagen
-            var bytes = drawingToBytes(lines)
+            var bytes = drawingToBytes(drawableLines)
             
             // 2. Subir a Storage
             var storagePath = "challenge_submissions/${activeChallenge.id}/$userId.png"
@@ -489,7 +497,10 @@ class ChallengeRepository @Inject constructor(
             var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png")
             
             if (uploadResult.isSuccess) {
-                var url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, storagePath)).orEmpty()
+                val remoteKey = uploadResult.getOrThrow().Key ?: storagePath
+                var url = versionedChallengeUrl(
+                    UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucketName, remoteKey)).orEmpty()
+                )
 
                 if (supabaseConfig.isLocalFallbackPrimary) {
                     return@withContext localFallbackApiClient.submitChallenge(
@@ -626,7 +637,6 @@ class ChallengeRepository @Inject constructor(
             
             changes.collect { action ->
                 if (action is PostgresAction.Update || action is PostgresAction.Insert) {
-                    val record = if (action is PostgresAction.Update) action.record else (action as PostgresAction.Insert).record
                     // Necesitamos volver a pedir el reto completo porque record no trae el join con challenge_master
                     getActiveChallenge().onSuccess { emit(it) }
                 }
@@ -642,7 +652,6 @@ class ChallengeRepository @Inject constructor(
                 emit(getSubmissions(activeChallengeId, minCreatedAt).getOrNull().orEmpty())
                 delay(5_000)
             }
-            return@flow
         }
 
         val channelId = "subs-${activeChallengeId}-${System.currentTimeMillis()}"
@@ -710,18 +719,11 @@ class ChallengeRepository @Inject constructor(
     }
 
     private fun drawingToBytes(lines: List<conectate.com.presentation.components.Line>): ByteArray {
-        if (lines.isEmpty()) {
-            val emptyBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-            var out = java.io.ByteArrayOutputStream()
-            emptyBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            return out.toByteArray()
-        }
-
-        // 1. Encontrar los límites del dibujo para escalado dinámico (Evitar recortes)
+        // Find drawing bounds so the exported PNG matches what the user drew.
         var minX = Float.MAX_VALUE
-        var maxX = Float.MIN_VALUE
+        var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE
-        var maxY = Float.MIN_VALUE
+        var maxY = -Float.MAX_VALUE
 
         lines.forEach { line ->
             line.points.forEach { (x, y) ->
@@ -732,24 +734,24 @@ class ChallengeRepository @Inject constructor(
             }
         }
 
-        // Añadir margen (padding)
-        val padding = 50f
+        val padding = 72f
         val drawingWidth = (maxX - minX).coerceAtLeast(1f)
         val drawingHeight = (maxY - minY).coerceAtLeast(1f)
-
-        // 2. Definir tamaño final (1080p compatible)
         val targetWidth = 1080f
-        val targetHeight = 1080f * (drawingHeight / drawingWidth).coerceAtMost(1.77f) // Max 9:16 aspect
-        
+        val targetHeight = 1080f
+
         val bitmap = Bitmap.createBitmap(targetWidth.toInt(), targetHeight.toInt(), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
 
-        // 3. Calcular escala para que quepa en el bitmap
         val scale = minOf(
             (targetWidth - padding * 2) / drawingWidth,
             (targetHeight - padding * 2) / drawingHeight
-        )
+        ).coerceAtLeast(0.01f)
+        val contentWidth = drawingWidth * scale
+        val contentHeight = drawingHeight * scale
+        val offsetX = (targetWidth - contentWidth) / 2f
+        val offsetY = (targetHeight - contentHeight) / 2f
 
         val paint = android.graphics.Paint().apply {
             isAntiAlias = true
@@ -760,26 +762,42 @@ class ChallengeRepository @Inject constructor(
 
         lines.forEach { line ->
             paint.color = line.color
-            paint.strokeWidth = line.strokeWidth * scale
+            paint.strokeWidth = (line.strokeWidth * scale).coerceIn(2f, 96f)
             
             val path = android.graphics.Path()
             if (line.points.isNotEmpty()) {
-                val startX = (line.points[0].first - minX) * scale + padding
-                val startY = (line.points[0].second - minY) * scale + padding
+                val startX = (line.points[0].first - minX) * scale + offsetX
+                val startY = (line.points[0].second - minY) * scale + offsetY
                 path.moveTo(startX, startY)
-                
-                line.points.forEach { (px, py) ->
-                    val x = (px - minX) * scale + padding
-                    val y = (py - minY) * scale + padding
+
+                line.points.drop(1).forEach { (px, py) ->
+                    val x = (px - minX) * scale + offsetX
+                    val y = (py - minY) * scale + offsetY
                     path.lineTo(x, y)
                 }
             }
-            canvas.drawPath(path, paint)
+            if (line.points.size == 1) {
+                canvas.drawCircle(targetWidth / 2f, targetHeight / 2f, paint.strokeWidth / 2f, paint)
+            } else {
+                canvas.drawPath(path, paint)
+            }
         }
 
-        var out = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        return out.toByteArray()
+        return try {
+            val out = java.io.ByteArrayOutputStream()
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                "No se pudo exportar el dibujo."
+            }
+            out.toByteArray()
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun versionedChallengeUrl(url: String): String {
+        if (url.isBlank()) return url
+        val separator = if (url.contains('?')) '&' else '?'
+        return "$url${separator}v=${System.currentTimeMillis()}"
     }
 }
 

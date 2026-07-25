@@ -1,5 +1,6 @@
 package conectate.com.presentation.messages
 
+import conectate.com.presentation.messages.OutgoingMessageMedia
 import androidx.compose.runtime.Composable
 
 import android.Manifest
@@ -94,9 +95,10 @@ fun GroupChatScreen(
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingMediaUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var pendingMediaType by remember { mutableStateOf<String?>(null) }
+    var pendingMediaUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingMediaType by remember { mutableStateOf<String?>(null) } // "image", "video", "view_once_image", "view_once_video"
     var pendingMediaCaption by remember { mutableStateOf("") }
+    var pendingMediaQueue by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -105,6 +107,7 @@ fun GroupChatScreen(
 
     // FULL SCREEN MEDIA VIEWER STATE
     val messages = (uiState as? GroupChatUiState.Success)?.messages ?: emptyList()
+    val chatMessages = remember(messages) { messages.map { it.asChatMessage() } }
     val visibleMessageIds by remember(messages, listState) {
         derivedStateOf {
             listState.layoutInfo.visibleItemsInfo
@@ -113,14 +116,18 @@ fun GroupChatScreen(
         }
     }
     val mediaMessages = remember(messages) {
-        messages.filter { (it.content_type == "image" || it.content_type == "video" || it.content_type == "gif" || it.content_type == "sticker") && !it.deleted_for_all }
+        messages.filter {
+            conectate.com.presentation.components.isGalleryMediaType(it.content_type) &&
+                !it.media_url.isNullOrBlank() &&
+                !it.deleted_for_all
+        }
     }
     val fullScreenMediaItems = remember(mediaMessages) {
-        mediaMessages.map { msg ->
+        mediaMessages.map { message ->
             MediaItem(
-                id = msg.id,
-                url = msg.media_url ?: "",
-                type = msg.content_type
+                id = message.id,
+                url = message.media_url.orEmpty(),
+                type = message.content_type
             )
         }
     }
@@ -146,47 +153,7 @@ fun GroupChatScreen(
         )
     }
 
-    // Media Launchers
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "image"
-            pendingMediaCaption = ""
-        }
-    }
-
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "video"
-            pendingMediaCaption = ""
-        }
-    }
-
-    val viewOnceImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_image"
-            pendingMediaCaption = ""
-        }
-    }
-
-    val viewOnceVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_video"
-            pendingMediaCaption = ""
-        }
-    }
-
+    var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -203,6 +170,34 @@ fun GroupChatScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { viewModel.sendMediaMessage(it, context, forcedMessageType = "gif", customContent = "🌀 GIF") }
+    }
+
+    var showMediaComposer by remember { mutableStateOf(false) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        uris.take(10).forEach { uri ->
+            viewModel.sendMediaMessage(
+                uri = uri,
+                context = context,
+                forcedMessageType = "image",
+                customContent = null
+            )
+        }
+    }
+
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        uris.take(10).forEach { uri ->
+            viewModel.sendMediaMessage(
+                uri = uri,
+                context = context,
+                forcedMessageType = "video",
+                customContent = null
+            )
+        }
     }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
@@ -430,51 +425,30 @@ fun GroupChatScreen(
                             state = listState,
                             contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
                         ) {
-                            itemsIndexed(state.messages, key = { _, item -> item.id }) { index, groupMsg ->
-                                val previousIso = state.messages.getOrNull(index - 1)?.created_at
-                                if (shouldShowDateSeparator(groupMsg.created_at, previousIso)) {
-                                    DateSeparator(label = formatDateSeparatorLabel(groupMsg.created_at))
+                            itemsIndexed(chatMessages, key = { _, item -> item.id }) { index, msg ->
+                                val previousIso = chatMessages.getOrNull(index - 1)?.created_at
+                                if (shouldShowDateSeparator(msg.created_at, previousIso)) {
+                                    DateSeparator(label = formatDateSeparatorLabel(msg.created_at))
                                 }
-                                val msg = conectate.com.data.model.Message(
-                                    id = groupMsg.id,
-                                    chat_id = groupMsg.group_id,
-                                    sender_id = groupMsg.sender_id,
-                                    content = groupMsg.content,
-                                    content_type = groupMsg.content_type,
-                                    media_url = groupMsg.media_url,
-                                    poll_id = groupMsg.poll_id,
-                                    created_at = groupMsg.created_at,
-                                    status = groupMsg.status,
-                                    reply_to_id = groupMsg.reply_to_id,
-                                    is_edited = groupMsg.is_edited,
-                                    deleted_for_all = groupMsg.deleted_for_all,
-                                    deleted_by = groupMsg.deleted_by,
-                                    reactions = groupMsg.reactions,
-                                    is_forwarded = groupMsg.is_forwarded,
-                                    forwarded_from_message_id = groupMsg.forwarded_from_message_id,
-                                    forwarded_from_user_id = groupMsg.forwarded_from_user_id,
-                                    sender_name = groupMsg.sender_name,
-                                    reply_to = groupMsg.reply_to?.let { quoted ->
-                                        conectate.com.data.model.Message(
-                                            id = quoted.id,
-                                            chat_id = quoted.group_id,
-                                            sender_id = quoted.sender_id,
-                                            content = quoted.content,
-                                            content_type = quoted.content_type,
-                                            media_url = quoted.media_url,
-                                            created_at = quoted.created_at,
-                                            deleted_for_all = quoted.deleted_for_all,
-                                            reactions = quoted.reactions,
-                                            is_forwarded = quoted.is_forwarded,
-                                            forwarded_from_message_id = quoted.forwarded_from_message_id,
-                                            forwarded_from_user_id = quoted.forwarded_from_user_id
-                                        )
-                                    }
-                                )
+                                val mediaGroup = remember(chatMessages, msg.id) {
+                                    conectate.com.presentation.components.mediaGridClusterAt(chatMessages, index)
+                                }
+                                if (mediaGroup == null) return@itemsIndexed
                                 val isFromMe = msg.sender_id == currentUserId
                                 val memberProfile = memberProfiles[msg.sender_id]
                                 val pollId = msg.poll_id
-                                if (msg.content_type == "poll" && !pollId.isNullOrBlank()) {
+                                if (mediaGroup.size > 1) {
+                                    conectate.com.presentation.components.MediaGridMessageBubble(
+                                        messages = mediaGroup,
+                                        isFromCurrentUser = isFromMe,
+                                        onClick = { selectedMessage ->
+                                            fullScreenMediaItems.indexOfFirst { it.id == selectedMessage.id }
+                                                .takeIf { it >= 0 }
+                                                ?.let { fullScreenImageInitialIndex = it }
+                                        },
+                                        onResolveUrl = { viewModel.getPlayableUrl(it) }
+                                    )
+                                } else if (msg.content_type == "poll" && !pollId.isNullOrBlank()) {
                                     PollMessageCard(
                                         message = msg,
                                         pollState = pollStates[pollId],
@@ -518,7 +492,7 @@ fun GroupChatScreen(
                                                     }
                                                 }
                                             } else if (clickedUrl != null) {
-                                                val index = fullScreenMediaItems.indexOfFirst { it.url == clickedUrl || it.url == msg.media_url }
+                                                val index = fullScreenMediaItems.indexOfFirst { it.id == msg.id }
                                                 if (index != -1) {
                                                     fullScreenImageInitialIndex = index
                                                 }
@@ -736,8 +710,8 @@ fun GroupChatScreen(
                                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (messageText.isNotBlank()) { if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage() } }),
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
-                                    IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
-                                        Icon(Icons.Default.CameraAlt, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    IconButton(onClick = { showMediaComposer = true }) {
+                                        Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             )
@@ -1114,46 +1088,21 @@ fun GroupChatScreen(
         )
     }
 
-    if (pendingMediaUri != null && pendingMediaType != null) {
-        MediaCaptionPreviewDialog(
-            mediaUri = pendingMediaUri!!,
-            mediaType = pendingMediaType!!,
-            caption = pendingMediaCaption,
-            onCaptionChange = { pendingMediaCaption = it },
-            onDismiss = {
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            onConfirm = { editedUri, editedCaption ->
-                val type = pendingMediaType ?: return@MediaCaptionPreviewDialog
-                viewModel.sendMediaMessage(
-                    uri = editedUri,
-                    context = context,
-                    forcedMessageType = type,
-                    customContent = editedCaption.trim().ifBlank { null }
-                )
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            isSending = isSending
-        )
-    }
+
 
     if (showAttachmentSheet) {
         ModalBottomSheet(onDismissRequest = { showAttachmentSheet = false }) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(text = "Compartir", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; imagePickerLauncher.launch("image/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary)
+                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showMediaComposer = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Imagen")
+                    Text("Imagen", style = MaterialTheme.typography.bodyLarge)
                 }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; videoPickerLauncher.launch("video/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VideoLibrary, null, tint = MaterialTheme.colorScheme.primary)
+                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showMediaComposer = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Video")
+                    Text("Video", style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; audioPickerLauncher.launch("audio/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Audiotrack, null, tint = MaterialTheme.colorScheme.primary)
@@ -1198,34 +1147,7 @@ fun GroupChatScreen(
                     Spacer(Modifier.width(16.dp))
                     Text("Sticker Pro (packs)")
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            viewOnceImagePickerLauncher.launch("image/*")
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Foto ver una vez")
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            viewOnceVideoPickerLauncher.launch("video/*")
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Video ver una vez")
-                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1334,4 +1256,45 @@ fun GroupChatScreen(
             onDismiss = { viewModel.dismissPollOptionVoters() }
         )
     }
+
+    if (showMediaComposer) {
+        MessageMediaComposer(
+            isSending = false,
+            onDismiss = { showMediaComposer = false },
+            onSend = { mediaList, mediaCaption ->
+                showMediaComposer = false
+                mediaList.forEachIndexed { index, outgoingMedia ->
+                    viewModel.sendMediaMessage(
+                        uri = outgoingMedia.uri,
+                        context = context,
+                        forcedMessageType = outgoingMedia.type,
+                        customContent = if (index == 0 && mediaCaption.isNotBlank()) mediaCaption else ""
+                    )
+                }
+            }
+        )
+    }
 }
+
+private fun conectate.com.data.model.GroupMessage.asChatMessage(): conectate.com.data.model.Message =
+    conectate.com.data.model.Message(
+        id = id,
+        chat_id = group_id,
+        sender_id = sender_id,
+        content = content,
+        content_type = content_type,
+        media_url = media_url,
+        poll_id = poll_id,
+        created_at = created_at,
+        status = status,
+        reply_to_id = reply_to_id,
+        is_edited = is_edited,
+        deleted_for_all = deleted_for_all,
+        deleted_by = deleted_by,
+        reactions = reactions,
+        is_forwarded = is_forwarded,
+        forwarded_from_message_id = forwarded_from_message_id,
+        forwarded_from_user_id = forwarded_from_user_id,
+        sender_name = sender_name,
+        reply_to = reply_to?.asChatMessage()
+    )

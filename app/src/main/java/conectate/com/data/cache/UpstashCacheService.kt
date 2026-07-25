@@ -1,141 +1,77 @@
 package conectate.com.data.cache
 
-import android.util.Log
-import conectate.com.BuildConfig
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Process-local TTL cache. The historical class name is kept to avoid changing
+ * repository contracts, but no remote credential or user data leaves the app.
+ */
 @Singleton
-class UpstashCacheService @Inject constructor(
-    private val httpClient: HttpClient
-) {
-    companion object {
-        private const val TAG = "UpstashCache"
-        private val restUrl = BuildConfig.UPSTASH_REST_URL.trim().trimEnd('/')
-        private val token = BuildConfig.UPSTASH_TOKEN.trim()
-        private val isConfigured = restUrl.isNotBlank() && token.isNotBlank()
-    }
-
-    /**
-     * Obtiene un valor de cache (si existe).
-     * Retorna null si no encontrado o error.
-     */
-
-    suspend fun get(key: String): String? = withContext(Dispatchers.IO) {
-        if (!isConfigured) return@withContext null
-
-        try {
-            val response = httpClient.get("$restUrl/get") {
-                header("Authorization", "Bearer $token")
-                parameter("key", key)
-            }
-            if (response.status.isSuccess()) {
-                val body = response.body<UpstashGetResponse>()
-                if (body.result == "OK") {
-                    return@withContext body.value
-                }
-            }
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting cache key=$key", e)
-            null
-        }
-    }
-
-    /**
-     * Guarda un valor en cache con TTL en segundos.
-     */
-
-    suspend fun set(key: String, value: String, exSeconds: Int = 300): Boolean = withContext(Dispatchers.IO) {
-        if (!isConfigured) return@withContext false
-
-        try {
-            val response = httpClient.post("$restUrl/set") {
-                header("Authorization", "Bearer $token")
-                contentType(ContentType.Application.FormUrlEncoded)
-                buildParameters {
-                    append("key", key)
-                    append("value", value)
-                    append("EX", exSeconds.toString())
-                }
-            }
-            response.status.isSuccess()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting cache key=$key", e)
-            false
-        }
-    }
-
-    /**
-     * Elimina una clave de cache.
-     */
-
-    suspend fun delete(key: String): Boolean = withContext(Dispatchers.IO) {
-        if (!isConfigured) return@withContext false
-
-        try {
-            val response = httpClient.post("$restUrl/del") {
-                header("Authorization", "Bearer $token")
-                contentType(ContentType.Application.FormUrlEncoded)
-                buildParameters { append("key", key) }
-            }
-            response.status.isSuccess()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error deleting cache key=$key", e)
-            false
-        }
-    }
-
-    /**
-     * Incrementa un contador (para stats).
-     */
-
-    suspend fun increment(key: String, amount: Int = 1): Long? = withContext(Dispatchers.IO) {
-        if (!isConfigured) return@withContext null
-
-        try {
-            val response = httpClient.post("$restUrl/incrby") {
-                header("Authorization", "Bearer $token")
-                contentType(ContentType.Application.FormUrlEncoded)
-                buildParameters {
-                    append("key", key)
-                    append("amount", amount.toString())
-                }
-            }
-            if (response.status.isSuccess()) {
-                val body = response.body<UpstashIncrResponse>()
-                return@withContext body.result?.toLongOrNull()
-            }
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error incrementing key=$key", e)
-            null
-        }
-    }
-
-    private fun HttpRequestBuilder.buildParameters(block: ParametersBuilder.() -> Unit) {
-        val formParameters = ParametersBuilder()
-        block(formParameters)
-        setBody(formParameters.build().formUrlEncode())
-    }
-
-    private data class UpstashGetResponse(
-        val result: String,
-        val value: String?
+class UpstashCacheService @Inject constructor() {
+    private data class Entry(
+        val value: String,
+        val expiresAtMs: Long
     )
 
-    private data class UpstashIncrResponse(
-        val result: String?
-    )
+    private val entries = ConcurrentHashMap<String, Entry>()
+
+    suspend fun get(key: String): String? {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isEmpty()) return null
+        val entry = entries[normalizedKey] ?: return null
+        if (entry.expiresAtMs <= System.currentTimeMillis()) {
+            entries.remove(normalizedKey, entry)
+            return null
+        }
+        return entry.value
+    }
+
+    suspend fun set(key: String, value: String, exSeconds: Int = DEFAULT_TTL_SECONDS): Boolean {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isEmpty()) return false
+        removeExpiredEntries()
+        if (entries.size >= MAX_ENTRIES && !entries.containsKey(normalizedKey)) {
+            entries.entries.minByOrNull { it.value.expiresAtMs }?.let { oldest ->
+                entries.remove(oldest.key, oldest.value)
+            }
+        }
+        val ttlMs = exSeconds.coerceIn(1, MAX_TTL_SECONDS) * 1_000L
+        entries[normalizedKey] = Entry(value, System.currentTimeMillis() + ttlMs)
+        return true
+    }
+
+    suspend fun delete(key: String): Boolean {
+        val normalizedKey = key.trim()
+        return normalizedKey.isNotEmpty() && entries.remove(normalizedKey) != null
+    }
+
+    suspend fun increment(key: String, amount: Int = 1): Long? {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isEmpty()) return null
+        return synchronized(entries) {
+            val now = System.currentTimeMillis()
+            val current = entries[normalizedKey]
+                ?.takeIf { it.expiresAtMs > now }
+                ?.value
+                ?.toLongOrNull()
+                ?: 0L
+            val updated = runCatching { Math.addExact(current, amount.toLong()) }.getOrNull()
+                ?: return@synchronized null
+            entries[normalizedKey] = Entry(updated.toString(), now + DEFAULT_TTL_SECONDS * 1_000L)
+            updated
+        }
+    }
+
+    private fun removeExpiredEntries() {
+        val now = System.currentTimeMillis()
+        entries.entries.removeIf { it.value.expiresAtMs <= now }
+    }
+
+    private companion object {
+        const val DEFAULT_TTL_SECONDS = 300
+        const val MAX_TTL_SECONDS = 86_400
+        const val MAX_ENTRIES = 256
+    }
 }
-
-
-
-
-

@@ -33,11 +33,12 @@ try {
     }
 
     if ($healthy) {
-        Write-Output "WATCHDOG_OK=$publicUrl"
-        exit 0
+        Write-Output "WATCHDOG_HEALTHY_LOCAL=$publicUrl"
+    } else {
+        Write-Output 'WATCHDOG_RECOVERING=cloudflare_quick_tunnel'
     }
 
-    Write-Output 'WATCHDOG_RECOVERING=cloudflare_quick_tunnel'
+    Write-Output 'WATCHDOG_RECONCILING=cloudflare_quick_tunnel'
     & (Join-Path $PSScriptRoot 'start-cloudflare-quick-tunnel.ps1') `
         -User $User `
         -HostName $HostName `

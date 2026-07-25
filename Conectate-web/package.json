@@ -12,6 +12,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "vercel:install": "npm ci --legacy-peer-deps",
+    "vercel:build": "npm run build",
     "cy:open": "cypress open",
     "cy:run": "cypress run",
     "deploy": "npm run build && firebase deploy",

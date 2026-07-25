@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat, sendDirectMessage } from '../messages/directChat'
@@ -29,14 +28,15 @@ export function MomentsViewerPage() {
   const [tabHidden, setTabHidden] = useState(false)
   const [muted, setMuted] = useState(true)
   const [manualPause, setManualPause] = useState(false)
+  const [mediaReady, setMediaReady] = useState(false)
   const elapsedMsRef = useRef(0)
   const pointerStartRef = useRef<{ x: number; y: number; time: number; width: number } | null>(null)
 
   const activeMoment = moments[activeIndex] ?? null
-  const shouldPause = isPressing || replyFocused || sendingReply || tabHidden || manualPause
+  const shouldPause = !mediaReady || isPressing || replyFocused || sendingReply || tabHidden || manualPause
 
   const loadMoments = useCallback(async () => {
-    if (!supabase || !user) {
+    if (!user) {
       setLoading(false)
       return
     }
@@ -104,6 +104,7 @@ export function MomentsViewerPage() {
     setReplyChatId(null)
     setMuted(true)
     setManualPause(false)
+    setMediaReady(false)
   }, [activeMoment?.id])
 
   useEffect(() => {
@@ -248,10 +249,6 @@ export function MomentsViewerPage() {
     }
   }
 
-  if (!supabase) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar momentos." />
-  }
-
   if (loading) {
     return <StatusView title="Cargando historias" description="Espera un momento..." />
   }
@@ -322,11 +319,19 @@ export function MomentsViewerPage() {
               autoPlay
               muted={muted}
               playsInline
+              onCanPlay={() => setMediaReady(true)}
               onEnded={() => goNext()}
             />
           ) : (
-            <img className="story-viewer-media" src={activeMoment.mediaUrl} alt={activeMoment.caption || 'Historia'} />
+            <img
+              className="story-viewer-media"
+              src={activeMoment.mediaUrl}
+              alt={activeMoment.caption || 'Historia'}
+              decoding="async"
+              onLoad={() => setMediaReady(true)}
+            />
           )}
+          {!mediaReady ? <div className="story-viewer-loading" role="status">Cargando…</div> : null}
         </article>
         <button className="story-nav-btn" type="button" onClick={() => goNext()}>
           ›

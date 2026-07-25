@@ -9,7 +9,13 @@ SIGNALING_CONTEXT=../signaling-server
 JWT_SECRET=change-this-with-openssl-rand-hex-32
 JWT_ISSUER=conectate-local-fallback
 JWT_EXPIRES_IN=7d
-CORS_ORIGIN=*
+CORS_ORIGIN=https://red-social-android.vercel.app
+AUTH_REGISTER_RATE_LIMIT_PER_HOUR=10
+AUTH_LOGIN_RATE_LIMIT_PER_15_MINUTES=20
+AUTH_PASSWORD_RESET_RATE_LIMIT_PER_15_MINUTES=5
+AUTH_SENSITIVE_RATE_LIMIT_PER_15_MINUTES=12
+AUTH_PAIRING_RATE_LIMIT_PER_MINUTE=90
+STORAGE_UPLOAD_RATE_LIMIT_PER_10_MINUTES=120
 SIGNALING_ALLOWED_ORIGINS=*
 # TURN/Coturn autoalojado (configúralo con scripts/configure-mini-pc-turn.sh)
 # Bajo CGNAT, Cloudflare Tunnel sólo expone API/signaling HTTP+WebSocket:
@@ -45,4 +51,33 @@ SUPABASE_STORAGE_PAGE_SIZE=100
 SUPABASE_STORAGE_SOURCE_BASE_URLS=
 SUPABASE_STORAGE_REWRITE_APPLY=false
 ADMIN_SYNC_TOKEN=change-this-with-openssl-rand-hex-32
-ADMIN_EMAILS=gamergamerff004@gmail.com,alvaromendozamarin004@gmail.com,gamergamerff017@gmail.com
+# Use immutable local/supabase UUIDs. Email-based admin access is disabled by default
+# because local registration does not prove ownership of an address.
+ADMIN_USER_IDS=
+ALLOW_LEGACY_ADMIN_EMAIL_ADMINS=false
+ADMIN_EMAILS=
+
+# IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
+# 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion
+# y hace el primer entrenamiento casi 10 veces mas costoso que 512.
+AI_HIDDEN_SIZE=512
+AI_TRAIN_EPOCHS=100
+AI_LEARNING_RATE=0.06
+AI_CONFIDENCE_THRESHOLD=0.34
+AI_REQUEST_TIMEOUT_MS=3000
+AI_CHAT_REQUEST_TIMEOUT_MS=3000
+AI_CHAT_RATE_LIMIT_PER_MINUTE=30
+AI_FEEDBACK_RATE_LIMIT_PER_MINUTE=20
+AI_FEEDBACK_MAX_BYTES=16777216
+AI_CPU_LIMIT=0.75
+AI_MEMORY_LIMIT=512m
+AI_NODE_HEAP_MB=320
+# AI_DATA_ROOT=./ai-chatbot-data
+
+# Motor general propio: se entrena solo con data/knowledge.json, sin modelos
+# descargados, proveedores generativos ni conexiones de red.
+AI_KNOWLEDGE_ENABLED=true
+AI_KNOWLEDGE_THRESHOLD=0.34
+AI_KNOWLEDGE_HIDDEN_SIZE=96
+AI_KNOWLEDGE_EPOCHS=140
+AI_KNOWLEDGE_LEARNING_RATE=0.055

@@ -10,6 +10,7 @@ const version = '0.1.0'
 const port = Number(process.env.PORT || 3002)
 const jwtSecret = String(process.env.JWT_SECRET || '')
 const jwtIssuer = String(process.env.JWT_ISSUER || 'conectate-local-fallback')
+const localFallbackApiUrl = String(process.env.LOCAL_FALLBACK_API_URL || 'http://api:3001').replace(/\/+$/, '')
 
 if (!jwtSecret || jwtSecret.length < 32) {
   console.warn('[realtime] JWT_SECRET missing or too short; gateway will still start but will reject auth')
@@ -53,6 +54,28 @@ function verifyToken(token) {
   }
 }
 
+async function resolveUserIds(token, payload) {
+  const ids = new Set([String(payload?.sub || '').trim().toLowerCase()].filter(Boolean))
+  try {
+    const response = await fetch(`${localFallbackApiUrl}/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) return null
+
+    const body = await response.json()
+    const user = body?.user || {}
+    const userIds = [user.id, user.supabaseUserId]
+    userIds.forEach((value) => {
+      const id = String(value || '').trim().toLowerCase()
+      if (id) ids.add(id)
+    })
+    return ids
+  } catch (error) {
+    console.warn('[realtime] canonical user identity could not be resolved:', error.message)
+    return null
+  }
+}
+
 function safeJsonParse(text) {
   try {
     return JSON.parse(text)
@@ -69,6 +92,7 @@ function send(ws, obj) {
 wss.on('connection', (ws, req) => {
   ws._rooms = new Set()
   ws._userId = null
+  ws._userIds = new Set()
 
   let queryToken = ''
   try {
@@ -88,10 +112,19 @@ wss.on('connection', (ws, req) => {
   }
 
   ws._userId = String(payload.sub)
+  ws._identityReady = resolveUserIds(token, payload).then((ids) => {
+    if (!ids) {
+      ws.close(4403, 'ACCOUNT_NOT_ACTIVE')
+      return null
+    }
+    ws._userIds = ids
+    send(ws, { type: 'connected', userId: ws._userId, service: serviceName, version })
+    return ids
+  })
 
-  send(ws, { type: 'connected', userId: ws._userId, service: serviceName, version })
-
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
+    const allowedUserIds = await ws._identityReady
+    if (!allowedUserIds) return
     const msg = safeJsonParse(raw.toString('utf8'))
     if (!msg || typeof msg !== 'object') return
 
@@ -109,8 +142,8 @@ wss.on('connection', (ws, req) => {
       // - groups/communities later
       const isUserRoom = channel.startsWith('user:')
       if (isUserRoom) {
-        const targetUserId = channel.slice('user:'.length)
-        if (targetUserId !== ws._userId) {
+        const targetUserId = channel.slice('user:'.length).trim().toLowerCase()
+        if (!allowedUserIds.has(targetUserId)) {
           return send(ws, { type: 'error', error: 'FORBIDDEN_USER_ROOM' })
         }
       }
@@ -122,11 +155,12 @@ wss.on('connection', (ws, req) => {
       const isMomentsRoom = channel === 'moments:live'
       const isVoiceRoomsRoom = channel === 'voice-rooms:live'
       const isAdminRoom = channel === 'admin:live'
+      const isVideoCommentsRoom = channel.startsWith('video-comments:')
       const isTypingRoom =
         channel.startsWith('typing-chat:') ||
         channel.startsWith('typing-group:') ||
         channel.startsWith('typing-community:')
-      if (!isUserRoom && !isChatRoom && !isRoomChannel && !isChallengeRoom && !isFeedRoom && !isMomentsRoom && !isVoiceRoomsRoom && !isAdminRoom && !isTypingRoom) {
+      if (!isUserRoom && !isChatRoom && !isRoomChannel && !isChallengeRoom && !isFeedRoom && !isMomentsRoom && !isVoiceRoomsRoom && !isAdminRoom && !isVideoCommentsRoom && !isTypingRoom) {
         return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL' })
       }
 
@@ -163,7 +197,12 @@ function broadcast(channel, payload) {
 
   wss.clients.forEach((client) => {
     if (client.readyState !== WebSocket.OPEN) return
-    if (!client._rooms || !client._rooms.has(channel)) return
+    const targetUserId = channel.startsWith('user:')
+      ? channel.slice('user:'.length).trim().toLowerCase()
+      : ''
+    const subscribedDirectly = Boolean(client._rooms?.has(channel))
+    const matchesCanonicalUser = Boolean(targetUserId && client._userIds?.has(targetUserId))
+    if (!subscribedDirectly && !matchesCanonicalUser) return
     send(client, message)
   })
 }

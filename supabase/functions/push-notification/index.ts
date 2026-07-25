@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 /**
  * Edge Function triggered by Webhooks on multiple tables.
@@ -22,14 +21,8 @@ serve(async (req) => {
 
         console.log(`Processing table: ${table}, record:`, record)
 
-        // 1. Initialize Supabase Client
-        const supabase = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        )
-
         let recipientIds: string[] = []
-        let notificationTitle = "Conéctate"
+        let notificationTitle = "Novvin"
         let notificationBody = ""
         let fcmData: any = {}
         const getExtraDataValue = (key: string): string => {
@@ -49,32 +42,33 @@ serve(async (req) => {
             }
         }
 
+        // Reemplazar lógica de Supabase con llamadas a tu servidor propio
+        const fetchFromServer = async (endpoint, params) => {
+            const url = `http://192.168.18.22/api/${endpoint}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params),
+            });
+            return response.json();
+        };
+
+        // Reemplazar lógica de Supabase para obtener datos de chats
         if (table === 'messages') {
-            const chatId = record.chat_id
-            const senderId = record.sender_id
-            const content = record.content || "Nuevo mensaje"
+            const chatId = record.chat_id;
+            const senderId = record.sender_id;
+            const content = record.content || "Nuevo mensaje";
 
-            const { data: chat, error: cError } = await supabase
-                .from('chats')
-                .select('participants, is_group, group_name')
-                .eq('id', chatId)
-                .single()
+            const chat = await fetchFromServer('chats/get', { id: chatId });
+            const participants = chat.participants || [];
+            const cleanSenderId = senderId.trim().toLowerCase();
+            recipientIds = participants.filter((id) => id.trim().toLowerCase() !== cleanSenderId);
 
-            if (cError) throw cError
-            const participants = chat.participants || []
-            const cleanSenderId = senderId.trim().toLowerCase()
-            recipientIds = participants.filter((id: string) => id.trim().toLowerCase() !== cleanSenderId)
-
-            const { data: senderProfile } = await supabase
-                .from('profiles')
-                .select('full_name, avatar_url')
-                .eq('id', senderId)
-                .single()
-
-            const senderName = senderProfile?.full_name || "Usuario"
-            const isGroup = chat.is_group || false
-            notificationTitle = isGroup ? (chat.group_name || "Grupo") : senderName
-            notificationBody = isGroup ? `${senderName}: ${content}` : content
+            const senderProfile = await fetchFromServer('profiles/get', { id: senderId });
+            const senderName = senderProfile?.full_name || "Usuario";
+            const isGroup = chat.is_group || false;
+            notificationTitle = isGroup ? (chat.group_name || "Grupo") : senderName;
+            notificationBody = isGroup ? `${senderName}: ${content}` : content;
 
             fcmData = {
                 id: String(record.id),

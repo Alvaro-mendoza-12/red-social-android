@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.GridOn
@@ -23,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +48,32 @@ fun ChatBackgroundPickerSheet(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            val previews = listOf(
+                "Océano" to "preset_ocean",
+                "Lavanda" to "preset_lavender",
+                "Cálido" to "preset_warm",
+                "Grafito" to "preset_graphite",
+                "Doodles" to "pattern_doodles",
+                "Cuadrícula" to "pattern_grid"
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(previews, key = { it.second }) { (label, type) ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 104.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onSelectPattern(type) }
+                        ) {
+                            ChatBackgroundLayer(type, null)
+                        }
+                        Text(label, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
             BackgroundOption("Océano", Icons.Default.Palette, onClick = { onSelectPattern("preset_ocean") })
             BackgroundOption("Lavanda", Icons.Default.Palette, onClick = { onSelectPattern("preset_lavender") })
             BackgroundOption("Cálido", Icons.Default.Palette, onClick = { onSelectPattern("preset_warm") })

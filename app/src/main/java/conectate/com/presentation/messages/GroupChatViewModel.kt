@@ -363,11 +363,10 @@ class GroupChatViewModel @Inject constructor(
             
             val replyTo = _replyToMessage.value
             _replyToMessage.value = null
+            _messageText.value = "" // Optimistic UI clear
             
             val result = groupRepository.sendGroupMessage(groupId, content, replyToId = replyTo?.id)
-            if (result.isSuccess) {
-                _messageText.value = ""
-            } else {
+            if (result.isFailure) {
                 val error = result.exceptionOrNull()?.message ?: "Error desconocido"
                 _errorMessage.value = "Error al enviar: $error"
             }
@@ -398,52 +397,49 @@ class GroupChatViewModel @Inject constructor(
             mimeType.startsWith("image", ignoreCase = true) -> "image"
             else -> "document"
         }
-        val normalizedCustomContent = customContent?.trim()?.ifBlank { null }
+        val normalizedCustomContent = customContent?.trim()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
             try {
-                val bytes = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                val content = normalizedCustomContent ?: when (resolvedType) {
+                    "video" -> "🎥 Video"
+                    "audio" -> "🎵 Audio"
+                    "view_once_image" -> "👁️ Foto ver una vez"
+                    "view_once_video" -> "👁️ Video ver una vez"
+                    "gif" -> "🌀 GIF"
+                    "sticker" -> "🧩 Sticker"
+                    "document", "file" -> "📎 Archivo"
+                    else -> "🖼️ Imagen"
                 }
-                if (bytes != null) {
-                    val uploadResult = groupRepository.uploadGroupMedia(groupId, bytes, mimeType)
-                    if (uploadResult.isSuccess) {
-                        val url = uploadResult.getOrThrow()
-                        val content = normalizedCustomContent ?: when (resolvedType) {
-                            "video" -> "🎥 Video"
-                            "audio" -> "🎵 Audio"
-                            "view_once_image" -> "👁️ Foto ver una vez"
-                            "view_once_video" -> "👁️ Video ver una vez"
-                            "gif" -> "🌀 GIF"
-                            "sticker" -> "🧩 Sticker"
-                            "document", "file" -> "📎 Archivo"
-                            else -> "🖼️ Imagen"
-                        }
-                        val sendResult = groupRepository.sendGroupMessage(
-                            groupId = groupId,
-                            content = content,
-                            contentType = resolvedType,
-                            mediaUrl = url
-                        )
-                        if (sendResult.isFailure) {
-                            val reason = sendResult.exceptionOrNull()?.message ?: "Error desconocido"
-                            _errorMessage.value = "Error al enviar: $reason"
-                        }
-                    } else {
-                        val reason = uploadResult.exceptionOrNull()?.message
-                        _errorMessage.value = if (reason.isNullOrBlank()) {
-                            "Error al subir archivo"
-                        } else {
-                            "Error al subir archivo: $reason"
-                        }
-                    }
-                } else {
-                    _errorMessage.value = "No se pudo leer el archivo"
+                val sendResult = groupRepository.sendGroupMediaMessage(
+                    groupId = groupId,
+                    sourceUri = uri,
+                    contentType = resolvedType,
+                    content = content
+                )
+                if (sendResult.isFailure) {
+                    val reason = sendResult.exceptionOrNull()?.message ?: "Error desconocido"
+                    _errorMessage.value = "Error al enviar: $reason"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Error: ${e.message}"
             }
+            _isSending.value = false
+        }
+    }
+
+    fun sendRecentGif(mediaUrl: String) {
+        if (mediaUrl.isBlank() || groupId.isBlank()) return
+        viewModelScope.launch {
+            _isSending.value = true
+            val result = groupRepository.sendGroupMessage(
+                groupId = groupId,
+                content = "🌀 GIF",
+                contentType = "gif",
+                mediaUrl = mediaUrl.trim()
+            )
+            if (result.isFailure) _errorMessage.value = result.exceptionOrNull()?.message ?: "No se pudo enviar el GIF"
             _isSending.value = false
         }
     }

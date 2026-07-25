@@ -48,7 +48,7 @@ class TwoFactorAuthManager @Inject constructor(
 
     data class TOTPSecret(
         val secret: String,
-        val issuer: String = "Conectate",
+        val issuer: String = "Novvin",
         val accountName: String,
         val algorithm: String = "SHA1",
         val digits: Int = TOTP_DIGITS,

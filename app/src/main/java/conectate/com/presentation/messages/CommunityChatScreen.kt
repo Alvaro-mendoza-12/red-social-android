@@ -1,5 +1,6 @@
 package conectate.com.presentation.messages
 
+import conectate.com.presentation.messages.OutgoingMessageMedia
 import androidx.compose.runtime.Composable
 
 import android.Manifest
@@ -91,12 +92,17 @@ fun CommunityChatScreen(
     var focusAttempts by remember(focusMessageId) { mutableStateOf(0) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showRecentGifSheet by remember { mutableStateOf(false) }
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingMediaUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingMediaType by remember { mutableStateOf<String?>(null) }
     var pendingMediaCaption by remember { mutableStateOf("") }
+    var pendingMediaQueue by remember { mutableStateOf<List<Pair<android.net.Uri, String>>>(emptyList()) }
+    val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
+    var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -105,6 +111,14 @@ fun CommunityChatScreen(
 
     // FULL SCREEN MEDIA VIEWER STATE
     val messages = (uiState as? CommunityChatUiState.Success)?.messages ?: emptyList()
+    val chatMessages = remember(messages) { messages.map { it.asChatMessage() } }
+    val recentGifUrls = remember(messages) {
+        messages.asReversed()
+            .filter { it.content_type == "gif" }
+            .mapNotNull { it.media_url?.trim()?.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(24)
+    }
     val visibleMessageIds by remember(messages, listState) {
         derivedStateOf {
             listState.layoutInfo.visibleItemsInfo
@@ -113,7 +127,11 @@ fun CommunityChatScreen(
         }
     }
     val mediaMessages = remember(messages) {
-        messages.filter { (it.content_type == "image" || it.content_type == "video" || it.content_type == "gif" || it.content_type == "sticker") && !it.deleted_for_all }
+        messages.filter {
+            conectate.com.presentation.components.isGalleryMediaType(it.content_type) &&
+                !it.media_url.isNullOrBlank() &&
+                !it.deleted_for_all
+        }
     }
     val fullScreenMediaItems = remember(mediaMessages) {
         mediaMessages.map { msg ->
@@ -147,29 +165,37 @@ fun CommunityChatScreen(
     }
 
     // Media Launchers
+    var showMediaComposer by remember { mutableStateOf(false) }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "image"
-            pendingMediaCaption = ""
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        uris.take(10).forEach { uri ->
+            viewModel.sendMediaMessage(
+                uri = uri,
+                context = context,
+                forcedMessageType = "image",
+                customContent = null
+            )
         }
     }
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "video"
-            pendingMediaCaption = ""
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        uris.take(10).forEach { uri ->
+            viewModel.sendMediaMessage(
+                uri = uri,
+                context = context,
+                forcedMessageType = "video",
+                customContent = null
+            )
         }
     }
 
     val viewOnceImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             pendingMediaUri = uri
             pendingMediaType = "view_once_image"
@@ -178,8 +204,8 @@ fun CommunityChatScreen(
     }
 
     val viewOnceVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             pendingMediaUri = uri
             pendingMediaType = "view_once_video"
@@ -206,8 +232,8 @@ fun CommunityChatScreen(
     }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
-    ) { contactUri: Uri? ->
+        contract = PickPhoneContactContract()
+    ) { contactUri: android.net.Uri? ->
         if (contactUri == null) return@rememberLauncherForActivityResult
         val payload = resolvePickedContact(context, contactUri)
         if (payload == null) {
@@ -391,51 +417,30 @@ fun CommunityChatScreen(
                             state = listState,
                             contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
                         ) {
-                            itemsIndexed(state.messages, key = { _, item -> item.id }) { index, communityMsg ->
-                                val previousIso = state.messages.getOrNull(index - 1)?.created_at
-                                if (shouldShowDateSeparator(communityMsg.created_at, previousIso)) {
-                                    DateSeparator(label = formatDateSeparatorLabel(communityMsg.created_at))
+                            itemsIndexed(chatMessages, key = { _, item -> item.id }) { index, msg ->
+                                val previousIso = chatMessages.getOrNull(index - 1)?.created_at
+                                if (shouldShowDateSeparator(msg.created_at, previousIso)) {
+                                    DateSeparator(label = formatDateSeparatorLabel(msg.created_at))
                                 }
-                                val msg = conectate.com.data.model.Message(
-                                    id = communityMsg.id,
-                                    chat_id = communityMsg.community_id,
-                                    sender_id = communityMsg.sender_id,
-                                    content = communityMsg.content,
-                                    content_type = communityMsg.content_type,
-                                    media_url = communityMsg.media_url,
-                                    poll_id = communityMsg.poll_id,
-                                    created_at = communityMsg.created_at,
-                                    status = communityMsg.status,
-                                    reply_to_id = communityMsg.reply_to_id,
-                                    is_edited = communityMsg.is_edited,
-                                    deleted_for_all = communityMsg.deleted_for_all,
-                                    deleted_by = communityMsg.deleted_by,
-                                    reactions = communityMsg.reactions,
-                                    is_forwarded = communityMsg.is_forwarded,
-                                    forwarded_from_message_id = communityMsg.forwarded_from_message_id,
-                                    forwarded_from_user_id = communityMsg.forwarded_from_user_id,
-                                    sender_name = communityMsg.sender_name,
-                                    reply_to = communityMsg.reply_to?.let { quoted ->
-                                        conectate.com.data.model.Message(
-                                            id = quoted.id,
-                                            chat_id = quoted.community_id,
-                                            sender_id = quoted.sender_id,
-                                            content = quoted.content,
-                                            content_type = quoted.content_type,
-                                            media_url = quoted.media_url,
-                                            created_at = quoted.created_at,
-                                            deleted_for_all = quoted.deleted_for_all,
-                                            reactions = quoted.reactions,
-                                            is_forwarded = quoted.is_forwarded,
-                                            forwarded_from_message_id = quoted.forwarded_from_message_id,
-                                            forwarded_from_user_id = quoted.forwarded_from_user_id
-                                        )
-                                    }
-                                )
+                                val mediaGroup = remember(chatMessages, msg.id) {
+                                    conectate.com.presentation.components.mediaGridClusterAt(chatMessages, index)
+                                }
+                                if (mediaGroup == null) return@itemsIndexed
                                 val isFromMe = msg.sender_id == currentUserId
                                 val memberProfile = memberProfiles[msg.sender_id]
                                 val pollId = msg.poll_id
-                                if (msg.content_type == "poll" && !pollId.isNullOrBlank()) {
+                                if (mediaGroup.size > 1) {
+                                    conectate.com.presentation.components.MediaGridMessageBubble(
+                                        messages = mediaGroup,
+                                        isFromCurrentUser = isFromMe,
+                                        onClick = { selectedMessage ->
+                                            fullScreenMediaItems.indexOfFirst { it.id == selectedMessage.id }
+                                                .takeIf { it >= 0 }
+                                                ?.let { fullScreenImageInitialIndex = it }
+                                        },
+                                        onResolveUrl = { viewModel.getPlayableUrl(it) }
+                                    )
+                                } else if (msg.content_type == "poll" && !pollId.isNullOrBlank()) {
                                     PollMessageCard(
                                         message = msg,
                                         pollState = pollStates[pollId],
@@ -479,7 +484,7 @@ fun CommunityChatScreen(
                                                     }
                                                 }
                                             } else if (clickedUrl != null) {
-                                                val index = fullScreenMediaItems.indexOfFirst { it.url == clickedUrl || it.url == msg.media_url }
+                                                val index = fullScreenMediaItems.indexOfFirst { it.id == msg.id }
                                                 if (index != -1) {
                                                     fullScreenImageInitialIndex = index
                                                 }
@@ -688,8 +693,10 @@ fun CommunityChatScreen(
                                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (messageText.isNotBlank()) { if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage() } }),
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
-                                    IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
-                                        Icon(Icons.Default.CameraAlt, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    IconButton(onClick = {
+                                        showMediaComposer = true
+                                    }) {
+                                        Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             )
@@ -1075,30 +1082,14 @@ fun CommunityChatScreen(
         )
     }
 
-    if (pendingMediaUri != null && pendingMediaType != null) {
-        MediaCaptionPreviewDialog(
-            mediaUri = pendingMediaUri!!,
-            mediaType = pendingMediaType!!,
-            caption = pendingMediaCaption,
-            onCaptionChange = { pendingMediaCaption = it },
-            onDismiss = {
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            onConfirm = { editedUri, editedCaption ->
-                val type = pendingMediaType ?: return@MediaCaptionPreviewDialog
-                viewModel.sendMediaMessage(
-                    uri = editedUri,
-                    context = context,
-                    forcedMessageType = type,
-                    customContent = editedCaption.trim().ifBlank { null }
-                )
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            isSending = isSending
+
+
+    if (showRecentGifSheet) {
+        RecentGifPickerSheet(
+            recentUrls = recentGifUrls,
+            onSelect = { url -> showRecentGifSheet = false; viewModel.sendRecentGif(url) },
+            onChooseFromDevice = { showRecentGifSheet = false; gifPickerLauncher.launch("image/gif") },
+            onDismiss = { showRecentGifSheet = false }
         )
     }
 
@@ -1106,27 +1097,25 @@ fun CommunityChatScreen(
         ModalBottomSheet(onDismissRequest = { showAttachmentSheet = false }) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(text = "Compartir", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; imagePickerLauncher.launch("image/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().clickable {
+                    showAttachmentSheet = false
+                    imagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Imagen")
                 }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; videoPickerLauncher.launch("video/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; videoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.VideoLibrary, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Video")
-                }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; audioPickerLauncher.launch("audio/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Audiotrack, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Audio")
                 }
                 Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; documentPickerLauncher.launch("*/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Documento")
                 }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; gifPickerLauncher.launch("image/gif") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showRecentGifSheet = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.GifBox, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("GIF")
@@ -1164,7 +1153,7 @@ fun CommunityChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            viewOnceImagePickerLauncher.launch("image/*")
+                            showMediaComposer = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1178,7 +1167,7 @@ fun CommunityChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            viewOnceVideoPickerLauncher.launch("video/*")
+                            showMediaComposer = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1295,4 +1284,45 @@ fun CommunityChatScreen(
             onDismiss = { viewModel.dismissPollOptionVoters() }
         )
     }
+
+    if (showMediaComposer) {
+        MessageMediaComposer(
+            isSending = false,
+            onDismiss = { showMediaComposer = false },
+            onSend = { mediaList, mediaCaption ->
+                showMediaComposer = false
+                mediaList.forEachIndexed { index, outgoingMedia ->
+                    viewModel.sendMediaMessage(
+                        uri = outgoingMedia.uri,
+                        context = context,
+                        forcedMessageType = outgoingMedia.type,
+                        customContent = if (index == 0 && mediaCaption.isNotBlank()) mediaCaption else ""
+                    )
+                }
+            }
+        )
+    }
 }
+
+private fun conectate.com.data.model.CommunityMessage.asChatMessage(): conectate.com.data.model.Message =
+    conectate.com.data.model.Message(
+        id = id,
+        chat_id = community_id,
+        sender_id = sender_id,
+        content = content,
+        content_type = content_type,
+        media_url = media_url,
+        poll_id = poll_id,
+        created_at = created_at,
+        status = status,
+        reply_to_id = reply_to_id,
+        is_edited = is_edited,
+        deleted_for_all = deleted_for_all,
+        deleted_by = deleted_by,
+        reactions = reactions,
+        is_forwarded = is_forwarded,
+        forwarded_from_message_id = forwarded_from_message_id,
+        forwarded_from_user_id = forwarded_from_user_id,
+        sender_name = sender_name,
+        reply_to = reply_to?.asChatMessage()
+    )

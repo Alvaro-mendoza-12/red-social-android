@@ -27,11 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.ChatWithLastMessage
 
-private val InboxBackground = Color(0xFF050505)
-private val InboxPanel = Color(0xFF101010)
-private val InboxDivider = Color(0xFF34343A)
-private val InboxRed = Color(0xFFE53935)
-private val InboxMuted = Color(0xFF9FA0A8)
+// Colors now resolved at runtime via MaterialTheme.colorScheme for light/dark compatibility
 
 /**
  * Tab de Chats Privados (1:1)
@@ -64,10 +60,12 @@ fun PrivateChatsTab(
         viewModel.consumeUiMessage()
     }
 
+    val colorScheme = MaterialTheme.colorScheme
+    val inboxRed = colorScheme.primary
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(InboxBackground)
+            .background(colorScheme.background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
         // Search and call history have independent, non-overlapping targets.
@@ -87,7 +85,7 @@ fun PrivateChatsTab(
                 placeholder = {
                     Text(
                         "Buscar conversaciones",
-                        color = InboxMuted,
+                        color = colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 14.sp
                     )
@@ -100,28 +98,28 @@ fun PrivateChatsTab(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Buscar",
-                        tint = Color(0xFFE1E2EA),
+                        tint = colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(25.dp)
                     )
                 },
                 singleLine = true,
                 shape = CircleShape,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = Color.White,
-                    focusedBorderColor = Color(0xFF777986),
-                    unfocusedBorderColor = Color(0xFF777986),
-                    focusedContainerColor = InboxBackground,
-                    unfocusedContainerColor = InboxBackground,
+                    focusedTextColor = colorScheme.onBackground,
+                    unfocusedTextColor = colorScheme.onBackground,
+                    cursorColor = colorScheme.primary,
+                    focusedBorderColor = colorScheme.outline,
+                    unfocusedBorderColor = colorScheme.outlineVariant,
+                    focusedContainerColor = colorScheme.surface,
+                    unfocusedContainerColor = colorScheme.surface,
                 )
             )
             FilledTonalIconButton(
                 onClick = onNavigateToCallHistory,
                 modifier = Modifier.size(54.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = InboxRed,
-                    contentColor = Color.White
+                    containerColor = inboxRed,
+                    contentColor = colorScheme.onPrimary
                 )
             ) {
                 Icon(
@@ -191,7 +189,7 @@ fun PrivateChatsTab(
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
-                        color = InboxRed
+                        color = inboxRed
                     )
                 }
             }
@@ -223,15 +221,15 @@ fun PrivateChatsTab(
                                         "No se encontraron conversaciones"
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = InboxMuted
+                                color = colorScheme.onSurfaceVariant
                             )
                             
                             OutlinedButton(
                                 onClick = onNavigateToSearch,
                                 shape = CircleShape,
                                 modifier = Modifier.height(48.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF777986))
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colorScheme.onSurface),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colorScheme.outline)
                             ) {
                                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
@@ -246,7 +244,7 @@ fun PrivateChatsTab(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(InboxPanel)
+                            .background(colorScheme.background)
                     ) {
                         items(
                             items = privateChats,
@@ -273,7 +271,7 @@ fun PrivateChatsTab(
                                     showReportDialog = true
                                 }
                             )
-                            Divider(color = InboxDivider)
+                            Divider(color = colorScheme.outlineVariant)
                         }
                     }
 
@@ -297,7 +295,7 @@ fun PrivateChatsTab(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = state.message, color = InboxRed)
+                    Text(text = state.message, color = inboxRed)
                 }
             }
         }
@@ -470,16 +468,18 @@ private fun InboxFilterPill(
     outlined: Boolean = false,
     height: Dp = 36.dp,
 ) {
+    val colorSchemePill = MaterialTheme.colorScheme
+    val pillAccent = colorSchemePill.primary
     val background = when {
-        selected -> InboxRed
+        selected -> pillAccent
         outlined -> Color.Transparent
-        else -> Color(0xFF181818)
+        else -> colorSchemePill.surfaceVariant
     }
-    val borderColor = if (selected) InboxRed else Color(0xFF777986)
+    val borderColor = if (selected) pillAccent else colorSchemePill.outline
     Surface(
         onClick = onClick,
         color = background,
-        contentColor = if (selected) Color.White else Color(0xFFE7E7EC),
+        contentColor = if (selected) colorSchemePill.onPrimary else colorSchemePill.onSurfaceVariant,
         shape = RoundedCornerShape(12.dp),
         border = if (outlined || !selected) androidx.compose.foundation.BorderStroke(1.dp, borderColor) else null,
         modifier = Modifier.height(height)
@@ -493,7 +493,7 @@ private fun InboxFilterPill(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (selected) Color.White else InboxRed,
+                    tint = if (selected) colorSchemePill.onPrimary else pillAccent,
                     modifier = Modifier.size(19.dp)
                 )
             }

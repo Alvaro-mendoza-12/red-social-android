@@ -8,7 +8,21 @@ const { Pool } = require('pg')
 const { ensureLocalDataTables, registerDataRoutes } = require('./data-routes')
 const { ensurePostgrestCompatTables, registerPostgrestCompatRoutes } = require('./postgrest-compat-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
+const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
+const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
+const { canonicalStorageResponseMiddleware } = require('./storage-url-canonicalization')
+const {
+  boundedInteger,
+  createRateLimitMiddleware,
+  isTrustedProxyAddress,
+  requestIpAddress,
+  stableKey,
+} = require('./request-security')
+const {
+  ensureScheduledMessageTables,
+  processDueScheduledMessageJobs,
+} = require('./scheduled-message-jobs')
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
@@ -52,11 +66,86 @@ const pool = new Pool({
   connectionTimeoutMillis: 10_000,
 })
 
+function logDatabasePoolError(error) {
+  console.error('[api] database pool connection lost', {
+    code: String(error?.code || 'UNKNOWN'),
+    severity: String(error?.severity || 'ERROR'),
+    message: String(error?.message || 'Database connection error').slice(0, 240),
+  })
+}
+
+// pg emits an `error` event when an idle connection is interrupted (for
+// example during a controlled PostgreSQL restart). Without a listener Node
+// treats it as an uncaught EventEmitter error and terminates the API process.
+// The pool discards that client and establishes a fresh connection on demand.
+pool.on('error', logDatabasePoolError)
+
 const app = express()
 app.disable('x-powered-by')
+app.set('trust proxy', (address) => isTrustedProxyAddress(address))
 app.use(helmet())
 app.use(cors({ origin: corsOrigin === '*' ? true : corsOrigin }))
 app.use(express.json({ limit: '1mb' }))
+app.use(canonicalStorageResponseMiddleware)
+
+const authIpKey = (req) => `ip:${requestIpAddress(req)}`
+const authCredentialKey = (req) => {
+  const email = normalizeEmail(req.body?.email || req.body?.identifier)
+  return `${authIpKey(req)}:credential:${stableKey(email || 'missing')}`
+}
+
+app.use('/v1/auth/register', createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_REGISTER_RATE_LIMIT_PER_HOUR, 10, 2, 100),
+  windowMs: 60 * 60_000,
+  code: 'AUTH_REGISTER_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.use('/v1/auth/login', createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_LOGIN_RATE_LIMIT_PER_15_MINUTES, 20, 5, 200),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_LOGIN_RATE_LIMITED',
+  key: authCredentialKey,
+  methods: ['POST'],
+}))
+app.use('/v1/auth/password-reset/request', createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_PASSWORD_RESET_RATE_LIMIT_PER_15_MINUTES, 5, 2, 50),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_PASSWORD_RESET_RATE_LIMITED',
+  key: authCredentialKey,
+  methods: ['POST'],
+}))
+app.use([
+  '/v1/auth/password-reset/confirm',
+  '/v1/auth/complete-migrated-password-reset',
+  '/v1/auth/activate-local-password',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_SENSITIVE_RATE_LIMIT_PER_15_MINUTES, 12, 3, 100),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_SENSITIVE_ACTION_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.use([
+  '/v1/auth/web-login-pairing',
+  '/functions/v1/web-login-pairing',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_PAIRING_RATE_LIMIT_PER_MINUTE, 90, 10, 300),
+  windowMs: 60_000,
+  code: 'AUTH_PAIRING_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.use([
+  '/v1/storage/upload',
+  '/storage/v1/object',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.STORAGE_UPLOAD_RATE_LIMIT_PER_10_MINUTES, 120, 10, 1000),
+  windowMs: 10 * 60_000,
+  code: 'STORAGE_UPLOAD_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST', 'PUT'],
+}))
 
 const userSelectColumns = `
   id,
@@ -187,6 +276,11 @@ function getSupabaseAdminClient() {
           const result = await remoteSupabaseAuthRequest(`/auth/v1/admin/users?${params}`)
           if (result.error) return result
           return { data: { ...result.data, users: result.data?.users || [] }, error: null }
+        },
+        async deleteUser(userId) {
+          return remoteSupabaseAuthRequest(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+            method: 'DELETE',
+          })
         },
       },
       async getUser(accessToken) {
@@ -326,11 +420,6 @@ async function deliverPasswordResetToken(user, token) {
   return { delivery: 'console' }
 }
 
-function requestIpAddress(req) {
-  const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-  return cleanText(forwardedFor || req.ip || req.socket?.remoteAddress || '', 120) || null
-}
-
 function requestUserAgent(req) {
   return cleanText(req.headers['user-agent'] || '', 500) || null
 }
@@ -369,6 +458,20 @@ async function authRequired(req, res, next) {
       issuer: serviceName,
       audience: 'conectate-clients',
     })
+    const { rows: activeUsers } = await pool.query(
+      `SELECT 1
+       FROM fallback_users
+       WHERE id = $1::uuid
+       LIMIT 1`,
+      [req.auth.sub],
+    )
+    if (!activeUsers[0]) {
+      return res.status(401).json({ error: 'ACCOUNT_DELETED' })
+    }
+    const suspension = await findActiveSuspension(pool, req.auth.sub)
+    if (suspension) {
+      return res.status(403).json(accountSuspendedPayload(suspension))
+    }
     const activeSession = await touchWebSessionForAuth(req.auth, req)
     if (!activeSession) {
       return res.status(401).json({ error: 'WEB_SESSION_REVOKED' })
@@ -490,9 +593,34 @@ function isMissingAuthUsersTable(error) {
   return ['42P01', '3F000'].includes(String(error?.code || ''))
 }
 
+let authUsersTableAvailable
+let authUsersTableProbe
+
+async function hasRestoredAuthUsersTable() {
+  if (typeof authUsersTableAvailable === 'boolean') return authUsersTableAvailable
+  if (authUsersTableProbe) return authUsersTableProbe
+
+  authUsersTableProbe = pool.query(
+    "SELECT to_regclass('auth.users') IS NOT NULL AS available",
+  ).then(({ rows }) => {
+    authUsersTableAvailable = rows[0]?.available === true
+    return authUsersTableAvailable
+  }).catch((error) => {
+    console.warn('[auth] could not inspect restored auth schema', error.message)
+    return false
+  }).finally(() => {
+    authUsersTableProbe = null
+  })
+
+  return authUsersTableProbe
+}
+
 async function hydrateUserRow(row) {
   if (!row) return null
   if (!row.supabase_user_id) {
+    return { ...row, account_created_at: row.created_at }
+  }
+  if (!(await hasRestoredAuthUsersTable())) {
     return { ...row, account_created_at: row.created_at }
   }
 
@@ -515,6 +643,7 @@ async function hydrateUserRow(row) {
 
 async function getRestoredAuthUserForFallback(row) {
   if (!row?.supabase_user_id && !row?.email) return null
+  if (!(await hasRestoredAuthUsersTable())) return null
   try {
     const { rows } = await pool.query(
       `SELECT id, email, encrypted_password, created_at
@@ -551,6 +680,18 @@ async function ensureAuthMetadataColumns() {
   await pool.query(
     'ALTER TABLE fallback_users ADD COLUMN IF NOT EXISTS password_changed_by_user_at TIMESTAMPTZ',
   )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_profile_login_emails (
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, email)
+    )
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_profile_login_emails_unique
+    ON fallback_profile_login_emails(lower(email))
+  `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -666,6 +807,15 @@ async function syncLocalUserToSupabase(user, password) {
 async function upsertImportedSupabaseUser(supabaseUser) {
   const email = normalizeEmail(supabaseUser.email)
   if (!isValidEmail(email)) return null
+
+  const normalizedSupabaseId = String(supabaseUser.id || '').trim().toLowerCase()
+  if (normalizedSupabaseId) {
+    const { rows: deletedRows } = await pool.query(
+      `SELECT 1 FROM fallback_deleted_identities WHERE lower(user_id) = $1 LIMIT 1`,
+      [normalizedSupabaseId],
+    )
+    if (deletedRows[0]) return null
+  }
 
   const displayName = getSupabaseUserDisplayName(supabaseUser)
   const avatarUrl = getSupabaseUserAvatar(supabaseUser)
@@ -820,6 +970,12 @@ app.get('/ready', async (_req, res, next) => {
       ok: true,
       service: serviceName,
       version,
+      capabilities: [
+        'admin_users_v1',
+        'hard_delete_suspended_users_v1',
+        'image_variants_v1',
+        'profile_ranking_v1',
+      ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),
     })
@@ -1019,7 +1175,10 @@ app.post('/v1/auth/register', async (req, res, next) => {
     }
 
     if (password.length < 8) {
-      return res.status(400).json({ error: 'PASSWORD_TOO_SHORT' })
+      return res.status(400).json({
+        error: 'PASSWORD_TOO_SHORT',
+        message: 'La contraseña debe tener al menos 8 caracteres.',
+      })
     }
 
     const passwordHash = await bcrypt.hash(password, 12)
@@ -1084,6 +1243,12 @@ app.post('/v1/auth/login', async (req, res, next) => {
       `SELECT ${userSelectColumns}
        FROM fallback_users
        WHERE email = $1
+          OR id = (
+            SELECT user_id
+            FROM fallback_profile_login_emails
+            WHERE lower(email) = $1
+            LIMIT 1
+          )
        LIMIT 1`,
       [email],
     )
@@ -1128,6 +1293,12 @@ app.post('/v1/auth/login', async (req, res, next) => {
         error: 'INVALID_PASSWORD',
         message: 'Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.',
       })
+    }
+
+    const suspension = await findActiveSuspension(pool, row.id)
+    if (suspension) {
+      await recordAudit('auth_login_suspended', row.id, { email })
+      return res.status(403).json(accountSuspendedPayload(suspension))
     }
 
     const updated = await pool.query(
@@ -1755,17 +1926,42 @@ app.post('/v1/auth/sync-to-supabase', authRequired, async (req, res, next) => {
   }
 })
 
+async function deleteExternalAuthUser(userId) {
+  const supabaseAdmin = getSupabaseAdminClient()
+  if (!supabaseAdmin) {
+    const error = new Error('EXTERNAL_AUTH_DELETE_UNAVAILABLE')
+    error.status = 409
+    throw error
+  }
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+  if (!error) return { deleted: true, alreadyMissing: false }
+  if (Number(error.status) === 404) return { deleted: false, alreadyMissing: true }
+  const deleteError = new Error('EXTERNAL_AUTH_DELETE_FAILED')
+  deleteError.status = 502
+  deleteError.cause = error
+  throw deleteError
+}
+
 registerStorageRoutes(app, { pool, authRequired })
-registerDataRoutes(app, { pool, authRequired })
+registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
 registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
+registerAiRoutes(app, { authRequired })
 
 app.use((req, res) => {
   res.status(404).json({ error: 'NOT_FOUND', path: req.path })
 })
 
 app.use((error, _req, res, _next) => {
-  console.error('[api] unhandled error', error)
-  res.status(500).json({ error: 'INTERNAL_ERROR' })
+  console.error('[api] request failed', {
+    code: String(error?.code || 'INTERNAL_ERROR'),
+    message: String(error?.message || 'Unexpected request error').slice(0, 240),
+  })
+  const status = Number(error?.status || error?.statusCode || 500)
+  const safeStatus = status >= 400 && status <= 599 ? status : 500
+  const publicCode = safeStatus < 500
+    ? String(error?.message || 'REQUEST_REJECTED').replace(/[^A-Z0-9_]/gi, '_').slice(0, 80)
+    : 'INTERNAL_ERROR'
+  res.status(safeStatus).json({ error: publicCode })
 })
 
 if (process.env.ROUTE_CHECK_ONLY === '1') {
@@ -1774,15 +1970,27 @@ if (process.env.ROUTE_CHECK_ONLY === '1') {
 }
 
 let server
+let scheduledMessageTimer
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
   .then(() => ensureLocalDataTables(pool))
+  .then(() => ensureScheduledMessageTables(pool))
   .then(() => ensurePostgrestCompatTables(pool))
   .then(() => {
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
+    const runScheduledMessages = () => {
+      void processDueScheduledMessageJobs(pool).catch((error) => {
+        console.error('[scheduled-messages] worker failed', {
+          message: String(error?.message || error).slice(0, 240),
+        })
+      })
+    }
+    runScheduledMessages()
+    scheduledMessageTimer = setInterval(runScheduledMessages, 5_000)
+    scheduledMessageTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -1791,6 +1999,7 @@ ensureAuthMetadataColumns()
 
 async function shutdown(signal) {
   console.log(`received ${signal}, shutting down`)
+  if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

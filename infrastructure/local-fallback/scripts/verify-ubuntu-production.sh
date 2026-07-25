@@ -486,6 +486,45 @@ async function main() {
   const actorId = actor.user.id
   const recipientId = recipient.user.id
 
+  await step('Novvin IA propia', 'GET /v1/ai/health + POST /v1/ai/chat', 'NovvinChatScreen + NovvinChatViewModel + LocalFallbackApiClient', 'N/A', 'ai-chatbot-data', async () => {
+    const health = await request('/v1/ai/health', { headers: auth(actorToken) })
+    assert(health.ready === true, 'Novvin no reporta ready')
+    assert(health.modelType === 'conectate-first-party-hybrid-v5', `modelo inesperado: ${health.modelType}`)
+    assert(Number(health.datasetVersion) >= 5, `dataset antiguo: ${health.datasetVersion}`)
+    assert(health.knowledge?.enabled === true, 'motor de conocimiento desactivado')
+    assert(health.knowledge?.networkAccess === false, 'Novvin no debe depender de red externa')
+    assert(Number.isInteger(health.requests?.chatRequests), 'metricas de solicitudes no disponibles')
+
+    const appHelp = await request('/v1/ai/chat', {
+      method: 'POST',
+      headers: auth(actorToken),
+      body: JSON.stringify({
+        message: 'El video no carga, dame pasos detallados para solucionarlo',
+        context: { detailLevel: 'expanded', screen: 'videos', locale: 'es' },
+      }),
+    })
+    assert(appHelp.intent === 'videos_subida_error', `intencion incorrecta: ${appHelp.intent}`)
+    assert(appHelp.source === 'conectate-first-party-hybrid-v5', `fuente inesperada: ${appHelp.source}`)
+    assert(appHelp.learnedFromUsers === false, 'Novvin no debe declarar aprendizaje automatico')
+    assert(String(appHelp.answer || '').length >= 120, 'respuesta de soporte demasiado corta')
+
+    const general = await request('/v1/ai/chat', {
+      method: 'POST',
+      headers: auth(actorToken),
+      body: JSON.stringify({
+        message: 'Por que el cielo es azul',
+        context: { detailLevel: 'expanded', locale: 'es' },
+      }),
+    })
+    assert(general.intent === 'general_knowledge', `conocimiento general incorrecto: ${general.intent}`)
+    assert(general.knowledgeId === 'cielo_azul', `ficha inesperada: ${general.knowledgeId}`)
+    assert(general.source === 'conectate-first-party-hybrid-v5', `fuente inesperada: ${general.source}`)
+    assert(general.learnedFromUsers === false, 'Novvin no debe declarar aprendizaje automatico')
+    assert(String(general.answer || '').length >= 120, 'respuesta general demasiado corta')
+
+    return `modelo=${health.modelType}; dataset=${health.datasetVersion}; soporte=${appHelp.intent}; conocimiento=${general.knowledgeId}`
+  })
+
   await step('auth cambio password', 'POST /v1/auth/change-password', 'AuthService.changePassword', 'fallback_users.password_hash', 'N/A', async () => {
     const changed = await request('/v1/auth/change-password', {
       method: 'POST',

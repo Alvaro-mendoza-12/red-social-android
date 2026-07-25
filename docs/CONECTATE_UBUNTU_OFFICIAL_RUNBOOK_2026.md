@@ -132,12 +132,28 @@ No eliminar SDKs ni rutas legacy hasta cerrar estos puntos:
 
 ## 7. Despliegue a VM Ubuntu
 
+El procedimiento preferido empaqueta el backend completo, crea una copia previa y
+actualiza cada servicio de aplicacion por etapas sin recrear PostgreSQL:
+
+```powershell
+.\scripts\deploy-mini-pc-current.ps1 `
+  -HostName 100.91.84.2 `
+  -User alvaro `
+  -KeyPath "$env:USERPROFILE\.ssh\conectate_mini_ed25519"
+```
+
+La rutina remota usada por ese comando es
+`scripts/deploy-stack-safely.sh`. No sustituirla por un `docker compose up
+--force-recreate` global porque eso interrumpe innecesariamente la base de datos.
+
 Desde Windows CMD:
 
 ```bat
 cd /d "D:\red social - copia"
 scp -P 2222 "infrastructure\local-fallback\api\src\server.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/server.js
 scp -P 2222 "infrastructure\local-fallback\api\src\data-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/data-routes.js
+scp -P 2222 "infrastructure\local-fallback\api\src\admin-moderation-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/admin-moderation-routes.js
+scp -P 2222 "infrastructure\local-fallback\api\src\storage-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/storage-routes.js
 scp -P 2222 "infrastructure\local-fallback\api\src\moments-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/moments-routes.js
 scp -P 2222 "infrastructure\local-fallback\realtime-gateway\src\server.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/realtime-gateway/src/server.js
 ```
@@ -148,12 +164,19 @@ Dentro de Ubuntu:
 cd ~/conectate-local-fallback
 docker compose run --rm api node --check src/server.js
 docker compose run --rm api node --check src/data-routes.js
+docker compose run --rm api node --check src/admin-moderation-routes.js
+docker compose run --rm api node --check src/storage-routes.js
 docker compose run --rm api node --check src/moments-routes.js
-docker compose build api realtime-gateway
-docker compose up -d api edge signaling realtime-gateway
+docker compose build api ai-chatbot signaling realtime-gateway
+./scripts/deploy-stack-safely.sh
 docker compose ps
-docker compose logs --tail=120 api edge signaling realtime-gateway
+docker compose logs --tail=120 api ai-chatbot edge signaling realtime-gateway
 ```
+
+No usar `--skip-build` después de cambiar rutas de la API: recrearía los
+contenedores con una imagen anterior y `/ready` podría responder correctamente
+aunque falten capacidades como `admin_users_v1`. Verificar siempre el arreglo
+`capabilities` de `/ready` después de una actualización.
 
 ## 8. Verificacion oficial
 

@@ -74,9 +74,11 @@ function Set-PropertyLines([string]$Path, [Collections.IDictionary]$Properties) 
 $androidProperties = [ordered]@{
     FALLBACK_API_URL = $normalized
     LOCAL_FALLBACK_API_URL = $normalized
+    SIGNALING_URL = $normalized
 }
 $webProperties = [ordered]@{
     VITE_FALLBACK_API_URL = $normalized
+    VITE_SIGNALING_URL = $normalized
 }
 Set-PropertyLines (Join-Path $root 'secrets.properties') $androidProperties
 Set-PropertyLines (Join-Path $root 'Conectate-web\.env') $webProperties

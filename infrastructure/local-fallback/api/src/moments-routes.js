@@ -318,7 +318,10 @@ async function momentFollowerRecipientIds(pool, ownerId) {
   return Array.from(recipients)
 }
 
-function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, createLocalNotification }) {
+function registerMomentsRoutes(
+  app,
+  { pool, authRequired, getCurrentUser, userIdentity, createLocalNotification, currentUserOwnsStorageObject },
+) {
   app.get('/v1/data/moments/feed', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -338,6 +341,16 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
       const identity = userIdentity(user)
       const mediaUrl = textOf(req.body, ['mediaUrl', 'media_url'], '')
       if (!mediaUrl) return res.status(400).json({ error: 'MEDIA_URL_REQUIRED' })
+      if (!(await currentUserOwnsStorageObject(pool, user.id, mediaUrl, ['moment-media']))) {
+        return res.status(403).json({ error: 'MOMENT_MEDIA_STORAGE_OWNERSHIP_REQUIRED' })
+      }
+      const thumbnailUrl = textOf(req.body, ['thumbnailUrl', 'thumbnail_url'], '') || null
+      if (
+        thumbnailUrl &&
+        !(await currentUserOwnsStorageObject(pool, user.id, thumbnailUrl, ['moment-media']))
+      ) {
+        return res.status(403).json({ error: 'MOMENT_THUMBNAIL_STORAGE_OWNERSHIP_REQUIRED' })
+      }
       const mediaType = normalizeMomentMediaType(textOf(req.body, ['mediaType', 'media_type'], 'image'), mediaUrl)
       const displayDurationMs = normalizedMomentDisplayDurationMs(req.body, mediaType)
 
@@ -365,7 +378,7 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
           identity.displayUserId,
           mediaUrl,
           mediaType,
-          textOf(req.body, ['thumbnailUrl', 'thumbnail_url'], '') || null,
+          thumbnailUrl,
           textOf(req.body, ['caption'], '') || null,
           visibility,
           visibilityType,
@@ -419,6 +432,14 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
         [normalizeId(momentId)],
       )
       const ownerId = normalizeId(textOf(momentRows[0] || {}, ['user_id'], ''))
+      if (ownerId && identity.ids.has(ownerId)) {
+        await pool.query(
+          `DELETE FROM fallback_moment_views
+           WHERE lower(moment_id::text) = $1 AND lower(user_id) = ANY($2::text[])`,
+          [normalizeId(momentId), Array.from(identity.ids)],
+        )
+        return res.json({ ok: true, self_view_ignored: true })
+      }
       const alreadyViewed = await pool.query(
         `SELECT 1
          FROM fallback_moment_views
@@ -504,7 +525,7 @@ function registerMomentsRoutes(app, { pool, authRequired, getCurrentUser, userId
 
       for (const row of [...viewRows, ...importedViews]) {
         const viewerId = normalizeId(textOf(row, ['user_id'], ''))
-        if (!viewerId || seen.has(viewerId)) continue
+        if (!viewerId || identity.ids.has(viewerId) || seen.has(viewerId)) continue
         seen.add(viewerId)
         const profile = await profileFor(pool, viewerId, profilesById)
         items.push({

@@ -40,6 +40,7 @@ import conectate.com.data.local.entity.GroupEntity
 import conectate.com.data.local.entity.GroupMemberEntity
 import conectate.com.data.local.entity.GroupMessageEntity
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Group
 import conectate.com.data.model.GroupMember
@@ -59,6 +60,7 @@ import conectate.com.util.ConversationNotificationPrefs
 import conectate.com.util.isCallEventContentType
 import conectate.com.util.MessageNotificationFactory
 import conectate.com.util.MessageNotificationPayload
+import conectate.com.util.PendingOutgoingMediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
@@ -114,6 +116,7 @@ class GroupRepository @Inject constructor(
     private val groupDao: GroupDao,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val storageService: conectate.com.data.supabase.StorageService,
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
@@ -171,12 +174,13 @@ class GroupRepository @Inject constructor(
 
     private var realtimeJob: Job? = null
     private var groupListenerJob: Job? = null
+    private var ubuntuRealtimeJob: Job? = null
     private var subscribedGroupIds: Set<String> = emptySet()
     private val activeGroupMessageJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     private fun startRealtimeSubscriptions(userId: String) {
         if (authService.isLocalFallbackModeEnabled()) {
-            android.util.Log.d("GroupRepository", "Skipping Supabase realtime in local fallback mode")
+            startUbuntuRealtimeSubscriptions(userId)
             return
         }
         if (userId.isBlank()) return
@@ -199,11 +203,42 @@ class GroupRepository @Inject constructor(
         )
     }
 
+    private fun startUbuntuRealtimeSubscriptions(userId: String) {
+        val cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) return
+        ubuntuRealtimeJob?.cancel()
+        ubuntuRealtimeJob = scope.launch {
+            val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+            if (token.isBlank()) return@launch
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.replaceUserSubscription(cleanUserId)
+            ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.channel != "user:$cleanUserId" || envelope.event != "message") return@collect
+                val roomEventId = envelope.payload["chatId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (!roomEventId.startsWith("room:group:")) return@collect
+                val record = envelope.payload["message"]?.jsonObject ?: return@collect
+                val message = runCatching { json.decodeFromJsonElement<GroupMessage>(record) }
+                    .getOrElse { error ->
+                        android.util.Log.e("GroupRepository", "Invalid Ubuntu group realtime payload", error)
+                        return@collect
+                    }
+                val action = envelope.payload["action"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                if (action == "created" || action.isNullOrBlank()) {
+                    handleIncomingMessage(message, cleanUserId)
+                } else {
+                    handleIncomingGroupUpdate(message, cleanUserId)
+                }
+            }
+        }
+    }
+
     private fun stopRealtimeSubscriptions() {
         realtimeJob?.cancel()
         realtimeJob = null
         groupListenerJob?.cancel()
         groupListenerJob = null
+        ubuntuRealtimeJob?.cancel()
+        ubuntuRealtimeJob = null
         android.util.Log.d("GroupRepository", "[GOD] Realtime subscriptions stopped")
 
     }
@@ -323,7 +358,7 @@ class GroupRepository @Inject constructor(
                         } catch (e: Exception) {
                             if (e !is CancellationException) {
                                 retryCount++
-                                val delayMs = 3000L * (1 shl minOf(retryCount, 4))
+                                val delayMs = minOf(1000L * (1 shl minOf(retryCount, 3)), 8000L)
                                 appMetrics.recordFailure(
                                     metric = "group_realtime_messages_loop",
                                     throwable = e,
@@ -1383,7 +1418,35 @@ class GroupRepository @Inject constructor(
             } catch (_: Exception) {
                 // Best effort audit only.
             }
-            
+
+            var outgoingMediaUrl = mediaUrl
+            PendingOutgoingMediaStore.resolve(context, mediaUrl)?.let { localMediaUri ->
+                val uploadResult = collectionMediaStore.uploadMessageMediaFromUri(
+                    context = context,
+                    ownerId = cleanId,
+                    sourceUri = localMediaUri,
+                    preferredMediaType = contentType,
+                    primaryBucket = "group-media",
+                    fallbackBucket = "groups",
+                    filePrefix = "media_group"
+                )
+                outgoingMediaUrl = uploadResult.getOrElse { error ->
+                    val retryable = CollectionRepositorySupport.isRetryableNetworkError(
+                        error as? Exception ?: Exception(error),
+                        transientNetworkRetryCodes
+                    )
+                    if (retryable) return@withContext Result.success(Unit)
+                    groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
+                    return@withContext Result.failure(error)
+                }
+                msg = msg.copy(media_url = outgoingMediaUrl)
+                groupDao.insertMessages(
+                    listOf(GroupMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
+                )
+                updateGroupMessageInFlow(cleanId, msg)
+                PendingOutgoingMediaStore.delete(context, localMediaUri)
+            }
+
             // 2. Send to Supabase and return real status to the UI.
             val msgJson = buildJsonObject {
                 put("id", msgId)
@@ -1391,7 +1454,7 @@ class GroupRepository @Inject constructor(
                 put("sender_id", userId)
                 put("content", finalContent)
                 put("content_type", contentType)
-                put("media_url", mediaUrl)
+                put("media_url", outgoingMediaUrl)
                 put("reply_to_id", replyToId)
                 put("poll_id", pollId)
                 put("is_forwarded", isForwarded)
@@ -1409,10 +1472,13 @@ class GroupRepository @Inject constructor(
                         groupId = cleanId,
                         content = finalContent,
                         contentType = contentType,
-                        mediaUrl = mediaUrl,
+                        mediaUrl = outgoingMediaUrl,
                         mediaSize = 0L,
                         replyToId = replyToId,
-                        messageId = msgId
+                        messageId = msgId,
+                        isForwarded = isForwarded,
+                        forwardedFromMessageId = forwardedFromMessageId,
+                        forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
                         val synced = serverMessage.copy(group_id = cleanId, status = "sent")
                         groupDao.insertMessages(
@@ -1461,6 +1527,25 @@ class GroupRepository @Inject constructor(
                 Result.success(Unit)
             } else {
                 val syncError = syncResult.exceptionOrNull()
+                val shouldRemainQueued = syncError?.message?.contains("Sesion Ubuntu no disponible", ignoreCase = true) == true ||
+                    (syncError != null && CollectionRepositorySupport.isRetryableNetworkError(
+                        syncError as? Exception ?: Exception(syncError),
+                        transientNetworkRetryCodes
+                    ))
+                if (shouldRemainQueued) {
+                    groupDao.updateMessageSyncStatus(msgId, status = "sending", isSynced = false, pendingAction = "send")
+                    groupDao.getMessageById(msgId)?.toDomain()?.let { queued -> updateGroupMessageInFlow(cleanId, queued) }
+                    runCatching {
+                        operationGuard.audit(
+                            action = GuardedAction.GROUP_MESSAGE_SEND,
+                            actorId = userId,
+                            scopeId = cleanId,
+                            outcome = GuardOutcome.QUEUED,
+                            attributes = mapOf("message_id" to msgId, "reason" to "network_unavailable")
+                        )
+                    }
+                    return@withContext Result.success(Unit)
+                }
                 android.util.Log.e("GroupRepository", "❌ [SERVER-FAIL] Falló subida de mensaje $msgId", syncError)
                 try {
                     operationGuard.audit(
@@ -1542,8 +1627,27 @@ class GroupRepository @Inject constructor(
         val pending = groupDao.getPendingOutgoingMessages(maxBatch)
         if (pending.isEmpty()) return
 
-        pending.forEach { pendingEntity ->
-            if (pendingEntity.sender_id.trim().lowercase() != userId) return@forEach
+        pending.forEach { originalEntity ->
+            if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
+            var pendingEntity = originalEntity
+            PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
+                val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
+                    context = context,
+                    ownerId = pendingEntity.group_id,
+                    sourceUri = localMediaUri,
+                    preferredMediaType = pendingEntity.content_type,
+                    primaryBucket = "group-media",
+                    fallbackBucket = "groups",
+                    filePrefix = "media_group"
+                ).getOrElse { error ->
+                    android.util.Log.w("GroupRepository", "Pending group media still unavailable: ${pendingEntity.id}", error)
+                    return@forEach
+                }
+                pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+                groupDao.insertMessages(listOf(pendingEntity))
+                updateGroupMessageInFlow(pendingEntity.group_id, pendingEntity.toDomain())
+                PendingOutgoingMediaStore.delete(context, localMediaUri)
+            }
 
             var payload = buildJsonObject {
                 put("id", pendingEntity.id)
@@ -1570,7 +1674,10 @@ class GroupRepository @Inject constructor(
                         mediaUrl = pendingEntity.media_url,
                         mediaSize = 0L,
                         replyToId = pendingEntity.reply_to_id,
-                        messageId = pendingEntity.id
+                        messageId = pendingEntity.id,
+                        isForwarded = pendingEntity.is_forwarded,
+                        forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
+                        forwardedFromUserId = pendingEntity.forwarded_from_user_id
                     ).onSuccess { serverMessage ->
                         groupDao.updateMessageSyncStatus(pendingEntity.id, status = "sent", isSynced = true, pendingAction = null)
                         updateGroupMessageInFlow(pendingEntity.group_id, serverMessage.copy(group_id = pendingEntity.group_id, status = "sent"))
@@ -1587,9 +1694,31 @@ class GroupRepository @Inject constructor(
     suspend fun editGroupMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            
+            val normalizedContent = newContent.trim()
+            if (normalizedContent.isBlank()) return@withContext Result.failure(Exception("El mensaje no puede estar vacío"))
+            val existing = groupDao.getMessageById(messageId)?.toDomain()
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("No token"))
+                val groupId = existing?.group_id?.trim()?.lowercase()
+                    ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
+                localFallbackApiClient.editCollectionMessage(
+                    accessToken = token,
+                    collection = "groups",
+                    roomId = groupId,
+                    messageId = messageId,
+                    content = normalizedContent
+                ).getOrElse { return@withContext Result.failure(it) }
+
+                val updated = existing.copy(content = normalizedContent, is_edited = true)
+                groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(updated)))
+                updateGroupMessageInFlow(groupId, updated)
+                return@withContext Result.success(Unit)
+            }
+
             supabaseConfig.client.postgrest["group_messages"].update({
-                set("content", newContent)
+                set("content", normalizedContent)
                 set("is_edited", true)
             }) {
                 filter {
@@ -1599,9 +1728,9 @@ class GroupRepository @Inject constructor(
             }
             
             // Optimistic update
-            var existing = groupDao.getMessageById(messageId)
-            if (existing != null) {
-                var updated = existing.toDomain().copy(content = newContent, is_edited = true)
+            var existingEntity = groupDao.getMessageById(messageId)
+            if (existingEntity != null) {
+                var updated = existingEntity.toDomain().copy(content = normalizedContent, is_edited = true)
                 groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(updated)))
                 updateGroupMessageInFlow(updated.group_id, updated)
             }
@@ -1636,6 +1765,25 @@ class GroupRepository @Inject constructor(
             if (optimisticMessage != null) {
                 groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(optimisticMessage)))
                 updateGroupMessageInFlow(optimisticMessage.group_id, optimisticMessage)
+            }
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("No token"))
+                val groupId = existingLocal?.group_id?.trim()?.lowercase()
+                    ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
+                val result = localFallbackApiClient.deleteCollectionMessage(
+                    accessToken = token,
+                    collection = "groups",
+                    roomId = groupId,
+                    messageId = messageId,
+                    forEveryone = forEveryone
+                )
+                if (result.isFailure && existingLocal != null) {
+                    groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(existingLocal)))
+                    updateGroupMessageInFlow(groupId, existingLocal)
+                }
+                return@withContext result
             }
 
             val remoteDeleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
@@ -1914,8 +2062,8 @@ class GroupRepository @Inject constructor(
             bytes = bytes,
             primaryBucket = "group-audio",
             filePrefix = "group_audio",
-            extension = "mp3",
-            contentType = "audio/mpeg"
+            extension = "m4a",
+            contentType = "audio/mp4"
         )
 
 
@@ -1925,18 +2073,20 @@ class GroupRepository @Inject constructor(
         val now = java.time.Instant.now().toString()
         val updatedAt = item.updatedAt.ifBlank { now }
         val preview = item.subtitle.takeIf { it.isNotBlank() && it != "Sin actividad reciente" }
+        val creatorId = item.creatorId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: currentUserId
         return Group(
             id = cleanId,
             name = item.title.ifBlank { "Grupo" },
             image = item.avatarUrl.ifBlank { null },
-            description = item.subtitle.takeIf { it.isNotBlank() },
+            description = item.description.takeIf { it.isNotBlank() },
             created_at = updatedAt,
-            creator_id = currentUserId,
+            creator_id = creatorId,
             last_message = preview,
             last_message_at = updatedAt,
             is_member = true,
             is_deleted = false,
-            only_admins_can_talk = item.onlyAdminsCanTalk
+            only_admins_can_talk = item.onlyAdminsCanTalk,
+            rest_until = item.restUntil
         )
     }
 
@@ -1991,6 +2141,7 @@ class GroupRepository @Inject constructor(
 
     override suspend fun syncGroups(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            retryPendingGroupMessages()
             if (authService.isLocalFallbackModeEnabled()) {
                 return@withContext syncGroupsFromLocalFallback()
             }
@@ -2406,6 +2557,40 @@ class GroupRepository @Inject constructor(
         }
     }
 
+    suspend fun createGroupInvite(groupId: String): Result<String> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión Ubuntu no disponible"))
+        localFallbackApiClient.createGroupInvite(token, groupId.trim().lowercase())
+    }
+
+    suspend fun joinGroupWithInvite(groupId: String, inviteToken: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión Ubuntu no disponible"))
+        val cleanId = groupId.trim().lowercase()
+        localFallbackApiClient.joinGroupWithInvite(token, cleanId, inviteToken).onSuccess {
+            syncGroups()
+            syncGroupMessages(cleanId)
+        }
+    }
+
+    suspend fun setGroupRestUntil(groupId: String, restUntil: String?): Result<Unit> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión Ubuntu no disponible"))
+        val cleanId = groupId.trim().lowercase()
+        localFallbackApiClient.setGroupRestUntil(token, cleanId, restUntil).onSuccess {
+            val notificationPrefs = ConversationNotificationPrefs(context)
+            val untilMillis = runCatching { java.time.Instant.parse(restUntil).toEpochMilli() }.getOrNull()
+            if (untilMillis != null) {
+                notificationPrefs.muteConversationUntil("group", cleanId, untilMillis)
+            } else {
+                notificationPrefs.unmuteConversation("group", cleanId)
+            }
+            groupDao.getGroupById(cleanId)?.let { cached ->
+                groupDao.upsertGroup(cached.copy(rest_until = restUntil))
+            }
+        }
+    }
+
 
 
     suspend fun removeMember(groupId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -2579,6 +2764,11 @@ class GroupRepository @Inject constructor(
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var cleanId = groupId.trim().lowercase()
+            var trimmedName = name.trim()
+            if (trimmedName.isBlank()) {
+                return@withContext Result.failure(Exception("El nombre del grupo no puede estar vacío."))
+            }
+            var normalizedDescription = description?.trim().orEmpty()
             var group = getGroupById(cleanId) ?: return@withContext Result.failure(Exception("Group not found"))
             var privileges = resolveGroupGovernancePrivileges(group, me)
             CollectionGovernanceSupport.requireCanManageCollection(
@@ -2595,16 +2785,35 @@ class GroupRepository @Inject constructor(
             }
 
             val updatePayload = buildJsonObject {
-                put("name", name)
-                put("description", description ?: "")
+                put("name", trimmedName)
+                put("description", normalizedDescription)
                 put("only_admins_can_talk", onlyAdminsCanTalk)
                 if (imageUrl != null) put("image", imageUrl)
             }
-            collectionAdminRemoteStore.updateCollectionInfo(
+            val primaryResult = collectionAdminRemoteStore.updateCollectionInfo(
                 collectionTable = "groups",
                 scopeId = cleanId,
                 payload = updatePayload
-            ).getOrThrow()
+            )
+
+            val finalResult = if (primaryResult.isSuccess) {
+                primaryResult
+            } else if (localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(primaryResult.exceptionOrNull() ?: Exception("No token"))
+                localFallbackApiClient.updateGroupInfo(
+                    accessToken = token,
+                    groupId = cleanId,
+                    name = trimmedName,
+                    description = normalizedDescription,
+                    onlyAdminsCanTalk = onlyAdminsCanTalk,
+                    imageUrl = imageUrl
+                )
+            } else {
+                primaryResult
+            }
+
+            finalResult.getOrThrow()
             
             syncGroups()
             Result.success(Unit)
@@ -2634,6 +2843,32 @@ class GroupRepository @Inject constructor(
             fallbackBucket = "groups",
             filePrefix = "media_group"
         )
+
+    suspend fun sendGroupMediaMessage(
+        groupId: String,
+        sourceUri: android.net.Uri,
+        contentType: String,
+        content: String
+    ): Result<Unit> {
+        val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("No user"))
+        val messageId = UUID.randomUUID().toString()
+        val pending = PendingOutgoingMediaStore.persist(
+            context = context,
+            accountId = accountId,
+            namespace = "group",
+            messageId = messageId,
+            sourceUri = sourceUri,
+            preferredMediaType = contentType
+        ).getOrElse { return Result.failure(it) }
+        return sendGroupMessage(
+            groupId = groupId,
+            content = content,
+            contentType = contentType,
+            mediaUrl = pending.uri.toString(),
+            messageId = messageId
+        )
+    }
 }
 
 

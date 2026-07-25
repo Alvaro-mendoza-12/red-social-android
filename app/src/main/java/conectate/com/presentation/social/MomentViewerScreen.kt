@@ -102,9 +102,10 @@ fun MomentViewerScreen(
 
         if (visibleMoments.isNotEmpty() && pagerState.currentPage in visibleMoments.indices) {
             val currentMoment = visibleMoments[pagerState.currentPage]
-            viewModel.recordView(currentMoment.id)
-            if (currentMoment.userId != null && currentMoment.userId == viewModel.currentUserId) {
+            if (currentMoment.userId == viewModel.currentUserId) {
                 viewModel.loadViewers(currentMoment.id)
+            } else {
+                viewModel.recordView(currentMoment.id)
             }
         }
     }

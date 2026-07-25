@@ -39,6 +39,7 @@ class VideosViewModel @Inject constructor(
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private val reportRequestsInFlight = mutableSetOf<String>()
+    val currentUserId: String? = authService.getCurrentUserId()
 
     private val _videosState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
     val videosState: StateFlow<VideosUiState> = _videosState.asStateFlow()
@@ -61,8 +62,9 @@ class VideosViewModel @Inject constructor(
             try {
                 videoRepository.getVideos().collect { videos ->
                     if (videos.isNotEmpty()) {
-                        saveVideosCache(videos)
-                        _videosState.value = VideosUiState.Success(videos)
+                        val ranked = mixVideosForSession(videos)
+                        saveVideosCache(ranked)
+                        _videosState.value = VideosUiState.Success(ranked)
                     } else {
                         val cached = readVideosCache()
                         _videosState.value = VideosUiState.Success(cached)
@@ -455,6 +457,57 @@ class VideosViewModel @Inject constructor(
         }
     }
 
+    fun deleteComment(comment: conectate.com.data.model.VideoComment) {
+        val videoId = _selectedVideoForComments.value ?: return
+        viewModelScope.launch {
+            videoRepository.deleteComment(comment.id)
+                .onSuccess {
+                    _commentsState.value = _commentsState.value.filterNot { it.id == comment.id }
+                    refreshCommentsAfterWrite(videoId)
+                    reloadVideo(videoId)
+                }
+                .onFailure { android.util.Log.e("VideosViewModel", "Error deleting comment", it) }
+        }
+    }
+
+    fun addStickerComment(stickerUrl: String, label: String) {
+        val videoId = _selectedVideoForComments.value ?: return
+        addStickerComment(videoId, stickerUrl, label)
+    }
+
+    fun addStickerComment(videoId: String, stickerUrl: String, label: String) {
+        viewModelScope.launch {
+            videoRepository.addStickerComment(videoId, stickerUrl, label)
+                .onSuccess { comment ->
+                    _commentsState.value = mergeComment(_commentsState.value, comment)
+                    reloadVideo(videoId)
+                }
+                .onFailure { android.util.Log.e("VideosViewModel", "Sticker comment failed", it) }
+        }
+    }
+
+    fun reactToComment(comment: conectate.com.data.model.VideoComment, reaction: String?) {
+        viewModelScope.launch {
+            videoRepository.setCommentReaction(comment.id, reaction)
+                .onFailure { android.util.Log.e("VideosViewModel", "Comment reaction failed", it) }
+        }
+    }
+
+    fun editComment(comment: conectate.com.data.model.VideoComment, content: String) {
+        viewModelScope.launch {
+            videoRepository.editComment(comment.id, content)
+                .onSuccess { _selectedVideoForComments.value?.let { loadComments(it) } }
+                .onFailure { android.util.Log.e("VideosViewModel", "Comment edit failed", it) }
+        }
+    }
+
+    fun reportComment(comment: conectate.com.data.model.VideoComment, reason: String = "reported") {
+        viewModelScope.launch {
+            videoRepository.reportComment(comment.id, reason)
+                .onFailure { android.util.Log.e("VideosViewModel", "Comment report failed", it) }
+        }
+    }
+
     private fun reloadVideo(videoId: String) {
         viewModelScope.launch {
             delay(300)
@@ -523,6 +576,45 @@ class VideosViewModel @Inject constructor(
         }
     }
 
+    fun toggleFavorite(video: Video) {
+        val wasFavorite = video.favoritedByMe
+        val currentState = _videosState.value
+        if (currentState is VideosUiState.Success) {
+            _videosState.value = VideosUiState.Success(
+                currentState.videos.map { item ->
+                    if (item.id == video.id) {
+                        item.copy(
+                            favoritedByMe = !wasFavorite,
+                            favoriteCount = maxOf(0, item.favoriteCount + if (wasFavorite) -1 else 1)
+                        )
+                    } else {
+                        item
+                    }
+                }
+            )
+        }
+        viewModelScope.launch {
+            videoRepository.setVideoFavorite(video.id, !wasFavorite)
+                .onFailure {
+                    android.util.Log.e("VideosViewModel", "Favorite toggle failed", it)
+                    reloadVideo(video.id)
+                }
+        }
+    }
+
+    fun deleteVideo(video: Video) {
+        viewModelScope.launch {
+            videoRepository.deleteVideo(video.id)
+                .onSuccess {
+                    val currentState = _videosState.value
+                    if (currentState is VideosUiState.Success) {
+                        _videosState.value = VideosUiState.Success(currentState.videos.filterNot { it.id == video.id })
+                    }
+                }
+                .onFailure { android.util.Log.e("VideosViewModel", "Video delete failed", it) }
+        }
+    }
+
     private fun extractActiveMentionQuery(text: String): String? {
         val atIndex = text.lastIndexOf('@')
         if (atIndex < 0 || atIndex == text.lastIndex) return null
@@ -570,5 +662,17 @@ class VideosViewModel @Inject constructor(
             if (raw.isBlank()) emptyList()
             else json.decodeFromString(ListSerializer(Video.serializer()), raw)
         }.getOrDefault(emptyList())
+    }
+
+    private fun mixVideosForSession(videos: List<Video>): List<Video> {
+        val userSeed = currentUserId?.hashCode() ?: 0
+        val daySeed = java.time.LocalDate.now().toEpochDay().toInt()
+        return videos.sortedWith(
+            compareByDescending<Video> {
+                it.likeCount * 4 + it.commentCount * 6 + it.shareCount * 8 + it.favoriteCount * 3 + it.views
+            }.thenByDescending {
+                ((it.id.hashCode() xor userSeed xor daySeed) and 0x7fffffff) % 1000
+            }.thenByDescending { it.created_at }
+        )
     }
 }

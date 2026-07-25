@@ -19,6 +19,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaUtils'
 import { createShuffleSeed, shuffleFeedItems } from '../../features/reels/reelFeedOrder'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
 
 type FeedItem = {
   id: string
@@ -456,7 +457,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
           <p>No hay publicaciones todavía. Cuando alguien publique, aparecerán aquí.</p>
         </article>
       ) : null}
-      {shuffledItems.map((item) => (
+      {shuffledItems.map((item, itemIndex) => (
         <article key={item.id} className="surface-card feed-card">
           <div className="row-between feed-head">
             <Link className="identity-link" to={profilePathFor(item.authorId, user?.id)}>
@@ -497,9 +498,12 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
                   return (
                     <img
                       key={`${item.id}-media-${index}`}
-                      src={media.url}
+                      src={runtimeStoragePreviewUrl(media.url)}
                       alt="Multimedia del post"
                       className={mediaClass}
+                      loading={itemIndex < 2 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      fetchPriority={itemIndex === 0 ? 'high' : 'auto'}
                     />
                   )
                 }

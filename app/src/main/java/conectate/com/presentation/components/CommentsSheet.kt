@@ -34,10 +34,12 @@ fun CommentsSheet(
     comments: List<Comment>,
     onSendComment: (String, String?) -> Unit, // Added parentId
     onDeleteComment: (String) -> Unit,
+    onReportComment: (Comment) -> Unit = {},
     onNavigateToProfile: (String) -> Unit,
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
-    isPostOwner: Boolean = false
+    isPostOwner: Boolean = false,
+    showReportAction: Boolean = false
 ) {
     var commentText by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<Comment?>(null) }
@@ -98,6 +100,8 @@ fun CommentsSheet(
                                     commentText = "@${parent.userName ?: "Usuario"} "
                                 },
                                 onDeleteClick = { onDeleteComment(parent.id) },
+                                onReportClick = { onReportComment(parent) },
+                                showReportAction = showReportAction,
                                 onProfileClick = { parent.userId.let { onNavigateToProfile(it) } }
                             )
                         }
@@ -115,6 +119,8 @@ fun CommentsSheet(
                                         commentText = "@${reply.userName ?: "Usuario"} "
                                     },
                                     onDeleteClick = { onDeleteComment(reply.id) },
+                                    onReportClick = { onReportComment(reply) },
+                                    showReportAction = showReportAction,
                                     onProfileClick = { reply.userId.let { onNavigateToProfile(it) } }
                                 )
                             }

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Conectate presenta Novvin</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #0c1020; color: #fff; font-family: Arial, sans-serif; }
+    body { display: grid; place-items: center; gap: 16px; padding: 18px; }
+    canvas { width: min(360px, 86vw); height: auto; border-radius: 12px; box-shadow: 0 18px 60px #000a; }
+    button { border: 0; border-radius: 8px; padding: 12px 18px; background: #f76c6c; color: #fff; font-weight: 700; cursor: pointer; }
+    #status { color: #b7c5e8; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <canvas id="promo" width="1080" height="1920" aria-label="Video promocional de Novvin"></canvas>
+  <button id="render">Crear video de Novvin</button>
+  <div id="status">Video vertical sin audio, listo para renderizar.</div>
+  <script>
+    const canvas = document.getElementById('promo');
+    const ctx = canvas.getContext('2d');
+    const renderButton = document.getElementById('render');
+    const status = document.getElementById('status');
+    const W = canvas.width, H = canvas.height, duration = 20_000;
+    let start = null, recording = false;
+
+    function clamp(value) { return Math.max(0, Math.min(1, value)); }
+    function ease(value) { value = clamp(value); return value * value * (3 - 2 * value); }
+    function phase(time, from, to) { return ease((time - from) / (to - from)); }
+    function fade(time, from, to) { return Math.sin(Math.PI * clamp((time - from) / (to - from))); }
+    function fillRoundRect(x, y, w, h, radius, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, radius);
+      ctx.fill();
+    }
+    function text(value, x, y, size, color = '#f8fbff', weight = 700, align = 'center', alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.font = `${weight} ${size}px Arial`;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(value, x, y);
+      ctx.restore();
+    }
+    function logo(x, y, scale, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(x, y); ctx.scale(scale, scale);
+      ctx.fillStyle = '#17224d'; ctx.beginPath(); ctx.arc(0, 0, 170, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#6ce6d5'; ctx.lineWidth = 33; ctx.beginPath(); ctx.arc(0, 0, 112, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ff6b6b'; ctx.beginPath(); ctx.arc(0, 0, 58, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f3fff9';
+      ctx.beginPath(); ctx.moveTo(102, -142); ctx.lineTo(119, -99); ctx.lineTo(162, -82); ctx.lineTo(119, -65); ctx.lineTo(102, -22); ctx.lineTo(85, -65); ctx.lineTo(42, -82); ctx.lineTo(85, -99); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    function background(time) {
+      ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#1f2b58'; ctx.lineWidth = 2;
+      for (let i = -4; i < 14; i++) {
+        const offset = (time * 0.04 + i * 160) % 260;
+        ctx.beginPath(); ctx.moveTo(-100, i * 170 + offset - 300); ctx.lineTo(W + 100, i * 170 + offset + 220); ctx.stroke();
+      }
+      ctx.fillStyle = '#121b37'; ctx.fillRect(0, 0, W, 12);
+      ctx.fillStyle = '#ff6b6b'; ctx.fillRect(0, 0, W * ((time / duration) % 1), 12);
+    }
+    function pill(label, x, y, width, alpha) {
+      fillRoundRect(x - width / 2, y - 38, width, 76, 38, `rgba(108,230,213,${0.18 * alpha})`);
+      ctx.strokeStyle = `rgba(108,230,213,${0.85 * alpha})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(x - width / 2, y - 38, width, 76, 38); ctx.stroke();
+      text(label, x, y + 2, 29, '#d9fffa', 700, 'center', alpha);
+    }
+    function chatScene(time, alpha) {
+      const y = 1230;
+      fillRoundRect(110, y, 860, 430, 42, `rgba(23,34,77,${alpha})`);
+      logo(210, y + 116, 0.27, alpha);
+      text('Novvin', 315, y + 81, 38, '#ffffff', 700, 'left', alpha);
+      fillRoundRect(290, y + 122, 580, 92, 38, `rgba(64,78,124,${alpha})`);
+      text('¿Como creo un grupo?', 330, y + 168, 30, '#f8fbff', 500, 'left', alpha);
+      fillRoundRect(190, y + 250, 650, 116, 38, `rgba(108,230,213,${0.20 * alpha})`);
+      text('En Grupos toca + y crea tu espacio.', 230, y + 305, 27, '#d9fffa', 600, 'left', alpha);
+    }
+    function draw(time) {
+      background(time);
+      const scene = Math.floor(time / 4000);
+      if (scene === 0) {
+        const a = fade(time, 200, 3700); logo(W / 2, 690, 0.83 * (0.85 + phase(time, 300, 1500) * .15), a);
+        text('CONECTATE', W / 2, 1110, 84, '#b9cbff', 800, 'center', a);
+        text('presenta', W / 2, 1205, 44, '#d7e2ff', 500, 'center', a);
+      } else if (scene === 1) {
+        const a = fade(time, 4050, 7700); logo(W / 2, 520, 0.64, a);
+        text('NOVVIN', W / 2, 880, 116, '#ffffff', 800, 'center', a);
+        text('La nueva inteligencia de Conectate', W / 2, 980, 39, '#b7c5e8', 500, 'center', a);
+        text('Una IA propia. Hecha para crecer contigo.', W / 2, 1420, 45, '#6ce6d5', 700, 'center', a);
+      } else if (scene === 2) {
+        const a = fade(time, 8050, 11700); text('Tu guia dentro de Conectate', W / 2, 420, 67, '#ffffff', 800, 'center', a);
+        pill('Mensajes', W / 2, 690, 390, a); pill('Grupos', W / 2, 830, 330, a); pill('Comunidades', W / 2, 970, 440, a);
+        logo(W / 2, 1320, 0.48, a);
+        text('Pregunta. Crea. Conecta.', W / 2, 1570, 52, '#ff9b9b', 700, 'center', a);
+      } else if (scene === 3) {
+        const a = fade(time, 12050, 15700); text('Respuestas para empezar', W / 2, 350, 65, '#ffffff', 800, 'center', a); chatScene(time, a);
+      } else {
+        const a = fade(time, 16050, 19800); logo(W / 2, 650, 0.78, a);
+        text('CONECTATE + NOVVIN', W / 2, 1090, 75, '#ffffff', 800, 'center', a);
+        text('El siguiente paso comienza ahora.', W / 2, 1195, 40, '#b7c5e8', 500, 'center', a);
+        fillRoundRect(280, 1430, 520, 100, 50, `rgba(247,108,108,${a})`);
+        text('Disponible en la app', W / 2, 1480, 34, '#ffffff', 800, 'center', a);
+      }
+    }
+    function frame(now) {
+      if (start === null) start = now;
+      const elapsed = Math.min(now - start, duration);
+      draw(elapsed);
+      if (elapsed < duration) requestAnimationFrame(frame);
+    }
+    function createVideo() {
+      if (recording || !window.MediaRecorder) return;
+      recording = true; start = null; status.textContent = 'Renderizando video...'; renderButton.disabled = true;
+      const stream = canvas.captureStream(30);
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+      const chunks = [];
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = () => {
+        const url = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+        const link = document.createElement('a'); link.href = url; link.download = 'conectate-presenta-novvin.webm'; link.click();
+        status.textContent = 'Video creado: conectate-presenta-novvin.webm'; recording = false; renderButton.disabled = false;
+      };
+      recorder.start(); requestAnimationFrame(frame); window.setTimeout(() => recorder.stop(), duration + 200);
+    }
+    draw(0); renderButton.addEventListener('click', createVideo);
+  </script>
+</body>
+</html>

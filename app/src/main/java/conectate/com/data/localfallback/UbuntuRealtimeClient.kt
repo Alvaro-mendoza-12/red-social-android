@@ -1,7 +1,6 @@
 package conectate.com.data.localfallback
 
 import android.util.Log
-import conectate.com.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,7 +52,34 @@ class UbuntuRealtimeClient @Inject constructor() {
         val clean = token.trim()
         if (clean == accessToken) return
         accessToken = clean
-        reconnect()
+        if (clean.isBlank()) {
+            val previous = socket
+            socket = null
+            previous?.close(1000, "session-ended")
+        } else {
+            reconnect()
+        }
+    }
+
+    fun replaceUserSubscription(userId: String) {
+        val channel = "user:${userId.trim().lowercase()}"
+        if (channel == "user:") return
+        subscribedChannels
+            .filter { it.startsWith("user:") && it != channel }
+            .forEach { staleChannel ->
+                sendJson("""{"type":"unsubscribe","channel":"$staleChannel"}""")
+                subscribedChannels.remove(staleChannel)
+            }
+        subscribe(channel)
+    }
+
+    fun clearUserSubscriptions() {
+        subscribedChannels
+            .filter { it.startsWith("user:") }
+            .forEach { channel ->
+                sendJson("""{"type":"unsubscribe","channel":"$channel"}""")
+                subscribedChannels.remove(channel)
+            }
     }
 
     fun subscribe(channel: String) {
@@ -76,7 +102,7 @@ class UbuntuRealtimeClient @Inject constructor() {
     }
 
     private fun wsUrl(): String? {
-        val base = BuildConfig.FALLBACK_API_URL.trim().removeSuffix("/")
+        val base = RuntimeBackendEndpoint.baseUrl.trim().removeSuffix("/")
         if (!base.startsWith("http")) return null
         val wsBase = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
         val token = accessToken
@@ -84,6 +110,7 @@ class UbuntuRealtimeClient @Inject constructor() {
         return "$wsBase/realtime/?token=${java.net.URLEncoder.encode(token, Charsets.UTF_8.name())}"
     }
 
+    @Synchronized
     private fun ensureConnected() {
         if (socket != null) return
         val url = wsUrl() ?: return
@@ -93,7 +120,7 @@ class UbuntuRealtimeClient @Inject constructor() {
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     subscribedChannels.forEach { channel ->
-                        sendJson("""{"type":"subscribe","channel":"$channel"}""")
+                        webSocket.send("""{"type":"subscribe","channel":"$channel"}""")
                     }
                 }
 
@@ -103,23 +130,32 @@ class UbuntuRealtimeClient @Inject constructor() {
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.w(TAG, "socket failure", t)
+                    if (socket !== webSocket) return
                     socket = null
                     scope.launch {
-                        delay(2500)
+                        RuntimeBackendEndpoint.refreshAfterEndpointFailure()
+                        delay(900)
                         ensureConnected()
                     }
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    if (socket !== webSocket) return
                     socket = null
+                    scope.launch {
+                        delay(900)
+                        ensureConnected()
+                    }
                 }
             },
         )
     }
 
+    @Synchronized
     private fun reconnect() {
-        socket?.close(1000, "token-refresh")
+        val previous = socket
         socket = null
+        previous?.close(1000, "token-refresh")
         ensureConnected()
     }
 

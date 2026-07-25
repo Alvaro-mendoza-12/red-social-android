@@ -3,6 +3,9 @@ package conectate.com.presentation.profile
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.core.media.ProfileMediaMutation
+import conectate.com.core.media.ProfileMediaSync
+import conectate.com.core.media.ProfileMutationClock
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.User
 import conectate.com.data.repository.UserRepository
@@ -14,12 +17,18 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.Post
 import conectate.com.data.repository.FriendRepository
 import conectate.com.data.repository.FriendStatus
+import conectate.com.data.repository.PostMutationEvent
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
@@ -54,7 +63,10 @@ class ProfileViewModel @Inject constructor(
     private val _sharedVideos = MutableStateFlow<List<Video>>(emptyList())
     val sharedVideos: StateFlow<List<Video>> = _sharedVideos.asStateFlow()
 
-    private val _selectedTab = MutableStateFlow(0) // 0: Videos, 1: Posts, 2: Compartidos
+    private val _favoriteVideos = MutableStateFlow<List<Video>>(emptyList())
+    val favoriteVideos: StateFlow<List<Video>> = _favoriteVideos.asStateFlow()
+
+    private val _selectedTab = MutableStateFlow(0) // 0: Videos, 1: Posts, 2: Compartidos, 3: Favoritos
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
     val currentUserId: String?
@@ -89,8 +101,38 @@ class ProfileViewModel @Inject constructor(
         }
 
     private var realtimeJob: kotlinx.coroutines.Job? = null
+    private val profileMutationClock = ProfileMutationClock()
 
-    fun loadUserProfile(userId: String?) {
+    init {
+        viewModelScope.launch {
+            userRepository.profileUpdates.collect { updatedUser ->
+                val current = _profileState.value as? ProfileUiState.Success ?: return@collect
+                if (!current.user.id.equals(updatedUser.id, ignoreCase = true)) return@collect
+                profileMutationClock.markCommitted()
+                _profileState.value = ProfileUiState.Success(
+                    updatedUser.copy(badges = current.user.badges)
+                )
+            }
+        }
+        viewModelScope.launch {
+            postRepository.mutationEvents.collect { event ->
+                when (event) {
+                    is PostMutationEvent.Deleted -> {
+                        _userPosts.value = _userPosts.value.filterNot { it.id == event.postId }
+                        _sharedPosts.value = _sharedPosts.value.filterNot { it.id == event.postId }
+                    }
+                    is PostMutationEvent.ContentUpdated -> updatePostInLists(event.postId) { post ->
+                        post.copy(content = event.content)
+                    }
+                    is PostMutationEvent.VisibilityUpdated -> updatePostInLists(event.postId) { post ->
+                        post.copy(visibility = event.visibility)
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadUserProfile(userId: String?, forceNetwork: Boolean? = null) {
         val idToLoad = userId ?: authService.getCurrentUserId()
         if (idToLoad == null) {
             _profileState.value = ProfileUiState.Error("No user logged in")
@@ -104,23 +146,26 @@ class ProfileViewModel @Inject constructor(
         loadUserVideos(idToLoad)
         loadUserPosts(idToLoad)
         loadSharedContent(idToLoad)
+        loadFavoriteVideos(idToLoad)
+        val readGeneration = profileMutationClock.snapshot()
 
         viewModelScope.launch {
             try {
-                // If loading for the first time or different user, show loading
-                // But if we are just reloading real-time, we might not want to flash loading...
-                // Ideally check if we already have this user loaded.
                 val currentState = _profileState.value
                 val isSameUser = (currentState is ProfileUiState.Success && currentState.user.id == idToLoad)
                 if (!isSameUser) {
                     _profileState.value = ProfileUiState.Loading
                 }
-                
-                // 1. Get User Profile
-                val result = userRepository.getUserById(idToLoad)
+
+                val shouldForceNetwork = forceNetwork ?: !isSameUser
+
+                val result = userRepository.getUserById(idToLoad, forceNetwork = shouldForceNetwork)
                 result.onSuccess { user ->
+                    if (!profileMutationClock.isCurrent(readGeneration)) {
+                        android.util.Log.d("ProfileViewModel", "Ignoring stale profile read for $idToLoad")
+                        return@onSuccess
+                    }
                     if (user != null) {
-                       // Load badges
                        val badgesResult = badgeRepository.getUserBadges(user.id)
                        val userWithBadges = if (badgesResult.isSuccess) {
                            user.copy(badges = badgesResult.getOrThrow())
@@ -136,7 +181,6 @@ class ProfileViewModel @Inject constructor(
                        // Check if following (if looking at another user)
                        val currentId = authService.getCurrentUserId()
                        if (currentId != null && currentId != idToLoad) {
-                           // Only check if not currently toggling or within the guard period
                            val now = System.currentTimeMillis()
                            if (!_isToggling.value && (now > lockFollowStateUntil)) {
                                checkIfFollowing(idToLoad)
@@ -147,9 +191,9 @@ class ProfileViewModel @Inject constructor(
                         _profileState.value = ProfileUiState.Error("User not found")
                     }
                 }.onFailure { e ->
-                    // If user profile fails, we still might have posts/videos loaded, but we need the user object for the header.
-                    // Ideally we show error only if critical data missing.
-                    _profileState.value = ProfileUiState.Error(e.message ?: "Unknown error")
+                    if (profileMutationClock.isCurrent(readGeneration)) {
+                        _profileState.value = ProfileUiState.Error(e.message ?: "Unknown error")
+                    }
                 }
             } catch (e: Exception) {
                 _profileState.value = ProfileUiState.Error("Crash prevented: ${e.message}")
@@ -359,10 +403,14 @@ class ProfileViewModel @Inject constructor(
         avatarVideoMuted: Boolean? = null,
         avatarDurationMs: Long? = null,
         coverImageUri: Uri?,
+        removeAvatar: Boolean = false,
+        removeCover: Boolean = false,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
         viewModelScope.launch {
+            val uploadedForCurrentSave = mutableListOf<String>()
+            var profileSaved = false
             try {
                 val userId = authService.getCurrentUserId()
                 if (userId == null) {
@@ -393,14 +441,39 @@ class ProfileViewModel @Inject constructor(
                 var resolvedAvatarVideoMuted: Boolean = currentUser?.avatar_video_muted ?: true
                 var resolvedAvatarDurationMs: Long? = currentUser?.avatar_duration_ms
                 var coverUrl: String? = currentUser?.cover_url
+
+                if (removeAvatar) {
+                    avatarUrl = null
+                    resolvedAvatarMediaType = null
+                    resolvedAvatarDurationMs = null
+                    resolvedAvatarVideoMuted = true
+                }
+                if (removeCover) coverUrl = null
                 
-                // Profile Image Upload Logic
-                if (imageUri != null) {
-                    val uploadResult = userRepository.uploadProfileAvatarMedia(imageUri)
-                    if (uploadResult.isFailure) {
-                        onError(uploadResult.exceptionOrNull()?.message ?: "No se pudo subir el avatar de perfil")
-                        return@launch
+                val (avatarUploadResult, coverUploadResult) = coroutineScope {
+                    val avatarUpload = imageUri?.let { selectedUri ->
+                        async { userRepository.uploadProfileAvatarMedia(selectedUri) }
                     }
+                    val coverUpload = coverImageUri?.let { selectedUri ->
+                        async { userRepository.uploadCoverImage(selectedUri) }
+                    }
+                    avatarUpload?.await() to coverUpload?.await()
+                }
+
+                avatarUploadResult?.getOrNull()?.url?.let(uploadedForCurrentSave::add)
+                coverUploadResult?.getOrNull()?.let(uploadedForCurrentSave::add)
+
+                val uploadError = avatarUploadResult?.exceptionOrNull()
+                    ?: coverUploadResult?.exceptionOrNull()
+                if (uploadError != null) {
+                    if (uploadError is CancellationException) throw uploadError
+                    cleanupProfileUploads(uploadedForCurrentSave)
+                    onError(uploadError.message ?: "No se pudo subir la imagen seleccionada")
+                    return@launch
+                }
+
+                if (avatarUploadResult != null) {
+                    val uploadResult = avatarUploadResult
                     val uploaded = uploadResult.getOrThrow()
                     avatarUrl = uploaded.url
                     resolvedAvatarMediaType = uploaded.mediaType
@@ -412,13 +485,8 @@ class ProfileViewModel @Inject constructor(
                     avatarDurationMs?.let { resolvedAvatarDurationMs = it }
                 }
                 
-                // Cover Image Upload Logic
-                if (coverImageUri != null) {
-                    val uploadResult = userRepository.uploadCoverImage(coverImageUri)
-                    if (uploadResult.isFailure) {
-                        onError(uploadResult.exceptionOrNull()?.message ?: "No se pudo subir la portada")
-                        return@launch
-                    }
+                if (coverUploadResult != null) {
+                    val uploadResult = coverUploadResult
                     coverUrl = uploadResult.getOrThrow()
                 }
 
@@ -427,45 +495,85 @@ class ProfileViewModel @Inject constructor(
                     bio = bio,
                     country = country,
                     city = city,
-                    avatar_url = avatarUrl,
+                    avatar_url = avatarUrl.takeIf { imageUri != null },
                     avatar_media_type = resolvedAvatarMediaType,
                     avatar_video_muted = resolvedAvatarVideoMuted,
                     avatar_duration_ms = resolvedAvatarDurationMs,
-                    cover_url = coverUrl,
+                    cover_url = coverUrl.takeIf { coverImageUri != null },
+                    remove_avatar = removeAvatar,
+                    remove_cover = removeCover,
                     last_name_change = lastNameChange
                 )
 
                 val result = userRepository.updateProfile(userId, updateRequest)
 
                 result.onSuccess {
-                    // Optimistic Update: Update local state immediately
-                    val updatedUser = currentUser?.copy(
+                    profileSaved = true
+                    profileMutationClock.markCommitted()
+                    val optimisticUser = currentUser?.copy(
                         display_name = updateRequest.display_name ?: currentUser.display_name,
                         bio = updateRequest.bio,
                         country = updateRequest.country,
                         city = updateRequest.city,
-                        avatar_url = updateRequest.avatar_url,
-                        avatar_media_type = updateRequest.avatar_media_type,
+                        avatar_url = if (updateRequest.remove_avatar) null else updateRequest.avatar_url ?: currentUser.avatar_url,
+                        avatar_media_type = if (updateRequest.remove_avatar) null else updateRequest.avatar_media_type ?: currentUser.avatar_media_type,
                         avatar_video_muted = updateRequest.avatar_video_muted ?: currentUser.avatar_video_muted,
-                        avatar_duration_ms = updateRequest.avatar_duration_ms,
-                        cover_url = updateRequest.cover_url,
+                        avatar_duration_ms = if (updateRequest.remove_avatar) null else updateRequest.avatar_duration_ms ?: currentUser.avatar_duration_ms,
+                        cover_url = if (updateRequest.remove_cover) null else updateRequest.cover_url ?: currentUser.cover_url,
                         last_name_change = updateRequest.last_name_change ?: currentUser.last_name_change
                     )
-                    
-                    if (updatedUser != null) {
+                    val confirmedUser = userRepository.getCachedUserSnapshot(userId)
+                        ?.copy(badges = currentUser?.badges)
+                        ?: optimisticUser
+
+                    if (confirmedUser != null) {
                         _profileState.value = ProfileUiState.Success(
-                            user = updatedUser
+                            user = confirmedUser
                         )
                     }
 
+                    val obsoleteUrls = ProfileMediaSync.replacedUrls(
+                        mutation = ProfileMediaMutation(
+                            avatarUrl = updateRequest.avatar_url,
+                            coverUrl = updateRequest.cover_url,
+                            removeAvatar = updateRequest.remove_avatar,
+                            removeCover = updateRequest.remove_cover
+                        ),
+                        previousAvatarUrl = currentUser?.avatar_url,
+                        previousCoverUrl = currentUser?.cover_url,
+                        confirmedAvatarUrl = confirmedUser?.avatar_url,
+                        confirmedCoverUrl = confirmedUser?.cover_url
+                    )
+
                     onSuccess()
-                    // Still reload in background to be safe, but UI is already updated
-                    loadUserProfile(null) 
+                    if (obsoleteUrls.isNotEmpty()) {
+                        withContext(NonCancellable) {
+                            cleanupProfileUploads(obsoleteUrls)
+                        }
+                    }
                 }.onFailure { e ->
+                    cleanupProfileUploads(uploadedForCurrentSave)
                     onError(e.message ?: "Error updating profile")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (!profileSaved) cleanupProfileUploads(uploadedForCurrentSave)
                 onError(e.message ?: "Error updating profile")
+            }
+        }
+    }
+
+    private suspend fun cleanupProfileUploads(urls: List<String>) {
+        urls.distinct().forEach { url ->
+            try {
+                userRepository.deleteUploadedProfileMedia(url).onFailure { error ->
+                    android.util.Log.w("ProfileViewModel", "No se pudo limpiar una subida de perfil", error)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("ProfileViewModel", "No se pudo limpiar una subida de perfil", error)
             }
         }
     }
@@ -688,6 +796,9 @@ class ProfileViewModel @Inject constructor(
                     )
                     
                     _comments.value = _comments.value + listOf(fullComment)
+                    updatePostInLists(postId) { post ->
+                        post.copy(commentCount = post.commentCount + 1)
+                    }
                     
                     // Reload posts to update comment count globally
                     val targetId = currentUser?.id
@@ -703,7 +814,14 @@ class ProfileViewModel @Inject constructor(
                 .onSuccess {
                     onSuccess()
                     // Remove from local list
-                    _comments.value = _comments.value.filter { it.id != commentId }
+                    val targetPostId = _comments.value.firstOrNull { it.id == commentId }?.postId
+                    val removedCount = _comments.value.count { it.id == commentId || it.parentId == commentId }
+                    _comments.value = _comments.value.filterNot { it.id == commentId || it.parentId == commentId }
+                    if (targetPostId != null) {
+                        updatePostInLists(targetPostId) { post ->
+                            post.copy(commentCount = maxOf(0, post.commentCount - removedCount.coerceAtLeast(1)))
+                        }
+                    }
                     
                     // Reload posts to update comment count
                     val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
@@ -758,15 +876,24 @@ class ProfileViewModel @Inject constructor(
             try {
                 val userId = authService.getCurrentUserId() ?: return@launch
                 val wasShared = post.sharedByMe
+                val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
                 
                 // Optimistic Update
                 fun updateList(list: List<Post>): List<Post> {
                     return list.map { 
-                        if (it.id == post.id) it.copy(sharedByMe = !wasShared) else it 
+                        if (it.id == post.id) {
+                            it.copy(sharedByMe = !wasShared, shareCount = newShareCount)
+                        } else {
+                            it
+                        }
                     }
                 }
                 _userPosts.value = updateList(_userPosts.value)
-                _sharedPosts.value = if (wasShared) _sharedPosts.value.filter { it.id != post.id } else _sharedPosts.value + post.copy(sharedByMe = true)
+                _sharedPosts.value = if (wasShared) {
+                    _sharedPosts.value.filter { it.id != post.id }
+                } else {
+                    _sharedPosts.value + post.copy(sharedByMe = true, shareCount = newShareCount)
+                }
 
                 val result = if (wasShared) {
                     shareRepository.unshareContent(userId, "post", post.id)
@@ -776,12 +903,89 @@ class ProfileViewModel @Inject constructor(
 
                 if (result.isFailure) {
                     // Revert on failure
-                    _userPosts.value = updateList(_userPosts.value)
+                    updatePostInLists(post.id) {
+                        it.copy(sharedByMe = wasShared, shareCount = post.shareCount)
+                    }
+                    if (!wasShared) {
+                        _sharedPosts.value = _sharedPosts.value.filterNot { it.id == post.id }
+                    }
                     loadSharedContent(userId) // Reload to be sure
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ProfileViewModel", "Error toggling post share", e)
             }
+        }
+    }
+
+    private fun loadFavoriteVideos(userId: String) {
+        viewModelScope.launch {
+            try {
+                videoRepository.getFavoriteVideos(userId).collect { videos ->
+                    _favoriteVideos.value = videos
+                }
+            } catch (e: Exception) {
+                _favoriteVideos.value = emptyList()
+                android.util.Log.d("ProfileViewModel", "Favorite videos are unavailable for this profile: ${e.message}")
+            }
+        }
+    }
+
+    fun reportPost(
+        post: Post,
+        reason: String,
+        details: String?,
+        evidenceUri: Uri?,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            postRepository.submitContentReport(
+                contentType = "post",
+                contentId = post.id,
+                reportedUserId = post.userId,
+                reportedUserName = post.userName,
+                reason = reason,
+                details = details,
+                evidenceUri = evidenceUri
+            ).onSuccess {
+                onSuccess()
+            }.onFailure {
+                onError(it.message ?: "No se pudo enviar el reporte")
+            }
+        }
+    }
+
+    fun reportComment(
+        comment: conectate.com.data.model.Comment,
+        reason: String,
+        details: String?,
+        evidenceUri: Uri?,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            postRepository.submitContentReport(
+                contentType = "comment",
+                contentId = comment.id,
+                reportedUserId = comment.userId,
+                reportedUserName = comment.userName ?: "Usuario",
+                reason = reason,
+                details = details,
+                evidenceUri = evidenceUri
+            ).onSuccess {
+                onSuccess()
+            }.onFailure {
+                onError(it.message ?: "No se pudo enviar el reporte")
+            }
+        }
+    }
+
+    private fun updatePostInLists(postId: String, transform: (Post) -> Post) {
+        _userPosts.value = _userPosts.value.map { post ->
+            if (post.id == postId) transform(post) else post
+        }
+        _sharedPosts.value = _sharedPosts.value.map { post ->
+            if (post.id == postId) transform(post) else post
         }
     }
 

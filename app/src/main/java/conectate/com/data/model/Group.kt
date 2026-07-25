@@ -16,7 +16,8 @@ data class Group(
     val metadata: Map<String, String>? = null,
     val is_deleted: Boolean = false,
     val is_member: Boolean = true,
-    val only_admins_can_talk: Boolean = false
+    val only_admins_can_talk: Boolean = false,
+    val rest_until: String? = null
 )
 
 @Serializable

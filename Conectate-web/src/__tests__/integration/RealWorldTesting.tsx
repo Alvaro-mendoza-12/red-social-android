@@ -351,7 +351,7 @@ const TestableApp: React.FC = () => {
 }
 
 // 🔥 SUITE DE TESTEO REALISTA
-describe('Real World Testing - Conectate App', () => {
+describe('Real World Testing - Novvin App', () => {
   let user: ReturnType<typeof userEvent.setup>
 
   beforeEach(() => {

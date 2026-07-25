@@ -76,7 +76,7 @@ export function ModernSidebar({ isOpen, onClose, currentView }: ModernSidebarPro
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white">CONÉCTATE</h1>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white">NOVVIN</h1>
             </div>
             {!isDesktop && (
               <button

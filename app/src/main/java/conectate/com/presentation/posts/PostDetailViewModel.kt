@@ -60,9 +60,12 @@ class PostDetailViewModel @Inject constructor(
     fun loadPost(postId: String) {
         val currentState = _uiState.value
         if (currentState.post?.id == postId && !currentState.isLoadingPost) {
-           // Already loaded, maybe just refresh comments?
-           loadComments(postId)
-           return
+            loadJob?.cancel()
+            loadJob = viewModelScope.launch {
+                refreshPostSnapshot(postId)
+                loadComments(postId)
+            }
+            return
         }
 
         loadJob?.cancel()
@@ -117,6 +120,8 @@ class PostDetailViewModel @Inject constructor(
                 if (result.isFailure) {
                     _uiState.value = state.copy(post = post)
                 }
+            } catch (e: Exception) {
+                _uiState.value = state.copy(post = post)
             } finally {
                 likeRequestsInFlight.remove(postId)
             }
@@ -132,8 +137,11 @@ class PostDetailViewModel @Inject constructor(
             try {
                 val userId = authService.getCurrentUserId() ?: return@launch
                 val wasShared = post.sharedByMe
+                val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
 
-                _uiState.value = state.copy(post = post.copy(sharedByMe = !wasShared))
+                _uiState.value = state.copy(
+                    post = post.copy(sharedByMe = !wasShared, shareCount = newShareCount)
+                )
 
                 val result = if (wasShared) {
                     shareRepository.unshareContent(userId, "post", postId)
@@ -144,6 +152,8 @@ class PostDetailViewModel @Inject constructor(
                 if (result.isFailure) {
                     _uiState.value = state.copy(post = post)
                 }
+            } catch (e: Exception) {
+                _uiState.value = state.copy(post = post)
             } finally {
                 shareRequestsInFlight.remove(postId)
             }
@@ -179,10 +189,49 @@ class PostDetailViewModel @Inject constructor(
     fun addComment(postId: String, content: String, parentId: String? = null) {
         viewModelScope.launch {
             postRepository.addComment(postId, content, parentId)
-                .onSuccess {
-                    // Force reload comments and post to show the new one and update counter
+                .onSuccess { newComment ->
+                    val current = _uiState.value
+                    val currentPost = current.post
+                    val nextComments = current.comments
+                        .filterNot { it.id == newComment.id }
+                        .plus(newComment)
+                    _uiState.value = current.copy(
+                        comments = nextComments,
+                        post = currentPost?.copy(commentCount = currentPost.commentCount + 1),
+                        isLoadingComments = false
+                    )
                     loadComments(postId)
-                    loadPost(postId)
+                    refreshPostSnapshot(postId)
+                }
+                .onFailure {
+                    android.widget.Toast.makeText(
+                        context,
+                        it.message ?: "No se pudo enviar el comentario",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
+    }
+
+    fun addStickerComment(postId: String, stickerUrl: String, parentId: String? = null) {
+        viewModelScope.launch {
+            postRepository.addStickerComment(postId, stickerUrl, parentId)
+                .onSuccess { newComment ->
+                    val current = _uiState.value
+                    _uiState.value = current.copy(
+                        comments = current.comments.filterNot { it.id == newComment.id } + newComment,
+                        post = current.post?.copy(commentCount = current.post.commentCount + 1),
+                        isLoadingComments = false
+                    )
+                    loadComments(postId)
+                    refreshPostSnapshot(postId)
+                }
+                .onFailure {
+                    android.widget.Toast.makeText(
+                        context,
+                        it.message ?: "No se pudo enviar el sticker",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
         }
     }
@@ -194,8 +243,17 @@ class PostDetailViewModel @Inject constructor(
                 .onSuccess {
                     android.util.Log.d("PostDetailViewModel", "Comment deleted successfully")
                     android.widget.Toast.makeText(context, "Comentario eliminado", android.widget.Toast.LENGTH_SHORT).show()
-                    // Force reload comments to update UI
+                    val current = _uiState.value
+                    val currentPost = current.post
+                    val removedCount = current.comments.count { it.id == commentId || it.parentId == commentId }
+                    _uiState.value = current.copy(
+                        comments = current.comments.filterNot { it.id == commentId || it.parentId == commentId },
+                        post = currentPost?.copy(
+                            commentCount = maxOf(0, currentPost.commentCount - removedCount.coerceAtLeast(1))
+                        )
+                    )
                     loadComments(postId)
+                    refreshPostSnapshot(postId)
                 }
                 .onFailure {
                     android.util.Log.e("PostDetailViewModel", "Error deleting comment", it)
@@ -211,12 +269,88 @@ class PostDetailViewModel @Inject constructor(
                 .onSuccess {
                     android.util.Log.d("PostDetailViewModel", "Comment updated successfully")
                     android.widget.Toast.makeText(context, "Comentario editado", android.widget.Toast.LENGTH_SHORT).show()
+                    _uiState.value = _uiState.value.copy(
+                        comments = _uiState.value.comments.map {
+                            if (it.id == commentId) it.copy(content = newContent) else it
+                        }
+                    )
                     loadComments(postId)
                 }
                 .onFailure {
                     android.util.Log.e("PostDetailViewModel", "Error editing comment", it)
                     android.widget.Toast.makeText(context, "Error al editar: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
                 }
+        }
+    }
+
+    fun toggleCommentReaction(comment: Comment, reactionType: String) {
+        val normalized = reactionType.uppercase().takeIf { it == "LIKE" || it == "DISLIKE" } ?: return
+        val previous = comment.myReaction
+        val next = if (previous == normalized) null else normalized
+        fun updatedComment(source: Comment): Comment {
+            val counts = source.reactionCounts.toMutableMap()
+            previous?.let { counts[it] = maxOf(0, (counts[it] ?: 0) - 1) }
+            next?.let { counts[it] = (counts[it] ?: 0) + 1 }
+            return source.copy(reactionCounts = counts, myReaction = next)
+        }
+        _uiState.value = _uiState.value.copy(
+            comments = _uiState.value.comments.map { if (it.id == comment.id) updatedComment(it) else it }
+        )
+        viewModelScope.launch {
+            postRepository.setCommentReaction(comment.id, next).onFailure {
+                _uiState.value = _uiState.value.copy(
+                    comments = _uiState.value.comments.map { if (it.id == comment.id) comment else it }
+                )
+                android.widget.Toast.makeText(context, "No se pudo guardar la reacción", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?) {
+        viewModelScope.launch {
+            val result = postRepository.submitContentReport(
+                contentType = "post",
+                contentId = post.id,
+                reportedUserId = post.userId,
+                reportedUserName = post.userName,
+                reason = reason,
+                details = details,
+                evidenceUri = evidenceUri
+            )
+            showReportResult(result)
+        }
+    }
+
+    fun reportComment(comment: Comment, reason: String, details: String?, evidenceUri: android.net.Uri?) {
+        viewModelScope.launch {
+            val result = postRepository.submitContentReport(
+                contentType = "comment",
+                contentId = comment.id,
+                reportedUserId = comment.userId,
+                reportedUserName = comment.userName ?: "Usuario",
+                reason = reason,
+                details = details,
+                evidenceUri = evidenceUri
+            )
+            showReportResult(result)
+        }
+    }
+
+    private suspend fun refreshPostSnapshot(postId: String) {
+        postRepository.getPostById(postId).onSuccess { freshPost ->
+            _uiState.value = _uiState.value.copy(post = freshPost)
+        }
+    }
+
+    private fun showReportResult(result: Result<Unit>) {
+        if (result.isSuccess) {
+            android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                result.exceptionOrNull()?.message ?: "No se pudo enviar el reporte",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
         }
     }
     
@@ -244,8 +378,13 @@ class PostDetailViewModel @Inject constructor(
                 postRepository.addAudioComment(postId, file)
                     .onSuccess {
                         voiceMessageManager.clearRecording()
+                        _uiState.value.post?.let { currentPost ->
+                            _uiState.value = _uiState.value.copy(
+                                post = currentPost.copy(commentCount = currentPost.commentCount + 1)
+                            )
+                        }
                         loadComments(postId)
-                        loadPost(postId)
+                        refreshPostSnapshot(postId)
                     }
             }
         }

@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun TypingIndicator(
-    userName: String? = null,
     modifier: Modifier = Modifier,
+    userName: String? = null,
     dotColor: Color = MaterialTheme.colorScheme.primary
 ) {
     Row(
@@ -159,8 +159,8 @@ fun TypingIndicatorMinimal(
 @Composable
 fun OnlineStatusIndicator(
     isOnline: Boolean,
-    lastSeen: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lastSeen: String? = null
 ) {
     Row(
         modifier = modifier,
@@ -190,8 +190,8 @@ fun UserStatusBar(
     userName: String,
     isOnline: Boolean,
     isTyping: Boolean,
-    lastSeen: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lastSeen: String? = null
 ) {
     Column(modifier = modifier) {
         Text(

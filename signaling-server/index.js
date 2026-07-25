@@ -339,15 +339,9 @@ function requireSocketUser(socket, claimedUserId) {
         }
         // True mismatch: different account or stale session
         console.error(`[IDENTITY] [AUTH] MISMATCH - socketId=${socket.id} | claimedUserId=${normalizedClaim} | canonicalUserId=${authenticatedUserId} | localId=${localId} | email=${socket.data.authEmail}`);
-        console.error(`[IDENTITY] [AUTH] This likely means the Android app is using a cached/stale userId. The user must clear app data and re-login.`);
-        // PHASE 1 FIX: Instead of blindly trusting canonicalUserId when there is a blatant mismatch,
-        // we should eventually reject this. But per instructions, we first add explicit logs.
-        console.error(`[IDENTITY] [AUTH] DUMP: token_prefix=${(socket.data.authToken || "").substring(0, 15)}`);
-        
-        // Temporarily, we STILL return the canonical ID so the app doesn't break while we investigate,
-        // but we flag it.
+        socket.emit('auth-error', { error: 'Socket user does not match authenticated account' });
         socket.data.hasIdentityMismatch = true;
-        return authenticatedUserId;
+        return null;
     }
     return authenticatedUserId;
 }
@@ -673,28 +667,59 @@ async function syncVoiceRoomLeave(socket, roomId) {
     }
 }
 
-async function setLiveViewerCount(liveId, viewerCount) {
-    warnUnsupportedUbuntuPersistence('Live viewer_count');
-    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} viewer_count=${Math.max(0, Number(viewerCount || 0))}`);
+async function setLiveViewerCount(liveId, viewerCount, accessToken) {
+    if (!accessToken) return;
+    try {
+        await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
+            method: 'PATCH',
+            accessToken,
+            body: { viewerCount: Math.max(0, Number(viewerCount || 0)) }
+        });
+    } catch (error) {
+        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to update viewer_count for ${liveId}:`, error.message || error);
+    }
 }
 
-async function setLiveStreamActive(liveId) {
-    warnUnsupportedUbuntuPersistence('Live active-state');
-    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} active=true`);
+async function setLiveStreamActive(liveId, accessToken) {
+    if (!accessToken) return;
+    try {
+        await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
+            method: 'PATCH',
+            accessToken,
+            body: { isActive: true }
+        });
+    } catch (error) {
+        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to activate ${liveId}:`, error.message || error);
+    }
 }
 
-async function endLiveStream(liveId) {
-    warnUnsupportedUbuntuPersistence('Live active-state');
-    console.log(`[SOCKET_DEBUG] [LIVE][DB] ${liveId} active=false viewer_count=0`);
+async function endLiveStream(liveId, accessToken) {
+    if (!accessToken) return;
+    try {
+        await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
+            method: 'PATCH',
+            accessToken,
+            body: { isActive: false, viewerCount: 0 }
+        });
+    } catch (error) {
+        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to end ${liveId}:`, error.message || error);
+    }
 }
 
-async function getLiveStreamMeta(liveId) {
-    warnUnsupportedUbuntuPersistence('Live metadata');
-    return {
-        exists: true,
-        isActive: true,
-        hostUserId: ''
-    };
+async function getLiveStreamMeta(liveId, accessToken) {
+    try {
+        const payload = await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}`, { accessToken });
+        const stream = payload?.stream;
+        return {
+            exists: Boolean(stream?.id),
+            isActive: Boolean(stream?.is_active ?? stream?.isActive),
+            hostUserId: (stream?.host_user_id || stream?.hostUserId || '').toString().trim()
+        };
+    } catch (error) {
+        if (error?.status === 404) return { exists: false, isActive: false, hostUserId: '' };
+        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to read ${liveId}:`, error.message || error);
+        return { exists: false, isActive: false, hostUserId: '' };
+    }
 }
 
 // Track active voice rooms and their participants
@@ -795,12 +820,12 @@ io.on('connection', (socket) => {
 
         console.log(`[IDENTITY] [VOICE] JOIN-ROOM | socketId=${socket.id} | resolvedUserId=${userId} | claimedUserId=${data.userId} | canonicalUserId=${socket.data.authUserId} | roomId=${roomId} | name=${name} | mismatch=${!!socket.data.hasIdentityMismatch}`);
         console.log(`[SOCKET_DEBUG] [ROOMS] Currently active: ${Array.from(rooms.keys()).join(', ')}`);
-        await syncVoiceRoomJoin(socket, roomId, {
+        void syncVoiceRoomJoin(socket, roomId, {
             name,
             avatarUrl,
             isMuted: Boolean(data.isMuted)
         });
-        await setParticipantCount(roomId, currentRoomParticipants.size);
+        void setParticipantCount(roomId, currentRoomParticipants.size);
 
         // Notify others in the room
         socket.to(roomId).emit('user-joined', {
@@ -1189,15 +1214,18 @@ function clearPendingLiveTermination(liveId) {
 async function finalizeLiveTermination(liveId, reason = 'ended') {
     clearPendingLiveTermination(liveId);
 
+    const session = lives.get(liveId);
+    const accessToken = session?.host?.authToken || session?.hostAuthToken || '';
+
     if (!lives.has(liveId)) {
-        await endLiveStream(liveId);
+        await endLiveStream(liveId, accessToken);
         return;
     }
 
     console.log(`[SOCKET_DEBUG] [LIVE][END] ${reason}: ${liveId}`);
     liveIo.to(liveId).emit('live-ended');
     lives.delete(liveId);
-    await endLiveStream(liveId);
+    await endLiveStream(liveId, accessToken);
 }
 
 function scheduleHostTerminationGrace(liveId, hostSnapshot) {
@@ -1238,7 +1266,7 @@ liveIo.on('connection', (socket) => {
         if (!liveId || !userId || (role !== 'host' && role !== 'viewer')) return;
 
         if (!lives.has(liveId)) {
-            const liveMeta = await getLiveStreamMeta(liveId);
+            const liveMeta = await getLiveStreamMeta(liveId, socket.data.authToken);
             if (!liveMeta.exists) {
                 console.warn(`[SOCKET_DEBUG] [LIVE][JOIN] Rejected ${role} ${userId} because live ${liveId} does not exist`);
                 socket.emit('live-ended');
@@ -1267,6 +1295,7 @@ liveIo.on('connection', (socket) => {
 
             lives.set(liveId, {
                 host: null,
+                hostAuthToken: '',
                 viewers: new Map(),
                 state: {
                     source: 'camera',
@@ -1277,6 +1306,20 @@ liveIo.on('connection', (socket) => {
             });
         }
 
+        // Revalidate ownership even when an in-memory live session already exists.
+        // Otherwise any authenticated viewer could reconnect with role=host and
+        // replace the legitimate host for an active broadcast.
+        if (role === 'host') {
+            const liveMeta = await getLiveStreamMeta(liveId, socket.data.authToken);
+            if (!liveMeta.exists || (liveMeta.hostUserId && liveMeta.hostUserId !== userId)) {
+                console.warn(
+                    `[SOCKET_DEBUG] [LIVE][JOIN] Rejected host ${userId} for ${liveId} because owner is ${liveMeta.hostUserId || 'missing'}`
+                );
+                socket.emit('live-ended');
+                return;
+            }
+        }
+
         const session = lives.get(liveId);
         socket.join(liveId);
         socket.data.joinedLiveIds.add(liveId);
@@ -1285,7 +1328,8 @@ liveIo.on('connection', (socket) => {
 
         if (role === 'host') {
             clearPendingLiveTermination(liveId);
-            session.host = { socketId: socket.id, userId, name, avatarUrl };
+            session.host = { socketId: socket.id, userId, name, avatarUrl, authToken: socket.data.authToken };
+            session.hostAuthToken = socket.data.authToken;
             session.state = {
                 source: (data.source || session.state?.source || 'camera').toString().trim().toLowerCase() === 'screen' ? 'screen' : 'camera',
                 isPaused: Boolean(data.isPaused),
@@ -1315,8 +1359,8 @@ liveIo.on('connection', (socket) => {
             // Emit count
             const viewerCount = session.viewers.size;
             liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
-            await setLiveStreamActive(liveId);
-            await setLiveViewerCount(liveId, viewerCount);
+            await setLiveStreamActive(liveId, session.hostAuthToken);
+            await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
             return;
         }
 
@@ -1344,7 +1388,7 @@ liveIo.on('connection', (socket) => {
 
         const viewerCount = session.viewers.size;
         liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
-        await setLiveViewerCount(liveId, viewerCount);
+        await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
     });
 
     socket.on('end-live', async (data) => {
@@ -1479,12 +1523,12 @@ liveIo.on('connection', (socket) => {
 
                 const viewerCount = session.viewers.size;
                 liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
-                await setLiveViewerCount(liveId, viewerCount);
+                await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
 
                 if (!session.host && viewerCount === 0) {
                     clearPendingLiveTermination(liveId);
                     lives.delete(liveId);
-                    await endLiveStream(liveId);
+                    await endLiveStream(liveId, session.hostAuthToken);
                 }
             }
         }

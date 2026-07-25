@@ -9,8 +9,18 @@
     "import:csv": "node src/import-csv.js",
     "import:all-csv": "node src/import-all-csv.js",
     "import:supabase-storage": "node src/import-supabase-storage.js",
+    "reconcile:storage-owners": "node src/reconcile-storage-owners.js",
+    "canonicalize:storage-urls": "node src/canonicalize-storage-urls.js",
     "rewrite:supabase-storage-urls": "node src/rewrite-supabase-storage-urls.js",
-    "check": "node --check src/server.js"
+    "check": "node --check src/server.js && node --check src/data-routes.js && node --check src/admin-moderation-routes.js && node --check src/postgrest-compat-routes.js && node --check src/storage-routes.js && node --check src/storage-url-canonicalization.js && node --check src/canonicalize-storage-urls.js && node --check src/import-supabase-storage.js && node --check src/reconcile-storage-owners.js && node --check src/live-routes.js && node --check src/proximity-routes.js && node --check src/profile-merge.js && node --check src/ai-routes.js && node --check src/request-security.js && node --check src/scheduled-message-jobs.js",
+    "test:ai": "node tests/ai-routes.test.js",
+    "test:profile-merge": "node tests/profile-merge.test.js",
+    "test:data-routes": "node tests/data-routes.test.js",
+    "test:storage": "node tests/storage-routes.test.js && node tests/import-supabase-storage.test.js && node tests/storage-url-canonicalization.test.js",
+    "test:scheduled-messages": "node tests/scheduled-message-jobs.test.js",
+    "test:admin": "node tests/admin-moderation-routes.test.js",
+    "test:proximity": "node tests/proximity-routes.test.js",
+    "test:security": "node tests/request-security.test.js && node tests/account-status.test.js && node tests/postgrest-security.test.js"
   },
   "engines": {
     "node": ">=20"
@@ -20,10 +30,14 @@
     "cors": "^2.8.5",
     "csv-parse": "^5.6.0",
     "express": "^5.1.0",
-    "firebase-admin": "^14.0.0",
+    "firebase-admin": "^14.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "sharp": "^0.35.3"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

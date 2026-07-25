@@ -114,7 +114,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             var type = data["type"] ?: "text"
             var contentType = data["content_type"] ?: "text"
             var senderId = data["sender_id"] ?: data["senderId"] ?: data["uid"]
-            var senderName = data["sender_name"] ?: data["senderName"] ?: data["author_name"] ?: notificationTitle ?: "Conéctate"
+            var senderName = data["sender_name"] ?: data["senderName"] ?: data["author_name"] ?: notificationTitle ?: "Novvin"
             var content = data["content"] ?: data["message"] ?: data["body"] ?: data["text"] ?: data["comment"] ?: notificationBody ?: ""
             val displayContent = buildConversationBackgroundPreview(contentType, content) ?: content
             var targetId = data["target_id"] ?: data["targetId"] ?: data["post_id"] ?: data["video_id"] ?: data["challenge_id"] ?: ""
@@ -260,6 +260,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             if (type.trim().equals("call_cancel", ignoreCase = true)) {
                 var callId = (data["call_id"] ?: data["callId"] ?: targetId).trim()
                 if (callId.isNotBlank()) {
+                    val action = (data["call_action"] ?: data["callAction"] ?: "cancel").trim()
+                    callRepository.handleExternalCallResponse(callId, action, senderId.orEmpty())
                     markCallRecentlyCancelled(callId)
                     var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.cancel(callId.hashCode())
@@ -267,6 +269,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     if (isTargetingActiveAccount) {
                         callRepository.dismissIncomingInvite()
                     }
+                }
+                return
+            }
+
+            if (type.trim().equals("call_response", ignoreCase = true)) {
+                val callId = (data["call_id"] ?: data["callId"] ?: targetId).trim()
+                val action = (data["call_action"] ?: data["callAction"]).orEmpty().trim()
+                if (callId.isNotBlank() && action.isNotBlank()) {
+                    callRepository.handleExternalCallResponse(callId, action, senderId.orEmpty())
                 }
                 return
             }
@@ -465,13 +476,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
 
-        var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        var channel = NotificationChannel(channelId, "Interacciones Sociales", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Likes, Comentarios y Seguidores"
-            enableVibration(true)
-            setShowBadge(true)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Interacciones Sociales", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Likes, Comentarios y Seguidores"
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            notificationManager.createNotificationChannel(channel)
         }
-        notificationManager.createNotificationChannel(channel)
         notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
     }
 
@@ -590,11 +603,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
-        var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        var channel = NotificationChannel(channelId, "Sistema", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Alertas importantes del sistema"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Sistema", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Alertas importantes del sistema"
+            }
+            notificationManager.createNotificationChannel(channel)
         }
-        notificationManager.createNotificationChannel(channel)
         notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
     }
 

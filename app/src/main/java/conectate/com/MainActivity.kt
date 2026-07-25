@@ -12,8 +12,14 @@ import conectate.com.data.repository.AuthRepository
 import conectate.com.data.model.LiveRole
 import conectate.com.presentation.common.MainActivityContent
 import conectate.com.presentation.common.StartupPrompts
+import conectate.com.presentation.messages.isIncomingShareIntent
+import conectate.com.presentation.messages.parseIncomingShareIntent
+import conectate.com.presentation.messages.takeIncomingSharePersistablePermissions
+import conectate.com.presentation.messages.toCapturedShareIntent
 import conectate.com.presentation.theme.RedSocialTheme
 import conectate.com.services.LiveChatHeadService
+import conectate.com.util.IncomingSharePayload
+import conectate.com.util.PendingOutgoingMediaStore
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -25,6 +31,8 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
+    private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingSharePayload?>(null)
+    private var incomingShareGeneration = 0L
     private var presenceHeartbeatJob: Job? = null
     private var presenceOfflineJob: Job? = null
 
@@ -52,15 +60,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        intentState.value = intent
+        acceptIncomingIntent(intent)
 
         setContent {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
+            val appTheme by themePreferences.appTheme.collectAsStateWithLifecycle()
             val fontOption by themePreferences.fontOption.collectAsStateWithLifecycle()
             val textScale by themePreferences.textScale.collectAsStateWithLifecycle()
             val currentIntent by intentState
+            val incomingShare by incomingShareState
             RedSocialTheme(
                 darkTheme = isDarkMode,
+                appTheme = appTheme,
                 fontOption = fontOption,
                 textScale = textScale
             ) {
@@ -81,8 +92,61 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        intentState.value = intent
+        acceptIncomingIntent(intent)
+    }
+
+    private fun acceptIncomingIntent(incomingIntent: Intent) {
+        setIntent(incomingIntent)
+        if (!isIncomingShareIntent(incomingIntent)) {
+            intentState.value = incomingIntent
+            return
+        }
+
+        val generation = ++incomingShareGeneration
+        intentState.value = null
+        lifecycleScope.launch {
+            val parsed = parseIncomingShareIntent(this@MainActivity, incomingIntent)
+            if (parsed == null) {
+                if (generation == incomingShareGeneration) intentState.value = incomingIntent
+                return@launch
+            }
+
+            takeIncomingSharePersistablePermissions(this@MainActivity, incomingIntent)
+            val captured = PendingOutgoingMediaStore.persistIncomingShare(this@MainActivity, parsed)
+                .getOrElse { error ->
+                    parsed.copy(
+                        items = emptyList(),
+                        failedItemCount = parsed.failedItemCount + parsed.items.size,
+                        captureError = error.message ?: "No se pudo conservar lo compartido"
+                    )
+                }
+
+            if (generation != incomingShareGeneration) {
+                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, captured)
+                return@launch
+            }
+
+            incomingShareState.value
+                ?.takeIf { it.id != captured.id }
+                ?.let { PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, it) }
+            incomingShareState.value = captured
+            val capturedIntent = captured.toCapturedShareIntent()
+            setIntent(capturedIntent)
+            intentState.value = capturedIntent
+        }
+    }
+
+    private fun discardIncomingShare() {
+        incomingShareGeneration += 1
+        val payload = incomingShareState.value
+        incomingShareState.value = null
+        intentState.value = null
+        setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
+        if (payload != null) {
+            lifecycleScope.launch {
+                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, payload)
+            }
+        }
     }
 
     override fun onResume() {

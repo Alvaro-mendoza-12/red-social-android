@@ -19,6 +19,13 @@ class GroupDetailViewModel @Inject constructor(
     private val userRepository: conectate.com.data.repository.UserRepository
 ) : ViewModel() {
 
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage = _actionMessage.asStateFlow()
+
+    fun consumeActionMessage() {
+        _actionMessage.value = null
+    }
+
     private val _group = MutableStateFlow<Group?>(null)
     val group = _group.asStateFlow()
 
@@ -34,22 +41,41 @@ class GroupDetailViewModel @Inject constructor(
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin = _isAdmin.asStateFlow()
 
+    private val _isCreator = MutableStateFlow(false)
+    val isCreator = _isCreator.asStateFlow()
+
     private val _isDeleted = MutableStateFlow(false)
     val isDeleted = _isDeleted.asStateFlow()
 
     private var groupId: String? = null
+    private var redeemedInviteToken: String? = null
 
     init {
         val userId = authService.getCurrentUserId()
         _currentUserId.value = userId
     }
 
-    fun loadGroupDetails(id: String) {
+    fun loadGroupDetails(id: String, inviteToken: String? = null) {
         groupId = id
         _isLoading.value = true
+        _group.value = null
+        _members.value = emptyList()
+        _isAdmin.value = false
+        _isCreator.value = false
+        _isDeleted.value = false
         
         // 1. Force Sync (Fire and forget)
         viewModelScope.launch {
+             val cleanInvite = inviteToken?.trim().orEmpty()
+             if (cleanInvite.isNotBlank() && redeemedInviteToken != cleanInvite) {
+                 val joined = groupRepository.joinGroupWithInvite(id, cleanInvite)
+                 if (joined.isSuccess) {
+                     redeemedInviteToken = cleanInvite
+                     _actionMessage.value = "Te uniste al grupo"
+                 } else {
+                     _actionMessage.value = joined.exceptionOrNull()?.message ?: "La invitación no es válida"
+                 }
+             }
              try { groupRepository.syncGroups() } catch (e: Exception) {}
         }
 
@@ -60,14 +86,7 @@ class GroupDetailViewModel @Inject constructor(
                     if (grp.is_deleted) _isDeleted.value = true
                     _group.value = grp
                     _isLoading.value = false
-                    
-                    // Recalculate permissions on group update
-                    val myId = _currentUserId.value
-                    val amICreator = sameGroupUserId(grp.creator_id, myId)
-                    val amIGroupAdmin = _members.value.find { sameGroupUserId(it.user_id, myId) }
-                        ?.role
-                        .isGroupAdminRole()
-                    _isAdmin.value = amICreator || amIGroupAdmin
+                    recomputePermissions()
                 }
             }
         }
@@ -78,33 +97,23 @@ class GroupDetailViewModel @Inject constructor(
             loadGroupMembers()
             
             groupRepository.getMembersFlow(id).collect { basicMembers ->
-                if (basicMembers.isNotEmpty()) {
-                    val currentMap = _members.value.associateBy { it.user_id }
-                    
-                    val enriched = basicMembers.map { basic ->
-                        val cached = currentMap[basic.user_id]
-                        if (cached != null) {
-                            cached.copy(role = basic.role)
-                        } else {
-                            basic
-                        }
-                    }
-                    
-                    // If we have nameless members, force a reload
-                    if (enriched.any { it.userName == null && it.user_id != _currentUserId.value }) {
-                        loadGroupMembers()
+                val currentMap = _members.value.associateBy { it.user_id }
+
+                val enriched = basicMembers.map { basic ->
+                    val cached = currentMap[basic.user_id]
+                    if (cached != null) {
+                        cached.copy(role = basic.role)
                     } else {
-                        _members.value = enriched
+                        basic
                     }
-                    
-                    // Recalculate permissions on member update
-                    val myId = _currentUserId.value
-                    val grp = _group.value
-                    val amICreator = sameGroupUserId(grp?.creator_id, myId)
-                    val amIGroupAdmin = enriched.find { sameGroupUserId(it.user_id, myId) }
-                        ?.role
-                        .isGroupAdminRole()
-                    _isAdmin.value = amICreator || amIGroupAdmin
+                }
+
+                // If we have nameless members, force a reload
+                if (enriched.any { it.userName == null && it.user_id != _currentUserId.value }) {
+                    loadGroupMembers()
+                } else {
+                    _members.value = enriched
+                    recomputePermissions()
                 }
             }
         }
@@ -205,6 +214,11 @@ class GroupDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val result = groupRepository.updateGroupInfo(id, name, description, imageBytes, onlyAdminsCanTalk)
             if (result.isSuccess) {
+                _group.value = _group.value?.copy(
+                    name = name.trim(),
+                    description = description?.trim().orEmpty().ifBlank { null },
+                    only_admins_can_talk = onlyAdminsCanTalk
+                )
                 onSuccess()
             }
         }
@@ -216,8 +230,48 @@ class GroupDetailViewModel @Inject constructor(
              val membersResult = groupRepository.getGroupMembers(id)
              if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
+                recomputePermissions()
             }
          }
+    }
+
+    fun createShareLink(onReady: (String) -> Unit) {
+        val id = groupId ?: return
+        viewModelScope.launch {
+            groupRepository.createGroupInvite(id).fold(
+                onSuccess = { token ->
+                    onReady("https://conectate.com/group/$id?invite=${android.net.Uri.encode(token)}")
+                },
+                onFailure = { error ->
+                    _actionMessage.value = error.message ?: "No se pudo crear el enlace"
+                }
+            )
+        }
+    }
+
+    fun setRestDuration(hours: Long?) {
+        val id = groupId ?: return
+        viewModelScope.launch {
+            val until = hours?.let { java.time.Instant.now().plusSeconds(it * 3600L).toString() }
+            val result = groupRepository.setGroupRestUntil(id, until)
+            if (result.isSuccess) {
+                _group.value = _group.value?.copy(rest_until = until)
+                _actionMessage.value = if (until == null) "Modo descanso desactivado" else "Modo descanso activado"
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo cambiar el modo descanso"
+            }
+        }
+    }
+
+    private fun recomputePermissions() {
+        val myId = _currentUserId.value
+        val grp = _group.value
+        val amICreator = sameGroupUserId(grp?.creator_id, myId)
+        val amIGroupAdmin = _members.value.find { sameGroupUserId(it.user_id, myId) }
+            ?.role
+            .isGroupAdminRole()
+        _isCreator.value = amICreator
+        _isAdmin.value = amICreator || amIGroupAdmin
     }
 }
 

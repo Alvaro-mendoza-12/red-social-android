@@ -26,6 +26,9 @@ const VideoDetailPage = lazy(() =>
 const MessagesPage = lazy(() =>
   import('./features/messages/MessagesPage').then((module) => ({ default: module.MessagesPage })),
 )
+const NovvinPage = lazy(() =>
+  import('./features/novvin/NovvinPage').then((module) => ({ default: module.NovvinPage })),
+)
 const ChatDetailPage = lazy(() =>
   import('./features/messages/ChatDetailPage').then((module) => ({ default: module.ChatDetailPage })),
 )
@@ -44,6 +47,15 @@ const VoiceRoomsPage = lazy(() =>
 )
 const VoiceRoomPage = lazy(() =>
   import('./features/voice/VoiceRoomPage').then((module) => ({ default: module.VoiceRoomPage })),
+)
+const LiveHubPage = lazy(() =>
+  import('./features/live/LiveHubPage').then((module) => ({ default: module.LiveHubPage })),
+)
+const LiveSessionPage = lazy(() =>
+  import('./features/live/LiveSessionPage').then((module) => ({ default: module.LiveSessionPage })),
+)
+const ProximityPage = lazy(() =>
+  import('./features/proximity/ProximityPage').then((module) => ({ default: module.ProximityPage })),
 )
 const CallsPage = lazy(() =>
   import('./features/calls/CallsPage').then((module) => ({ default: module.CallsPage })),
@@ -115,7 +127,7 @@ function RootRoute() {
     )
   }
   if (loading) {
-    return <StatusView title="Iniciando Conectate-web..." description="Verificando sesión." />
+    return <StatusView title="Iniciando Novvin Web..." description="Verificando sesión." />
   }
   return <Navigate to={user ? '/app/messages' : '/login'} replace />
 }
@@ -239,6 +251,14 @@ function AppRouter() {
             }
           />
           <Route
+            path="messages/novvin"
+            element={
+              <RouteSuspense>
+                <NovvinPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
             path="messages/:chatId"
             element={
               <RouteSuspense>
@@ -283,6 +303,30 @@ function AppRouter() {
             element={
               <RouteSuspense>
                 <VoiceRoomPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="live"
+            element={
+              <RouteSuspense>
+                <LiveHubPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="live/:liveId"
+            element={
+              <RouteSuspense>
+                <LiveSessionPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="proximity"
+            element={
+              <RouteSuspense>
+                <ProximityPage />
               </RouteSuspense>
             }
           />

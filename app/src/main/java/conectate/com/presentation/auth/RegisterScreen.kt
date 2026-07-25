@@ -3,6 +3,7 @@ package conectate.com.presentation.auth
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
+import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -34,6 +35,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import conectate.com.R
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
 import conectate.com.presentation.navigation.Screen
 
 
@@ -51,11 +54,19 @@ fun RegisterScreen(
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var country by remember { mutableStateOf("") }
     var profileImageUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingProfileCropUri by remember { mutableStateOf<Uri?>(null) }
     var acceptedPrivacyPolicy by remember { mutableStateOf(false) }
     
     var showCountryDropdown by remember { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
+    val scrollState = rememberScrollState()
+    val authError = (authState as? AuthState.Error)?.message.orEmpty()
+    val emailIsValid = email.isBlank() || Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+
+    LaunchedEffect(authError) {
+        if (authError.isNotBlank()) scrollState.animateScrollTo(0)
+    }
     
     // Lista de países (principales de América Latina)
     val countries = listOf(
@@ -72,7 +83,21 @@ fun RegisterScreen(
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        profileImageUri = uri
+        pendingProfileCropUri = uri
+    }
+
+    pendingProfileCropUri?.let { sourceUri ->
+        SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar foto de perfil",
+            presets = listOf(ImageCropPreset.SQUARE),
+            initialPreset = ImageCropPreset.SQUARE,
+            onDismiss = { pendingProfileCropUri = null },
+            onCropped = { croppedUri ->
+                profileImageUri = croppedUri
+                pendingProfileCropUri = null
+            }
+        )
     }
     
     Column(
@@ -80,7 +105,7 @@ fun RegisterScreen(
             .fillMaxSize()
             .navigationBarsPadding()
             .imePadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -101,6 +126,34 @@ fun RegisterScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
+
+        if (authError.isNotBlank()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = authError,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
         
         Spacer(modifier = Modifier.height(32.dp))
         
@@ -159,13 +212,20 @@ fun RegisterScreen(
         // Email Field
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = {
+                email = it
+                if (authState is AuthState.Error) viewModel.resetAuthState()
+            },
             label = { Text(stringResource(R.string.email)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            isError = !emailIsValid,
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Email, contentDescription = null)
+            },
+            supportingText = {
+                if (!emailIsValid) Text("Escribe un correo válido")
             }
         )
         
@@ -174,7 +234,10 @@ fun RegisterScreen(
         // Password Field
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = {
+                password = it
+                if (authState is AuthState.Error) viewModel.resetAuthState()
+            },
             label = { Text(stringResource(R.string.password)) },
             visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -190,7 +253,7 @@ fun RegisterScreen(
                 }
             },
             supportingText = {
-                Text("Mínimo 6 caracteres", style = MaterialTheme.typography.bodySmall)
+                Text("Mínimo 8 caracteres", style = MaterialTheme.typography.bodySmall)
             }
         )
         
@@ -199,7 +262,10 @@ fun RegisterScreen(
         // Confirm Password Field
         OutlinedTextField(
             value = confirmPassword,
-            onValueChange = { confirmPassword = it },
+            onValueChange = {
+                confirmPassword = it
+                if (authState is AuthState.Error) viewModel.resetAuthState()
+            },
             label = { Text("Confirmar contraseña") },
             visualTransformation = if (confirmPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -289,8 +355,8 @@ fun RegisterScreen(
         
         // Register Button
         val isFormValid = name.isNotBlank() && 
-                         email.isNotBlank() && 
-                         password.length >= 6 && 
+                         email.isNotBlank() && emailIsValid &&
+                         password.length >= 8 &&
                          password == confirmPassword &&
                          country.isNotEmpty() &&
                          acceptedPrivacyPolicy
@@ -339,24 +405,6 @@ fun RegisterScreen(
                        stringResource(R.string.login),
                 color = MaterialTheme.colorScheme.primary
             )
-        }
-        
-        // Show error if exists
-        if (authState is AuthState.Error) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = (authState as AuthState.Error).message,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
         }
         
         Spacer(modifier = Modifier.height(24.dp))

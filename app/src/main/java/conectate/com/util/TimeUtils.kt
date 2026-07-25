@@ -36,14 +36,7 @@ object TimeUtils {
         }
 
         return try {
-            var cleaned = isoTimestamp.replace(" ", "T")
-            var lastSeenInstant = try {
-                java.time.OffsetDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME).toInstant()
-            } catch (e: Exception) {
-                java.time.LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME)
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant()
-            }
+            val lastSeenInstant = parseFlexibleInstant(isoTimestamp)
             
             var now = Instant.now()
             val duration = Duration.between(lastSeenInstant, now)
@@ -89,14 +82,7 @@ object TimeUtils {
     fun isRecentlyOnline(lastSeenIso: String?, thresholdSeconds: Long = 75): Boolean {
         if (lastSeenIso.isNullOrBlank()) return false
         return try {
-            var cleaned = lastSeenIso.replace(" ", "T")
-            var lastSeenInstant = try {
-                java.time.OffsetDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME).toInstant()
-            } catch (e: Exception) {
-                java.time.LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_DATE_TIME)
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant()
-            }
+            val lastSeenInstant = parseFlexibleInstant(lastSeenIso)
             var now = Instant.now()
             val diffSeconds = Duration.between(lastSeenInstant, now).seconds
             diffSeconds in 0..thresholdSeconds
@@ -113,7 +99,7 @@ object TimeUtils {
         if (isoTimestamp.isNullOrEmpty()) return ""
         
         return try {
-            val instant = Instant.parse(isoTimestamp)
+            val instant = parseFlexibleInstant(isoTimestamp)
             val zoned = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
             
             val months = arrayOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
@@ -129,6 +115,28 @@ object TimeUtils {
             android.util.Log.e("TimeUtils", "Error formatting timestamp: $isoTimestamp", e)
             ""
         }
+    }
+
+    private fun parseFlexibleInstant(rawTimestamp: String): Instant {
+        val clean = normalizeIsoTimestamp(rawTimestamp)
+        return runCatching { Instant.parse(clean) }.getOrElse {
+            runCatching { java.time.OffsetDateTime.parse(clean, DateTimeFormatter.ISO_DATE_TIME).toInstant() }
+                .getOrElse {
+                    java.time.LocalDateTime.parse(clean, DateTimeFormatter.ISO_DATE_TIME)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                }
+        }
+    }
+
+    private fun normalizeIsoTimestamp(rawTimestamp: String): String {
+        var clean = rawTimestamp.trim().replace(" ", "T")
+        if (clean.endsWith("+00", ignoreCase = true)) {
+            clean = clean.dropLast(3) + "Z"
+        } else if (Regex("[+-]\\d{2}$").containsMatchIn(clean)) {
+            clean += ":00"
+        }
+        return clean
     }
 }
 

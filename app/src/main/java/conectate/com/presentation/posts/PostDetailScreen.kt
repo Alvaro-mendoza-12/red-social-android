@@ -41,6 +41,9 @@ fun PostDetailScreen(
     var commentText by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     var commentToEdit by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
+    var commentToReport by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var showStickerPicker by remember { mutableStateOf(false) }
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
     
     // Voice Manager States
@@ -255,7 +258,8 @@ fun PostDetailScreen(
                                             ) {
                                                 conectate.com.presentation.components.CircularProfileImage(
                                                     imageUrl = user.avatar_url ?: "",
-                                                    size = 28.dp
+                                                    size = 28.dp,
+                                                    fallbackName = user.display_name ?: user.full_name ?: user.username ?: user.email
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text("@$username", fontWeight = FontWeight.SemiBold)
@@ -285,6 +289,13 @@ fun PostDetailScreen(
                                     ),
                                     maxLines = 4
                                 )
+                                IconButton(onClick = { showStickerPicker = true }) {
+                                    Icon(
+                                        Icons.Default.EmojiEmotions,
+                                        contentDescription = "Enviar sticker",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                                 
                                 if (commentText.isEmpty()) {
                                     IconButton(
@@ -356,7 +367,11 @@ fun PostDetailScreen(
                             onUserClick = { userId ->
                                 navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                             },
-                            onPostClick = {}
+                            onPostClick = {},
+                            isOwner = state.post.userId == viewModel.currentUserId,
+                            showOwnerActions = false,
+                            onReportClick = { postToReport = state.post },
+                            showReportAction = true
                         )
                     }
                     
@@ -382,11 +397,14 @@ fun PostDetailScreen(
                             }
                         }
                     } else {
+                        val isCurrentUserPostOwner = state.post.userId
+                            .trim()
+                            .equals(viewModel.currentUserId?.trim(), ignoreCase = true)
                         items(threadedComments, key = { it.first.id }) { (comment, level) ->
                             CommentItem(
                                 comment = comment,
                                 level = level,
-                                isPostOwner = state.post.userId == viewModel.currentUserId,
+                                isPostOwner = isCurrentUserPostOwner,
                                 onProfileClick = {
                                     navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(comment.userId))
                                 },
@@ -394,18 +412,80 @@ fun PostDetailScreen(
                                     replyingTo = comment
                                     commentText = "@${comment.userName} "
                                 },
+                                onLikeClick = { viewModel.toggleCommentReaction(comment, "LIKE") },
+                                onDislikeClick = { viewModel.toggleCommentReaction(comment, "DISLIKE") },
                                 onDeleteClick = {
                                     viewModel.deleteComment(comment.id)
                                 },
                                 onEditClick = {
                                     commentToEdit = comment
-                                }
+                                },
+                                onReportClick = {
+                                    commentToReport = comment
+                                },
+                                showReportAction = true
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showStickerPicker) {
+        conectate.com.presentation.messages.StickerPickerDialog(
+            onDismiss = { showStickerPicker = false },
+            onStickerSelected = { sticker ->
+                val url = sticker.media_url ?: sticker.thumbnail_url
+                if (!url.isNullOrBlank()) {
+                    viewModel.addStickerComment(postId, url, replyingTo?.id)
+                    replyingTo = null
+                }
+                showStickerPicker = false
+            }
+        )
+    }
+
+    postToReport?.let { reportPost ->
+        conectate.com.presentation.components.ContentReportDialog(
+            title = "Reportar publicación",
+            subjectText = reportPost.userName,
+            reasonOptions = listOf(
+                "Spam",
+                "Acoso",
+                "Violencia",
+                "Desinformación",
+                "Contenido sexual",
+                "Otro"
+            ),
+            attachEvidenceEnabled = true,
+            onDismiss = { postToReport = null },
+            onSubmit = { reason, details, evidenceUri ->
+                viewModel.reportPost(reportPost, reason, details, evidenceUri)
+                postToReport = null
+            }
+        )
+    }
+
+    commentToReport?.let { reportComment ->
+        conectate.com.presentation.components.ContentReportDialog(
+            title = "Reportar comentario",
+            subjectText = reportComment.userName ?: "Usuario",
+            reasonOptions = listOf(
+                "Spam",
+                "Acoso",
+                "Violencia",
+                "Desinformación",
+                "Contenido sexual",
+                "Otro"
+            ),
+            attachEvidenceEnabled = true,
+            onDismiss = { commentToReport = null },
+            onSubmit = { reason, details, evidenceUri ->
+                viewModel.reportComment(reportComment, reason, details, evidenceUri)
+                commentToReport = null
+            }
+        )
     }
 
     if (commentToEdit != null) {

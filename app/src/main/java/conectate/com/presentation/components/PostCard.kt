@@ -25,9 +25,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -51,15 +52,25 @@ fun PostCard(
     onEditClick: () -> Unit = {},
     onUrlClick: (String) -> Unit = {},
     onPostClick: () -> Unit = {},
-    onSendToFriend: () -> Unit = {}
+    onSendToFriend: () -> Unit = {},
+    onReportClick: () -> Unit = {},
+    showOwnerActions: Boolean = true,
+    showReportAction: Boolean = false
 ) {
     val context = LocalContext.current
-    var showFullScreenImage by remember { mutableStateOf<String?>(null) }
+    var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
 
-    if (showFullScreenImage != null) {
+    val images = remember(post.mediaUrls, post.mediaUrlLegacy) {
+        UbuntuStorageUrl.rewriteAll(
+            if (post.mediaUrls.isNotEmpty()) post.mediaUrls else listOfNotNull(post.mediaUrlLegacy)
+        )
+    }
+
+    fullScreenImageIndex?.let { initialIndex ->
         FullScreenImageDialog(
-            imageUrl = showFullScreenImage!!,
-            onDismiss = { showFullScreenImage = null }
+            mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, "image") },
+            initialIndex = initialIndex,
+            onDismiss = { fullScreenImageIndex = null }
         )
     }
 
@@ -116,45 +127,66 @@ fun PostCard(
                 
                 Spacer(modifier = Modifier.weight(1f))
                 
-                if (isOwner) {
+                if ((isOwner && showOwnerActions) || (!isOwner && showReportAction)) {
                     var showMenu by remember { mutableStateOf(false) }
                     
                     Box {
                         IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Opciones",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         DropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
-                            val visibilityText = if (post.visibility == "private") "Hacer público" else "Hacer privado"
-                            val newVisibility = if (post.visibility == "private") "public" else "private"
-                            
-                            DropdownMenuItem(
-                                text = { Text(visibilityText) },
-                                onClick = { 
-                                    onVisibilityClick(newVisibility) 
-                                    showMenu = false
-                                },
-                                 leadingIcon = { Icon(Icons.Default.Lock, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Editar") },
-                                onClick = { 
-                                    onEditClick() 
-                                    showMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Edit, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Eliminar") },
-                                onClick = { 
-                                    onDeleteClick() 
-                                    showMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
-                                colors = MenuDefaults.itemColors(textColor = Color.Red)
-                            )
+                            if (isOwner) {
+                                val visibilityText = if (post.visibility == "private") "Hacer público" else "Hacer privado"
+                                val newVisibility = if (post.visibility == "private") "public" else "private"
+
+                                DropdownMenuItem(
+                                    text = { Text(visibilityText) },
+                                    onClick = {
+                                        onVisibilityClick(newVisibility)
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Lock, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Editar") },
+                                    onClick = {
+                                        onEditClick()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Edit, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Eliminar") },
+                                    onClick = {
+                                        onDeleteClick()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                                    colors = MenuDefaults.itemColors(textColor = Color.Red)
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text("Reportar") },
+                                    onClick = {
+                                        onReportClick()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Report,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -170,30 +202,40 @@ fun PostCard(
             }
 
             // Content Image(s)
-            val images = if (post.mediaUrls.isNotEmpty()) post.mediaUrls else listOfNotNull(post.mediaUrlLegacy)
-            
             if (images.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (images.size == 1) {
                     val image = images.first()
                     val request = remember(image) {
-                        ImageRequest.Builder(context)
-                            .data(UbuntuStorageUrl.rewrite(image))
-                            .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(image))
-                            .diskCacheKey(UbuntuStorageUrl.stableCacheKey(image))
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .crossfade(false)
-                            .build()
+                        MediaImageRequestFactory.preview(context, image)
                     }
-                    AsyncImage(
+                    SubcomposeAsyncImage(
                         model = request,
-                        contentDescription = null,
+                        contentDescription = "Imagen de publicación",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .clickable { showFullScreenImage = images.first() },
-                        contentScale = ContentScale.FillWidth
+                            .heightIn(min = 220.dp, max = 420.dp)
+                            .clickable { fullScreenImageIndex = 0 },
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            }
+                        },
+                        error = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BrokenImage,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     )
                 } else {
                     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { images.size })
@@ -204,20 +246,32 @@ fun PostCard(
                         ) { page ->
                             val image = images[page]
                             val request = remember(image) {
-                                ImageRequest.Builder(context)
-                                    .data(UbuntuStorageUrl.rewrite(image))
-                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(image))
-                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(image))
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .crossfade(false)
-                                    .build()
+                                MediaImageRequestFactory.preview(context, image)
                             }
-                            AsyncImage(
+                            SubcomposeAsyncImage(
                                 model = request,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize().clickable { showFullScreenImage = images[page] },
-                                contentScale = ContentScale.Crop
+                                contentDescription = "Imagen de publicación",
+                                modifier = Modifier.fillMaxSize().clickable { fullScreenImageIndex = page },
+                                contentScale = ContentScale.Crop,
+                                loading = {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.BrokenImage,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             )
                         }
                         
@@ -359,7 +413,7 @@ fun PostCard(
                             onExternalShare = {
                                 val sendIntent = android.content.Intent().apply {
                                     action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira esta publicación en Conéctate!\nhttps://conectate.com/post/${post.id}\n\nO abre directamente en la app:\nconectate://post/${post.id}\n\n${post.content.take(100)}...")
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira esta publicación en Novvin!\nhttps://conectate.com/post/${post.id}\n\nO abre directamente en la app:\nconectate://post/${post.id}\n\n${post.content.take(100)}...")
                                     type = "text/plain"
                                 }
                                 val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir publicación")

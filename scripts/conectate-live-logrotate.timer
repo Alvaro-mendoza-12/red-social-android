@@ -1,0 +1,11 @@
+[Unit]
+Description=Rotate Conectate Live PM2 logs daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=20min
+Unit=conectate-live-logrotate.service
+
+[Install]
+WantedBy=timers.target

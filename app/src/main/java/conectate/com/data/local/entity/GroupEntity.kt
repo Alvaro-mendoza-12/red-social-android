@@ -23,7 +23,8 @@ data class GroupEntity(
     val unread_count: Int = 0,
     val is_deleted: Boolean = false,
     val is_member: Boolean = true,
-    val only_admins_can_talk: Boolean = false
+    val only_admins_can_talk: Boolean = false,
+    val rest_until: String? = null
 ) {
     fun toDomain(): Group {
         return Group(
@@ -37,7 +38,8 @@ data class GroupEntity(
             last_message_at = last_message_at,
             is_deleted = is_deleted,
             is_member = is_member,
-            only_admins_can_talk = only_admins_can_talk
+            only_admins_can_talk = only_admins_can_talk,
+            rest_until = rest_until
         )
     }
 
@@ -55,7 +57,8 @@ data class GroupEntity(
                 unread_count = unreadCount,
                 is_deleted = group.is_deleted,
                 is_member = group.is_member,
-                only_admins_can_talk = group.only_admins_can_talk
+                only_admins_can_talk = group.only_admins_can_talk,
+                rest_until = group.rest_until
             )
         }
     }

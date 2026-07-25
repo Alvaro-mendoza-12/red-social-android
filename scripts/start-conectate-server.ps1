@@ -16,6 +16,10 @@ if (-not (Test-Path $keyPath)) {
 $remote = "$User@$HostName"
 $remoteScript = @'
 set -Eeuo pipefail
+COMPOSE_LOCK="$HOME/.cache/conectate-compose.lock"
+mkdir -p "$(dirname "$COMPOSE_LOCK")"
+exec 9>"$COMPOSE_LOCK"
+flock --wait 600 9
 cd "$HOME/conectate-local-fallback"
 
 echo "==> Iniciando Docker Compose"

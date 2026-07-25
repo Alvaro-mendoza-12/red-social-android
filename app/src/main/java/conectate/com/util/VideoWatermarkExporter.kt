@@ -154,7 +154,7 @@ object VideoWatermarkExporter {
         }
 
         val textStartX = padding + iconSize + (8f * density)
-        canvas.drawText("Conectate", textStartX, 24f * density, titlePaint)
+        canvas.drawText("Novvin", textStartX, 24f * density, titlePaint)
         canvas.drawText("@${sanitizeUserName(userName)}", textStartX, 42f * density, userPaint)
 
         return bitmap

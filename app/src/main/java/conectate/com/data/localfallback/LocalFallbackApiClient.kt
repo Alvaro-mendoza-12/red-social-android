@@ -8,11 +8,14 @@ import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.data.model.Notification
 import conectate.com.data.model.Post
+import conectate.com.data.model.LiveComment
+import conectate.com.data.model.LiveStream
 import conectate.com.data.model.ActiveChallenge
 import conectate.com.data.model.Chat
 import conectate.com.data.model.Challenge
 import conectate.com.data.model.ChallengeSubmission
 import conectate.com.data.model.User
+import conectate.com.data.model.Badge
 import conectate.com.data.model.Video
 import conectate.com.data.model.VideoComment
 import conectate.com.data.model.VoiceParticipant
@@ -26,6 +29,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.headers
 import io.ktor.client.request.patch
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -44,9 +48,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -55,6 +61,106 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class AdminDashboardStats(
+    val totalUsers: Int = 0,
+    val suspendedUsers: Int = 0,
+    val pendingUserReports: Int = 0,
+    val pendingVideoReports: Int = 0,
+    val totalVideos: Int = 0
+)
+
+data class AdminBadgeOption(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val icon: String = "",
+    val color: String = ""
+)
+
+data class AdminFrameOption(val id: String, val name: String)
+
+data class AdminCatalog(
+    val badges: List<AdminBadgeOption> = emptyList(),
+    val frames: List<AdminFrameOption> = emptyList()
+)
+
+data class AdminUserContent(
+    val posts: Int = 0,
+    val videos: Int = 0,
+    val moments: Int = 0,
+    val reports: Int = 0,
+    val storageObjects: Int = 0,
+    val storageBytes: Long = 0
+)
+
+data class AdminUser(
+    val id: String,
+    val localId: String,
+    val email: String,
+    val displayName: String,
+    val username: String = "",
+    val avatarUrl: String? = null,
+    val createdAt: String? = null,
+    val lastLoginAt: String? = null,
+    val syncSource: String = "local",
+    val isAdmin: Boolean = false,
+    val isTestAccount: Boolean = false,
+    val isVerified: Boolean = false,
+    val isSuspended: Boolean = false,
+    val suspendedUntil: String? = null,
+    val suspensionReason: String? = null,
+    val badges: List<AdminBadgeOption> = emptyList(),
+    val profileFrame: String = "",
+    val content: AdminUserContent? = null
+)
+
+data class AdminUserPage(
+    val items: List<AdminUser> = emptyList(),
+    val total: Int = 0
+)
+
+data class NearbyProfile(
+    val userId: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val city: String = "",
+    val country: String = "",
+    val interests: List<String> = emptyList(),
+    val distanceKm: Double = 0.5
+)
+
+data class AnonymousPeer(
+    val alias: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val interests: List<String> = emptyList(),
+    val hobbies: List<String> = emptyList(),
+    val userId: String? = null
+)
+
+data class AnonymousChatSession(
+    val id: String,
+    val status: String,
+    val ownRevealLevel: Int,
+    val peerRevealLevel: Int,
+    val peer: AnonymousPeer,
+    val createdAt: String = "",
+    val updatedAt: String = ""
+)
+
+data class AnonymousChatMessage(
+    val id: String,
+    val clientMessageId: String,
+    val sender: String,
+    val content: String,
+    val createdAt: String
+)
+
+data class AnonymousMatchResult(
+    val status: String,
+    val session: AnonymousChatSession? = null
+)
 
 @Serializable
 data class LocalFallbackUser(
@@ -88,6 +194,7 @@ data class LocalFallbackInboxItem(
     val id: String = "",
     val title: String = "",
     val subtitle: String = "",
+    val description: String = "",
     val updatedAt: String = "",
     val kind: String = "chat",
     val avatarUrl: String = "",
@@ -106,6 +213,8 @@ data class LocalFallbackInboxItem(
     val isFavorite: Boolean = false,
     val isPublic: Boolean = true,
     val onlyAdminsCanTalk: Boolean = false,
+    val dailyMessageLimit: Int = 0,
+    val restUntil: String? = null,
     @SerialName("creator_id")
     val creatorId: String? = null,
     @SerialName("current_user_role")
@@ -126,7 +235,59 @@ data class LocalFallbackParticipant(
     val avatarUrl: String = "",
     val role: String = "member",
     val joinedAt: String = "",
-    val lastReadAt: String = ""
+    val lastReadAt: String = "",
+    val restUntil: String? = null
+)
+
+@Serializable
+data class LocalFallbackAiChatRequest(
+    val message: String,
+    val context: Map<String, String> = emptyMap()
+)
+
+@Serializable
+data class LocalFallbackAiChatResponse(
+    val answer: String = "",
+    val intent: String = "fallback",
+    val confidence: Double = 0.0,
+    val suggestions: List<String> = emptyList(),
+    val source: String = "",
+    val learnedFromUsers: Boolean = false
+)
+
+private const val EXPECTED_NOVVIN_SOURCE = "conectate-first-party-hybrid-v5"
+
+private class LocalFallbackAiTransientException(
+    message: String,
+    cause: Throwable? = null
+) : Exception(message, cause)
+
+@Serializable
+data class LocalFallbackCollectionPreviewMember(
+    val id: String = "",
+    val name: String = "Usuario",
+    val avatarUrl: String = "",
+    val role: String = "member"
+)
+
+@Serializable
+data class LocalFallbackCollectionPreview(
+    val kind: String = "",
+    val roomId: String = "",
+    val name: String = "",
+    val description: String = "",
+    val imageUrl: String = "",
+    val memberCount: Int = 0,
+    val participants: List<LocalFallbackCollectionPreviewMember> = emptyList(),
+    val isMember: Boolean = false
+)
+
+@Serializable
+private data class LocalFallbackGroupInviteResponse(
+    val token: String = "",
+    val roomId: String = "",
+    val expiresAt: String? = null,
+    val maxUses: Int = 0
 )
 
 @Serializable
@@ -176,6 +337,44 @@ data class LocalFallbackProfileStats(
 data class LocalFallbackProfileResponse(
     val profile: JsonObject? = null,
     val stats: LocalFallbackProfileStats = LocalFallbackProfileStats()
+)
+
+@Serializable
+private data class LocalFallbackLiveStreamsResponse(
+    val items: List<LiveStream> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackLiveStreamResponse(
+    val stream: LiveStream? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveCommentsResponse(
+    val items: List<LiveComment> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackLiveCommentResponse(
+    val comment: LiveComment? = null
+)
+
+@Serializable
+private data class LocalFallbackCreateLiveRequest(
+    val id: String,
+    val title: String,
+    val source: String,
+    val hashtags: List<String>
+)
+
+@Serializable
+private data class LocalFallbackCreateLiveCommentRequest(
+    val content: String
+)
+
+@Serializable
+private data class LocalFallbackLoginEmailsResponse(
+    val items: List<String> = emptyList()
 )
 
 @Serializable
@@ -380,22 +579,87 @@ private data class LocalFallbackMembershipMutationRequest(
 )
 
 @Serializable
-private data class LocalFallbackUpdateProfileRequest(
+internal data class LocalFallbackUpdateProfileRequest(
     val displayName: String? = null,
     val bio: String? = null,
     val country: String? = null,
     val city: String? = null,
     val status: String? = null,
+    val interests: List<String>? = null,
+    val hobbies: List<String>? = null,
+    val linkedGames: List<String>? = null,
+    val gameLogoUrls: Map<String, String>? = null,
+    val favoriteMusicUrl: String? = null,
+    val favoriteBook: String? = null,
+    val favoriteSport: String? = null,
+    val career: String? = null,
+    val availabilitySchedule: String? = null,
+    val profileSectionOrder: List<String>? = null,
+    val profileSectionVisibility: Map<String, String>? = null,
     val avatarUrl: String? = null,
     val avatarMediaType: String? = null,
     val avatarVideoMuted: Boolean? = null,
     val avatarDurationMs: Long? = null,
     val coverUrl: String? = null,
+    val removeAvatar: Boolean = false,
+    val removeCover: Boolean = false,
+    val profileTheme: String? = null,
+    val profileEffect: String? = null,
+    val profileWelcome: String? = null,
     val isPrivate: Boolean? = null,
+    val favoritesPublic: Boolean? = null,
+    val breakMode: String? = null,
     val profileVisibility: String? = null,
     val lastSeenVisibility: String? = null,
     val onlineStatusVisibility: String? = null
 )
+
+/**
+ * PATCH must only contain fields the caller intentionally supplied. The shared
+ * JSON configuration enables default/null serialization for legacy endpoints;
+ * sending this DTO directly would therefore turn every omitted profile field
+ * into an explicit null and the server could interpret those nulls as clears.
+ */
+internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buildJsonObject {
+    displayName?.let { put("displayName", JsonPrimitive(it)) }
+    bio?.let { put("bio", JsonPrimitive(it)) }
+    country?.let { put("country", JsonPrimitive(it)) }
+    city?.let { put("city", JsonPrimitive(it)) }
+    status?.let { put("status", JsonPrimitive(it)) }
+    interests?.let { values -> put("interests", JsonArray(values.map(::JsonPrimitive))) }
+    hobbies?.let { values -> put("hobbies", JsonArray(values.map(::JsonPrimitive))) }
+    linkedGames?.let { values -> put("linkedGames", JsonArray(values.map(::JsonPrimitive))) }
+    gameLogoUrls?.let { values ->
+        put("gameLogoUrls", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
+    }
+    favoriteMusicUrl?.let { put("favoriteMusicUrl", JsonPrimitive(it)) }
+    favoriteBook?.let { put("favoriteBook", JsonPrimitive(it)) }
+    favoriteSport?.let { put("favoriteSport", JsonPrimitive(it)) }
+    career?.let { put("career", JsonPrimitive(it)) }
+    availabilitySchedule?.let { put("availabilitySchedule", JsonPrimitive(it)) }
+    profileSectionOrder?.let { values ->
+        put("profileSectionOrder", JsonArray(values.map(::JsonPrimitive)))
+    }
+    profileSectionVisibility?.let { values ->
+        put("profileSectionVisibility", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
+    }
+    avatarUrl?.let { put("avatarUrl", JsonPrimitive(it)) }
+    avatarMediaType?.let { put("avatarMediaType", JsonPrimitive(it)) }
+    avatarVideoMuted?.let { put("avatarVideoMuted", JsonPrimitive(it)) }
+    avatarDurationMs?.let { put("avatarDurationMs", JsonPrimitive(it)) }
+    coverUrl?.let { put("coverUrl", JsonPrimitive(it)) }
+    if (removeAvatar) put("removeAvatar", JsonPrimitive(true))
+    if (removeCover) put("removeCover", JsonPrimitive(true))
+    profileTheme?.let { put("profileTheme", JsonPrimitive(it)) }
+    profileEffect?.let { put("profileEffect", JsonPrimitive(it)) }
+    profileWelcome?.let { put("profileWelcome", JsonPrimitive(it)) }
+    isPrivate?.let { put("isPrivate", JsonPrimitive(it)) }
+    favoritesPublic?.let { put("favoritesPublic", JsonPrimitive(it)) }
+    breakMode?.let { put("breakMode", JsonPrimitive(it)) }
+    profileVisibility?.let { put("profileVisibility", JsonPrimitive(it)) }
+    lastSeenVisibility?.let { put("lastSeenVisibility", JsonPrimitive(it)) }
+    onlineStatusVisibility?.let { put("onlineStatusVisibility", JsonPrimitive(it)) }
+}
 
 @Serializable
 private data class LocalFallbackPresenceRequest(
@@ -576,7 +840,6 @@ private data class LocalFallbackRawVideoShareResponse(
             sharedByMe = sharedByMeSnake ?: sharedByMe ?: defaultSharedByMe
         )
 }
-
 @Serializable
 private data class LocalFallbackCreateVideoRequest(
     val title: String,
@@ -675,9 +938,79 @@ class LocalFallbackApiClient @Inject constructor(
     val baseUrl: String
         get() = UbuntuStorageUrl.baseUrl
     val isConfigured: Boolean
-        get() = UbuntuStorageUrl.isConfigured
+        get() = RuntimeBackendEndpoint.isConfigured
 
     private val json = supabaseConfig.json
+
+    suspend fun askNovvin(
+        accessToken: String,
+        message: String,
+        context: Map<String, String> = emptyMap()
+    ): Result<LocalFallbackAiChatResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val initialUrl = "$baseUrl/v1/ai/chat"
+        val firstAttempt = askNovvinOnce(initialUrl, accessToken, message, context)
+        return firstAttempt.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { error ->
+                if (error !is LocalFallbackAiTransientException) {
+                    Result.failure(error)
+                } else {
+                    val retryUrl = refreshedRetryUrl(initialUrl)
+                    if (retryUrl != null && retryUrl != initialUrl) {
+                        askNovvinOnce(retryUrl, accessToken, message, context)
+                    } else {
+                        Result.failure(error)
+                    }
+                }
+            }
+        )
+    }
+
+    private suspend fun askNovvinOnce(
+        url: String,
+        accessToken: String,
+        message: String,
+        context: Map<String, String>
+    ): Result<LocalFallbackAiChatResponse> {
+        return try {
+            val response = supabaseConfig.httpClient.post(url) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackAiChatRequest(message.trim(), context))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val decoded = json.decodeFromString<LocalFallbackAiChatResponse>(body)
+                if (decoded.source != EXPECTED_NOVVIN_SOURCE) {
+                    Result.failure(Exception("La versión segura de Novvin v5 no está activa en el servidor."))
+                } else if (decoded.answer.isBlank()) {
+                    Result.failure(Exception("Novvin devolvió una respuesta vacía."))
+                } else {
+                    Result.success(decoded)
+                }
+            } else {
+                val error = toException(response, decodeError(body))
+                if (response.status.value in setOf(502, 503, 504)) {
+                    Result.failure(
+                        LocalFallbackAiTransientException(
+                            "Novvin no está disponible en este momento.",
+                            error
+                        )
+                    )
+                } else {
+                    Result.failure(error)
+                }
+            }
+        } catch (error: Exception) {
+            Result.failure(
+                LocalFallbackAiTransientException(
+                    "No fue posible conectar con Novvin. Revisa Internet e intenta nuevamente.",
+                    error
+                )
+            )
+        }
+    }
 
     suspend fun login(email: String, password: String): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
@@ -1223,12 +1556,30 @@ class LocalFallbackApiClient @Inject constructor(
         country: String? = null,
         city: String? = null,
         status: String? = null,
+        interests: List<String>? = null,
+        hobbies: List<String>? = null,
+        linkedGames: List<String>? = null,
+        gameLogoUrls: Map<String, String>? = null,
+        favoriteMusicUrl: String? = null,
+        favoriteBook: String? = null,
+        favoriteSport: String? = null,
+        career: String? = null,
+        availabilitySchedule: String? = null,
+        profileSectionOrder: List<String>? = null,
+        profileSectionVisibility: Map<String, String>? = null,
         avatarUrl: String? = null,
         avatarMediaType: String? = null,
         avatarVideoMuted: Boolean? = null,
         avatarDurationMs: Long? = null,
         coverUrl: String? = null,
+        removeAvatar: Boolean = false,
+        removeCover: Boolean = false,
+        profileTheme: String? = null,
+        profileEffect: String? = null,
+        profileWelcome: String? = null,
         isPrivate: Boolean? = null,
+        favoritesPublic: Boolean? = null,
+        breakMode: String? = null,
         profileVisibility: String? = null,
         lastSeenVisibility: String? = null,
         onlineStatusVisibility: String? = null
@@ -1245,16 +1596,34 @@ class LocalFallbackApiClient @Inject constructor(
                         country = country,
                         city = city,
                         status = status,
+                        interests = interests,
+                        hobbies = hobbies,
+                        linkedGames = linkedGames,
+                        gameLogoUrls = gameLogoUrls,
+                        favoriteMusicUrl = UbuntuStorageUrl.rewrite(favoriteMusicUrl),
+                        favoriteBook = favoriteBook,
+                        favoriteSport = favoriteSport,
+                        career = career,
+                        availabilitySchedule = availabilitySchedule,
+                        profileSectionOrder = profileSectionOrder,
+                        profileSectionVisibility = profileSectionVisibility,
                         avatarUrl = UbuntuStorageUrl.rewrite(avatarUrl),
                         avatarMediaType = avatarMediaType,
                         avatarVideoMuted = avatarVideoMuted,
                         avatarDurationMs = avatarDurationMs,
                         coverUrl = UbuntuStorageUrl.rewrite(coverUrl),
+                        removeAvatar = removeAvatar,
+                        removeCover = removeCover,
+                        profileTheme = profileTheme,
+                        profileEffect = profileEffect,
+                        profileWelcome = profileWelcome,
                         isPrivate = isPrivate,
+                        favoritesPublic = favoritesPublic,
+                        breakMode = breakMode,
                         profileVisibility = profileVisibility,
                         lastSeenVisibility = lastSeenVisibility,
                         onlineStatusVisibility = onlineStatusVisibility
-                    )
+                    ).toSparseJson()
                 )
             }
             val body = response.bodyAsText()
@@ -1509,6 +1878,7 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/feed/comments/${urlEncode(commentId)}") {
                 localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
                 setBody(buildJsonObject { put("content", JsonPrimitive(content)) })
             }
             val body = response.bodyAsText()
@@ -1696,13 +2066,146 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun loadLiveStreams(accessToken: String, limit: Int = 60): Result<List<LiveStream>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanLimit = limit.coerceIn(1, 100)
+        return requestJson<LocalFallbackLiveStreamsResponse>(
+            "$baseUrl/v1/data/live?limit=$cleanLimit",
+            accessToken
+        ).map { it.items }
+    }
+
+    suspend fun loadLiveStream(accessToken: String, liveId: String): Result<LiveStream> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveStreamResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}",
+            accessToken
+        ).mapCatching { response ->
+            response.stream ?: throw IllegalStateException("Live no encontrado")
+        }
+    }
+
+    suspend fun createLiveStream(
+        accessToken: String,
+        id: String,
+        title: String,
+        source: String,
+        hashtags: List<String>
+    ): Result<LiveStream> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/live") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    LocalFallbackCreateLiveRequest(
+                        id = id,
+                        title = title,
+                        source = source,
+                        hashtags = hashtags
+                    )
+                )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val stream = json.decodeFromString<LocalFallbackLiveStreamResponse>(body).stream
+                    ?: return Result.failure(Exception("El servidor no devolvió el live."))
+                Result.success(stream)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateLiveState(
+        accessToken: String,
+        liveId: String,
+        isActive: Boolean? = null,
+        viewerCount: Int? = null,
+        peakViewerCount: Int? = null,
+        totalComments: Int? = null,
+        totalReactions: Int? = null
+    ): Result<LiveStream> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val payload = buildJsonObject {
+                isActive?.let { put("isActive", it) }
+                viewerCount?.let { put("viewerCount", it) }
+                peakViewerCount?.let { put("peakViewerCount", it) }
+                totalComments?.let { put("totalComments", it) }
+                totalReactions?.let { put("totalReactions", it) }
+            }
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/state"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val stream = json.decodeFromString<LocalFallbackLiveStreamResponse>(body).stream
+                    ?: return Result.failure(Exception("El servidor no devolvió el live."))
+                Result.success(stream)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadLiveComments(
+        accessToken: String,
+        liveId: String,
+        limit: Int = 80
+    ): Result<List<LiveComment>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanLimit = limit.coerceIn(1, 200)
+        return requestJson<LocalFallbackLiveCommentsResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/comments?limit=$cleanLimit",
+            accessToken
+        ).map { it.items }
+    }
+
+    suspend fun createLiveComment(
+        accessToken: String,
+        liveId: String,
+        content: String
+    ): Result<LiveComment> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/comments"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackCreateLiveCommentRequest(content = content))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val comment = json.decodeFromString<LocalFallbackLiveCommentResponse>(body).comment
+                    ?: return Result.failure(Exception("El servidor no devolvió el comentario."))
+                Result.success(comment)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun loadVideos(
         accessToken: String,
         limit: Int = 60,
         offset: Int = 0,
         userId: String? = null,
         query: String? = null,
-        sharedBy: String? = null
+        sharedBy: String? = null,
+        favoritedBy: String? = null,
+        recommended: Boolean = false
     ): Result<List<Video>> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val url = buildString {
@@ -1710,6 +2213,8 @@ class LocalFallbackApiClient @Inject constructor(
             userId?.trim()?.takeIf { it.isNotBlank() }?.let { append("&userId=${urlEncode(it)}") }
             query?.trim()?.takeIf { it.isNotBlank() }?.let { append("&q=${urlEncode(it)}") }
             sharedBy?.trim()?.takeIf { it.isNotBlank() }?.let { append("&sharedBy=${urlEncode(it)}") }
+            favoritedBy?.trim()?.takeIf { it.isNotBlank() }?.let { append("&favoritedBy=${urlEncode(it)}") }
+            if (recommended) append("&recommended=true")
         }
         return requestJson<LocalFallbackRawVideosResponse>(url, accessToken)
             .map { response -> response.items.map { mapVideo(it) } }
@@ -1818,6 +2323,95 @@ class LocalFallbackApiClient @Inject constructor(
                 supabaseConfig.httpClient.delete("$baseUrl/v1/data/videos/${urlEncode(videoId)}/reaction") {
                     localHeaders(accessToken)
                 }
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setVideoFavorite(accessToken: String, videoId: String, favorite: Boolean): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = if (favorite) {
+                supabaseConfig.httpClient.post("$baseUrl/v1/data/videos/${urlEncode(videoId)}/favorite") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                }
+            } else {
+                supabaseConfig.httpClient.delete("$baseUrl/v1/data/videos/${urlEncode(videoId)}/favorite") {
+                    localHeaders(accessToken)
+                }
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setPostCommentReaction(
+        accessToken: String,
+        commentId: String,
+        reactionType: String?
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = if (reactionType == null) {
+                supabaseConfig.httpClient.delete(
+                    "$baseUrl/v1/data/feed/comments/${urlEncode(commentId)}/reaction"
+                ) { localHeaders(accessToken) }
+            } else {
+                supabaseConfig.httpClient.put(
+                    "$baseUrl/v1/data/feed/comments/${urlEncode(commentId)}/reaction"
+                ) {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    setBody(buildJsonObject { put("reactionType", reactionType.uppercase()) })
+                }
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadAdditionalLoginEmails(accessToken: String): Result<List<String>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLoginEmailsResponse>(
+            "$baseUrl/v1/data/profile/login-emails",
+            accessToken
+        ).map { it.items.map(String::trim).filter(String::isNotBlank).distinct() }
+    }
+
+    suspend fun addAdditionalLoginEmail(accessToken: String, email: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/profile/login-emails") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("email", email.trim().lowercase()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun removeAdditionalLoginEmail(accessToken: String, email: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete(
+                "$baseUrl/v1/data/profile/login-emails/${urlEncode(email.trim().lowercase())}"
+            ) {
+                localHeaders(accessToken)
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) Result.success(Unit)
@@ -1952,6 +2546,74 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun editVideoComment(accessToken: String, commentId: String, content: String): Result<Unit> =
+        mutateVideoComment(
+            accessToken = accessToken,
+            method = "PATCH",
+            path = "/v1/data/videos/comments/${urlEncode(commentId)}",
+            body = buildJsonObject { put("content", content) }
+        )
+
+    suspend fun setVideoCommentReaction(
+        accessToken: String,
+        commentId: String,
+        reactionType: String?
+    ): Result<Unit> = mutateVideoComment(
+        accessToken = accessToken,
+        method = if (reactionType == null) "DELETE" else "PUT",
+        path = "/v1/data/videos/comments/${urlEncode(commentId)}/reaction",
+        body = reactionType?.let { buildJsonObject { put("reactionType", it) } }
+    )
+
+    suspend fun reportVideoComment(
+        accessToken: String,
+        commentId: String,
+        reason: String,
+        details: String = ""
+    ): Result<Unit> = mutateVideoComment(
+        accessToken = accessToken,
+        method = "POST",
+        path = "/v1/data/videos/comments/${urlEncode(commentId)}/report",
+        body = buildJsonObject {
+            put("reason", reason)
+            put("details", details)
+        }
+    )
+
+    private suspend fun mutateVideoComment(
+        accessToken: String,
+        method: String,
+        path: String,
+        body: JsonObject? = null
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = when (method) {
+                "PATCH" -> supabaseConfig.httpClient.patch("$baseUrl$path") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    body?.let { setBody(it) }
+                }
+                "PUT" -> supabaseConfig.httpClient.put("$baseUrl$path") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    body?.let { setBody(it) }
+                }
+                "DELETE" -> supabaseConfig.httpClient.delete("$baseUrl$path") { localHeaders(accessToken) }
+                else -> supabaseConfig.httpClient.post("$baseUrl$path") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    body?.let { setBody(it) }
+                }
+            }
+            val responseBody = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(responseBody)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun loadActiveChallenge(accessToken: String): Result<ActiveChallenge> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return requestJson<LocalFallbackRawActiveChallengeResponse>(
@@ -1959,6 +2621,66 @@ class LocalFallbackApiClient @Inject constructor(
             accessToken
         ).mapCatching { response ->
             mapActiveChallenge(response.activeChallenge ?: throw IllegalStateException("Reto activo no encontrado"))
+        }
+    }
+
+    suspend fun updateCommunityInfo(
+        accessToken: String,
+        communityId: String,
+        name: String,
+        description: String,
+        isPublic: Boolean,
+        onlyAdminsCanTalk: Boolean,
+        dailyMessageLimit: Int,
+        imageUrl: String?
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/update") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("name", name)
+                    put("description", description)
+                    put("is_public", isPublic)
+                    put("only_admins_can_talk", onlyAdminsCanTalk)
+                    put("daily_message_limit", dailyMessageLimit.coerceIn(0, 1000))
+                    if (imageUrl != null) put("image", imageUrl)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateGroupInfo(
+        accessToken: String,
+        groupId: String,
+        name: String,
+        description: String,
+        onlyAdminsCanTalk: Boolean,
+        imageUrl: String?
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/update") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("name", name)
+                    put("description", description)
+                    put("only_admins_can_talk", onlyAdminsCanTalk)
+                    if (imageUrl != null) put("image", imageUrl)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -2225,7 +2947,10 @@ class LocalFallbackApiClient @Inject constructor(
         mediaUrl: String?,
         mediaSize: Long,
         replyToId: String?,
-        messageId: String? = null
+        messageId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null
     ): Result<GroupMessage> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2239,7 +2964,10 @@ class LocalFallbackApiClient @Inject constructor(
                         contentType = contentType,
                         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
                         mediaSize = mediaSize,
-                        replyToId = replyToId ?: ""
+                        replyToId = replyToId ?: "",
+                        isForwarded = isForwarded,
+                        forwardedFromMessageId = forwardedFromMessageId,
+                        forwardedFromUserId = forwardedFromUserId
                     )
                 )
             }
@@ -2262,7 +2990,10 @@ class LocalFallbackApiClient @Inject constructor(
         mediaUrl: String?,
         mediaSize: Long,
         replyToId: String?,
-        messageId: String? = null
+        messageId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null
     ): Result<CommunityMessage> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2276,7 +3007,10 @@ class LocalFallbackApiClient @Inject constructor(
                         contentType = contentType,
                         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
                         mediaSize = mediaSize,
-                        replyToId = replyToId ?: ""
+                        replyToId = replyToId ?: "",
+                        isForwarded = isForwarded,
+                        forwardedFromMessageId = forwardedFromMessageId,
+                        forwardedFromUserId = forwardedFromUserId
                     )
                 )
             }
@@ -2363,6 +3097,155 @@ class LocalFallbackApiClient @Inject constructor(
         userId: String? = null,
         role: String? = null
     ): Result<Unit> = mutateCollectionMembership(accessToken, collection, roomId, "join", userId, role)
+
+    suspend fun previewCollection(
+        accessToken: String,
+        kind: String,
+        roomId: String,
+        inviteToken: String? = null
+    ): Result<LocalFallbackCollectionPreview> {
+        val collection = when (kind.trim().lowercase()) {
+            "group" -> "groups"
+            "community" -> "communities"
+            else -> return Result.failure(Exception("El QR no corresponde a un grupo o comunidad."))
+        }
+        val tokenQuery = if (collection == "groups") {
+            val cleanToken = inviteToken?.trim().orEmpty()
+            if (cleanToken.isBlank()) {
+                return Result.failure(Exception("La invitación del grupo está incompleta."))
+            }
+            "?token=${urlEncode(cleanToken)}"
+        } else {
+            ""
+        }
+        return requestJson<LocalFallbackCollectionPreview>(
+            "$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/preview$tokenQuery",
+            accessToken
+        ).map { preview ->
+            preview.copy(
+                imageUrl = UbuntuStorageUrl.rewriteOrEmpty(preview.imageUrl),
+                participants = preview.participants.map { participant ->
+                    participant.copy(avatarUrl = UbuntuStorageUrl.rewriteOrEmpty(participant.avatarUrl))
+                }
+            )
+        }
+    }
+
+    suspend fun editCollectionMessage(
+        accessToken: String,
+        collection: String,
+        roomId: String,
+        messageId: String,
+        content: String
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanCollection = collection.trim().lowercase().takeIf { it == "groups" || it == "communities" }
+            ?: return Result.failure(Exception("Colección de mensajes inválida."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/messages/$cleanCollection/${urlEncode(roomId)}/messages/${urlEncode(messageId)}"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackEditMessageRequest(content = content))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun deleteCollectionMessage(
+        accessToken: String,
+        collection: String,
+        roomId: String,
+        messageId: String,
+        forEveryone: Boolean
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanCollection = collection.trim().lowercase().takeIf { it == "groups" || it == "communities" }
+            ?: return Result.failure(Exception("Colección de mensajes inválida."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/$cleanCollection/${urlEncode(roomId)}/messages/${urlEncode(messageId)}/delete"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackDeleteMessageRequest(forEveryone = forEveryone))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun createGroupInvite(accessToken: String, groupId: String): Result<String> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/invites"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("expiresInHours", 72)
+                    put("maxUses", 100)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val invite = json.decodeFromString<LocalFallbackGroupInviteResponse>(body)
+                if (invite.token.isBlank()) Result.failure(Exception("El servidor no devolvió una invitación válida."))
+                else Result.success(invite.token)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun joinGroupWithInvite(accessToken: String, groupId: String, token: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/join-invite"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("token", token.trim()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setGroupRestUntil(accessToken: String, groupId: String, restUntil: String?): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/member-settings"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    if (restUntil.isNullOrBlank()) put("restUntil", JsonNull) else put("restUntil", restUntil)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
 
     suspend fun leaveCollection(accessToken: String, collection: String, roomId: String, userId: String? = null): Result<Unit> =
         mutateCollectionMembership(accessToken, collection, roomId, "leave", userId)
@@ -2830,11 +3713,26 @@ class LocalFallbackApiClient @Inject constructor(
             "INVALID_PASSWORD" -> Exception("Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.")
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
+            "INVALID_EMAIL" -> Exception("Escribe un correo electrónico válido.")
+            "PASSWORD_TOO_SHORT", "EMAIL_AND_STRONG_PASSWORD_REQUIRED" ->
+                Exception("La contraseña debe tener al menos 8 caracteres.")
             "AUTH_REQUIRED" -> Exception("Tu sesión Ubuntu no llegó a la API. Cierra sesión e inicia sesión otra vez contra Ubuntu.")
             "INVALID_TOKEN" -> Exception("Tu sesión Ubuntu ya no es válida para este servidor. Inicia sesión otra vez; si cambiaste JWT_SECRET o reparaste la VM, los tokens anteriores quedan invalidados.")
+            "ACCOUNT_DELETED" -> {
+                AccountDeletedEvents.notifyAccountDeleted()
+                AccountDeletedException()
+            }
+            "AI_SERVICE_TIMEOUT" -> Exception("Novvin tardó demasiado en responder. Intenta nuevamente.")
+            "AI_SERVICE_UNAVAILABLE" -> Exception("Novvin no está disponible en este momento. Intenta nuevamente.")
+            "MESSAGE_REQUIRED" -> Exception("Escribe un mensaje para Novvin.")
+            "MESSAGE_TOO_LONG" -> Exception("El mensaje para Novvin supera los 1.000 caracteres.")
+            "AI_RATE_LIMITED" -> Exception("Has enviado muchos mensajes seguidos. Espera un momento antes de reintentar.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
             "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
+            "GROUP_INVITE_INVALID" -> Exception("La invitación del grupo está incompleta o no es válida.")
+            "GROUP_INVITE_EXPIRED_OR_USED" -> Exception("La invitación del grupo venció o alcanzó su límite de usos.")
+            "ROOM_NOT_FOUND" -> Exception("El grupo o la comunidad ya no existe o no está disponible.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty(),
@@ -2879,6 +3777,9 @@ class LocalFallbackApiClient @Inject constructor(
         copy(profile = profile?.normalizedStorageUrls())
 
     private fun mapProfileUser(row: JsonObject): User {
+        val badges = runCatching {
+            row["badges"]?.let { json.decodeFromJsonElement<List<Badge>>(it) }
+        }.getOrNull().orEmpty()
         return User(
             id = textOf(row, "supabase_user_id", "supabaseUserId", "id", "user_id", "profile_id"),
             email = textOf(row, "email"),
@@ -2887,14 +3788,30 @@ class LocalFallbackApiClient @Inject constructor(
             bio = textOf(row, "bio").ifBlank { null },
             avatar_url = UbuntuStorageUrl.rewriteOrEmpty(textOf(row, "avatar_url", "photo_url", "profile_image")),
             cover_url = UbuntuStorageUrl.rewrite(textOf(row, "cover_url", "cover_image")),
+            profile_theme = textOf(row, "profile_theme", "profileTheme").ifBlank { "conectate" },
+            profile_effect = textOf(row, "profile_effect", "profileEffect").ifBlank { "none" },
+            profile_welcome = textOf(row, "profile_welcome", "profileWelcome").ifBlank { null },
             country = textOf(row, "country").ifBlank { null },
             city = textOf(row, "city").ifBlank { null },
+            interests = stringListOf(row, "interests"),
+            hobbies = stringListOf(row, "hobbies"),
+            linked_games = stringListOf(row, "linked_games", "linkedGames"),
+            game_logo_urls = stringMapOf(row, "game_logo_urls", "gameLogoUrls"),
+            favorite_music_url = UbuntuStorageUrl.rewrite(textOf(row, "favorite_music_url", "favoriteMusicUrl")),
+            favorite_book = textOf(row, "favorite_book", "favoriteBook").ifBlank { null },
+            favorite_sport = textOf(row, "favorite_sport", "favoriteSport").ifBlank { null },
+            career = textOf(row, "career", "profession").ifBlank { null },
+            availability_schedule = textOf(row, "availability_schedule", "availabilitySchedule").ifBlank { null },
+            profile_section_order = stringListOf(row, "profile_section_order", "profileSectionOrder"),
+            profile_section_visibility = stringMapOf(row, "profile_section_visibility", "profileSectionVisibility"),
             followers_count = intOf(row, "followers_count", "followers"),
             following_count = intOf(row, "following_count", "following"),
             post_count = intOf(row, "post_count", "posts"),
             status = textOf(row, "status").ifBlank { null },
             display_name = textOf(row, "display_name", "displayName").ifBlank { null },
             is_private = boolOf(row, "is_private", "isPrivate"),
+            favorites_public = boolOf(row, "favorites_public", "favoritesPublic"),
+            break_mode = textOf(row, "break_mode", "breakMode").ifBlank { "off" },
             profile_visibility = textOf(row, "profile_visibility", "profileVisibility").ifBlank { "everyone" },
             last_seen_visibility = textOf(row, "last_seen_visibility", "lastSeenVisibility").ifBlank { "everyone" },
             online_status_visibility = textOf(row, "online_status_visibility", "onlineStatusVisibility").ifBlank { "everyone" },
@@ -2908,6 +3825,8 @@ class LocalFallbackApiClient @Inject constructor(
             suspension_count = intOf(row, "suspension_count", "suspensionCount"),
             privacy_policy_accepted = boolOf(row, "privacy_policy_accepted", "privacyPolicyAccepted"),
             privacy_policy_accepted_at = textOf(row, "privacy_policy_accepted_at", "privacyPolicyAcceptedAt").ifBlank { null },
+            badges = badges,
+            profile_frame = textOf(row, "profile_frame", "profileFrame"),
             is_online = boolOf(row, "is_online", "isOnline"),
             lastSeen = textOf(row, "last_seen", "lastSeen").ifBlank { null },
             created_at = textOf(row, "created_at", "createdAt"),
@@ -3016,6 +3935,26 @@ class LocalFallbackApiClient @Inject constructor(
             }
         }
         return fallback
+    }
+
+    private fun stringListOf(row: JsonObject, vararg keys: String): List<String> {
+        for (key in keys) {
+            val values = (row[key] as? JsonArray)
+                ?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotBlank) }
+            if (values != null) return values
+        }
+        return emptyList()
+    }
+
+    private fun stringMapOf(row: JsonObject, vararg keys: String): Map<String, String> {
+        for (key in keys) {
+            val values = (row[key] as? JsonObject)?.mapNotNull { (entryKey, element) ->
+                val value = element.jsonPrimitive.contentOrNull?.trim()
+                if (entryKey.isBlank() || value.isNullOrBlank()) null else entryKey to value
+            }?.toMap()
+            if (values != null) return values
+        }
+        return emptyMap()
     }
 
     private fun mediaUrlsOf(row: JsonObject): List<String> {
@@ -3141,7 +4080,12 @@ class LocalFallbackApiClient @Inject constructor(
             isVerified = boolOf(row, "is_verified", "verified"),
             isMine = boolOf(row, "is_mine", "isMine"),
             parentId = textOf(row, "parent_id", "parentId").ifBlank { null },
-            audioUrl = mediaUrl
+            audioUrl = mediaUrl,
+            mediaType = textOf(row, "media_type", "mediaType").ifBlank { null },
+            reactionCounts = (row["reaction_counts"] as? JsonObject)
+                ?.mapValues { (_, value) -> value.jsonPrimitive.intOrNull ?: 0 }
+                .orEmpty(),
+            myReaction = textOf(row, "my_reaction", "myReaction").ifBlank { null }
         )
     }
 
@@ -3191,6 +4135,8 @@ class LocalFallbackApiClient @Inject constructor(
             },
             likedByMe = boolOf(row, "liked_by_me", "likedByMe"),
             sharedByMe = boolOf(row, "shared_by_me", "sharedByMe"),
+            favoriteCount = intOf(row, "favorite_count", "favoriteCount"),
+            favoritedByMe = boolOf(row, "favorited_by_me", "favoritedByMe"),
             isVerified = boolOf(row, "is_verified", "isVerified", "verified")
         )
 
@@ -3249,7 +4195,12 @@ class LocalFallbackApiClient @Inject constructor(
             created_at = textOf(row, "created_at", "createdAt"),
             parentId = normalizedParentCommentId(textOf(row, "parent_comment_id", "parent_id", "parentId", "reply_to_id", "replyToId")),
             contentType = textOf(row, "content_type", "contentType").ifBlank { "text" },
-            mediaUrl = UbuntuStorageUrl.rewrite(textOf(row, "media_url", "audio_url", "file_url"))
+            mediaUrl = UbuntuStorageUrl.rewrite(textOf(row, "media_url", "audio_url", "file_url")),
+            reactions = (row["reactions"] as? JsonObject)?.mapValues { (_, value) ->
+                value.jsonPrimitive.intOrNull ?: 0
+            }.orEmpty(),
+            myReaction = textOf(row, "my_reaction", "myReaction").ifBlank { null },
+            updatedAt = textOf(row, "updated_at", "updatedAt")
         )
 
     private fun normalizedParentCommentId(raw: String?): String? {
@@ -3335,7 +4286,373 @@ class LocalFallbackApiClient @Inject constructor(
             .replace("\n", "_")
             .ifBlank { "upload.bin" }
 
+    // Proximity and anonymous chat
+
+    suspend fun updateProximityPresence(
+        accessToken: String,
+        latitude: Double,
+        longitude: Double,
+        radiusKm: Double,
+        gender: String,
+        lookingFor: String,
+        randomEnabled: Boolean
+    ): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/proximity/presence") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("latitude", latitude)
+                    put("longitude", longitude)
+                    put("radiusKm", radiusKm)
+                    put("gender", gender)
+                    put("lookingFor", lookingFor)
+                    put("randomEnabled", randomEnabled)
+                })
+            }
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception("No se pudo activar proximidad: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun disableProximityPresence(accessToken: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/proximity/presence") {
+                localHeaders(accessToken)
+            }
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception("No se pudo desactivar proximidad: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadNearbyProfiles(accessToken: String, radiusKm: Double): Result<List<NearbyProfile>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/proximity/nearby") {
+                localHeaders(accessToken)
+                parameter("radiusKm", radiusKm)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudieron cargar personas cercanas: ${response.status}"))
+            val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val items = root["items"]?.jsonArray.orEmpty().mapNotNull { element ->
+                val row = element.jsonObject
+                val userId = textOf(row, "user_id")
+                if (userId.isBlank()) return@mapNotNull null
+                NearbyProfile(
+                    userId = userId,
+                    displayName = textOf(row, "display_name").ifBlank { "Usuario" },
+                    avatarUrl = UbuntuStorageUrl.rewrite(textOf(row, "avatar_url"))?.takeIf { it.isNotBlank() },
+                    city = textOf(row, "city"),
+                    country = textOf(row, "country"),
+                    interests = stringListOf(row, "interests"),
+                    distanceKm = textOf(row, "distance_km").toDoubleOrNull() ?: 0.5
+                )
+            }
+            Result.success(items)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun startAnonymousMatch(
+        accessToken: String,
+        gender: String,
+        lookingFor: String
+    ): Result<AnonymousMatchResult> = anonymousMatchRequest(
+        accessToken = accessToken,
+        path = "/v1/data/proximity/random/match",
+        method = "POST",
+        body = buildJsonObject {
+            put("gender", gender)
+            put("lookingFor", lookingFor)
+        }
+    )
+
+    suspend fun loadAnonymousMatchStatus(accessToken: String): Result<AnonymousMatchResult> =
+        anonymousMatchRequest(
+            accessToken = accessToken,
+            path = "/v1/data/proximity/random/status",
+            method = "GET"
+        )
+
+    private suspend fun anonymousMatchRequest(
+        accessToken: String,
+        path: String,
+        method: String,
+        body: JsonObject? = null
+    ): Result<AnonymousMatchResult> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = if (method == "POST") {
+                supabaseConfig.httpClient.post("$baseUrl$path") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    if (body != null) setBody(body)
+                }
+            } else {
+                supabaseConfig.httpClient.get("$baseUrl$path") { localHeaders(accessToken) }
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudo buscar chat: ${response.status}"))
+            val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+            Result.success(
+                AnonymousMatchResult(
+                    status = textOf(root, "status").ifBlank { "idle" },
+                    session = root["session"]?.takeUnless { it is JsonNull }?.jsonObject?.let(::mapAnonymousSession)
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun cancelAnonymousMatch(accessToken: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/proximity/random/queue") {
+                localHeaders(accessToken)
+            }
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception("No se pudo cancelar la búsqueda: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadAnonymousSession(accessToken: String, sessionId: String): Result<AnonymousChatSession> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/proximity/random/sessions/$sessionId") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudo actualizar el chat: ${response.status}"))
+            val session = json.parseToJsonElement(response.bodyAsText()).jsonObject["session"]?.jsonObject
+                ?: return Result.failure(Exception("La sesión anónima no está disponible."))
+            Result.success(mapAnonymousSession(session))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadAnonymousMessages(accessToken: String, sessionId: String): Result<List<AnonymousChatMessage>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/proximity/random/sessions/$sessionId/messages") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudieron cargar los mensajes: ${response.status}"))
+            val items = json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]?.jsonArray.orEmpty()
+            Result.success(items.map { mapAnonymousMessage(it.jsonObject) })
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendAnonymousMessage(
+        accessToken: String,
+        sessionId: String,
+        clientMessageId: String,
+        content: String
+    ): Result<AnonymousChatMessage> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/proximity/random/sessions/$sessionId/messages") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("clientMessageId", clientMessageId)
+                    put("content", content)
+                })
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudo enviar el mensaje: ${response.status}"))
+            val message = json.parseToJsonElement(response.bodyAsText()).jsonObject["message"]?.jsonObject
+                ?: return Result.failure(Exception("El servidor no confirmó el mensaje."))
+            Result.success(mapAnonymousMessage(message))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun revealAnonymousProfile(
+        accessToken: String,
+        sessionId: String,
+        level: Int
+    ): Result<AnonymousChatSession> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/proximity/random/sessions/$sessionId/reveal") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("level", level) })
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("No se pudo cambiar la revelación: ${response.status}"))
+            val session = json.parseToJsonElement(response.bodyAsText()).jsonObject["session"]?.jsonObject
+                ?: return Result.failure(Exception("El servidor no confirmó la revelación."))
+            Result.success(mapAnonymousSession(session))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun endAnonymousSession(accessToken: String, sessionId: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/proximity/random/sessions/$sessionId") {
+                localHeaders(accessToken)
+            }
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception("No se pudo finalizar el chat: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun mapAnonymousSession(row: JsonObject): AnonymousChatSession {
+        val peer = row["peer"]?.jsonObject ?: JsonObject(emptyMap())
+        return AnonymousChatSession(
+            id = textOf(row, "id"),
+            status = textOf(row, "status").ifBlank { "active" },
+            ownRevealLevel = intOf(row, "own_reveal_level"),
+            peerRevealLevel = intOf(row, "peer_reveal_level"),
+            peer = AnonymousPeer(
+                alias = textOf(peer, "alias").ifBlank { "Persona" },
+                displayName = textOf(peer, "display_name").ifBlank { "Persona" },
+                avatarUrl = UbuntuStorageUrl.rewrite(textOf(peer, "avatar_url"))?.takeIf { it.isNotBlank() },
+                interests = stringListOf(peer, "interests"),
+                hobbies = stringListOf(peer, "hobbies"),
+                userId = textOf(peer, "user_id").ifBlank { null }
+            ),
+            createdAt = textOf(row, "created_at"),
+            updatedAt = textOf(row, "updated_at")
+        )
+    }
+
+    private fun mapAnonymousMessage(row: JsonObject): AnonymousChatMessage = AnonymousChatMessage(
+        id = textOf(row, "id"),
+        clientMessageId = textOf(row, "client_message_id"),
+        sender = textOf(row, "sender").ifBlank { "peer" },
+        content = textOf(row, "content"),
+        createdAt = textOf(row, "created_at")
+    )
+
     // ─── Admin Moderation API ───────────────────────────────────
+
+    private fun mapAdminBadge(row: JsonObject): AdminBadgeOption = AdminBadgeOption(
+        id = textOf(row, "id"),
+        name = textOf(row, "name"),
+        description = textOf(row, "description"),
+        icon = textOf(row, "icon"),
+        color = textOf(row, "color")
+    )
+
+    private fun mapAdminUser(row: JsonObject): AdminUser {
+        val content = row["content"]?.jsonObject
+        return AdminUser(
+            id = textOf(row, "id"),
+            localId = textOf(row, "local_id"),
+            email = textOf(row, "email"),
+            displayName = textOf(row, "display_name").ifBlank { textOf(row, "email") },
+            username = textOf(row, "username"),
+            avatarUrl = UbuntuStorageUrl.rewrite(textOf(row, "avatar_url"))?.takeIf { it.isNotBlank() },
+            createdAt = textOf(row, "created_at").ifBlank { null },
+            lastLoginAt = textOf(row, "last_login_at").ifBlank { null },
+            syncSource = textOf(row, "sync_source").ifBlank { "local" },
+            isAdmin = boolOf(row, "is_admin"),
+            isTestAccount = boolOf(row, "is_test_account"),
+            isVerified = boolOf(row, "is_verified"),
+            isSuspended = boolOf(row, "is_suspended"),
+            suspendedUntil = textOf(row, "suspended_until").ifBlank { null },
+            suspensionReason = textOf(row, "suspension_reason").ifBlank { null },
+            badges = row["badges"]?.jsonArray?.map { mapAdminBadge(it.jsonObject) }.orEmpty(),
+            profileFrame = textOf(row, "profile_frame"),
+            content = content?.let {
+                AdminUserContent(
+                    posts = intOf(it, "posts"),
+                    videos = intOf(it, "videos"),
+                    moments = intOf(it, "moments"),
+                    reports = intOf(it, "reports"),
+                    storageObjects = intOf(it, "storage_objects"),
+                    storageBytes = it["storage_bytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+                )
+            }
+        )
+    }
+
+    suspend fun adminGetCatalog(accessToken: String): Result<AdminCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/catalog") { localHeaders(accessToken) }
+            if (!response.status.isSuccess()) error("Error al cargar catálogo: ${response.status} - ${response.bodyAsText()}")
+            val payload = json.parseToJsonElement(response.bodyAsText()).jsonObject
+            AdminCatalog(
+                badges = payload["badges"]?.jsonArray?.map { mapAdminBadge(it.jsonObject) }.orEmpty(),
+                frames = payload["frames"]?.jsonArray?.map {
+                    val row = it.jsonObject
+                    AdminFrameOption(textOf(row, "id"), textOf(row, "name"))
+                }.orEmpty()
+            )
+        }
+    }
+
+    suspend fun adminGetUsers(accessToken: String, search: String = ""): Result<AdminUserPage> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/users") {
+                localHeaders(accessToken)
+                if (search.isNotBlank()) parameter("search", search.trim())
+                parameter("limit", 100)
+            }
+            if (!response.status.isSuccess()) error("Error al cargar usuarios: ${response.status} - ${response.bodyAsText()}")
+            val payload = json.parseToJsonElement(response.bodyAsText()).jsonObject
+            AdminUserPage(
+                items = payload["items"]?.jsonArray?.map { mapAdminUser(it.jsonObject) }.orEmpty(),
+                total = intOf(payload, "total")
+            )
+        }
+    }
+
+    suspend fun adminGetUser(accessToken: String, userId: String): Result<AdminUser> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val encodedId = URLEncoder.encode(userId, Charsets.UTF_8.name())
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/users/$encodedId") { localHeaders(accessToken) }
+            if (!response.status.isSuccess()) error("Error al cargar detalle: ${response.status} - ${response.bodyAsText()}")
+            val user = json.parseToJsonElement(response.bodyAsText()).jsonObject["user"]?.jsonObject
+                ?: error("El servidor no devolvió el usuario.")
+            mapAdminUser(user)
+        }
+    }
+
+    suspend fun adminUpdateUserDecorations(
+        accessToken: String,
+        userId: String,
+        verified: Boolean,
+        badgeIds: List<String>,
+        profileFrame: String
+    ): Result<AdminUser> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val encodedId = URLEncoder.encode(userId, Charsets.UTF_8.name())
+            val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/admin/users/$encodedId/decorations") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("verified", JsonPrimitive(verified))
+                    put("badge_ids", buildJsonArray { badgeIds.distinct().forEach { add(JsonPrimitive(it)) } })
+                    put("profile_frame", JsonPrimitive(profileFrame))
+                })
+            }
+            if (!response.status.isSuccess()) error("Error al actualizar usuario: ${response.status} - ${response.bodyAsText()}")
+            val user = json.parseToJsonElement(response.bodyAsText()).jsonObject["user"]?.jsonObject
+                ?: error("El servidor no devolvió el usuario actualizado.")
+            mapAdminUser(user)
+        }
+    }
 
     suspend fun adminCheckAccess(accessToken: String): Result<Boolean> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
@@ -3348,6 +4665,29 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(Exception("Acceso denegado: ${response.status}"))
             }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminGetStats(accessToken: String): Result<AdminDashboardStats> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/stats") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) return Result.failure(Exception("Error: ${response.status}"))
+            val stats = json.parseToJsonElement(response.bodyAsText()).jsonObject["stats"]?.jsonObject
+                ?: JsonObject(emptyMap())
+            Result.success(
+                AdminDashboardStats(
+                    totalUsers = intOf(stats, "total_users"),
+                    suspendedUsers = intOf(stats, "suspended_users"),
+                    pendingUserReports = intOf(stats, "pending_user_reports"),
+                    pendingVideoReports = intOf(stats, "pending_video_reports"),
+                    totalVideos = intOf(stats, "total_videos")
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -3403,9 +4743,12 @@ class LocalFallbackApiClient @Inject constructor(
                     reported_user_name = textOf(obj, "reported_user_name"),
                     reason = textOf(obj, "reason"),
                     description = textOf(obj, "description"),
-                    evidence_url = textOf(obj, "evidence_url").ifBlank { null },
+                    evidence_url = UbuntuStorageUrl.rewrite(textOf(obj, "evidence_url"))?.takeIf { it.isNotBlank() },
+                    contentType = textOf(obj, "content_type").ifBlank { null },
+                    contentId = textOf(obj, "content_id").ifBlank { null },
                     status = textOf(obj, "status"),
-                    created_at = textOf(obj, "created_at")
+                    created_at = textOf(obj, "created_at"),
+                    updated_at = textOf(obj, "updated_at").ifBlank { null }
                 )
             }
             Result.success(reports)
@@ -3452,6 +4795,7 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/suspend") {
                 localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
                 setBody(buildJsonObject {
                     put("user_id", kotlinx.serialization.json.JsonPrimitive(userId))
                     put("reason", kotlinx.serialization.json.JsonPrimitive(reason))
@@ -3464,17 +4808,145 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun adminUnsuspendUser(accessToken: String, userId: String, reason: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/unsuspend") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("user_id", JsonPrimitive(userId))
+                    put("reason", JsonPrimitive(reason))
+                })
+            }
+            if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun adminUpdateReportStatus(accessToken: String, reportId: String, status: String, type: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/admin/reports/$reportId/status") {
                 localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
                 setBody(buildJsonObject {
                     put("status", kotlinx.serialization.json.JsonPrimitive(status))
                     put("type", kotlinx.serialization.json.JsonPrimitive(type))
                 })
             }
             if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Elimina COMPLETAMENTE un usuario y todos sus datos asociados:
+     * cuenta, perfil, publicaciones, videos, imágenes, comentarios,
+     * chats, grupos, comunidades, seguidores, seguidos, archivos,
+     * tokens, notificaciones, registros y documentos en almacenamiento.
+     */
+    suspend fun adminDeleteUser(
+        accessToken: String,
+        userId: String,
+        reason: String,
+        confirmation: String,
+        expectedEmail: String,
+        deleteSuspendedAccount: Boolean
+    ): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val encodedId = URLEncoder.encode(userId, Charsets.UTF_8.name())
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/admin/users/$encodedId") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("reason", JsonPrimitive(reason))
+                    put("confirmation", JsonPrimitive(confirmation))
+                    put("hard_delete", JsonPrimitive(true))
+                    put("expected_email", JsonPrimitive(expectedEmail.trim().lowercase()))
+                    put("allow_suspended_account_delete", JsonPrimitive(deleteSuspendedAccount))
+                    put("acknowledge_irreversible", JsonPrimitive(true))
+                    put("acknowledge_full_purge", JsonPrimitive(true))
+                })
+            }
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception("Error al eliminar: ${response.status} - ${response.bodyAsText()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun exploreCommunities(accessToken: String, query: String): Result<List<conectate.com.data.model.Community>> {
+        return Result.failure(Exception("Not implemented yet"))
+    }
+
+    suspend fun submitUserReport(
+        accessToken: String,
+        reportedUserId: String,
+        reportedUserName: String,
+        reason: String,
+        description: String?,
+        evidenceUrl: String?
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/reports/users") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("reportedUserId", reportedUserId)
+                    put("reportedUserName", reportedUserName)
+                    put("reason", reason)
+                    description?.let { put("description", it) }
+                    evidenceUrl?.let { put("evidenceUrl", it) }
+                })
+            }
+            val responseBody = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No se pudo enviar el reporte: ${response.status} ${responseBody.take(300)}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitContentReport(
+        accessToken: String,
+        contentType: String,
+        contentId: String,
+        reportedUserId: String,
+        reportedUserName: String,
+        reason: String,
+        description: String?,
+        evidenceUrl: String?
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/reports/content") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("contentType", contentType)
+                    put("contentId", contentId)
+                    put("reportedUserId", reportedUserId)
+                    put("reportedUserName", reportedUserName)
+                    put("reason", reason)
+                    description?.let { put("description", it) }
+                    evidenceUrl?.let { put("evidenceUrl", it) }
+                })
+            }
+            val responseBody = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No se pudo enviar el reporte: ${response.status} ${responseBody.take(300)}"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

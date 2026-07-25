@@ -47,7 +47,7 @@ fun ActiveVoiceBar(
                     .fillMaxWidth()
                     .wrapContentHeight()
                     .padding(horizontal = 8.dp, vertical = 6.dp),
-                color = Color(0xFF0F151C),
+                color = MaterialTheme.colorScheme.inverseSurface,
                 shape = RoundedCornerShape(14.dp),
                 tonalElevation = 0.dp,
                 shadowElevation = 2.dp
@@ -62,12 +62,12 @@ fun ActiveVoiceBar(
                         onClick = onToggleMute,
                         modifier = Modifier
                             .size(34.dp)
-                            .background(Color(0xFF1B2430), CircleShape)
+                            .background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.15f), CircleShape)
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                             contentDescription = if (isMuted) "Activar micrófono" else "Silenciar micrófono",
-                            tint = if (isMuted) Color(0xFFFF6B6B) else Color.White.copy(alpha = 0.9f),
+                            tint = if (isMuted) Color(0xFFFF6B6B) else MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.9f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -105,7 +105,7 @@ fun ActiveVoiceBar(
                         onClick = onHangUp,
                         modifier = Modifier
                             .size(34.dp)
-                            .background(Color(0xFF1B2430), CircleShape)
+                            .background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.15f), CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.CallEnd,

@@ -70,10 +70,13 @@ class ChatViewModel @Inject constructor(
     private val badgeRepository: conectate.com.data.repository.BadgeRepository,
     private val authService: AuthService,
     private val groupRepository: conectate.com.data.repository.GroupRepository,
+    private val communityRepository: conectate.com.data.repository.CommunityRepository,
     private val stickerRepository: StickerRepository,
     private val voiceMessageManager: VoiceMessageManager,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
+    val isSecureTranslationAvailable: Boolean
+        get() = advancedMessagingRepository.isSecureTranslationAvailable()
 
     private val otherUserId: String = checkNotNull(savedStateHandle["userId"])
     private val initialMessage: String? = savedStateHandle["initialMessage"]
@@ -175,31 +178,63 @@ class ChatViewModel @Inject constructor(
     val currentUserBadgesMetadata = _currentUserBadgesMetadata.asStateFlow()
 
     val forwardTargets: StateFlow<List<ForwardChatTarget>> =
-        messageRepository.getUserChatsFlow()
-            .map { chats ->
-                val currentChatId = chatId?.trim()?.lowercase()
-                chats
-                    .mapNotNull { item ->
-                        val chat = item.chat
-                        val id = chat.id.trim().lowercase()
-                        if (id.isBlank() || id == currentChatId) return@mapNotNull null
-                        val title = if (chat.is_group) {
-                            chat.group_name?.ifBlank { null } ?: "Grupo"
-                        } else {
-                            chat.nickname
-                                ?: item.nickname
-                                ?: item.otherUserName
-                                ?: "Chat"
-                        }
+        combine(
+            messageRepository.getUserChatsFlow(),
+            groupRepository.getGroupsFlow(),
+            communityRepository.getCommunitiesFlow()
+        ) { chats, groups, communities ->
+            val currentChatId = chatId?.trim()?.lowercase()
+            val targets = mutableListOf<ForwardChatTarget>()
+
+            // Add chats (excluding current chat)
+            chats.forEach { item ->
+                val chat = item.chat
+                val id = chat.id.trim().lowercase()
+                if (id.isNotBlank() && id != currentChatId) {
+                    val title = if (chat.is_group) {
+                        chat.group_name?.ifBlank { null } ?: "Grupo"
+                    } else {
+                        chat.nickname
+                            ?: item.nickname
+                            ?: item.otherUserName
+                            ?: "Chat"
+                    }
+                    targets.add(
                         ForwardChatTarget(
                             chatId = id,
                             title = title,
                             subtitle = if (chat.is_group) "Grupo" else "Chat privado"
                         )
-                    }
-                    .distinctBy { it.chatId }
-                    .sortedBy { it.title.lowercase() }
+                    )
+                }
             }
+
+            // Add groups
+            groups.forEach { entry ->
+                val group = entry.group
+                targets.add(
+                    ForwardChatTarget(
+                        chatId = "group:${group.id}",
+                        title = group.name,
+                        subtitle = "Grupo"
+                    )
+                )
+            }
+
+            // Add communities
+            communities.forEach { entry ->
+                val community = entry.community
+                targets.add(
+                    ForwardChatTarget(
+                        chatId = "community:${community.id}",
+                        title = community.name,
+                        subtitle = "Comunidad"
+                    )
+                )
+            }
+
+            targets.distinctBy { it.chatId }.sortedBy { it.title.lowercase() }
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var mediaPlayer: android.media.MediaPlayer? = null
@@ -741,12 +776,95 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun sendMediaBatch(items: List<OutgoingMessageMedia>, caption: String = "") {
+        if (!ensureNotBlockedForSending()) return
+        val mediaItems = items.filter { it.uri != Uri.EMPTY && it.type.isNotBlank() }
+        if (mediaItems.isEmpty()) return
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                if (isPlaceholder) {
+                    val targetId = resolvedTargetUserId ?: otherUserId
+                    val createResult = messageRepository.getOrCreateChat(targetId)
+                    if (createResult.isSuccess) {
+                        val newChat = createResult.getOrThrow()
+                        chatId = newChat.id
+                        messageRepository.setActiveChatSession(chatId, _isScreenActive.value)
+                        isPlaceholder = false
+                        startObservingMessages(newChat.id, newChat)
+                    } else {
+                        showCreateChatError(createResult.exceptionOrNull())
+                        return@launch
+                    }
+                }
+
+                val cid = chatId ?: return@launch
+                var failedCount = 0
+                mediaItems.forEachIndexed { index, outgoing ->
+                    val messageType = outgoing.type.trim().lowercase()
+                    val outboundContent = when {
+                        index == 0 && caption.isNotBlank() -> caption.trim()
+                        mediaItems.size > 1 -> ""
+                        else -> defaultMediaCaption(messageType)
+                    }
+                    val result = messageRepository.sendMessage(
+                        chatId = cid,
+                        content = outboundContent,
+                        mediaUri = outgoing.uri,
+                        mediaType = messageType,
+                        allowRapidMediaBatch = mediaItems.size > 1
+                    )
+                    if (result.isFailure) {
+                        failedCount += 1
+                        android.util.Log.w(
+                            "ChatViewModel",
+                            "Batch media send failed at index=$index: ${result.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+
+                if (failedCount > 0) {
+                    val sentCount = mediaItems.size - failedCount
+                    val message = if (sentCount > 0) {
+                        "Se enviaron $sentCount de ${mediaItems.size} archivos."
+                    } else {
+                        "No se pudieron enviar los archivos."
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Batch media send error", e)
+                Toast.makeText(context, "Error al enviar archivos", Toast.LENGTH_SHORT).show()
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+
     fun sendDocumentMessage(uri: Uri, caption: String = "📎 Archivo") {
         sendMediaMessage(uri = uri, messageType = "document", content = caption)
     }
 
     fun sendGifMessage(uri: Uri, caption: String = "🌀 GIF") {
         sendMediaMessage(uri = uri, messageType = "gif", content = caption)
+    }
+
+    fun sendRecentGif(mediaUrl: String) {
+        if (!ensureNotBlockedForSending()) return
+        val cid = chatId ?: return
+        viewModelScope.launch {
+            _isSending.value = true
+            val result = messageRepository.sendMessage(
+                chatId = cid,
+                content = "🌀 GIF",
+                mediaType = "gif",
+                existingMediaUrl = mediaUrl.trim()
+            )
+            if (result.isFailure) {
+                Toast.makeText(context, "No se pudo reenviar el GIF", Toast.LENGTH_SHORT).show()
+            }
+            _isSending.value = false
+        }
     }
 
     fun sendStickerMessage(uri: Uri, caption: String = "🧩 Sticker") {
@@ -1396,10 +1514,14 @@ class ChatViewModel @Inject constructor(
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         _isScreenActive.value = isVisible
         if (isPlaceholder || chatId?.startsWith("placeholder_", ignoreCase = true) == true) return
-        messageRepository.setActiveChatSession(chatId, isVisible)
-        if (!isVisible) return
         val cleanChatId = chatId?.trim()?.lowercase() ?: return
         if (cleanChatId.isBlank()) return
+        if (!isVisible) {
+            messageRepository.markChatAsReadInBackground(cleanChatId)
+            messageRepository.setActiveChatSession(null, false)
+            return
+        }
+        messageRepository.setActiveChatSession(cleanChatId, true)
         viewModelScope.launch {
             messageRepository.markChatAsRead(cleanChatId)
         }
@@ -1436,6 +1558,9 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        chatId?.trim()?.lowercase()?.takeIf {
+            it.isNotBlank() && !it.startsWith("placeholder_")
+        }?.let(messageRepository::markChatAsReadInBackground)
         stopAudio()
         stopTypingPresence()
         voiceMessageManager.reset()
@@ -1552,11 +1677,18 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             _isForwarding.value = true
-            val finalTargets = linkedSetOf<String>()
-            targetChatIds
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-                .forEach { finalTargets.add(it) }
+            val chatTargets = linkedSetOf<String>()
+            val groupTargets = linkedSetOf<String>()
+            val communityTargets = linkedSetOf<String>()
+
+            targetChatIds.forEach { targetId ->
+                val id = targetId.trim().lowercase()
+                when {
+                    id.startsWith("group:") -> groupTargets.add(id.removePrefix("group:"))
+                    id.startsWith("community:") -> communityTargets.add(id.removePrefix("community:"))
+                    else -> chatTargets.add(id)
+                }
+            }
 
             targetUserIds
                 .map { it.trim().lowercase() }
@@ -1564,31 +1696,41 @@ class ChatViewModel @Inject constructor(
                 .forEach { uid ->
                     val created = messageRepository.getOrCreateChat(uid)
                     if (created.isSuccess) {
-                        finalTargets.add(created.getOrThrow().id.trim().lowercase())
+                        chatTargets.add(created.getOrThrow().id.trim().lowercase())
                     }
                 }
 
             val current = chatId?.trim()?.lowercase()
             if (!current.isNullOrBlank()) {
-                finalTargets.remove(current)
+                chatTargets.remove(current)
             }
 
-            if (finalTargets.isEmpty()) {
+            if (chatTargets.isEmpty()) {
                 Toast.makeText(context, "No hay destino válido para reenviar", Toast.LENGTH_SHORT).show()
                 _isForwarding.value = false
                 return@launch
             }
 
-            val result = messageRepository.forwardMessageToChats(message, finalTargets.toList())
-            if (result.isSuccess) {
-                val sentTo = result.getOrNull() ?: 0
-                Toast.makeText(context, "Reenviado a $sentTo chat(s)", Toast.LENGTH_SHORT).show()
+            var successCount = 0
+            var failureCount = 0
+
+            // Forward to chats
+            if (chatTargets.isNotEmpty()) {
+                val result = messageRepository.forwardMessageToChats(message, chatTargets.toList())
+                if (result.isSuccess) {
+                    successCount += result.getOrNull() ?: 0
+                } else {
+                    failureCount++
+                }
+            }
+
+            if (successCount > 0) {
+                Toast.makeText(context, "Reenviado a $successCount destino(s)", Toast.LENGTH_SHORT).show()
                 _forwardPickerMessage.value = null
                 _forwardUserSearchQuery.value = ""
                 _forwardUserTargets.value = emptyList()
             } else {
-                val error = result.exceptionOrNull()?.message ?: "No se pudo reenviar"
-                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "No se pudo reenviar el mensaje", Toast.LENGTH_SHORT).show()
             }
             _isForwarding.value = false
         }

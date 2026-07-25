@@ -1,6 +1,6 @@
 [versions]
 # Core
-agp = "8.5.1"
+agp = "8.7.3"
 kotlin = "1.9.22"
 coreKtx = "1.12.0"
 lifecycleRuntimeKtx = "2.6.2"
@@ -22,6 +22,7 @@ supabaseStorage = "2.0.4"
 ktor = "2.3.5"
 
 # Firebase
+firebaseBom = "33.15.0"
 firebaseMessaging = "23.4.0"
 firebaseCrashlytics = "2.9.9"
 firebaseCrashlyticsKtx = "18.4.0"
@@ -101,6 +102,7 @@ ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serializatio
 ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
 
 # Firebase
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx", version.ref = "firebaseMessaging" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics-ktx", version.ref = "firebaseCrashlyticsKtx" }
 

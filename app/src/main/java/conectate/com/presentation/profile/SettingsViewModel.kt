@@ -285,11 +285,14 @@ class SettingsViewModel @Inject constructor(
                 // por igualdad exacta daba falsos "no confirmó" por el round-trip JSON. Se confía en
                 // el éxito del servidor y se refresca la UI con el perfil persistido.
                 val persisted = userRepository.getUserById(user.id, forceNetwork = true).getOrNull()
-                if (persisted != null) {
+                    ?: userRepository.getCachedUserSnapshot(user.id)
+                if (persisted == null) {
+                    _appearanceMessage.value = "El servidor guardó el perfil, pero no fue posible recargarlo."
+                } else {
                     currentUser = persisted
                     _settingsState.value = SettingsUiState.Success(persisted)
+                    _appearanceMessage.value = "Perfil actualizado."
                 }
-                _appearanceMessage.value = "Perfil actualizado."
             } else {
                 _appearanceMessage.value =
                     result.exceptionOrNull()?.message ?: "No se pudo actualizar el perfil."
@@ -371,11 +374,14 @@ class SettingsViewModel @Inject constructor(
                 // guardado SÍ funcionara. Se confía en el éxito del servidor y se refresca la UI con
                 // el perfil persistido (fetch de red) cuando está disponible.
                 val persisted = userRepository.getUserById(user.id, forceNetwork = true).getOrNull()
-                if (persisted != null) {
+                    ?: userRepository.getCachedUserSnapshot(user.id)
+                if (persisted == null) {
+                    _appearanceMessage.value = "El servidor guardó el perfil, pero no fue posible recargarlo."
+                } else {
                     currentUser = persisted
                     _settingsState.value = SettingsUiState.Success(persisted)
+                    _appearanceMessage.value = "Perfil y recomendaciones actualizados."
                 }
-                _appearanceMessage.value = "Perfil y recomendaciones actualizados."
             } else {
                 _appearanceMessage.value =
                     result.exceptionOrNull()?.message ?: "No se pudo actualizar el perfil."

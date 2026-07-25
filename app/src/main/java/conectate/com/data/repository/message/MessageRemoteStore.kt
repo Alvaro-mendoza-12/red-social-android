@@ -2,6 +2,7 @@ package conectate.com.data.repository.message
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import conectate.com.data.model.Chat
 import conectate.com.data.model.Message
@@ -79,37 +80,62 @@ class MessageRemoteStore @Inject constructor(
         val cleanChatId = chatId.trim().lowercase()
         if (cleanChatId.isBlank()) return MessageRemoteResult.Error("Chat invalido.")
 
-        val bytes = runCatching {
-            context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
-        }.getOrNull() ?: return MessageRemoteResult.Error("No se pudo leer el archivo.")
-
-        if (bytes.isEmpty()) return MessageRemoteResult.Error("El archivo esta vacio.")
-
         val normalizedMime = normalizeMimeType(mimeType ?: context.contentResolver.getType(mediaUri))
         val contentType = contentTypeFromMime(normalizedMime)
         val extension = extensionFromMime(normalizedMime, contentType)
         val filename = "$cleanChatId/${UUID.randomUUID()}$extension"
+        val reportedSize = queryUriSize(mediaUri)
+        var uploadedSize = reportedSize
 
-        val upload = storageService.uploadFile(
-            bucketName = "chat-media",
-            fileName = filename,
-            bytes = bytes,
-            contentType = normalizedMime
-        )
+        val upload = if (reportedSize > 0L) {
+            storageService.uploadFileFromUri(
+                bucketName = "chat-media",
+                fileName = filename,
+                sourceUri = mediaUri,
+                sizeBytes = reportedSize,
+                contentType = normalizedMime,
+                allowOverwrite = true,
+                onProgress = {}
+            )
+        } else {
+            val bytes = runCatching {
+                context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+            }.getOrNull() ?: return MessageRemoteResult.Error("No se pudo leer el archivo.")
+            if (bytes.isEmpty()) return MessageRemoteResult.Error("El archivo esta vacio.")
+            uploadedSize = bytes.size.toLong()
+            storageService.uploadFile(
+                bucketName = "chat-media",
+                fileName = filename,
+                bytes = bytes,
+                contentType = normalizedMime
+            )
+        }
 
         if (upload.isFailure) {
             return MessageRemoteResult.Error(upload.exceptionOrNull()?.message ?: "No se pudo subir multimedia.")
         }
+        val remoteKey = upload.getOrThrow().Key ?: filename
+        val storedMediaUrl = if (remoteKey.startsWith("chat-media/", ignoreCase = true)) {
+            remoteKey
+        } else {
+            "chat-media/$remoteKey"
+        }
 
-        return sendMessagePayload(
+        val sendResult = sendMessagePayload(
             chatId = cleanChatId,
             content = caption?.trim().orEmpty(),
             contentType = contentType,
-            mediaUrl = "chat-media/$filename",
-            mediaSize = bytes.size.toLong(),
+            mediaUrl = storedMediaUrl,
+            mediaSize = uploadedSize,
             replyToMessageId = null,
             prevalidatedToken = token
         )
+        if (sendResult is MessageRemoteResult.Error) {
+            storageService.deleteFile("chat-media", remoteKey).onFailure { error ->
+                android.util.Log.w("MessageRemoteStore", "No se pudo limpiar chat-media/$remoteKey", error)
+            }
+        }
+        return sendResult
     }
 
     suspend fun editMessage(
@@ -410,6 +436,24 @@ class MessageRemoteStore @Inject constructor(
             contentType == "audio" -> ".m4a"
             else -> ".bin"
         }
+    }
+
+    private fun queryUriSize(uri: Uri): Long {
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0 && cursor.moveToFirst()) {
+                    val value = cursor.getLong(index)
+                    if (value > 0L) return value
+                }
+            }
+        }
+        runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                if (descriptor.length > 0L) return descriptor.length
+            }
+        }
+        return 0L
     }
 }
 

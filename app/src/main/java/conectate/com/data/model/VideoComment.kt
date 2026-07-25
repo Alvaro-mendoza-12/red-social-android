@@ -34,6 +34,11 @@ data class VideoComment(
     val contentType: String = "text",
     @SerialName("media_url")
     val mediaUrl: String? = null,
+    val reactions: Map<String, Int> = emptyMap(),
+    @SerialName("my_reaction")
+    val myReaction: String? = null,
+    @SerialName("updated_at")
+    val updatedAt: String = "",
     // Add the join field
     val profiles: CommentAuthor? = null
 )

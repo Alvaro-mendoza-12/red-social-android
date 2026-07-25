@@ -27,7 +27,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
 import kotlinx.coroutines.delay
 
 private const val PROFILE_AVATAR_MAX_VIDEO_MS = 2_000L
@@ -55,6 +60,7 @@ fun EditProfileScreen(
     var coverImageUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateDurationMs by remember { mutableStateOf(0L) }
+    var pendingImageCrop by remember { mutableStateOf<Pair<Uri, ProfileImageTarget>?>(null) }
     var fullScreenPreviewUrl by remember { mutableStateOf<String?>(null) }
     var initialized by remember { mutableStateOf(false) }
 
@@ -112,17 +118,51 @@ fun EditProfileScreen(
                 avatarVideoMuted = true
             }
         } else {
-            imageUri = uri
-            avatarMediaType = if (mimeType == "image/gif" || uriText.endsWith(".gif")) "gif" else "image"
-            avatarDurationMs = null
-            avatarVideoMuted = true
+            if (mimeType == "image/gif" || uriText.endsWith(".gif")) {
+                imageUri = uri
+                avatarMediaType = "gif"
+                avatarDurationMs = null
+                avatarVideoMuted = true
+            } else {
+                pendingImageCrop = uri to ProfileImageTarget.AVATAR
+            }
         }
     }
     
     val coverImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        coverImageUri = uri
+        uri?.let { pendingImageCrop = it to ProfileImageTarget.COVER }
+    }
+
+    pendingImageCrop?.let { (sourceUri, target) ->
+        val preset = if (target == ProfileImageTarget.AVATAR) {
+            ImageCropPreset.SQUARE
+        } else {
+            ImageCropPreset.COVER
+        }
+        SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = if (target == ProfileImageTarget.AVATAR) {
+                "Recortar foto de perfil"
+            } else {
+                "Recortar portada"
+            },
+            presets = listOf(preset),
+            initialPreset = preset,
+            onDismiss = { pendingImageCrop = null },
+            onCropped = { croppedUri ->
+                if (target == ProfileImageTarget.AVATAR) {
+                    imageUri = croppedUri
+                    avatarMediaType = "image"
+                    avatarDurationMs = null
+                    avatarVideoMuted = true
+                } else {
+                    coverImageUri = croppedUri
+                }
+                pendingImageCrop = null
+            }
+        )
     }
 
     trimCandidateUri?.let { candidateUri ->
@@ -177,6 +217,25 @@ fun EditProfileScreen(
         Box(modifier = Modifier.padding(padding)) {
              when (val state = profileState) {
                 is ProfileUiState.Success -> {
+                    val rewrittenCoverUrl = remember(state.user.cover_url) {
+                        UbuntuStorageUrl.rewrite(state.user.cover_url)
+                    }
+                    val coverCacheKey = remember(state.user.cover_url) {
+                        UbuntuStorageUrl.stableCacheKey(state.user.cover_url)
+                    }
+                    val persistedCoverRequest = remember(rewrittenCoverUrl, coverCacheKey) {
+                        rewrittenCoverUrl?.let { coverUrl ->
+                            ImageRequest.Builder(context)
+                                .data(coverUrl)
+                                .memoryCacheKey(coverCacheKey)
+                                .diskCacheKey(coverCacheKey)
+                                .placeholderMemoryCacheKey(coverCacheKey)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(false)
+                                .build()
+                        }
+                    }
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -203,8 +262,8 @@ fun EditProfileScreen(
                             androidx.compose.foundation.Image(
                                 painter = if (coverImageUri != null) {
                                     coil.compose.rememberAsyncImagePainter(coverImageUri)
-                                } else if (!state.user.cover_url.isNullOrEmpty()) {
-                                    coil.compose.rememberAsyncImagePainter(state.user.cover_url)
+                                } else if (persistedCoverRequest != null) {
+                                    coil.compose.rememberAsyncImagePainter(persistedCoverRequest)
                                 } else {
                                     coil.compose.rememberAsyncImagePainter(null)
                                 },
@@ -389,8 +448,7 @@ fun EditProfileScreen(
                                             coverImageUri = coverImageUri,
                                             onSuccess = {
                                                 isLoading = false
-                                                // Force reload to show changes immediately
-                                                viewModel.loadUserProfile(null)
+                                                // No need to force reload, optimistic update in ViewModel handles it
                                                 android.widget.Toast.makeText(
                                                     context, 
                                                     "¡Cambios guardados exitosamente!", 
@@ -467,13 +525,17 @@ fun EditProfileScreen(
                                 avatarVideoMuted = true
                             }
                         } else {
-                            imageUri = uri
-                            avatarMediaType = if (mimeType == "image/gif" || uriText.endsWith(".gif")) "gif" else "image"
-                            avatarDurationMs = null
-                            avatarVideoMuted = true
+                            if (mimeType == "image/gif" || uriText.endsWith(".gif")) {
+                                imageUri = uri
+                                avatarMediaType = "gif"
+                                avatarDurationMs = null
+                                avatarVideoMuted = true
+                            } else {
+                                pendingImageCrop = uri to ProfileImageTarget.AVATAR
+                            }
                         }
                     } else {
-                        coverImageUri = uri
+                        pendingImageCrop = uri to ProfileImageTarget.COVER
                     }
                 }
             },

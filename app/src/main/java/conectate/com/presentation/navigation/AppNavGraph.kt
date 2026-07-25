@@ -29,6 +29,7 @@ fun AppNavGraph(
     navController: NavHostController,
     isInitializing: Boolean,
     isLoggedIn: Boolean,
+    isSwitchingAccount: Boolean,
     hasPendingIntent: Boolean
 ) {
     NavHost(
@@ -43,7 +44,7 @@ fun AppNavGraph(
         )
         addMainRoutes(
             navController = navController,
-            isLoggedIn = isLoggedIn
+            isLoggedIn = isLoggedIn || isSwitchingAccount
         )
     }
 }

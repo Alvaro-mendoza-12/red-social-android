@@ -278,6 +278,11 @@ class SupabaseConfig @Inject constructor(
             install(io.github.jan.supabase.gotrue.Auth) {
                 scheme = "conectate"
                 host = "recovery"
+                if (isLocalFallbackPrimary) {
+                    alwaysAutoRefresh = false
+                    autoLoadFromStorage = false
+                    autoSaveToStorage = false
+                }
             }
             install(io.github.jan.supabase.realtime.Realtime) {
                 connectOnSubscribe = false
@@ -317,7 +322,7 @@ class SupabaseConfig @Inject constructor(
     suspend fun subscribeRealtimeChannel(
         channel: RealtimeChannel,
         reason: String,
-        blockUntilSubscribed: Boolean = false
+        blockUntilSubscribed: Boolean = true
     ) {
         if (shouldSkipRealtimeConnection(reason)) return
 

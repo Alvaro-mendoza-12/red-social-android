@@ -67,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.Post
@@ -118,6 +119,7 @@ fun SocialScreen(
     sharedUri: String? = null
 ) {
     val posts by viewModel.posts.collectAsState()
+    val activeStreams by viewModel.activeStreams.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -136,6 +138,7 @@ fun SocialScreen(
     
     val pullRefreshState = rememberPullRefreshState(isRefreshing, { 
         viewModel.loadPosts()
+        viewModel.refreshLives()
         momentViewModel.refreshMoments()
         challengeViewModel.refreshChallengeData()
     })
@@ -147,11 +150,13 @@ fun SocialScreen(
     LaunchedEffect(Unit) {
         notificationViewModel.updateUnreadCount()
         friendViewModel.loadRequests()
+        viewModel.refreshLives()
         // Moments auto-load in ViewModel init - no manual call needed
     }
 
     var showCreatePostDialog by remember { mutableStateOf(false) }
     var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
+    var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var challengesUnlocked by remember { mutableStateOf(false) }
@@ -244,6 +249,27 @@ fun SocialScreen(
             },
             initialText = sharedText,
             initialUri = if (sharedUri != null) android.net.Uri.parse(sharedUri) else null
+        )
+    }
+
+    postToReport?.let { reportPost ->
+        conectate.com.presentation.components.ContentReportDialog(
+            title = "Reportar publicación",
+            subjectText = reportPost.userName,
+            reasonOptions = listOf(
+                "Spam",
+                "Acoso",
+                "Violencia",
+                "Desinformación",
+                "Contenido sexual",
+                "Otro"
+            ),
+            attachEvidenceEnabled = true,
+            onDismiss = { postToReport = null },
+            onSubmit = { reason, details, evidenceUri ->
+                viewModel.reportPost(reportPost, reason, details, evidenceUri)
+                postToReport = null
+            }
         )
     }
     
@@ -912,7 +938,7 @@ fun SocialScreen(
                     Column(verticalArrangement = Arrangement.Center) {
                          Text(
                              text = when (pagerState.currentPage) {
-                                 0 -> "Conéctate"
+                                 0 -> "Novvin"
                                  1 -> "Momentos"
                                  else -> "Retos"
                              },
@@ -1038,12 +1064,48 @@ fun SocialScreen(
                 ) { pageIndex ->
                     when (pageIndex) {
                         0 -> {
-                            if (posts.isEmpty() && !isRefreshing) {
+                            if (posts.isEmpty() && activeStreams.isEmpty() && !isRefreshing) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("No hay publicaciones recientes", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (isConnected) {
+                                        Text("No hay publicaciones recientes", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    } else {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.padding(horizontal = 32.dp)
+                                        ) {
+                                            Icon(Icons.Default.WifiOff, contentDescription = null, modifier = Modifier.size(56.dp))
+                                            Text(
+                                                "No se pudieron cargar las publicaciones porque no hay conexión.",
+                                                textAlign = TextAlign.Center,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Button(onClick = {
+                                                connectivityViewModel.retrySync("social_empty_retry")
+                                                viewModel.loadPosts()
+                                            }) { Text("Reintentar") }
+                                        }
+                                    }
                                 }
                             } else {
-                                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (activeStreams.isNotEmpty()) {
+                                        item(key = "active-lives") {
+                                            conectate.com.presentation.live.LiveStreamsCarousel(
+                                                streams = activeStreams,
+                                                onOpenLive = { liveId ->
+                                                    navController.navigate(Screen.LiveViewer.createRoute(liveId))
+                                                },
+                                                onOpenAll = {
+                                                    navController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+                                                }
+                                            )
+                                        }
+                                    }
                                     items(posts, key = { it.id }) { post ->
                                         PostCard(
                                             post = post,
@@ -1056,6 +1118,8 @@ fun SocialScreen(
                                                 selectedPostForShare = post
                                                 showInternalShareDialog = true
                                             },
+                                            onReportClick = { postToReport = post },
+                                            showReportAction = true,
                                             isOwner = post.userId == viewModel.currentUserId,
                                             onDeleteClick = { viewModel.deletePost(post.id) },
                                             onVisibilityClick = { newVis -> viewModel.updatePostVisibility(post.id, newVis) },

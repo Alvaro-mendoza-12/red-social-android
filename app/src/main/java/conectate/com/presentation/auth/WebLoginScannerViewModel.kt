@@ -134,7 +134,7 @@ class WebLoginScannerViewModel @Inject constructor(
         if (parsed == null) {
             _uiState.update {
                 it.copy(
-                    errorMessage = "Ese QR no pertenece a Conectate Web o está incompleto."
+                    errorMessage = "Ese QR no pertenece a Novvin Web o está incompleto."
                 )
             }
             return
@@ -170,7 +170,7 @@ class WebLoginScannerViewModel @Inject constructor(
                             isLoading = false,
                             pairing = null,
                             errorMessage = error.toUserFacingMessage(
-                                "No pudimos validar el QR de Conectate Web."
+                                "No pudimos validar el QR de Novvin Web."
                             )
                         )
                     }

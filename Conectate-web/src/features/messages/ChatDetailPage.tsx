@@ -36,6 +36,8 @@ import {
   type GenericRow,
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { fallbackApiJson } from '../../core/auth/fallbackAuth'
+import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type ChatMessage = {
@@ -93,6 +95,7 @@ type ScheduledJob = {
   content: string
   scheduledFor: string
   status: string
+  errorMessage: string
 }
 
 type OtherParticipantState = {
@@ -340,7 +343,7 @@ async function fetchMediaPreviewUrl(
   if (needsNgrokWarningBypass(url)) {
     headers.set('ngrok-skip-browser-warning', 'true')
   }
-  const response = await fetch(url, { headers, signal })
+  const response = await fetch(url, { cache: 'force-cache', headers, signal })
   if (!response.ok) throw new Error(`MEDIA_PREVIEW_${response.status}`)
   const blob = await response.blob()
   return {
@@ -348,6 +351,44 @@ async function fetchMediaPreviewUrl(
     contentType: blob.type || response.headers.get('Content-Type') || contentType,
     size: blob.size,
   }
+}
+
+const maxCachedChatImagePreviews = 80
+const cachedChatImagePreviews = new Map<string, Awaited<ReturnType<typeof fetchMediaPreviewUrl>>>()
+const chatImagePreviewJobs = new Map<string, Promise<Awaited<ReturnType<typeof fetchMediaPreviewUrl>>>>()
+
+function rememberChatImagePreview(url: string, result: Awaited<ReturnType<typeof fetchMediaPreviewUrl>>) {
+  cachedChatImagePreviews.delete(url)
+  cachedChatImagePreviews.set(url, result)
+  while (cachedChatImagePreviews.size > maxCachedChatImagePreviews) {
+    const oldest = cachedChatImagePreviews.entries().next().value as
+      | [string, Awaited<ReturnType<typeof fetchMediaPreviewUrl>>]
+      | undefined
+    if (!oldest) break
+    cachedChatImagePreviews.delete(oldest[0])
+    URL.revokeObjectURL(oldest[1].objectUrl)
+  }
+}
+
+function cachedChatImagePreview(
+  url: string,
+  contentType: string,
+): Promise<Awaited<ReturnType<typeof fetchMediaPreviewUrl>>> {
+  const cached = cachedChatImagePreviews.get(url)
+  if (cached) {
+    rememberChatImagePreview(url, cached)
+    return Promise.resolve(cached)
+  }
+  const pending = chatImagePreviewJobs.get(url)
+  if (pending) return pending
+  const job = fetchMediaPreviewUrl(url, contentType, new AbortController().signal)
+    .then((result) => {
+      rememberChatImagePreview(url, result)
+      return result
+    })
+    .finally(() => chatImagePreviewJobs.delete(url))
+  chatImagePreviewJobs.set(url, job)
+  return job
 }
 
 type MediaPreviewState = {
@@ -360,8 +401,11 @@ type MediaPreviewState = {
 
 function ChatMessageMedia({ message }: { message: ChatMessage }) {
   const [previewState, setPreviewState] = useState<MediaPreviewState | null>(null)
-  const shouldBypassNgrok = needsNgrokWarningBypass(message.mediaUrl)
-  const currentPreview = previewState?.sourceUrl === message.mediaUrl ? previewState : null
+  const kind = mediaKindFor(message.contentType, message.mediaUrl)
+  const rewrittenMediaUrl = rewriteRuntimeStorageUrl(message.mediaUrl)
+  const mediaSourceUrl = kind === 'image' ? runtimeStoragePreviewUrl(rewrittenMediaUrl) : rewrittenMediaUrl
+  const shouldBypassNgrok = needsNgrokWarningBypass(mediaSourceUrl)
+  const currentPreview = previewState?.sourceUrl === mediaSourceUrl ? previewState : null
   const failed = currentPreview?.status === 'failed'
   const preview =
     currentPreview?.status === 'ready' && currentPreview.url
@@ -373,7 +417,7 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
       : null
   const loadingPreview = shouldBypassNgrok && Boolean(message.mediaUrl) && !preview && !failed
   const markPreviewFailed = () => {
-    setPreviewState({ sourceUrl: message.mediaUrl, status: 'failed' })
+    setPreviewState({ sourceUrl: mediaSourceUrl, status: 'failed' })
   }
 
   useEffect(() => {
@@ -381,19 +425,22 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
     let objectUrlToRevoke = ''
     const controller = new AbortController()
 
-    if (!message.mediaUrl || !shouldBypassNgrok) {
+    if (!mediaSourceUrl || !shouldBypassNgrok) {
       return () => controller.abort()
     }
 
-    void fetchMediaPreviewUrl(message.mediaUrl, message.contentType, controller.signal)
+    const previewJob = kind === 'image'
+      ? cachedChatImagePreview(mediaSourceUrl, message.contentType)
+      : fetchMediaPreviewUrl(mediaSourceUrl, message.contentType, controller.signal)
+    void previewJob
       .then((result) => {
         if (!active) {
-          URL.revokeObjectURL(result.objectUrl)
+          if (kind !== 'image') URL.revokeObjectURL(result.objectUrl)
           return
         }
-        objectUrlToRevoke = result.objectUrl
+        if (kind !== 'image') objectUrlToRevoke = result.objectUrl
         setPreviewState({
-          sourceUrl: message.mediaUrl,
+          sourceUrl: mediaSourceUrl,
           status: 'ready',
           url: result.objectUrl,
           contentType: result.contentType,
@@ -403,7 +450,7 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
       .catch((error: unknown) => {
         if (!active || controller.signal.aborted) return
         console.warn('No se pudo preparar la vista previa del archivo.', error)
-        setPreviewState({ sourceUrl: message.mediaUrl, status: 'failed' })
+        setPreviewState({ sourceUrl: mediaSourceUrl, status: 'failed' })
       })
 
     return () => {
@@ -411,15 +458,14 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
       controller.abort()
       if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke)
     }
-  }, [message.contentType, message.mediaUrl, shouldBypassNgrok])
+  }, [kind, mediaSourceUrl, message.contentType, shouldBypassNgrok])
 
   if (!message.mediaUrl) return null
 
-  const previewUrl = preview?.url || (shouldBypassNgrok ? '' : message.mediaUrl)
-  const openUrl = preview?.url || message.mediaUrl
+  const previewUrl = preview?.url || (shouldBypassNgrok ? '' : mediaSourceUrl)
+  const openUrl = kind === 'image' ? previewUrl || mediaSourceUrl : preview?.url || mediaSourceUrl
   const effectiveContentType = preview?.contentType || message.contentType
   const effectiveSize = preview?.size || message.mediaSize
-  const kind = mediaKindFor(effectiveContentType, message.mediaUrl)
   const title = message.content.trim() || fileNameFromUrl(message.mediaUrl)
   const sizeLabel = formatFileSize(effectiveSize)
 
@@ -456,6 +502,7 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
           src={previewUrl}
           alt={title}
           loading="lazy"
+          decoding="async"
           onError={markPreviewFailed}
         />
       </a>
@@ -669,6 +716,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [stickers, setStickers] = useState<StickerItem[]>([])
   const [stickerQuery, setStickerQuery] = useState('')
   const [scheduledJobs, setScheduledJobs] = useState<ScheduledJob[]>([])
+  const scheduleRequestKeyRef = useRef<string | null>(null)
   const [pollStatesById, setPollStatesById] = useState<Record<string, PollState[]>>({})
   const [consumedViewOnce, setConsumedViewOnce] = useState<Record<string, true>>({})
   const [otherParticipant, setOtherParticipant] = useState<OtherParticipantState | null>(null)
@@ -1019,18 +1067,34 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   )
 
   const refreshScheduledJobs = useCallback(async () => {
-    if (!supabase || !cleanChatId) return
+    if (!cleanChatId) return
     try {
-      const { data, error: jobsError } = await supabase.rpc('secure_get_chat_scheduled_jobs', {
-        p_scope_type: 'dm',
-        p_target_id: cleanChatId,
-      })
-      if (jobsError) throw jobsError
-      setScheduledJobs((data ?? []) as ScheduledJob[])
+      let rows: GenericRow[] = []
+      if (useUbuntu) {
+        rows = await fallbackApiJson<GenericRow[]>('/rest/v1/rpc/secure_get_chat_scheduled_jobs', {
+          method: 'POST',
+          body: JSON.stringify({ p_scope_type: 'dm', p_target_id: cleanChatId }),
+        })
+      } else {
+        if (!supabase) return
+        const { data, error: jobsError } = await supabase.rpc('secure_get_chat_scheduled_jobs', {
+          p_scope_type: 'dm',
+          p_target_id: cleanChatId,
+        })
+        if (jobsError) throw jobsError
+        rows = (data ?? []) as GenericRow[]
+      }
+      setScheduledJobs(rows.map((row) => ({
+        id: textOf(row, ['id'], ''),
+        content: textOf(row, ['content'], ''),
+        scheduledFor: textOf(row, ['scheduled_for', 'scheduledFor'], ''),
+        status: textOf(row, ['status'], 'pending'),
+        errorMessage: textOf(row, ['error_message', 'errorMessage'], ''),
+      })).filter((job) => job.id))
     } catch (caught) {
       console.error('Error loading scheduled jobs:', caught)
     }
-  }, [cleanChatId])
+  }, [cleanChatId, useUbuntu])
 
 
   const markAsDeliveredAndRead = useCallback(async () => {
@@ -1326,8 +1390,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [cleanChatId, markAsDeliveredAndRead, useUbuntu, user])
 
   useEffect(() => {
-    if (useUbuntu) return
-    void loadChatSettings()
+    if (!useUbuntu) void loadChatSettings()
     void refreshScheduledJobs()
   }, [loadChatSettings, refreshScheduledJobs, useUbuntu])
 
@@ -1770,7 +1833,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function scheduleMessage() {
-    if (!supabase || !cleanChatId || scheduling) return
+    if ((!supabase && !useUbuntu) || !cleanChatId || scheduling) return
     const content = scheduledDraft.trim()
     if (!content) return
 
@@ -1783,15 +1846,30 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     setScheduling(true)
     setError(null)
     try {
-      const { error: scheduleError } = await supabase.rpc('secure_schedule_message_job', {
+      const requestKey = scheduleRequestKeyRef.current || crypto.randomUUID()
+      scheduleRequestKeyRef.current = requestKey
+      const payload = {
         p_scope_type: 'dm',
         p_target_id: cleanChatId,
         p_content: content,
         p_content_type: 'text',
         p_scheduled_for: scheduleIso,
         p_translate_to: settings.translateEnabled ? settings.targetLang : null,
-      })
-      if (scheduleError) throw scheduleError
+        p_idempotency_key: requestKey,
+      }
+      if (useUbuntu) {
+        await fallbackApiJson('/rest/v1/rpc/secure_schedule_message_job', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+      } else {
+        if (!supabase) throw new Error('Servicio de mensajes no disponible')
+        const { p_idempotency_key: _idempotencyKey, ...supabasePayload } = payload
+        void _idempotencyKey
+        const { error: scheduleError } = await supabase.rpc('secure_schedule_message_job', supabasePayload)
+        if (scheduleError) throw scheduleError
+      }
+      scheduleRequestKeyRef.current = null
       setScheduledDraft('')
       setScheduledAt('')
       await refreshScheduledJobs()
@@ -1969,6 +2047,28 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       setError(friendlyError(caught, 'No se pudo importar el sticker'))
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function cancelScheduledJob(jobId: string) {
+    if (!jobId) return
+    setError(null)
+    try {
+      if (useUbuntu) {
+        await fallbackApiJson('/rest/v1/rpc/secure_cancel_scheduled_message_job', {
+          method: 'POST',
+          body: JSON.stringify({ p_job_id: jobId }),
+        })
+      } else {
+        if (!supabase) throw new Error('Servicio de mensajes no disponible')
+        const { error: cancelError } = await supabase.rpc('secure_cancel_scheduled_message_job', {
+          p_job_id: jobId,
+        })
+        if (cancelError) throw cancelError
+      }
+      await refreshScheduledJobs()
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo cancelar el mensaje programado'))
     }
   }
 
@@ -2196,6 +2296,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                             <small>
                               {job.content || 'Mensaje'} · {formatDateTime(job.scheduledFor)} · {job.status}
                             </small>
+                            {job.errorMessage ? <small className="danger-line">{job.errorMessage}</small> : null}
+                            <button className="ghost-btn-sm" onClick={() => void cancelScheduledJob(job.id)}>
+                              Cancelar
+                            </button>
                           </div>
                         ))}
                       </div>

@@ -20,5 +20,8 @@ data class Comment(
     // For UI
     @SerialName("is_mine") val isMine: Boolean = false,
     @SerialName("parent_id") val parentId: String? = null,
-    @SerialName("media_url") val audioUrl: String? = null
+    @SerialName("media_url") val audioUrl: String? = null,
+    @SerialName("media_type") val mediaType: String? = null,
+    @SerialName("reaction_counts") val reactionCounts: Map<String, Int> = emptyMap(),
+    @SerialName("my_reaction") val myReaction: String? = null
 )

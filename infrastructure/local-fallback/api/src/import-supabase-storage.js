@@ -52,6 +52,28 @@ function normalizeObjectPath(value, fallbackName) {
   return fallbackSegments.length > 0 ? fallbackSegments.join('/') : `file-${Date.now()}`
 }
 
+const UUID_IN_PATH_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig
+
+function ownerCandidatesFromObjectPath(objectPath) {
+  return Array.from(new Set(
+    Array.from(String(objectPath || '').matchAll(UUID_IN_PATH_PATTERN), (match) => match[0].toLowerCase()),
+  ))
+}
+
+async function resolveObjectOwnerId(pool, objectPath) {
+  const candidates = ownerCandidatesFromObjectPath(objectPath)
+  if (candidates.length === 0) return null
+  const { rows } = await pool.query(
+    `SELECT DISTINCT id::text
+     FROM fallback_users
+     WHERE lower(id::text) = ANY($1::text[])
+        OR lower(COALESCE(supabase_user_id::text, '')) = ANY($1::text[])
+     LIMIT 2`,
+    [candidates],
+  )
+  return rows.length === 1 ? rows[0].id : null
+}
+
 function encodeObjectPath(objectPath) {
   return String(objectPath || '')
     .split('/')
@@ -245,6 +267,7 @@ async function upsertObject(pool, item, localPath, importInfo) {
   const publicUrl = publicObjectUrl(publicBaseUrl, bucket, objectPath)
   const createdAt = validDate(item.entry?.created_at)
   const updatedAt = validDate(item.entry?.updated_at)
+  const ownerId = await resolveObjectOwnerId(pool, objectPath)
   const metadata = {
     supabase_storage_import: {
       source_bucket: item.bucket,
@@ -253,6 +276,7 @@ async function upsertObject(pool, item, localPath, importInfo) {
       imported_at: new Date().toISOString(),
       normalized_path_changed: objectPath !== item.sourcePath,
       source_metadata: item.entry?.metadata || null,
+      resolved_owner_id: ownerId,
     },
   }
 
@@ -276,9 +300,10 @@ async function upsertObject(pool, item, localPath, importInfo) {
         created_at,
         updated_at
      )
-     VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, NOW()), COALESCE($9::timestamptz, NOW()))
+     VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, NOW()), COALESCE($10::timestamptz, NOW()))
      ON CONFLICT (bucket_id, name)
      DO UPDATE SET
+        owner_id = COALESCE(fallback_storage_objects.owner_id, EXCLUDED.owner_id),
         content_type = EXCLUDED.content_type,
         size_bytes = EXCLUDED.size_bytes,
         public_url = EXCLUDED.public_url,
@@ -288,6 +313,7 @@ async function upsertObject(pool, item, localPath, importInfo) {
     [
       bucket,
       objectPath,
+      ownerId,
       importInfo.contentType || metadataContentType(item.entry),
       importInfo.sizeBytes || metadataSize(item.entry),
       publicUrl,
@@ -443,7 +469,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message)
-  process.exitCode = 1
-})
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {
+  ownerCandidatesFromObjectPath,
+  resolveObjectOwnerId,
+}

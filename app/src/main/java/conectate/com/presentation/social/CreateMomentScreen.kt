@@ -34,6 +34,8 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
 import java.util.Locale
 
 private const val MAX_MOMENT_VIDEO_DURATION_MS = 25_000L
@@ -54,6 +56,7 @@ fun CreateMomentScreen(
     var selectedMedia by remember { mutableStateOf<GalleryMedia?>(null) }
     var finalUri by remember { mutableStateOf<Uri?>(null) }
     var finalMediaType by remember { mutableStateOf("image") }
+    var pendingMomentCropUri by remember { mutableStateOf<Uri?>(null) }
     
     // Editor State
     var durationHours by remember { mutableStateOf(24f) }
@@ -107,9 +110,7 @@ fun CreateMomentScreen(
     
     val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && tempCameraUri != null) {
-            finalUri = tempCameraUri
-            finalMediaType = "image"
-            currentStep = "EDITOR"
+            pendingMomentCropUri = tempCameraUri
         }
     }
 
@@ -124,6 +125,27 @@ fun CreateMomentScreen(
 
     var showCameraOptions by remember { mutableStateOf(false) }
 
+    pendingMomentCropUri?.let { sourceUri ->
+        SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar momento",
+            presets = listOf(
+                ImageCropPreset.ORIGINAL,
+                ImageCropPreset.SQUARE,
+                ImageCropPreset.PORTRAIT,
+                ImageCropPreset.WIDE
+            ),
+            initialPreset = ImageCropPreset.PORTRAIT,
+            onDismiss = { pendingMomentCropUri = null },
+            onCropped = { croppedUri ->
+                finalUri = croppedUri
+                finalMediaType = "image"
+                pendingMomentCropUri = null
+                currentStep = "EDITOR"
+            }
+        )
+    }
+
     if (showCameraOptions) {
         AlertDialog(
             onDismissRequest = { showCameraOptions = false },
@@ -132,10 +154,7 @@ fun CreateMomentScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showCameraOptions = false
-                    val tmpFile = java.io.File.createTempFile("camera_", ".mp4", context.cacheDir)
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        context, "${context.packageName}.provider", tmpFile
-                    )
+                    val uri = createMomentCameraUri(context, ".mp4")
                     tempCameraUri = uri
                     recordVideoLauncher.launch(uri)
                 }) {
@@ -145,10 +164,7 @@ fun CreateMomentScreen(
             dismissButton = {
                 TextButton(onClick = {
                     showCameraOptions = false
-                    val tmpFile = java.io.File.createTempFile("camera_", ".jpg", context.cacheDir)
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        context, "${context.packageName}.provider", tmpFile
-                    )
+                    val uri = createMomentCameraUri(context, ".jpg")
                     tempCameraUri = uri
                     takePictureLauncher.launch(uri)
                 }) {
@@ -165,10 +181,13 @@ fun CreateMomentScreen(
                 TopAppBar(
                     title = { Text(if (currentStep == "TRIMMER") "Recortar Video" else "Nuevo Momento") },
                     navigationIcon = {
-                        IconButton(onClick = { 
-                            if (currentStep == "GALLERY") navController.popBackStack() 
-                            else currentStep = "GALLERY"
-                        }) {
+                        IconButton(
+                            enabled = !isUploading,
+                            onClick = {
+                                if (currentStep == "GALLERY") navController.popBackStack()
+                                else currentStep = "GALLERY"
+                            }
+                        ) {
                             Icon(Icons.Default.Close, "Cerrar")
                         }
                     }
@@ -185,9 +204,11 @@ fun CreateMomentScreen(
                             selectedMedia = media
                             if (media.type == MediaType.VIDEO && media.duration > MAX_MOMENT_VIDEO_DURATION_MS + 1_000L) {
                                 currentStep = "TRIMMER"
+                            } else if (media.type == MediaType.IMAGE) {
+                                pendingMomentCropUri = media.uri
                             } else {
                                 finalUri = media.uri
-                                finalMediaType = if (media.type == MediaType.VIDEO) "video" else "image"
+                                finalMediaType = "video"
                                 currentStep = "EDITOR"
                             }
                         },
@@ -254,6 +275,17 @@ fun CreateMomentScreen(
                             }
                         )
                     }
+                }
+            }
+            if (isUploading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(onClick = {}),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Color.White)
                 }
             }
         }
@@ -419,7 +451,12 @@ fun MomentEditorView(
     onBack: () -> Unit,
     onPost: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .imePadding()
+    ) {
         // Media Preview
         if (isVideo) {
             MomentVideoPlayer(
@@ -477,8 +514,9 @@ fun MomentEditorView(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 ))
+                .navigationBarsPadding()
                 .padding(16.dp)
         ) {
             // Caption
@@ -489,10 +527,17 @@ fun MomentEditorView(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
-                    cursorColor = MaterialTheme.colorScheme.primary
+                    focusedContainerColor = Color.Black.copy(alpha = 0.62f),
+                    unfocusedContainerColor = Color.Black.copy(alpha = 0.52f),
+                    focusedBorderColor = Color.White.copy(alpha = 0.9f),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.38f),
+                    cursorColor = Color.White,
+                    focusedPlaceholderColor = Color.White.copy(alpha = 0.7f),
+                    unfocusedPlaceholderColor = Color.White.copy(alpha = 0.7f)
                 ),
+                minLines = 1,
+                maxLines = 4,
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             )
             
@@ -587,4 +632,14 @@ private fun formatDuration(millis: Long): String {
     val seconds = (millis / 1000) % 60
     val minutes = (millis / (1000 * 60)) % 60
     return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+}
+
+private fun createMomentCameraUri(context: android.content.Context, extension: String): Uri {
+    val directory = context.externalCacheDir ?: context.cacheDir
+    val tmpFile = java.io.File.createTempFile("moment_camera_", extension, directory)
+    return androidx.core.content.FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.provider",
+        tmpFile
+    )
 }

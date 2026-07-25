@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.*
 import conectate.com.presentation.navigation.Screen
+import conectate.com.presentation.common.ConnectivityViewModel
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -114,6 +115,7 @@ private enum class VideoSidePanel {
 fun VideoFeedScreen(
     navController: NavController,
     viewModel: VideoFeedViewModel = hiltViewModel(),
+    connectivityViewModel: ConnectivityViewModel = hiltViewModel(),
     onNavigateToUpload: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
@@ -127,6 +129,7 @@ fun VideoFeedScreen(
     val activeStreams by viewModel.activeStreams.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     // Comments
     val commentsSheetOpen by viewModel.commentsSheetOpen.collectAsState()
@@ -690,6 +693,34 @@ fun VideoFeedScreen(
                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White)
                 }
+            } else if (!isConnected && feedEntries.isEmpty()) {
+                 Box(
+                     modifier = Modifier.fillMaxSize(),
+                     contentAlignment = Alignment.Center
+                 ) {
+                     Column(
+                         horizontalAlignment = Alignment.CenterHorizontally,
+                         verticalArrangement = Arrangement.spacedBy(12.dp),
+                         modifier = Modifier.padding(horizontal = 32.dp)
+                     ) {
+                         Icon(Icons.Default.WifiOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
+                         Text(
+                             "No se pudieron cargar los videos porque no hay conexión a internet.",
+                             color = Color.White,
+                             textAlign = TextAlign.Center,
+                             fontWeight = FontWeight.Bold
+                         )
+                         Text(
+                             "Verifica tu conexión y vuelve a intentarlo.",
+                             color = Color.White.copy(alpha = 0.72f),
+                             textAlign = TextAlign.Center
+                         )
+                         Button(onClick = {
+                             connectivityViewModel.retrySync("video_feed_retry")
+                             viewModel.refreshFeed()
+                         }) { Text("Reintentar") }
+                     }
+                 }
             } else if (feedEntries.isEmpty()) {
                  // Empty State
                  Box(
@@ -1373,7 +1404,7 @@ fun VideoItem(
                             showShareMenu = false
                             val sendIntent = android.content.Intent().apply {
                                 action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Mira este video en Conéctate: https://conectate.com/video/${video.id}\n\nO abre directamente en la app:\nconectate://video/${video.id}\n\n${video.title}")
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Mira este video en Novvin: https://conectate.com/video/${video.id}\n\nO abre directamente en la app:\nconectate://video/${video.id}\n\n${video.title}")
                                 type = "text/plain"
                             }
                             val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir video con...")

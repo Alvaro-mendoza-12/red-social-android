@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.observability.AppMetrics
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.model.ActiveCall
 import conectate.com.data.model.CallConnectionState
 import conectate.com.data.model.CallHistoryDirection
@@ -51,6 +52,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -71,7 +76,8 @@ class CallRepository @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val callHistoryRepository: CallHistoryRepository,
     private val callTonePlayer: CallTonePlayer,
-    private val appMetrics: AppMetrics
+    private val appMetrics: AppMetrics,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient
 ) {
     @Serializable
     private data class CallInviteBroadcastPayload(
@@ -120,7 +126,7 @@ class CallRepository @Inject constructor(
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
-    private val _isSpeaker = MutableStateFlow(true)
+    private val _isSpeaker = MutableStateFlow(false)
     val isSpeaker: StateFlow<Boolean> = _isSpeaker.asStateFlow()
 
     private val _incomingInvite = MutableStateFlow<CallInvite?>(null)
@@ -140,11 +146,13 @@ class CallRepository @Inject constructor(
     val eglContext: org.webrtc.EglBase.Context? get() = webRTCManager?.eglContext
 
     private var callUserChannel: RealtimeChannel? = null
+    private var ubuntuCallUserChannel: String? = null
     private var callUserChannelJob: Job? = null
     private var callResponseChannelJob: Job? = null
     private var outgoingRingTimeoutJob: Job? = null
     private var connectingTimeoutJob: Job? = null
     private var webRtcStateObservationJob: Job? = null
+    private var socketEndpointRecoveryJob: Job? = null
     private var callEverHadRemoteParticipant: Boolean = false
     private var hasConnectedMediaPath: Boolean = false
     private var callSetupStartedAtMs: Long? = null
@@ -169,9 +177,36 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun ensureSubscribedToCallUserChannel(userId: String) = withContext(Dispatchers.IO) {
+        val normalizedUserId = userId.trim()
+        if (normalizedUserId.isBlank()) return@withContext
+
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            val channelName = "user:$normalizedUserId"
+            if (ubuntuCallUserChannel == channelName && callUserChannelJob?.isActive == true) {
+                return@withContext
+            }
+
+            ubuntuCallUserChannel?.let(ubuntuRealtimeClient::unsubscribe)
+            callUserChannelJob?.cancel()
+            callResponseChannelJob?.cancel()
+            ubuntuRealtimeClient.updateAccessToken(authService.getAccessToken().orEmpty())
+            ubuntuRealtimeClient.subscribe(channelName)
+            ubuntuCallUserChannel = channelName
+            callUserChannelJob = scope.launch {
+                ubuntuRealtimeClient.events.collect { envelope ->
+                    if (envelope.channel != channelName) return@collect
+                    when (envelope.event) {
+                        "call_invite" -> handleUbuntuCallInvite(envelope.payload)
+                        "call_response" -> handleUbuntuCallResponse(envelope.payload)
+                    }
+                }
+            }
+            return@withContext
+        }
+
         if (callUserChannel != null) return@withContext
 
-        var channelName = "call-user:$userId"
+        var channelName = "call-user:$normalizedUserId"
         var channel = supabaseConfig.client.channel(channelName)
         callUserChannel = channel
 
@@ -334,6 +369,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = peerAvatar,
             isVideo = isVideo
         )
+        _isSpeaker.value = isVideo
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -446,6 +482,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = null,
             isVideo = false
         )
+        _isSpeaker.value = false
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -501,6 +538,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = invite.callerAvatarUrl,
             isVideo = invite.isVideo
         )
+        _isSpeaker.value = invite.isVideo
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -684,6 +722,55 @@ class CallRepository @Inject constructor(
         )
     }
 
+    private fun handleUbuntuCallInvite(payload: kotlinx.serialization.json.JsonObject) {
+        val callId = payload.stringValue("callId", "call_id")
+        val callerUserId = payload.stringValue("callerUserId", "caller_user_id")
+        if (callId.isBlank() || callerUserId.isBlank() || _activeCall.value != null) return
+
+        _incomingInvite.value = CallInvite(
+            callId = callId,
+            title = payload.stringValue("title").ifBlank { "Llamada" },
+            callerUserId = callerUserId,
+            callerName = payload.stringValue("callerName", "caller_name").ifBlank { "Usuario" },
+            callerAvatarUrl = payload.stringValue("callerAvatarUrl", "caller_avatar_url").ifBlank { null },
+            contextType = payload.stringValue("contextType", "context_type").ifBlank { "dm" },
+            contextId = payload.stringValue("contextId", "context_id").ifBlank { null },
+            isVideo = payload.booleanValue("isVideo", "is_video")
+        )
+    }
+
+    private fun handleUbuntuCallResponse(payload: kotlinx.serialization.json.JsonObject) {
+        val callId = payload.stringValue("callId", "call_id")
+        val action = payload.stringValue("action", "call_action")
+        if (callId.isBlank() || action.isBlank()) return
+        handleExternalCallResponse(
+            callId = callId,
+            action = action,
+            fromUserId = payload.stringValue("fromUserId", "from_user_id")
+        )
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.stringValue(vararg keys: String): String {
+        keys.forEach { key ->
+            this[key]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        val extraData = this["extraData"]?.jsonObject
+        keys.forEach { key ->
+            extraData?.get(key)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return ""
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.booleanValue(vararg keys: String): Boolean {
+        keys.forEach { key ->
+            this[key]?.jsonPrimitive?.let { value ->
+                value.booleanOrNull?.let { return it }
+                value.contentOrNull?.let { return it == "1" || it.equals("true", ignoreCase = true) }
+            }
+        }
+        return false
+    }
+
     fun dismissIncomingInvite() {
         _incomingInvite.value = null
     }
@@ -703,6 +790,7 @@ class CallRepository @Inject constructor(
     }
 
     fun refreshAudioSession() {
+        ensureWebRtcInitializedAfterPermission()
         prepareCallAudioSession()
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setRemoteAudioPlaybackEnabled(true)
@@ -725,7 +813,7 @@ class CallRepository @Inject constructor(
 
     private suspend fun sendCallInvite(targetUserId: String, invite: CallInvite) {
         val callCreatedAt = java.time.Instant.now().toString()
-        notificationRepository.sendNotification(
+        val notificationResult = notificationRepository.sendNotification(
             recipientId = targetUserId.trim(),
             type = "call_invite",
             targetId = invite.callId,
@@ -744,6 +832,10 @@ class CallRepository @Inject constructor(
                 "Failed to enqueue call_invite notification for ${targetUserId.trim()}: ${error.message}",
                 error
             )
+        }
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            notificationResult.getOrThrow()
+            return
         }
 
         try {
@@ -782,6 +874,28 @@ class CallRepository @Inject constructor(
         fromUserId: String,
         notificationAction: String = action
     ) {
+        if (supabaseConfig.isLocalFallbackPrimary) {
+            val notificationType = if (action == "accept") "call_response" else "call_cancel"
+            notificationRepository.sendNotification(
+                recipientId = targetUserId.trim(),
+                type = notificationType,
+                targetId = callId,
+                content = when (notificationAction.trim().lowercase()) {
+                    "accept" -> "Llamada aceptada"
+                    "missed" -> "Llamada no contestada"
+                    "end" -> "Llamada finalizada"
+                    "decline" -> "Llamada rechazada"
+                    else -> "Llamada cancelada"
+                },
+                extraData = buildJsonObject {
+                    put("call_id", callId)
+                    put("call_action", action)
+                    put("from_user_id", fromUserId)
+                }
+            ).getOrThrow()
+            return
+        }
+
         if (action == "cancel" || action == "end" || action == "decline") {
             runCatching {
                 notificationRepository.sendNotification(
@@ -855,11 +969,23 @@ class CallRepository @Inject constructor(
                 transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
-            socket = IO.socket(signalingUrl, options)
+            val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
+            val signalingEndpoint = signalingUrl
+            val createdSocket = IO.socket(signalingEndpoint, options)
+            socket = createdSocket
 
-            socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
+                if (socket !== createdSocket) return@on
                 val detail = args.firstOrNull()?.toString().orEmpty().ifBlank { "socket_connect_error" }
-                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
+                recoverSocketAfterEndpointFailure(
+                    failedSocket = createdSocket,
+                    failedBaseUrl = endpointBaseUrl,
+                    failedSignalingEndpoint = signalingEndpoint,
+                    callId = callId,
+                    userId = userId,
+                    name = name,
+                    avatarUrl = avatarUrl
+                )
                 _activeCall.value?.let { active ->
                     if (active.callId.equals(callId, ignoreCase = true)) {
                         appMetrics.recordFailure(
@@ -875,25 +1001,24 @@ class CallRepository @Inject constructor(
                 }
             }
 
-            socket?.on(Socket.EVENT_CONNECT) {
-                var sid = socket?.id() ?: ""
+            createdSocket.on(Socket.EVENT_CONNECT) {
+                if (socket !== createdSocket) return@on
+                var sid = createdSocket.id() ?: ""
 
                 // IDENTITY DIAGNOSTIC: Log what userId is being sent vs what authService reports
                 val authCurrentId = authService.getCurrentUserId().orEmpty()
-                val authToken = authService.getAccessToken().orEmpty()
                 android.util.Log.w("IDENTITY", "=== CALL CONNECT IDENTITY CHECK ===")
                 android.util.Log.w("IDENTITY", "  socketId       = $sid")
                 android.util.Log.w("IDENTITY", "  callId         = $callId")
                 android.util.Log.w("IDENTITY", "  claimedUserId  = ${userId.trim()} (param passed to connectSocket)")
                 android.util.Log.w("IDENTITY", "  authCurrentId  = $authCurrentId (from authService.getCurrentUserId)")
-                android.util.Log.w("IDENTITY", "  tokenPrefix    = ${authToken.take(20).ifBlank { "EMPTY" }}...")
-                android.util.Log.w("IDENTITY", "  signalingUrl   = $signalingUrl")
+                android.util.Log.w("IDENTITY", "  signalingUrl   = $signalingEndpoint")
                 if (userId.trim() != authCurrentId && authCurrentId.isNotBlank()) {
                     android.util.Log.e("IDENTITY", "⚠️ MISMATCH! claimedUserId != authCurrentId. Possible stale session or wrong account. Clear app data and re-login!")
                 }
 
                 // *** CRITICAL: Emit join-call FIRST before any WebRTC/audio setup ***
-                socket?.emit(
+                createdSocket.emit(
                     "join-call",
                     org.json.JSONObject().apply {
                         put("callId", callId.trim())
@@ -945,7 +1070,7 @@ class CallRepository @Inject constructor(
                 val sid = args.getOrNull(0) as? String ?: return@on
                 _participants.update { list -> list.filterNot { it.socketId == sid } }
                 webRTCManager?.onUserLeft(sid)
-                autoEndIfAlone(graceMs = 1_500)
+                autoEndIfAlone(graceMs = 8_000)
             }
 
             socket?.on("current-participants") { args ->
@@ -1027,7 +1152,9 @@ class CallRepository @Inject constructor(
             socket?.on("offer") { args ->
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val senderSocketId = data.getString("sender")
-                var senderUserId = if (data.has("userId")) data.getString("userId") else ""
+                var senderUserId = if (data.has("userId")) data.getString("userId") else {
+                    _participants.value.find { it.socketId == senderSocketId }?.userId ?: ""
+                }
                 val offerSdp = data.getJSONObject("offer").getString("sdp")
                 webRTCManager?.onOfferReceived(senderSocketId, senderUserId, offerSdp)
             }
@@ -1052,19 +1179,69 @@ class CallRepository @Inject constructor(
                 webRTCManager?.onIceCandidateReceived(sender, candidate, senderUserId)
             }
 
-            socket?.on(Socket.EVENT_DISCONNECT) {
-                autoEndIfAlone(graceMs = 5_000)
+            createdSocket.on(Socket.EVENT_DISCONNECT) {
+                android.util.Log.w(
+                    "CallRepository",
+                    "Call signaling socket disconnected; preserving any active WebRTC media path while Socket.IO reconnects."
+                )
             }
 
-            socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                var reason = args.firstOrNull()?.toString().orEmpty()
-                android.util.Log.e("CallRepository", "Call socket connect error: $reason")
-                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
-            }
-
-            socket?.connect()
+            createdSocket.connect()
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to setup call socket", e)
+        }
+    }
+
+    @Synchronized
+    private fun ensureWebRtcInitializedAfterPermission() {
+        if (!hasMicrophonePermission()) return
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (userId.isBlank() || _activeCall.value == null) return
+
+        if (webRTCManager == null) {
+            initializeWebRTC(userId)
+        }
+
+        webRTCManager?.setCurrentUser(userId, socket?.id()?.trim().orEmpty())
+        _participants.value
+            .asSequence()
+            .filterNot { it.userId.equals(userId, ignoreCase = true) }
+            .filter { it.socketId.isNotBlank() }
+            .forEach { participant ->
+                webRTCManager?.onUserJoined(participant.socketId, participant.userId)
+            }
+    }
+
+    private fun recoverSocketAfterEndpointFailure(
+        failedSocket: Socket,
+        failedBaseUrl: String,
+        failedSignalingEndpoint: String,
+        callId: String,
+        userId: String,
+        name: String,
+        avatarUrl: String?
+    ) {
+        if (socketEndpointRecoveryJob?.isActive == true) return
+        socketEndpointRecoveryJob = scope.launch {
+            try {
+                val refreshed = conectate.com.data.localfallback.RuntimeBackendEndpoint
+                    .refreshAfterEndpointFailure(failedBaseUrl)
+                val active = _activeCall.value
+                if (
+                    !refreshed ||
+                    socket !== failedSocket ||
+                    active == null ||
+                    !active.callId.equals(callId, ignoreCase = true)
+                ) {
+                    return@launch
+                }
+                val refreshedEndpoint = signalingUrl
+                if (refreshedEndpoint == failedSignalingEndpoint) return@launch
+                android.util.Log.w("CallRepository", "Rebuilding call socket after backend endpoint changed.")
+                connectSocket(callId, userId, name, avatarUrl)
+            } finally {
+                socketEndpointRecoveryJob = null
+            }
         }
     }
 
@@ -1251,6 +1428,8 @@ class CallRepository @Inject constructor(
         callSetupMetricCallId = null
         webRtcStateObservationJob?.cancel()
         webRtcStateObservationJob = null
+        socketEndpointRecoveryJob?.cancel()
+        socketEndpointRecoveryJob = null
 
         try {
             socket?.off()
@@ -1366,7 +1545,7 @@ class CallRepository @Inject constructor(
                 putExtra(CallForegroundService.EXTRA_CALL_TITLE, _activeCall.value?.title ?: "Llamada")
                 putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
             }
-            context.startForegroundService(intent)
+            ContextCompat.startForegroundService(context, intent)
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to start CallForegroundService", e)
         }
@@ -1631,15 +1810,26 @@ class CallRepository @Inject constructor(
     private fun routeSpeakerphone(audioManager: AudioManager, enabled: Boolean) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!enabled) {
+                val preferredDeviceTypes = if (enabled) {
+                    listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+                } else {
+                    listOf(
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    )
+                }
+
+                val targetDevice = preferredDeviceTypes.firstNotNullOfOrNull { type ->
+                    audioManager.availableCommunicationDevices.firstOrNull { it.type == type }
+                }
+                if (targetDevice != null) {
+                    audioManager.setCommunicationDevice(targetDevice)
+                } else if (!enabled) {
                     audioManager.clearCommunicationDevice()
-                    return
-                }
-                val speaker = audioManager.availableCommunicationDevices.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                }
-                if (speaker != null) {
-                    audioManager.setCommunicationDevice(speaker)
                 }
                 return
             }

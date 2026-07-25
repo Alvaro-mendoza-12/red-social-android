@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import android.os.Vibrator
 import android.os.VibrationEffect
+import android.os.Build
 import kotlinx.coroutines.delay
 
 @Composable
@@ -38,7 +39,12 @@ fun ChallengeTimer(
             
             // Vibración si es crítico
             if (timeLeft < 60) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(50L)
+                }
             }
         }
         onTimerFinished()

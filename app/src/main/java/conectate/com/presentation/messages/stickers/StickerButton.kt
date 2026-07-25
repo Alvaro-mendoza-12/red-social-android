@@ -14,8 +14,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun StickerButton(
     onClick: () -> Unit,
-    enabled: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Surface(
         modifier = modifier,

@@ -93,8 +93,6 @@ fun MediaCaptionPreviewDialog(
     var overlayText by remember(mediaUri) { mutableStateOf("") }
     var overlayEmoji by remember(mediaUri) { mutableStateOf("") }
     var overlaySticker by remember(mediaUri) { mutableStateOf("") }
-    var trimStartText by remember(mediaUri) { mutableStateOf("") }
-    var trimEndText by remember(mediaUri) { mutableStateOf("") }
     var preparing by remember(mediaUri) { mutableStateOf(false) }
     var localError by remember(mediaUri) { mutableStateOf<String?>(null) }
     var previewSize by remember(mediaUri) { mutableStateOf(IntSize.Zero) }
@@ -174,7 +172,7 @@ fun MediaCaptionPreviewDialog(
                                 )
                             },
                         colorFilter = if (!isVideo) ColorFilter.colorMatrix(composeMatrix) else null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         loading = { CircularProgressIndicator() }
                     )
                     if (isVideo) {
@@ -236,48 +234,37 @@ fun MediaCaptionPreviewDialog(
                     Slider(value = contrast, onValueChange = { contrast = it }, valueRange = 0.7f..1.4f)
                 }
 
-                OutlinedTextField(
-                    value = overlayText,
-                    onValueChange = { overlayText = it.take(120) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Texto sobre media (opcional)") },
-                    maxLines = 2
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isVideo) {
                     OutlinedTextField(
-                        value = overlayEmoji,
-                        onValueChange = { overlayEmoji = it.take(6) },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Emoji") },
-                        singleLine = true
+                        value = overlayText,
+                        onValueChange = { overlayText = it.take(120) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Texto sobre imagen (opcional)") },
+                        maxLines = 2
                     )
-                    OutlinedTextField(
-                        value = overlaySticker,
-                        onValueChange = { overlaySticker = it.take(32) },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Sticker/Tag") },
-                        singleLine = true
-                    )
-                }
 
-                if (isVideo) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = trimStartText,
-                            onValueChange = { trimStartText = it.filter(Char::isDigit).take(4) },
+                            value = overlayEmoji,
+                            onValueChange = { overlayEmoji = it.take(6) },
                             modifier = Modifier.weight(1f),
-                            label = { Text("Inicio (seg)") },
+                            label = { Text("Emoji") },
                             singleLine = true
                         )
                         OutlinedTextField(
-                            value = trimEndText,
-                            onValueChange = { trimEndText = it.filter(Char::isDigit).take(4) },
+                            value = overlaySticker,
+                            onValueChange = { overlaySticker = it.take(32) },
                             modifier = Modifier.weight(1f),
-                            label = { Text("Fin (seg)") },
+                            label = { Text("Sticker/Tag") },
                             singleLine = true
                         )
                     }
+                } else {
+                    Text(
+                        text = "El video se enviará completo. Usa el editor de Videos para recortar o aplicar efectos reales.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 OutlinedTextField(
@@ -301,22 +288,7 @@ fun MediaCaptionPreviewDialog(
             TextButton(
                 onClick = {
                     if (isSending || preparing) return@TextButton
-                    val trimStart = trimStartText.toIntOrNull()
-                    val trimEnd = trimEndText.toIntOrNull()
-                    if (isVideo && trimStart != null && trimEnd != null && trimEnd <= trimStart) {
-                        localError = "El fin del recorte debe ser mayor al inicio"
-                        return@TextButton
-                    }
-
-                    val outgoingCaption = buildOutgoingCaption(
-                        baseCaption = caption,
-                        isVideo = isVideo,
-                        overlayText = overlayText,
-                        overlayEmoji = overlayEmoji,
-                        overlaySticker = overlaySticker,
-                        trimStart = trimStart,
-                        trimEnd = trimEnd
-                    )
+                    val outgoingCaption = caption.trim()
 
                     if (isVideo) {
                         onConfirm(mediaUri, outgoingCaption)
@@ -370,35 +342,6 @@ private enum class ImageCropMode {
     PORTRAIT_4_5
 }
 
-private fun buildOutgoingCaption(
-    baseCaption: String,
-    isVideo: Boolean,
-    overlayText: String,
-    overlayEmoji: String,
-    overlaySticker: String,
-    trimStart: Int?,
-    trimEnd: Int?
-): String {
-    val base = baseCaption.trim()
-    val extras = mutableListOf<String>()
-
-    if (isVideo) {
-        if (overlayText.isNotBlank()) extras += "📝 ${overlayText.trim()}"
-        if (overlayEmoji.isNotBlank()) extras += overlayEmoji.trim()
-        if (overlaySticker.isNotBlank()) extras += "🧩 ${overlaySticker.trim()}"
-        if (trimStart != null || trimEnd != null) {
-            val startLabel = trimStart?.toString() ?: "0"
-            val endLabel = trimEnd?.toString() ?: "fin"
-            extras += "✂️ Recorte $startLabel-$endLabel s"
-        }
-    }
-
-    return (listOf(base) + extras)
-        .filter { it.isNotBlank() }
-        .joinToString("\n")
-        .trim()
-}
-
 private fun normalizeStrokes(
     strokes: List<List<Offset>>,
     size: IntSize
@@ -443,16 +386,39 @@ private fun processImageForSending(
 }
 
 private fun decodeBitmap(context: Context, uri: Uri): Bitmap? {
+    val maxDimension = 4096
     return runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val source = ImageDecoder.createSource(context.contentResolver, uri)
-            ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                 decoder.isMutableRequired = true
+                val width = info.size.width
+                val height = info.size.height
+                val largest = maxOf(width, height)
+                if (largest > maxDimension) {
+                    val scale = maxDimension.toFloat() / largest.toFloat()
+                    decoder.setTargetSize(
+                        (width * scale).toInt().coerceAtLeast(1),
+                        (height * scale).toInt().coerceAtLeast(1)
+                    )
+                }
             }
         } else {
             @Suppress("DEPRECATION")
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             context.contentResolver.openInputStream(uri)?.use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            var sampleSize = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > maxDimension) {
+                sampleSize *= 2
+            }
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, options)
             }
         }
     }.getOrNull()
@@ -577,7 +543,16 @@ private fun saveBitmapToCache(context: Context, bitmap: Bitmap): Uri {
         "media_edit_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.jpg"
     )
     FileOutputStream(file).use { out ->
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 93, out)
+        flattenBitmapForJpeg(bitmap).compress(Bitmap.CompressFormat.JPEG, 93, out)
     }
     return file.toUri()
+}
+
+private fun flattenBitmapForJpeg(bitmap: Bitmap): Bitmap {
+    if (!bitmap.hasAlpha()) return bitmap
+    val flattened = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(flattened)
+    canvas.drawColor(AndroidColor.WHITE)
+    canvas.drawBitmap(bitmap, 0f, 0f, null)
+    return flattened
 }

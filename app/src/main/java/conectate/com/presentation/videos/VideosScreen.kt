@@ -74,6 +74,7 @@ fun VideosScreen(
         val draftDuration by viewModel.draftDuration.collectAsState()
         val currentPlayingCommentId by viewModel.currentPlayingCommentId.collectAsState()
         val audioProgress by viewModel.audioProgress.collectAsState()
+        val currentVideo = (videosState as? VideosUiState.Success)?.videos?.find { it.id == selectedVideoForComments }
 
         CommentSheet(
             comments = commentsState,
@@ -98,6 +99,13 @@ fun VideosScreen(
             onPlayAudio = { comment -> viewModel.playAudio(comment) },
             currentPlayingCommentId = currentPlayingCommentId,
             audioProgress = audioProgress,
+            currentUserId = viewModel.currentUserId,
+            onDeleteComment = { comment -> viewModel.deleteComment(comment) },
+            onAddSticker = { url, label -> viewModel.addStickerComment(url, label) },
+            onReactComment = { comment, reaction -> viewModel.reactToComment(comment, reaction) },
+            onEditComment = { comment, content -> viewModel.editComment(comment, content) },
+            onReportComment = { comment -> viewModel.reportComment(comment) },
+            videoCreatorId = currentVideo?.userId,
             replyingTo = viewModel.replyingTo.collectAsState().value,
             onReplyClick = { viewModel.onReplyClick(it) },
             cancelReply = { viewModel.cancelReply() }
@@ -118,7 +126,7 @@ fun VideosScreen(
             onExternalShare = {
                 val sendIntent = android.content.Intent().apply {
                     action = android.content.Intent.ACTION_SEND
-                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Conéctate!\nhttps://conectate.com/video/${video.id}\n\n${video.title}")
+                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Novvin!\nhttps://conectate.com/video/${video.id}\n\n${video.title}")
                     type = "text/plain"
                 }
                 val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir video")
@@ -254,19 +262,26 @@ fun VideosScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.VideoLibrary,
+                                    imageVector = if (isConnected) Icons.Default.VideoLibrary else Icons.Default.WifiOff,
                                     contentDescription = null,
                                     modifier = Modifier.size(64.dp),
                                     tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
                                 )
                                 Text(
-                                    text = if (searchQuery.isEmpty()) 
-                                        "No hay videos" 
-                                    else 
-                                        "No se encontraron videos",
+                                    text = when {
+                                        !isConnected -> "No se pudieron cargar los videos. Verifica tu conexión a internet."
+                                        searchQuery.isEmpty() -> "No hay videos"
+                                        else -> "No se encontraron videos"
+                                    },
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                                 )
+                                if (!isConnected) {
+                                    Button(onClick = {
+                                        connectivityViewModel.retrySync("videos_empty_retry")
+                                        viewModel.refreshVideos()
+                                    }) { Text("Reintentar") }
+                                }
                             }
                         }
                     } else {
@@ -292,6 +307,7 @@ fun VideosScreen(
                                     onCommentClick = {
                                         viewModel.openComments(video.id)
                                     },
+                                    onFavoriteClick = { viewModel.toggleFavorite(video) },
                                     onShareClick = {
                                         videoForOptions = video
                                     },
@@ -336,6 +352,7 @@ fun VideoCard(
     onClick: () -> Unit,
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
     onShareClick: () -> Unit,
     navController: androidx.navigation.NavController // Pass navController
 ) {
@@ -502,6 +519,16 @@ fun VideoCard(
                             text = formatNumber(video.commentCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White
+                        )
+                    }
+
+                    // Share
+                    IconButton(onClick = onFavoriteClick, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            imageVector = if (video.favoritedByMe) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Favorito",
+                            tint = if (video.favoritedByMe) Color(0xFFFFC107) else Color.White,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 

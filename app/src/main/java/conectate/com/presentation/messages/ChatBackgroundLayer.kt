@@ -39,7 +39,7 @@ fun ChatBackgroundLayer(
                         modifier = Modifier
                             .fillMaxSize()
                             .alpha(0.25f),
-                        contentScale = ContentScale.Fit,
+                        contentScale = ContentScale.Crop,
                         loading = {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator()

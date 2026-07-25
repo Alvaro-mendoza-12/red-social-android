@@ -2,9 +2,12 @@ package conectate.com
 
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.Coil
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
@@ -83,7 +86,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         }
 
         if (BuildConfig.DEBUG) {
-            android.util.Log.d("SocialApp", "APP_START: Conectate Social App initializing...")
+            android.util.Log.d("SocialApp", "APP_START: Novvin Social App initializing...")
         }
         
         // Setup unhandled exception handler
@@ -191,6 +194,11 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             .memoryCachePolicy(CachePolicy.ENABLED)
             .components {
                 add(coil.decode.VideoFrameDecoder.Factory())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
             }
             .allowHardware(performanceProfile.tier != AppDeviceTier.LOW)
             .crossfade(false)

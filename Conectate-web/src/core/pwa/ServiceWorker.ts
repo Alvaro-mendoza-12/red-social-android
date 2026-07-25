@@ -243,7 +243,7 @@ self.addEventListener('push', (event) => {
   }
   
   event.waitUntil(
-    self.registration.showNotification('Conéctate', options)
+    self.registration.showNotification('Novvin', options)
   )
 })
 
@@ -363,4 +363,4 @@ self.addEventListener('unhandledrejection', (event) => {
 })
 
 // 🔥 DEBUG INFO
-console.log('🔥 Conéctate Web Service Worker v2.0.0 loaded')
+console.log('🔥 Novvin Web Service Worker v2.0.0 loaded')

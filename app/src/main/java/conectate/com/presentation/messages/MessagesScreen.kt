@@ -13,6 +13,7 @@ fun MessagesScreen(
 ) {
     ConversationsScreen(
         navController = navController,
+        sharedStickerUri = sharedUri,
         onNavigateToChat = { chatId ->
             navController.navigate(Screen.Chat.createRoute(chatId))
         },
@@ -32,6 +33,9 @@ fun MessagesScreen(
         },
         onNavigateToCreateVoiceRoom = {
             navController.navigate(Screen.CreateVoiceRoom.route)
+        },
+        onNavigateToNovvin = {
+            navController.navigate(Screen.Novvin.route)
         },
         onNavigateToGroupChat = { groupId ->
             navController.navigate(Screen.GroupChat.createRoute(groupId))

@@ -64,6 +64,10 @@ internal fun Throwable?.toUserFacingMessage(
         rawMessage.contains("signup requires a valid password", ignoreCase = true) ->
             "La contraseña no cumple los requisitos mínimos."
 
+        rawMessage.contains("PASSWORD_TOO_SHORT", ignoreCase = true) ||
+            rawMessage.contains("EMAIL_AND_STRONG_PASSWORD_REQUIRED", ignoreCase = true) ->
+            "La contraseña debe tener al menos 8 caracteres."
+
         looksLikeWebAccessBridgeIssue(rawMessage) ->
             "La conexión entre la app y la web no está disponible en este momento. Inténtalo más tarde."
 

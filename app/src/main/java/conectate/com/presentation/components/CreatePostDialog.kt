@@ -29,6 +29,7 @@ fun CreatePostDialog(
 ) {
     var content by remember { mutableStateOf(initialText ?: "") }
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(if (initialUri != null) listOf(initialUri) else emptyList()) }
+    var pendingCropUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var isPublic by remember { mutableStateOf(true) }
     val context = androidx.compose.ui.platform.LocalContext.current
     
@@ -37,10 +38,28 @@ fun CreatePostDialog(
     ) { uris: List<Uri> ->
         if (uris.size > 7) {
             android.widget.Toast.makeText(context, "Máximo 7 imágenes permitidas", android.widget.Toast.LENGTH_SHORT).show()
-            selectedImageUris = uris.take(7)
-        } else {
-            selectedImageUris = uris
         }
+        selectedImageUris = emptyList()
+        pendingCropUris = uris.take(7)
+    }
+
+    pendingCropUris.firstOrNull()?.let { sourceUri ->
+        SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar foto ${selectedImageUris.size + 1} de ${selectedImageUris.size + pendingCropUris.size}",
+            presets = listOf(
+                ImageCropPreset.ORIGINAL,
+                ImageCropPreset.SQUARE,
+                ImageCropPreset.PORTRAIT,
+                ImageCropPreset.WIDE
+            ),
+            initialPreset = ImageCropPreset.ORIGINAL,
+            onDismiss = { pendingCropUris = pendingCropUris.drop(1) },
+            onCropped = { croppedUri ->
+                selectedImageUris = selectedImageUris + croppedUri
+                pendingCropUris = pendingCropUris.drop(1)
+            }
+        )
     }
 
     AlertDialog(

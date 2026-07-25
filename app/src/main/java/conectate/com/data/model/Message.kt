@@ -56,14 +56,7 @@ data class Message(
                             java.time.OffsetDateTime.parse(cleaned).toInstant().toEpochMilli()
                         } catch (e2: Exception) {
                             try {
-                                val formatter = java.time.format.DateTimeFormatterBuilder()
-                                    .append(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
-                                    .appendLiteral('T')
-                                    .append(java.time.format.DateTimeFormatter.ISO_LOCAL_TIME)
-                                    .optionalStart()
-                                    .appendOffsetId()
-                                    .toFormatter()
-                                java.time.LocalDateTime.parse(cleaned.substringBefore("Z"), formatter)
+                                LocalDateTime.parse(cleaned.substringBefore("Z"))
                                     .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
                             } catch (e3: Exception) {
                                 try {

@@ -1,4 +1,5 @@
 const DEFAULT_URL = 'http://realtime-gateway:3002'
+const { canonicalizeStorageUrls } = require('./storage-url-canonicalization')
 
 async function publishRealtimeEvent(channel, payload) {
   const base = String(process.env.REALTIME_INTERNAL_URL || DEFAULT_URL).replace(/\/+$/, '')
@@ -9,7 +10,10 @@ async function publishRealtimeEvent(channel, payload) {
     const response = await fetch(`${base}/internal/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: cleanChannel, payload: payload || {} }),
+      body: JSON.stringify({
+        channel: cleanChannel,
+        payload: canonicalizeStorageUrls(payload || {}, process.env.PUBLIC_BASE_URL),
+      }),
     })
     return response.ok
   } catch (error) {
@@ -29,11 +33,10 @@ async function publishChatMessageEvent({ chatId, message, recipientIds = [], act
     message: message || {},
   }
 
-  await publishRealtimeEvent(`chat:${normalizedChatId}`, envelope)
-
   const recipients = Array.isArray(recipientIds) ? recipientIds : []
-  await Promise.all(
-    recipients
+  await Promise.all([
+    publishRealtimeEvent(`chat:${normalizedChatId}`, envelope),
+    ...recipients
       .map((id) => String(id || '').trim())
       .filter(Boolean)
       .map((userId) =>
@@ -42,7 +45,7 @@ async function publishChatMessageEvent({ chatId, message, recipientIds = [], act
           scope: 'inbox',
         }),
       ),
-  )
+  ])
 }
 
 async function publishChallengeLiveEvent(payload) {

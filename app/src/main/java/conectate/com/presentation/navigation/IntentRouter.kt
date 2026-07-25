@@ -2,10 +2,14 @@ package conectate.com.presentation.navigation
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Parcelable
 import androidx.navigation.NavHostController
 import conectate.com.data.repository.AuthRepository
+import conectate.com.presentation.messages.hasCapturedIncomingShare
+import conectate.com.presentation.messages.incomingShareText
+import conectate.com.presentation.messages.incomingShareUris
+import conectate.com.util.notificationAccountTargetFromIntent
+import conectate.com.util.resolveStoredAccountForTarget
+import conectate.com.util.storedAccountDisplayLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -18,8 +22,13 @@ object IntentRouter {
             (data?.getQueryParameter("type") == "recovery") ||
             (data?.fragment?.contains("type=recovery") == true)
         val isDeepLink = data?.scheme in setOf("https", "http", "conectate")
-        val isShare = pendingIntent.action == Intent.ACTION_SEND ||
+        val isShareAction = pendingIntent.action == Intent.ACTION_SEND ||
             pendingIntent.action == Intent.ACTION_SEND_MULTIPLE
+        val isShare = isShareAction && (
+            hasCapturedIncomingShare(pendingIntent) ||
+                !incomingShareText(pendingIntent).isNullOrBlank() ||
+                incomingShareUris(pendingIntent).isNotEmpty()
+            )
         val hasPushType = !pendingIntent.getStringExtra("type").isNullOrBlank()
         return isRecovery || isDeepLink || isShare || hasPushType
     }
@@ -31,7 +40,7 @@ object IntentRouter {
         activityScope: CoroutineScope,
         clearIntent: () -> Unit
     ): Boolean {
-        if (handleNotificationIntent(incomingIntent, navController, clearIntent)) return true
+        if (handleNotificationIntent(incomingIntent, navController, authRepository, clearIntent)) return true
         if (handleUriIntent(incomingIntent, navController, authRepository, activityScope, clearIntent)) return true
         if (handleIncomingShareIntent(incomingIntent, navController, clearIntent)) return true
         return false
@@ -40,6 +49,7 @@ object IntentRouter {
     private fun handleNotificationIntent(
         incomingIntent: Intent,
         navController: NavHostController,
+        authRepository: AuthRepository,
         clearIntent: () -> Unit
     ): Boolean {
         val type = incomingIntent.getStringExtra("type")?.trim()?.lowercase().orEmpty()
@@ -79,8 +89,11 @@ object IntentRouter {
 
                 when {
                     !targetCommunityId.isNullOrBlank() -> {
-                        navController.navigate(
-                            Screen.CommunityChat.createRoute(
+                        navigateNotificationDestination(
+                            incomingIntent = incomingIntent,
+                            navController = navController,
+                            authRepository = authRepository,
+                            destinationRoute = Screen.CommunityChat.createRoute(
                                 targetCommunityId,
                                 focusMessageId = messageId
                             )
@@ -89,8 +102,11 @@ object IntentRouter {
                         return true
                     }
                     !targetGroupId.isNullOrBlank() -> {
-                        navController.navigate(
-                            Screen.GroupChat.createRoute(
+                        navigateNotificationDestination(
+                            incomingIntent = incomingIntent,
+                            navController = navController,
+                            authRepository = authRepository,
+                            destinationRoute = Screen.GroupChat.createRoute(
                                 targetGroupId,
                                 focusMessageId = messageId
                             )
@@ -100,8 +116,11 @@ object IntentRouter {
                     }
                     !chatId.isNullOrBlank() || !senderId.isNullOrBlank() -> {
                         val targetUserOrChat = senderId ?: chatId ?: return false
-                        navController.navigate(
-                            Screen.Chat.createRoute(
+                        navigateNotificationDestination(
+                            incomingIntent = incomingIntent,
+                            navController = navController,
+                            authRepository = authRepository,
+                            destinationRoute = Screen.Chat.createRoute(
                                 targetUserOrChat,
                                 focusMessageId = messageId
                             )
@@ -117,8 +136,11 @@ object IntentRouter {
                 val commentId = incomingIntent.getStringExtra("comment_id")
                     ?: incomingIntent.getStringExtra("focus_comment_id")
                 if (!postId.isNullOrBlank()) {
-                    navController.navigate(
-                        Screen.PostDetail.createRoute(
+                    navigateNotificationDestination(
+                        incomingIntent = incomingIntent,
+                        navController = navController,
+                        authRepository = authRepository,
+                        destinationRoute = Screen.PostDetail.createRoute(
                             postId,
                             focusCommentId = commentId
                         )
@@ -137,8 +159,11 @@ object IntentRouter {
                 if (type == "mention" && (targetType == "video" || !videoId.isNullOrBlank())) {
                     val resolvedVideo = videoId ?: incomingIntent.getStringExtra("target_id")
                     if (!resolvedVideo.isNullOrBlank()) {
-                        navController.navigate(
-                            Screen.VideoPlayer.createRoute(
+                        navigateNotificationDestination(
+                            incomingIntent = incomingIntent,
+                            navController = navController,
+                            authRepository = authRepository,
+                            destinationRoute = Screen.VideoPlayer.createRoute(
                                 resolvedVideo,
                                 focusCommentId = commentId
                             )
@@ -149,8 +174,11 @@ object IntentRouter {
                 } else {
                     val resolvedPost = postId ?: incomingIntent.getStringExtra("target_id")
                     if (!resolvedPost.isNullOrBlank()) {
-                        navController.navigate(
-                            Screen.PostDetail.createRoute(
+                        navigateNotificationDestination(
+                            incomingIntent = incomingIntent,
+                            navController = navController,
+                            authRepository = authRepository,
+                            destinationRoute = Screen.PostDetail.createRoute(
                                 resolvedPost,
                                 focusCommentId = commentId
                             )
@@ -166,8 +194,11 @@ object IntentRouter {
                 val commentId = incomingIntent.getStringExtra("comment_id")
                     ?: incomingIntent.getStringExtra("focus_comment_id")
                 if (!videoId.isNullOrBlank()) {
-                    navController.navigate(
-                        Screen.VideoPlayer.createRoute(
+                    navigateNotificationDestination(
+                        incomingIntent = incomingIntent,
+                        navController = navController,
+                        authRepository = authRepository,
+                        destinationRoute = Screen.VideoPlayer.createRoute(
                             videoId,
                             focusCommentId = commentId
                         )
@@ -181,7 +212,12 @@ object IntentRouter {
                 val momentId = incomingIntent.getStringExtra("moment_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!momentId.isNullOrBlank()) {
-                    navController.navigate(Screen.MomentViewer.createRoute(momentId))
+                    navigateNotificationDestination(
+                        incomingIntent,
+                        navController,
+                        authRepository,
+                        Screen.MomentViewer.createRoute(momentId)
+                    )
                     clearIntent()
                     return true
                 }
@@ -191,7 +227,12 @@ object IntentRouter {
                 val followerId = incomingIntent.getStringExtra("follower_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!followerId.isNullOrBlank()) {
-                    navController.navigate(Screen.UserProfile.createRoute(followerId))
+                    navigateNotificationDestination(
+                        incomingIntent,
+                        navController,
+                        authRepository,
+                        Screen.UserProfile.createRoute(followerId)
+                    )
                     clearIntent()
                     return true
                 }
@@ -201,20 +242,81 @@ object IntentRouter {
                 val roomId = incomingIntent.getStringExtra("room_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!roomId.isNullOrBlank()) {
-                    navController.navigate(Screen.RoomDetail.createRoute(roomId))
+                    navigateNotificationDestination(
+                        incomingIntent,
+                        navController,
+                        authRepository,
+                        Screen.RoomDetail.createRoute(roomId)
+                    )
                     clearIntent()
                     return true
                 }
             }
 
             "challenge_invite" -> {
-                navController.navigate(Screen.Home.createRoute(startTab = "social"))
+                navigateNotificationDestination(
+                    incomingIntent,
+                    navController,
+                    authRepository,
+                    Screen.Home.createRoute(startTab = Screen.Social.route)
+                )
                 clearIntent()
                 return true
             }
         }
 
         return false
+    }
+
+    private fun navigateNotificationDestination(
+        incomingIntent: Intent,
+        navController: NavHostController,
+        authRepository: AuthRepository,
+        destinationRoute: String
+    ) {
+        val target = notificationAccountTargetFromIntent(incomingIntent)
+        val sessionUser = authRepository.getAuthStateFlow().value?.user
+        if (target == null || target.matches(sessionUser?.id, sessionUser?.email)) {
+            navController.navigate(destinationRoute)
+            return
+        }
+
+        val accounts = authRepository.storedAccounts.value
+        val storedTarget = resolveStoredAccountForTarget(target, accounts)
+        val currentAccount = accounts.firstOrNull { account ->
+            account.user_id?.equals(sessionUser?.id, ignoreCase = true) == true ||
+                account.email.equals(sessionUser?.email, ignoreCase = true)
+        }
+        val targetLabel = target.presentableLabel(storedTarget?.let(::storedAccountDisplayLabel))
+            ?: "otra cuenta"
+        val currentLabel = currentAccount?.let(::storedAccountDisplayLabel)
+            ?: sessionUser?.email?.substringBefore('@')?.takeIf { it.isNotBlank() }
+            ?: "tu cuenta actual"
+        val contextTitle = listOf(
+            incomingIntent.getStringExtra("group_name"),
+            incomingIntent.getStringExtra("community_name"),
+            incomingIntent.getStringExtra("sender_name"),
+            incomingIntent.getStringExtra("title")
+        ).firstOrNull { !it.isNullOrBlank() }
+        val preview = listOf(
+            incomingIntent.getStringExtra("content"),
+            incomingIntent.getStringExtra("message"),
+            incomingIntent.getStringExtra("body"),
+            incomingIntent.getStringExtra("text")
+        ).firstOrNull { !it.isNullOrBlank() }
+
+        navController.navigate(
+            Screen.NotificationAccountBridge.createRoute(
+                destinationRoute = destinationRoute,
+                targetAccountId = storedTarget?.id,
+                targetAccountLabel = targetLabel,
+                currentAccountLabel = currentLabel,
+                contextTitle = contextTitle,
+                preview = preview
+            )
+        ) {
+            launchSingleTop = true
+        }
     }
 
     private fun handleUriIntent(
@@ -243,7 +345,7 @@ object IntentRouter {
             return true
         }
 
-        if (uri.scheme == "https" && (uri.host == "conectate.com" || uri.host == "www.conectate.com")) {
+        if ((uri.scheme == "https" || uri.scheme == "http") && (uri.host == "conectate.com" || uri.host == "www.conectate.com")) {
             val pathSegments = uri.pathSegments
             if (pathSegments.isNotEmpty()) {
                 when (pathSegments[0]) {
@@ -263,6 +365,22 @@ object IntentRouter {
                             return true
                         }
                     }
+                    "group" -> {
+                        val groupId = pathSegments.getOrNull(1)
+                        if (!groupId.isNullOrBlank()) {
+                            navController.navigate(Screen.GroupDetail.createRoute(groupId, uri.getQueryParameter("invite")))
+                            clearIntent()
+                            return true
+                        }
+                    }
+                    "community" -> {
+                        val communityId = pathSegments.getOrNull(1)
+                        if (!communityId.isNullOrBlank()) {
+                            navController.navigate(Screen.CommunityDetail.createRoute(communityId))
+                            clearIntent()
+                            return true
+                        }
+                    }
                 }
             }
         } else if (uri.scheme == "conectate") {
@@ -277,6 +395,20 @@ object IntentRouter {
                 "video" -> {
                     uri.pathSegments.firstOrNull()?.let { id ->
                         navController.navigate(Screen.VideoPlayer.createRoute(id))
+                        clearIntent()
+                        return true
+                    }
+                }
+                "group" -> {
+                    uri.pathSegments.firstOrNull()?.let { id ->
+                        navController.navigate(Screen.GroupDetail.createRoute(id, uri.getQueryParameter("invite")))
+                        clearIntent()
+                        return true
+                    }
+                }
+                "community" -> {
+                    uri.pathSegments.firstOrNull()?.let { id ->
+                        navController.navigate(Screen.CommunityDetail.createRoute(id))
                         clearIntent()
                         return true
                     }
@@ -330,47 +462,20 @@ object IntentRouter {
             return false
         }
 
-        val sharedText = incomingIntent.getStringExtra(Intent.EXTRA_TEXT)
-        val sharedUri = if (incomingIntent.action == Intent.ACTION_SEND) {
-            incomingIntent.parcelableExtraCompat<Uri>(Intent.EXTRA_STREAM)?.toString()
-        } else {
-            incomingIntent.parcelableArrayListExtraCompat<Uri>(Intent.EXTRA_STREAM)
-                ?.firstOrNull()
-                ?.toString()
-        }
-
-        if (sharedText == null && sharedUri == null) return false
+        val sharedText = incomingShareText(incomingIntent)
+        val sharedUris = incomingShareUris(incomingIntent)
+        if (sharedText == null && sharedUris.isEmpty() && !hasCapturedIncomingShare(incomingIntent)) return false
 
         android.util.Log.d(
             "MainActivity",
-            "Incoming share detected: action=${incomingIntent.action}, text=$sharedText, uri=$sharedUri"
+            "Incoming share detected: action=${incomingIntent.action}, itemCount=${sharedUris.size}, hasText=${sharedText != null}"
         )
         navController.navigate(
             Screen.Home.createRoute(
-                startTab = "social",
-                sharedText = sharedText,
-                sharedUri = sharedUri
+                startTab = Screen.Messages.route
             )
-        )
+        ) { launchSingleTop = true }
         clearIntent()
         return true
-    }
-
-    private inline fun <reified T : Parcelable> Intent.parcelableExtraCompat(key: String): T? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getParcelableExtra(key, T::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            getParcelableExtra(key)
-        }
-    }
-
-    private inline fun <reified T : Parcelable> Intent.parcelableArrayListExtraCompat(key: String): ArrayList<T>? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getParcelableArrayListExtra(key, T::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            getParcelableArrayListExtra(key)
-        }
     }
 }

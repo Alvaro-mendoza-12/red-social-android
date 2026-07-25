@@ -27,7 +27,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Features: never block installs on devices without optional hardware. -->
@@ -55,7 +54,7 @@
         android:theme="@style/Theme.RedSocial"
         android:networkSecurityConfig="@xml/network_security_config"
         android:usesCleartextTraffic="false"
-        tools:targetApi="31">
+        tools:targetApi="33">
 
         <!-- Main Activity -->
         <activity
@@ -85,6 +84,8 @@
                 <data android:pathPrefix="/u" />
                 <data android:pathPrefix="/profile" />
                 <data android:pathPrefix="/chat" />
+                <data android:pathPrefix="/group" />
+                <data android:pathPrefix="/community" />
                 <data android:pathPrefix="/web-login" />
             </intent-filter>
 
@@ -104,6 +105,9 @@
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
             <!-- Custom Scheme for Recovery (Legacy/Specific) -->
@@ -118,7 +122,6 @@
         <activity
             android:name=".presentation.auth.PortraitQrCaptureActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:stateNotNeeded="true"
             android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden" />

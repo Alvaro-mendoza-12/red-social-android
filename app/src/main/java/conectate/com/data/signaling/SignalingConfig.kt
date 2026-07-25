@@ -1,10 +1,14 @@
 package conectate.com.data.signaling
 
+import conectate.com.BuildConfig
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
 
 object SignalingConfig {
     val BASE_URL: String
-        get() = RuntimeBackendEndpoint.baseUrl.trimEnd('/')
+        get() = RuntimeBackendEndpoint.baseUrl
+            .trim()
+            .ifBlank { BuildConfig.SIGNALING_URL.trim() }
+            .trimEnd('/')
     val TURN_CREDENTIALS_URL: String get() = "$BASE_URL/turn-credentials"
     val CINEMA_RESOLVE_URL: String get() = "$BASE_URL/resolve-cinema"
 

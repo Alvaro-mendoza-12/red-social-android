@@ -511,7 +511,7 @@ fun SettingsScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("Conectate (Admin)")
+                                        Text("Novvin (Admin)")
                                     }
                                     Button(
                                         onClick = { 
@@ -551,7 +551,7 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Vincular Conectate Web por QR")
+                    Text("Vincular Novvin Web por QR")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -734,7 +734,7 @@ fun SettingsScreen(
             onDismissRequest = { showCloseAllWebSessionsDialog = false },
             title = { Text("Cerrar sesiones web") },
             text = {
-                Text("Se cerrarán todas las sesiones activas de Conectate Web vinculadas a tu cuenta.")
+                Text("Se cerrarán todas las sesiones activas de Novvin Web vinculadas a tu cuenta.")
             },
             confirmButton = {
                 TextButton(
@@ -852,7 +852,7 @@ private fun WebSessionsPanel(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = session.deviceLabel?.takeIf { it.isNotBlank() } ?: "Conectate Web",
+                            text = session.deviceLabel?.takeIf { it.isNotBlank() } ?: "Novvin Web",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                         )

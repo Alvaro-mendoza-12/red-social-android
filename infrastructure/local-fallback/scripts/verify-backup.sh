@@ -13,6 +13,11 @@ test -s "$BACKUP_DIR/SHA256SUMS"
 cd "$BACKUP_DIR"
 sha256sum --check SHA256SUMS
 tar -tzf storage.tar.gz >/dev/null
+if [ -s ai-chatbot-data.tar.gz ]; then
+  tar -tzf ai-chatbot-data.tar.gz >/dev/null
+else
+  echo "WARN: copia heredada sin estado de Novvin"
+fi
 cd "$ROOT_DIR"
 docker compose exec -T db pg_restore --list < "$BACKUP_DIR/postgres.dump" >/dev/null
 

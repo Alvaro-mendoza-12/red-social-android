@@ -163,7 +163,7 @@ private object LatestSchemaNormalizer {
 
     private val videoCommentsPlan = TablePlan(
         name = "video_comments",
-        createSql = "CREATE TABLE IF NOT EXISTS `video_comments` (`id` TEXT NOT NULL, `videoId` TEXT NOT NULL, `userId` TEXT NOT NULL, `userName` TEXT NOT NULL, `userAvatarUrl` TEXT, `content` TEXT NOT NULL, `parentId` TEXT, `likeCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `isPosted` INTEGER NOT NULL, `contentType` TEXT NOT NULL, `mediaUrl` TEXT, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `video_comments` (`id` TEXT NOT NULL, `videoId` TEXT NOT NULL, `userId` TEXT NOT NULL, `userName` TEXT NOT NULL, `userAvatarUrl` TEXT, `content` TEXT NOT NULL, `parentId` TEXT, `likeCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `isPosted` INTEGER NOT NULL, `contentType` TEXT NOT NULL, `mediaUrl` TEXT, `reactionsJson` TEXT NOT NULL, `myReaction` TEXT, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("videoId", sourceCandidates = listOf("videoId", "video_id")),
@@ -176,13 +176,16 @@ private object LatestSchemaNormalizer {
             ColumnSpec("createdAt", "CURRENT_TIMESTAMP", listOf("createdAt", "created_at")),
             ColumnSpec("isPosted", "1", listOf("isPosted", "is_posted")),
             ColumnSpec("contentType", "'text'", listOf("contentType", "content_type")),
-            ColumnSpec("mediaUrl", "NULL", listOf("mediaUrl", "media_url"), coalesceNulls = false)
+            ColumnSpec("mediaUrl", "NULL", listOf("mediaUrl", "media_url"), coalesceNulls = false),
+            ColumnSpec("reactionsJson", "'{}'", listOf("reactionsJson", "reactions_json")),
+            ColumnSpec("myReaction", "NULL", listOf("myReaction", "my_reaction"), coalesceNulls = false),
+            ColumnSpec("updatedAt", "''", listOf("updatedAt", "updated_at"))
         )
     )
 
     private val groupsPlan = TablePlan(
         name = "groups",
-        createSql = "CREATE TABLE IF NOT EXISTS `groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `is_member` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `is_member` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, `rest_until` TEXT, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("name", "''"),
@@ -195,7 +198,8 @@ private object LatestSchemaNormalizer {
             ColumnSpec("unread_count", "0"),
             ColumnSpec("is_deleted", "0"),
             ColumnSpec("is_member", "1"),
-            ColumnSpec("only_admins_can_talk", "0")
+            ColumnSpec("only_admins_can_talk", "0"),
+            ColumnSpec("rest_until", "NULL", coalesceNulls = false)
         ),
         indexSql = listOf(
             "CREATE INDEX IF NOT EXISTS `index_groups_last_message_at` ON `groups` (`last_message_at`)"
@@ -258,7 +262,7 @@ private object LatestSchemaNormalizer {
 
     private val communitiesPlan = TablePlan(
         name = "communities",
-        createSql = "CREATE TABLE IF NOT EXISTS `communities` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `category` TEXT, `is_public` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, `is_member` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `communities` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `category` TEXT, `is_public` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, `daily_message_limit` INTEGER NOT NULL, `is_member` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("name", "''"),
@@ -273,6 +277,7 @@ private object LatestSchemaNormalizer {
             ColumnSpec("unread_count", "0"),
             ColumnSpec("is_deleted", "0"),
             ColumnSpec("only_admins_can_talk", "0"),
+            ColumnSpec("daily_message_limit", "0"),
             ColumnSpec("is_member", "1")
         ),
         indexSql = listOf(
@@ -430,6 +435,9 @@ private object LatestSchemaNormalizer {
             db.execSQL("PRAGMA foreign_keys=ON")
         }
 
+        // Clean up orphaned records before validating foreign keys
+        cleanupOrphanedRecords(db)
+
         db.query("PRAGMA foreign_key_check").use { cursor ->
             if (cursor.moveToFirst()) {
                 var table = cursor.getString(0)
@@ -438,6 +446,43 @@ private object LatestSchemaNormalizer {
         }
 
         Log.i(TAG, "Schema normalization completed for Room database v$APP_DATABASE_VERSION")
+    }
+
+    private fun cleanupOrphanedRecords(db: SupportSQLiteDatabase) {
+        try {
+            db.execSQL("PRAGMA foreign_keys=OFF")
+
+            // Clean up orphaned follows records
+            db.execSQL(
+                "DELETE FROM follows WHERE followerId NOT IN (SELECT id FROM users) OR followedId NOT IN (SELECT id FROM users)"
+            )
+
+            // Clean up orphaned video_comments records
+            db.execSQL(
+                "DELETE FROM video_comments WHERE userId NOT IN (SELECT id FROM users)"
+            )
+
+            // Clean up orphaned messages with invalid chat references
+            db.execSQL(
+                "DELETE FROM messages WHERE chat_id NOT IN (SELECT id FROM chats)"
+            )
+
+            // Clean up orphaned group_messages with invalid group references
+            db.execSQL(
+                "DELETE FROM group_messages WHERE group_id NOT IN (SELECT id FROM groups)"
+            )
+
+            // Clean up orphaned community_messages with invalid community references
+            db.execSQL(
+                "DELETE FROM community_messages WHERE community_id NOT IN (SELECT id FROM communities)"
+            )
+
+            db.execSQL("PRAGMA foreign_keys=ON")
+            Log.i(TAG, "Orphaned records cleaned up successfully")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error during orphaned records cleanup", e)
+            // Continue anyway, as this is a best-effort cleanup
+        }
     }
 
     private fun rebuildTable(db: SupportSQLiteDatabase, plan: TablePlan) {

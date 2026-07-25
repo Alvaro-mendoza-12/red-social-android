@@ -8,6 +8,7 @@ import conectate.com.core.feed.FeedSignalTracker
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.model.Post
 import conectate.com.data.repository.PostRepository
+import conectate.com.data.repository.PostMutationEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ class SocialViewModel @Inject constructor(
     private val appMetrics: AppMetrics,
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
+    private val liveRepository: conectate.com.data.repository.LiveRepository,
     // challengeRepository removed (moved to ChallengeViewModel)
     private val friendRepository: conectate.com.data.repository.FriendRepository,
     val userRepository: conectate.com.data.repository.UserRepository,
@@ -33,6 +35,19 @@ class SocialViewModel @Inject constructor(
     
     init {
         voiceMessageManager.setScope(viewModelScope)
+        viewModelScope.launch {
+            postRepository.mutationEvents.collect { event ->
+                _posts.value = when (event) {
+                    is PostMutationEvent.Deleted -> _posts.value.filterNot { it.id == event.postId }
+                    is PostMutationEvent.ContentUpdated -> _posts.value.map { post ->
+                        if (post.id == event.postId) post.copy(content = event.content) else post
+                    }
+                    is PostMutationEvent.VisibilityUpdated -> _posts.value.map { post ->
+                        if (post.id == event.postId) post.copy(visibility = event.visibility) else post
+                    }
+                }
+            }
+        }
     }
 
     private var submissionsJob: kotlinx.coroutines.Job? = null
@@ -43,6 +58,7 @@ class SocialViewModel @Inject constructor(
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts.asStateFlow()
+    val activeStreams = liveRepository.activeStreams
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -52,6 +68,7 @@ class SocialViewModel @Inject constructor(
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
+    private val feedSessionSeed = java.util.UUID.randomUUID().hashCode()
 
     // Challenge flows removed
 
@@ -74,6 +91,9 @@ class SocialViewModel @Inject constructor(
             val userId = authService.getCurrentUserId() ?: return@launch
             userRepository.getUserById(userId).onSuccess {
                 _currentUser.value = it
+                if (_posts.value.isNotEmpty()) {
+                    _posts.value = rankPosts(_posts.value)
+                }
             }
         }
     }
@@ -100,6 +120,7 @@ class SocialViewModel @Inject constructor(
                     val ranked = rankPosts(globalPosts)
                     _posts.value = ranked
                     feedSignalTracker.recordImpressions(ranked)
+                    _isRefreshing.value = false
                     appMetrics.incrementCounter(
                         metric = "feed_load_success",
                         attributes = mapOf("count" to ranked.size.toString())
@@ -119,14 +140,38 @@ class SocialViewModel @Inject constructor(
         }
     }
 
+    fun refreshLives() {
+        viewModelScope.launch { liveRepository.refreshActiveStreams() }
+    }
+
     private fun rankPosts(posts: List<Post>): List<Post> {
         val friendIds = _friends.value.map { it.id }.toSet()
-        return feedRankingEngine.rankPosts(
+        val ranked = feedRankingEngine.rankPosts(
             posts = posts,
             currentUserId = authService.getCurrentUserId(),
             friendIds = friendIds,
-            signalSnapshot = feedSignalTracker.snapshot()
+            signalSnapshot = feedSignalTracker.snapshot(),
+            interestTerms = profileInterestTerms()
         )
+        // Preserve ranking while varying close results once per app session.
+        val windowSize = 3
+        return ranked.chunked(windowSize).flatMap { chunk ->
+            chunk.sortedByDescending { post -> post.id.hashCode() xor feedSessionSeed }
+        }
+    }
+
+    private fun profileInterestTerms(): Set<String> {
+        val user = _currentUser.value ?: return emptySet()
+        return buildSet {
+            addAll(user.interests)
+            addAll(user.hobbies)
+            addAll(user.linked_games)
+            user.favorite_sport?.let(::add)
+            user.favorite_book?.let(::add)
+            user.career?.let(::add)
+        }.map { it.trim().lowercase() }
+            .filter { it.length >= 2 }
+            .toSet()
     }
 
     fun toggleLike(post: Post) {
@@ -167,12 +212,13 @@ class SocialViewModel @Inject constructor(
             try {
                 val userId = authService.getCurrentUserId() ?: return@launch
                 val wasShared = post.sharedByMe
+                val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
                 
                 android.util.Log.d("SocialViewModel", "togglePostShare: wasShared=$wasShared, postId=${post.id}")
                 
                 // Optimistic Update
                 _posts.value = _posts.value.map {
-                    if (it.id == post.id) it.copy(sharedByMe = !wasShared) else it
+                    if (it.id == post.id) it.copy(sharedByMe = !wasShared, shareCount = newShareCount) else it
                 }
                 feedSignalTracker.recordInteraction(
                     post = post,
@@ -190,7 +236,7 @@ class SocialViewModel @Inject constructor(
                     android.widget.Toast.makeText(context, "Error: ${result.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_SHORT).show()
                     // Revert on failure
                     _posts.value = _posts.value.map {
-                        if (it.id == post.id) it.copy(sharedByMe = wasShared) else it
+                        if (it.id == post.id) it.copy(sharedByMe = wasShared, shareCount = post.shareCount) else it
                     }
                 } else {
                     android.util.Log.d("SocialViewModel", "togglePostShare SUCCESS")
@@ -199,6 +245,9 @@ class SocialViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Error toggling post share", e)
+                _posts.value = _posts.value.map {
+                    if (it.id == post.id) it.copy(sharedByMe = post.sharedByMe, shareCount = post.shareCount) else it
+                }
                 android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             } finally {
                 shareRequestsInFlight.remove(post.id)
@@ -214,7 +263,9 @@ class SocialViewModel @Inject constructor(
                     visibility = visibility
                 )
                 if (result.isSuccess) {
-                    loadPosts() // Refresh
+                    val created = result.getOrThrow()
+                    _posts.value = listOf(created) + _posts.value.filterNot { it.id == created.id }
+                    feedSignalTracker.recordImpressions(_posts.value.take(1))
                     android.widget.Toast.makeText(context, "Publicación creada", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     val reason = result.exceptionOrNull()?.message ?: "Error desconocido"
@@ -227,6 +278,26 @@ class SocialViewModel @Inject constructor(
         }
     }
 
+    fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?) {
+        viewModelScope.launch {
+            val result = postRepository.submitContentReport(
+                contentType = "post",
+                contentId = post.id,
+                reportedUserId = post.userId,
+                reportedUserName = post.userName,
+                reason = reason,
+                details = details,
+                evidenceUri = evidenceUri
+            )
+            if (result.isSuccess) {
+                android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val message = result.exceptionOrNull()?.message ?: "No se pudo enviar el reporte"
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun deletePost(postId: String) {
         viewModelScope.launch {
             val result = postRepository.deletePost(postId)
@@ -234,7 +305,8 @@ class SocialViewModel @Inject constructor(
                 _posts.value = _posts.value.filter { it.id != postId }
                 android.widget.Toast.makeText(context, "Publicación eliminada", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                android.widget.Toast.makeText(context, "Error al eliminar la publicación", android.widget.Toast.LENGTH_SHORT).show()
+                val message = result.exceptionOrNull()?.message ?: "Error al eliminar la publicación"
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -247,6 +319,9 @@ class SocialViewModel @Inject constructor(
                     if (it.id == postId) it.copy(visibility = visibility) else it
                 }
                 android.widget.Toast.makeText(context, "Visibilidad actualizada", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val message = result.exceptionOrNull()?.message ?: "Error al actualizar visibilidad"
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -259,6 +334,9 @@ class SocialViewModel @Inject constructor(
                     if (it.id == postId) it.copy(content = content) else it
                 }
                 android.widget.Toast.makeText(context, "Publicación actualizada", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val message = result.exceptionOrNull()?.message ?: "Error al actualizar la publicación"
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }

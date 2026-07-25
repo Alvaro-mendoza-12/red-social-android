@@ -80,6 +80,20 @@ fun VoiceRoomActiveScreen(
              viewModel.stopVideo() // Reset state if cancelled
         }
     }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.toggleCamera()
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                "Concede permiso a la cámara para compartir video.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
     
     val permissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(permissionsToRequest)
 
@@ -248,7 +262,18 @@ fun VoiceRoomActiveScreen(
                  videoMode = videoMode,
                  onToggleMute = { viewModel.toggleMute() },
                  onToggleSpeaker = { viewModel.toggleSpeaker() },
-                 onToggleCamera = { viewModel.toggleCamera() },
+                 onToggleCamera = {
+                     if (videoMode == VoiceRoomRepository.VideoMode.CAMERA ||
+                         androidx.core.content.ContextCompat.checkSelfPermission(
+                             context,
+                             Manifest.permission.CAMERA
+                         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                     ) {
+                         viewModel.toggleCamera()
+                     } else {
+                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                     }
+                 },
                  onToggleScreenShare = { 
                      if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) {
                          viewModel.toggleScreenShare(Intent())
@@ -616,16 +641,6 @@ fun VideoGridLayout(
                                   }
                               }
                                   
-                              // DEBUG OVERLAY
-                              Column(Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                                  val sig = signalingStates[participant.socketId]
-                                  if (sig != null) {
-                                      Text(text = "Sig: $sig", color = Color.Green, style = MaterialTheme.typography.labelSmall)
-                                  }
-                                  if (debugInfo != null) {
-                                      Text(text = debugInfo, color = Color.Cyan, style = MaterialTheme.typography.labelSmall, lineHeight = 10.sp)
-                                  }
-                              }
                              }
                          }
                      }
@@ -779,13 +794,6 @@ fun ParticipantCard(
                      else -> Color.Yellow
                  }
             )
-        }
-        
-        if (signalingState != null) {
-             Text(text = "Sig: $signalingState", color = Color.Green, style = MaterialTheme.typography.labelSmall)
-        }
-        if (debugInfo != null) {
-             Text(text = debugInfo, color = Color.Cyan, style = MaterialTheme.typography.labelSmall, maxLines = 3, lineHeight = 10.sp)
         }
         
         AnimatedVisibility(visible = showVolume) {
@@ -1378,12 +1386,12 @@ fun FloatingReaction(reaction: ReactionEvent) {
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 2_400, easing = LinearOutSlowInEasing)
+            animationSpec = tween(durationMillis = 4_200, easing = FastOutSlowInEasing)
         )
     }
     val p = progress.value
-    val offsetY = -300f * p
-    val opacity = (1f - p).coerceIn(0f, 1f)
+    val offsetY = -200f * p
+    val opacity = if (p < 0.68f) 1f else ((1f - p) / 0.32f).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier

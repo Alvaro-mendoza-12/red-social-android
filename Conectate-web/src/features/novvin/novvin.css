@@ -1,0 +1,443 @@
+.novvin-page {
+  position: relative;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  width: 100%;
+  height: calc(100dvh - 1.4rem);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--app-line, #dfe3ea);
+  border-radius: 12px;
+  color: var(--app-text, #18181b);
+  background: var(--app-panel, #fff);
+}
+
+.novvin-history-panel {
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-right: 1px solid var(--app-line, #dfe3ea);
+  background: var(--app-bg, #f6f7fa);
+}
+
+.novvin-history-head,
+.novvin-chat-head,
+.novvin-head-copy,
+.novvin-composer-meta,
+.novvin-error {
+  display: flex;
+  align-items: center;
+}
+
+.novvin-history-head,
+.novvin-chat-head,
+.novvin-composer-meta,
+.novvin-error {
+  justify-content: space-between;
+}
+
+.novvin-history-head > div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.novvin-history-head span,
+.novvin-local-note,
+.novvin-chat-head p,
+.novvin-conversation-row span,
+.novvin-composer-meta {
+  color: var(--app-muted, #6b7280);
+  font-size: 0.75rem;
+}
+
+.novvin-new-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid var(--app-blue, #4f7cff);
+  border-radius: 9px;
+  color: var(--app-blue-ink, #fff);
+  background: var(--app-blue, #4f7cff);
+  cursor: pointer;
+}
+
+.novvin-new-button svg,
+.novvin-icon-button svg,
+.novvin-delete-button svg,
+.novvin-error button svg,
+.novvin-composer button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.novvin-conversation-list {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.novvin-conversation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+
+.novvin-conversation-row.active {
+  border-color: color-mix(in srgb, var(--app-blue, #4f7cff) 55%, transparent);
+  background: color-mix(in srgb, var(--app-blue, #4f7cff) 12%, transparent);
+}
+
+.novvin-conversation-row > button:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+  padding: 0.7rem;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.novvin-conversation-row strong,
+.novvin-conversation-row span,
+.novvin-head-copy h2,
+.novvin-head-copy p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novvin-delete-button,
+.novvin-icon-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  align-self: center;
+  border: 0;
+  border-radius: 50%;
+  color: var(--app-muted, #6b7280);
+  background: transparent;
+  cursor: pointer;
+}
+
+.novvin-delete-button:hover,
+.novvin-icon-button:hover {
+  color: var(--app-text, #18181b);
+  background: var(--app-panel-soft, #eceff4);
+}
+
+.novvin-local-note {
+  margin-top: auto;
+  line-height: 1.45;
+}
+
+.novvin-chat-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--app-blue, #4f7cff) 10%, transparent), transparent 38%),
+    var(--app-panel, #fff);
+}
+
+.novvin-chat-head {
+  min-height: 68px;
+  gap: 0.8rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--app-line, #dfe3ea);
+  background: color-mix(in srgb, var(--app-panel, #fff) 94%, transparent);
+}
+
+.novvin-head-copy {
+  min-width: 0;
+  gap: 0.7rem;
+}
+
+.novvin-head-copy > div {
+  min-width: 0;
+}
+
+.novvin-avatar,
+.novvin-mini-avatar {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--app-blue-ink, #10192a);
+  background: linear-gradient(145deg, #d7e5ff, var(--app-blue, #a9c7ff));
+}
+
+.novvin-avatar {
+  width: 42px;
+  height: 42px;
+}
+
+.novvin-avatar svg {
+  width: 23px;
+}
+
+.novvin-mini-avatar {
+  width: 28px;
+  height: 28px;
+  margin-top: 0.2rem;
+}
+
+.novvin-mini-avatar svg {
+  width: 16px;
+}
+
+.novvin-message-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.25rem clamp(0.8rem, 4vw, 3.5rem);
+  overflow-y: auto;
+}
+
+.novvin-message {
+  display: flex;
+  width: fit-content;
+  max-width: min(760px, 86%);
+  gap: 0.55rem;
+}
+
+.novvin-message > div {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.novvin-message p {
+  padding: 0.78rem 0.92rem;
+  border: 1px solid var(--app-line, #dfe3ea);
+  border-radius: 6px 14px 14px 14px;
+  color: inherit;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  background: var(--app-panel-raised, #fff);
+}
+
+.novvin-message.user {
+  align-self: end;
+}
+
+.novvin-message.user p {
+  border-color: transparent;
+  border-radius: 14px 14px 6px 14px;
+  color: var(--app-blue-ink, #10192a);
+  background: var(--app-blue, #a9c7ff);
+}
+
+.novvin-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.novvin-suggestions button {
+  min-height: 34px;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--app-line, #dfe3ea);
+  border-radius: 999px;
+  color: var(--app-blue, #4f7cff);
+  background: transparent;
+  cursor: pointer;
+}
+
+.novvin-thinking {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--app-muted, #6b7280);
+  font-size: 0.82rem;
+}
+
+.novvin-thinking span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-blue, #4f7cff);
+  animation: novvin-pulse 1s ease-in-out infinite;
+}
+
+.novvin-thinking span:nth-child(2) { animation-delay: 0.15s; }
+.novvin-thinking span:nth-child(3) { animation-delay: 0.3s; }
+
+.novvin-composer-shell {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem clamp(0.8rem, 4vw, 3.5rem) 0.85rem;
+  border-top: 1px solid var(--app-line, #dfe3ea);
+  background: var(--app-panel, #fff);
+}
+
+.novvin-error {
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--app-red, #d83a52) 40%, transparent);
+  border-radius: 8px;
+  color: var(--app-red, #d83a52);
+  font-size: 0.82rem;
+  background: color-mix(in srgb, var(--app-red, #d83a52) 8%, transparent);
+}
+
+.novvin-error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.novvin-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: end;
+  gap: 0.55rem;
+  padding: 0.45rem;
+  border: 1px solid var(--app-line, #dfe3ea);
+  border-radius: 12px;
+  background: var(--app-panel-raised, #fff);
+}
+
+.novvin-composer:focus-within {
+  border-color: var(--app-blue, #4f7cff);
+}
+
+.novvin-composer textarea {
+  min-height: 40px;
+  max-height: 130px;
+  resize: vertical;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  outline: none;
+  color: inherit;
+  background: transparent;
+}
+
+.novvin-composer > button {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: var(--app-blue-ink, #10192a);
+  background: var(--app-blue, #a9c7ff);
+  cursor: pointer;
+}
+
+.novvin-composer button:disabled,
+.novvin-suggestions button:disabled,
+.novvin-error button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.novvin-composer-meta {
+  gap: 1rem;
+}
+
+.novvin-composer-meta label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.mobile-only,
+.novvin-history-backdrop {
+  display: none;
+}
+
+@keyframes novvin-pulse {
+  0%, 100% { opacity: 0.35; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
+@media (max-width: 760px) {
+  .novvin-page {
+    display: block;
+    height: calc(100dvh - 72px);
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .novvin-history-panel {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(86vw, 330px);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform 180ms ease;
+  }
+
+  .novvin-history-panel.open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .novvin-history-backdrop {
+    position: fixed;
+    z-index: 2;
+    inset: 0;
+    display: block;
+    width: 100%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .mobile-only {
+    display: inline-grid;
+  }
+
+  .novvin-chat-panel {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .novvin-chat-head,
+  .novvin-composer-shell {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .novvin-message-list {
+    padding-inline: 0.75rem;
+  }
+
+  .novvin-message {
+    max-width: 94%;
+  }
+
+  .novvin-composer-shell {
+    padding: 0.55rem 0.65rem calc(0.6rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .novvin-thinking span,
+  .novvin-history-panel {
+    animation: none;
+    transition: none;
+  }
+}

@@ -64,9 +64,9 @@ export function RegisterPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <img src="/conectate-logo.svg" alt="Conectate" className="auth-logo-img" />
+                <img src="/conectate-logo.svg" alt="Novvin" className="auth-logo-img" />
                 <div>
-                  <p className="brand-tag auth-panel-tag">Conectate</p>
+                  <p className="brand-tag auth-panel-tag">Novvin</p>
                   <span>Red social privada</span>
                 </div>
               </div>

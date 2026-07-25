@@ -11,6 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +56,15 @@ fun SearchUsersScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            ListItem(
+                headlineContent = { Text("Personas cerca") },
+                supportingContent = { Text("Radar y chat aleatorio") },
+                leadingContent = { Icon(Icons.Default.MyLocation, contentDescription = null) },
+                trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                modifier = Modifier.clickable { navController.navigate(Screen.Proximity.route) }
+            )
+            Divider()
+
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Conectate</string>
+    <string name="app_name">Novvin</string>
     
     <!-- Auth Strings -->
     <string name="sign_in_email">Iniciar sesión con Email</string>
@@ -18,12 +18,15 @@
     <string name="chat_notification_channel_id" translatable="false">chat_channel_v2</string>
     <string name="group_notification_channel_id" translatable="false">group_channel_v2</string>
     <string name="social_notification_channel_id" translatable="false">social_channel_v2</string>
-    <string name="call_notification_channel_id" translatable="false">incoming_call_channel_v2</string>
+    <string name="call_notification_channel_id" translatable="false">incoming_call_channel_v3</string>
     <string name="system_notification_channel_id" translatable="false">system_channel_v2</string>
     <string name="live_overlay_title">Chat en vivo</string>
     <string name="live_overlay_title_default">Live activo</string>
     <string name="live_overlay_subtitle">Chat flotante en vivo</string>
-    <string name="live_overlay_status">LIVE • %1$d espectadores</string>
+    <plurals name="live_overlay_status">
+        <item quantity="one">LIVE • %1$d espectador</item>
+        <item quantity="other">LIVE • %1$d espectadores</item>
+    </plurals>
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="live_overlay_bubble_status">LIVE\n%1$d</string>
     <string name="live_overlay_bubble_description">Abrir chat flotante del live</string>

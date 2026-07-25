@@ -1,0 +1,310 @@
+{
+  "version": 1,
+  "description": "Corpus general propio, revisado y de bajo riesgo para Novvin. Los ejemplos de evaluacion nunca se usan para entrenar.",
+  "cards": [
+    {
+      "id": "cielo_azul",
+      "title": "Por que el cielo se ve azul",
+      "keywords": ["cielo azul", "atmosfera", "luz solar", "dispersion"],
+      "examples": {
+        "train": ["por que el cielo es azul", "explica el color azul del cielo", "como la atmosfera cambia la luz del sol", "de donde sale el azul que vemos arriba", "que causa el color del cielo", "por que durante el dia vemos azul"],
+        "evaluation": ["por que vemos azul al mirar hacia arriba", "que hace que el firmamento tenga color azul"]
+      },
+      "summary": "El cielo se ve azul porque la atmosfera dispersa la luz solar y las longitudes de onda azules se reparten con mas intensidad en muchas direcciones.",
+      "facts": [
+        "La luz del Sol contiene muchos colores aunque normalmente la percibamos blanca.",
+        "Al entrar en la atmosfera, la luz interactua con moleculas muy pequenas del aire.",
+        "La luz azul se dispersa mas que colores con longitudes de onda mayores, por eso llega a nuestros ojos desde todo el cielo.",
+        "Al amanecer y al atardecer la luz recorre mas atmosfera y predominan tonos rojizos y naranjas."
+      ],
+      "example": "Una linterna atravesando agua con particulas tambien puede mostrar como la luz cambia de direccion.",
+      "followUp": "Puedo explicarte tambien por que los atardeceres se ven rojos.",
+      "suggestions": ["Atardeceres rojos", "Luz solar", "Atmosfera"]
+    },
+    {
+      "id": "ciclo_agua",
+      "title": "El ciclo del agua",
+      "keywords": ["ciclo del agua", "evaporacion", "condensacion", "lluvia"],
+      "examples": {
+        "train": ["explica el ciclo del agua", "como se forma la lluvia", "que ocurre con el agua que se evapora", "pasos de evaporacion condensacion y precipitacion", "como circula el agua en la naturaleza", "por que las nubes producen lluvia"],
+        "evaluation": ["como vuelve al suelo el agua que sube al aire", "resume evaporacion nubes y precipitacion"]
+      },
+      "summary": "El ciclo del agua es el movimiento continuo del agua entre la superficie, la atmosfera y el subsuelo.",
+      "facts": [
+        "El calor transforma parte del agua liquida en vapor mediante evaporacion.",
+        "Al enfriarse, el vapor se condensa en gotas pequenas que forman nubes.",
+        "Cuando las gotas crecen y pesan suficiente, caen como precipitacion.",
+        "El agua se infiltra, alimenta rios o vuelve al mar y el recorrido comienza otra vez."
+      ],
+      "example": "El vapor que se convierte en gotas sobre una tapa fria muestra condensacion a pequena escala.",
+      "followUp": "Si quieres, puedo ordenar el ciclo en pasos aun mas cortos.",
+      "suggestions": ["Evaporacion", "Como se forman nubes", "Resumen en pasos"]
+    },
+    {
+      "id": "fotosintesis",
+      "title": "La fotosintesis",
+      "keywords": ["fotosintesis", "plantas", "luz", "dioxido de carbono"],
+      "examples": {
+        "train": ["que es la fotosintesis", "como producen alimento las plantas", "para que usan la luz las hojas", "explica como una planta transforma energia solar", "que necesitan las plantas para la fotosintesis", "por que las plantas liberan oxigeno"],
+        "evaluation": ["como convierten las hojas la luz en energia util", "resume el proceso de alimentacion de una planta"]
+      },
+      "summary": "La fotosintesis es el proceso con el que plantas, algas y algunos microorganismos convierten energia luminosa en energia quimica almacenada.",
+      "facts": [
+        "El proceso usa principalmente agua, dioxido de carbono y luz.",
+        "La clorofila de las hojas absorbe parte de la energia luminosa.",
+        "Esa energia permite formar azucares que el organismo usa y almacena.",
+        "Como parte del proceso se libera oxigeno al ambiente."
+      ],
+      "example": "Una planta con luz suficiente puede fabricar azucares a partir de materiales que toma del aire y del suelo.",
+      "followUp": "Puedo diferenciar fotosintesis y respiracion celular si lo necesitas.",
+      "suggestions": ["Clorofila", "Partes de una planta", "Respiracion celular"]
+    },
+    {
+      "id": "estaciones_ano",
+      "title": "Las estaciones del año",
+      "keywords": ["estaciones", "verano", "invierno", "inclinacion terrestre"],
+      "examples": {
+        "train": ["por que existen las estaciones", "como se producen verano e invierno", "que tiene que ver la inclinacion de la Tierra", "por que cambia la duracion del dia durante el año", "explica primavera verano otoño invierno", "son las estaciones causadas por la distancia al Sol"],
+        "evaluation": ["por que un hemisferio tiene verano y el otro invierno", "que origina los cambios de estacion"]
+      },
+      "summary": "Las estaciones se deben principalmente a la inclinacion del eje de la Tierra mientras el planeta recorre su orbita alrededor del Sol.",
+      "facts": [
+        "El eje terrestre esta inclinado respecto del plano de la orbita.",
+        "Cada hemisferio recibe luz mas directa y dias mas largos durante una parte del año.",
+        "Seis meses despues cambia el hemisferio orientado mas directamente hacia el Sol.",
+        "La distancia entre la Tierra y el Sol no es la causa principal de las estaciones."
+      ],
+      "example": "Cuando el hemisferio norte esta inclinado hacia el Sol, alli suele ser verano y en el hemisferio sur suele ser invierno.",
+      "followUp": "Tambien puedo explicar solsticios y equinoccios.",
+      "suggestions": ["Solsticios", "Equinoccios", "Orbita terrestre"]
+    },
+    {
+      "id": "sistema_solar",
+      "title": "El sistema solar",
+      "keywords": ["sistema solar", "planeta", "Sol", "orbita"],
+      "examples": {
+        "train": ["que es el sistema solar", "cuantos planetas giran alrededor del Sol", "ordena los planetas", "que objetos forman nuestro sistema planetario", "diferencia entre planeta y estrella", "como se mueven los planetas"],
+        "evaluation": ["que cuerpos acompañan al Sol", "explica brevemente nuestro sistema de planetas"]
+      },
+      "summary": "El sistema solar esta formado por el Sol y los cuerpos unidos a el por la gravedad, incluidos ocho planetas y muchos objetos menores.",
+      "facts": [
+        "El Sol es una estrella y concentra casi toda la masa del sistema.",
+        "Los planetas, desde el mas cercano, son Mercurio, Venus, Tierra, Marte, Jupiter, Saturno, Urano y Neptuno.",
+        "Tambien existen planetas enanos, lunas, asteroides, cometas, polvo y gas.",
+        "Cada objeto sigue una orbita determinada por su movimiento y la atraccion gravitatoria."
+      ],
+      "example": "La Tierra tarda aproximadamente un año en completar una orbita alrededor del Sol.",
+      "followUp": "Dime que planeta te interesa y te resumo sus caracteristicas estables.",
+      "suggestions": ["Orden de los planetas", "El Sol", "Orbitas"]
+    },
+    {
+      "id": "gravedad",
+      "title": "La gravedad",
+      "keywords": ["gravedad", "caer", "masa", "atraccion", "objeto", "suelo"],
+      "examples": {
+        "train": ["que es la gravedad", "por que caen las cosas", "como se atraen los objetos con masa", "que mantiene a la Luna en orbita", "explica la fuerza gravitatoria", "por que no salimos flotando de la Tierra"],
+        "evaluation": ["que hace que un objeto vuelva al suelo", "como actua la atraccion entre masas"]
+      },
+      "summary": "La gravedad es la interaccion por la que los cuerpos con masa se atraen entre si.",
+      "facts": [
+        "Cerca de la superficie terrestre esa atraccion acelera los objetos hacia el centro del planeta.",
+        "La intensidad depende de la masa de los cuerpos y de la distancia entre ellos.",
+        "La gravedad mantiene planetas, lunas y satelites en sus orbitas.",
+        "Una orbita puede entenderse como una caida continua que avanza alrededor de otro cuerpo."
+      ],
+      "example": "Una pelota lanzada vuelve al suelo porque la Tierra la atrae mientras conserva parte de su movimiento horizontal.",
+      "followUp": "Puedo explicar despues la diferencia entre masa y peso.",
+      "suggestions": ["Masa y peso", "Orbitas", "Caida libre"]
+    },
+    {
+      "id": "internet_basico",
+      "title": "Como funciona Internet",
+      "keywords": ["internet", "red", "servidor", "paquetes", "computador", "pagina"],
+      "examples": {
+        "train": ["como funciona internet", "que pasa cuando abro una pagina", "como viaja la informacion por la red", "que es un servidor en internet", "para que sirven los paquetes de datos", "explica la comunicacion entre cliente y servidor"],
+        "evaluation": ["como llega una pagina desde otro computador", "resume el recorrido de datos por internet"]
+      },
+      "summary": "Internet es una red mundial de redes que intercambia informacion mediante reglas comunes de comunicacion.",
+      "facts": [
+        "Los dispositivos dividen la informacion en paquetes que pueden recorrer distintos enlaces.",
+        "Los routers encaminan esos paquetes hacia su destino.",
+        "Un cliente solicita informacion y un servidor puede procesar la solicitud y responder.",
+        "Los nombres faciles de recordar se traducen a direcciones de red para localizar servicios."
+      ],
+      "example": "Al abrir una pagina, el dispositivo localiza el servidor, solicita recursos y reconstruye los paquetes recibidos.",
+      "followUp": "Puedo explicarte con mas detalle clientes, servidores o paquetes.",
+      "suggestions": ["Cliente y servidor", "Paquetes", "Routers"]
+    },
+    {
+      "id": "memoria_almacenamiento",
+      "title": "RAM y almacenamiento",
+      "keywords": ["RAM", "memoria", "almacenamiento", "disco"],
+      "examples": {
+        "train": ["diferencia entre ram y almacenamiento", "para que sirve la memoria ram", "que guarda el disco", "por que se llena la memoria del computador", "ram no es lo mismo que espacio", "explica memoria temporal y almacenamiento permanente"],
+        "evaluation": ["que diferencia hay entre memoria de trabajo y espacio para archivos", "por que cerrar programas libera ram pero no disco"]
+      },
+      "summary": "La RAM guarda temporalmente lo que los programas usan ahora; el almacenamiento conserva aplicaciones y archivos incluso al apagar el equipo.",
+      "facts": [
+        "Mas RAM permite mantener mas tareas activas sin recurrir tanto al disco.",
+        "Cerrar un programa suele liberar RAM, pero no elimina sus archivos guardados.",
+        "Liberar espacio de almacenamiento no aumenta directamente la cantidad fisica de RAM.",
+        "Cuando falta RAM, el sistema puede usar almacenamiento como apoyo, normalmente con menor velocidad."
+      ],
+      "example": "Un editor abierto usa RAM para el proyecto activo y almacenamiento para guardar el archivo final.",
+      "followUp": "Puedo ayudarte a distinguir cual recurso esta limitado en un caso concreto sin pedir datos privados.",
+      "suggestions": ["Que consume RAM", "Liberar espacio", "Rendimiento"]
+    },
+    {
+      "id": "inteligencia_artificial",
+      "title": "Que es una inteligencia artificial",
+      "keywords": ["inteligencia artificial", "modelo", "entrenamiento", "datos", "red entrenada", "patrones"],
+      "examples": {
+        "train": ["que es la inteligencia artificial", "como aprende un modelo", "que significa entrenar una red neuronal", "diferencia entre programa y modelo de aprendizaje", "para que sirven los datos de entrenamiento", "una inteligencia artificial realmente piensa"],
+        "evaluation": ["como obtiene patrones una red entrenada", "explica que hace un modelo de aprendizaje automatico"]
+      },
+      "summary": "Una inteligencia artificial es un sistema que ejecuta tareas asociadas con patrones, predicciones o decisiones usando reglas y, en algunos casos, modelos aprendidos de ejemplos.",
+      "facts": [
+        "Entrenar consiste en ajustar parametros para reducir errores sobre ejemplos conocidos.",
+        "Una evaluacion separada mide si el modelo funciona con ejemplos que no vio durante el entrenamiento.",
+        "Un modelo pequeño y especializado puede ser mas eficiente y verificable que uno grande para una tarea concreta.",
+        "El resultado depende de la calidad, cobertura y revision de los datos, no solo del numero de neuronas."
+      ],
+      "example": "Novvin aprende a relacionar frases con intenciones de Conectate y solo responde conocimiento general almacenado localmente.",
+      "followUp": "Puedo comparar un clasificador especializado con un modelo generativo.",
+      "suggestions": ["Como se entrena", "Que es un parametro", "IA de Novvin"]
+    },
+    {
+      "id": "porcentajes",
+      "title": "Como entender porcentajes",
+      "keywords": ["porcentaje", "por ciento", "proporcion", "calcular"],
+      "examples": {
+        "train": ["que es un porcentaje", "como se calcula un por ciento", "explica porcentajes con un ejemplo", "como convierto una fraccion a porcentaje", "que significa cincuenta por ciento", "formula para hallar el porcentaje de una cantidad"],
+        "evaluation": ["como encuentro una proporcion expresada sobre cien", "explica de forma sencilla el simbolo de porcentaje"]
+      },
+      "summary": "Un porcentaje expresa una proporcion tomando 100 como referencia.",
+      "facts": [
+        "Para hallar un porcentaje de una cantidad, multiplica la cantidad por el porcentaje y divide entre 100.",
+        "Cincuenta por ciento equivale a 50 de cada 100, es decir, a la mitad.",
+        "Para convertir una fraccion en porcentaje, divide numerador entre denominador y multiplica por 100.",
+        "Comparar porcentajes requiere comprobar que se refieran a la misma base."
+      ],
+      "example": "El 25 por ciento de 80 es 20, porque 80 por 25 dividido entre 100 da 20.",
+      "followUp": "Tambien puedo resolver una operacion sencilla como «15% de 80».",
+      "suggestions": ["Calcular un porcentaje", "Fracciones", "Proporciones"]
+    },
+    {
+      "id": "fracciones",
+      "title": "Como funcionan las fracciones",
+      "keywords": ["fraccion", "numerador", "denominador", "partes"],
+      "examples": {
+        "train": ["que es una fraccion", "explica numerador y denominador", "como comparar dos fracciones", "que significa tres cuartos", "como se simplifica una fraccion", "fracciones equivalentes explicacion"],
+        "evaluation": ["que representan los numeros de una fraccion", "como pueden dos fracciones tener el mismo valor"]
+      },
+      "summary": "Una fraccion representa una cantidad dividida en partes iguales mediante un numerador y un denominador.",
+      "facts": [
+        "El denominador indica en cuantas partes iguales se divide la unidad.",
+        "El numerador indica cuantas de esas partes se toman.",
+        "Multiplicar o dividir ambos numeros por el mismo valor distinto de cero produce una fraccion equivalente.",
+        "Para comparar fracciones puede expresarlas con el mismo denominador."
+      ],
+      "example": "Tres cuartos significa tomar 3 partes cuando la unidad fue dividida en 4 partes iguales.",
+      "followUp": "Dame una fraccion concreta y puedo explicarte el procedimiento sin saltar pasos.",
+      "suggestions": ["Simplificar", "Comparar fracciones", "Porcentajes"]
+    },
+    {
+      "id": "estudio_efectivo",
+      "title": "Organizar una sesion de estudio",
+      "keywords": ["estudio", "aprender", "repasar", "organizar tiempo", "tarea", "materia"],
+      "examples": {
+        "train": ["como organizo mi tiempo de estudio", "dame una forma de estudiar mejor", "como dividir un tema grande para aprender", "metodo para repasar sin memorizar a ciegas", "como preparar una sesion de aprendizaje", "quiero concentrarme al estudiar"],
+        "evaluation": ["como convierto una materia larga en tareas pequeñas", "sugiere una rutina simple para repasar"]
+      },
+      "summary": "Una sesion de estudio funciona mejor cuando tiene un objetivo pequeño, practica activa y una revision breve al final.",
+      "facts": [
+        "Define una tarea observable, por ejemplo explicar un concepto sin mirar apuntes.",
+        "Divide el trabajo en bloques cortos con pausas y ajusta su duracion a tu concentracion real.",
+        "Alterna lectura con preguntas, ejercicios o explicaciones usando tus propias palabras.",
+        "Revisa despues de un intervalo para detectar que informacion necesitas practicar otra vez."
+      ],
+      "example": "En un bloque puedes leer una seccion, cerrar el material, escribir lo que recuerdas y comprobar los vacios.",
+      "followUp": "Dime el tema y el tiempo disponible para convertirlo en un plan sencillo.",
+      "suggestions": ["Plan por bloques", "Repaso activo", "Resumir un tema"]
+    },
+    {
+      "id": "resumen_texto",
+      "title": "Como resumir un texto",
+      "keywords": ["resumen", "idea principal", "texto", "sintetizar"],
+      "examples": {
+        "train": ["como hago un resumen", "como encuentro la idea principal", "pasos para resumir un texto", "quiero reducir un texto sin perder lo importante", "diferencia entre copiar y resumir", "como organizar ideas principales y secundarias"],
+        "evaluation": ["como sintetizo una lectura con mis propias palabras", "que debo conservar al acortar un texto"]
+      },
+      "summary": "Resumir consiste en conservar la idea central y las relaciones esenciales usando menos palabras y una estructura propia.",
+      "facts": [
+        "Lee primero para entender el proposito general antes de recortar frases.",
+        "Identifica la idea principal de cada seccion y elimina repeticiones o ejemplos secundarios.",
+        "Reescribe con tus propias palabras sin cambiar el sentido.",
+        "Comprueba que el resumen pueda entenderse sin consultar continuamente el texto original."
+      ],
+      "example": "Una tecnica simple es escribir una oracion por seccion y luego unirlas eliminando repeticiones.",
+      "followUp": "Si compartes un fragmento sin datos privados, puedo ayudarte a localizar sus ideas principales.",
+      "suggestions": ["Idea principal", "Ordenar argumentos", "Plan de estudio"]
+    },
+    {
+      "id": "reciclaje",
+      "title": "Principios del reciclaje",
+      "keywords": ["reciclaje", "residuo", "reutilizar", "separar", "material", "desechar"],
+      "examples": {
+        "train": ["que significa reciclar", "como separo residuos", "diferencia entre reducir reutilizar y reciclar", "por que conviene limpiar envases", "que hago antes de desechar un objeto", "explica las tres erres"],
+        "evaluation": ["como evito mezclar materiales al desecharlos", "resume reducir reutilizar y transformar residuos"]
+      },
+      "summary": "Reciclar es recuperar materiales para transformarlos, pero primero conviene reducir el consumo y reutilizar lo que aun sirve.",
+      "facts": [
+        "Separar correctamente evita que materiales aprovechables se contaminen.",
+        "Los criterios de clasificacion cambian segun el sistema de recoleccion de cada lugar.",
+        "Los envases suelen aprovecharse mejor cuando estan vacios y sin restos importantes.",
+        "Reutilizar un objeto puede evitar energia y procesos adicionales de transformacion."
+      ],
+      "example": "Antes de desechar un envase, comprueba si puede reutilizarse y consulta la clasificacion indicada por la recoleccion local.",
+      "followUp": "Puedo ayudarte a distinguir reducir, reutilizar y reciclar con otro ejemplo.",
+      "suggestions": ["Tres erres", "Separar materiales", "Reutilizar"]
+    },
+    {
+      "id": "sonido",
+      "title": "Como se produce el sonido",
+      "keywords": ["sonido", "vibracion", "onda", "frecuencia", "tono", "grave", "agudo"],
+      "examples": {
+        "train": ["que es el sonido", "como viaja una vibracion hasta el oido", "por que escuchamos tonos distintos", "explica las ondas sonoras", "diferencia entre frecuencia y volumen", "el sonido puede viajar sin aire"],
+        "evaluation": ["como una vibracion se convierte en algo que oimos", "que determina si un tono es grave o agudo"]
+      },
+      "summary": "El sonido surge de vibraciones que se propagan como ondas mecanicas a traves de un medio material.",
+      "facts": [
+        "Las vibraciones hacen oscilar particulas del aire, agua o materiales solidos.",
+        "La frecuencia influye en que un tono se perciba mas grave o mas agudo.",
+        "La amplitud de la onda se relaciona con la intensidad percibida.",
+        "En el vacio no hay particulas que transporten una onda sonora."
+      ],
+      "example": "Al pulsar una cuerda, su vibracion mueve el aire cercano y la onda resultante puede llegar al oido.",
+      "followUp": "Puedo explicar frecuencia, amplitud o eco por separado.",
+      "suggestions": ["Frecuencia", "Amplitud", "Eco"]
+    },
+    {
+      "id": "energia_renovable",
+      "title": "Fuentes de energia renovable",
+      "keywords": ["energia renovable", "solar", "eolica", "fuente", "sol", "agua", "viento"],
+      "examples": {
+        "train": ["que es la energia renovable", "diferencia entre energia solar y eolica", "que fuentes se renuevan naturalmente", "como produce electricidad un panel solar", "para que sirve una turbina de viento", "ejemplos de recursos energeticos renovables"],
+        "evaluation": ["que caracteriza a una fuente que se repone", "resume formas de aprovechar sol agua y viento"]
+      },
+      "summary": "Una fuente renovable aprovecha flujos naturales que se reponen en escalas humanas, como la luz solar, el viento o el movimiento del agua.",
+      "facts": [
+        "Los paneles fotovoltaicos convierten parte de la luz en electricidad.",
+        "Las turbinas eolicas transforman el movimiento del aire en rotacion y luego en electricidad.",
+        "La generacion hidraulica aprovecha el movimiento o desnivel del agua.",
+        "Cada tecnologia tiene impactos y depende de las condiciones del lugar."
+      ],
+      "example": "Una region soleada y otra con vientos constantes pueden necesitar combinaciones distintas de fuentes.",
+      "followUp": "Puedo comparar de forma basica energia solar, eolica e hidraulica.",
+      "suggestions": ["Energia solar", "Energia eolica", "Energia hidraulica"]
+    }
+  ]
+}

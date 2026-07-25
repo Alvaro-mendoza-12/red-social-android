@@ -39,6 +39,7 @@ import conectate.com.data.local.entity.CommunityEntity
 import conectate.com.data.local.entity.CommunityMemberEntity
 import conectate.com.data.local.entity.CommunityMessageEntity
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Community
 import conectate.com.data.model.CommunityMember
@@ -57,6 +58,7 @@ import conectate.com.util.ConversationNotificationPrefs
 import conectate.com.util.isCallEventContentType
 import conectate.com.util.MessageNotificationFactory
 import conectate.com.util.MessageNotificationPayload
+import conectate.com.util.PendingOutgoingMediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
@@ -104,6 +106,7 @@ class CommunityRepository @Inject constructor(
     private val communityDao: CommunityDao,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val storageService: conectate.com.data.supabase.StorageService,
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
@@ -161,12 +164,13 @@ class CommunityRepository @Inject constructor(
 
     private var realtimeJob: Job? = null
     private var communityListenerJob: Job? = null
+    private var ubuntuRealtimeJob: Job? = null
     private var subscribedCommunityIds: Set<String> = emptySet()
     private val activeCommunityMessageJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     private fun startRealtimeSubscriptions(userId: String) {
         if (authService.isLocalFallbackModeEnabled()) {
-            android.util.Log.d("CommunityRepository", "Skipping Supabase realtime in local fallback mode")
+            startUbuntuRealtimeSubscriptions(userId)
             return
         }
         if (userId.isBlank()) return
@@ -189,11 +193,42 @@ class CommunityRepository @Inject constructor(
         )
     }
 
+    private fun startUbuntuRealtimeSubscriptions(userId: String) {
+        val cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) return
+        ubuntuRealtimeJob?.cancel()
+        ubuntuRealtimeJob = scope.launch {
+            val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+            if (token.isBlank()) return@launch
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.replaceUserSubscription(cleanUserId)
+            ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.channel != "user:$cleanUserId" || envelope.event != "message") return@collect
+                val roomEventId = envelope.payload["chatId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (!roomEventId.startsWith("room:community:")) return@collect
+                val record = envelope.payload["message"]?.jsonObject ?: return@collect
+                val message = runCatching { json.decodeFromJsonElement<CommunityMessage>(record) }
+                    .getOrElse { error ->
+                        android.util.Log.e("CommunityRepository", "Invalid Ubuntu community realtime payload", error)
+                        return@collect
+                    }
+                val action = envelope.payload["action"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                if (action == "created" || action.isNullOrBlank()) {
+                    handleIncomingMessage(message, cleanUserId)
+                } else {
+                    handleIncomingCommunityUpdate(message, cleanUserId)
+                }
+            }
+        }
+    }
+
     private fun stopRealtimeSubscriptions() {
         realtimeJob?.cancel()
         realtimeJob = null
         communityListenerJob?.cancel()
         communityListenerJob = null
+        ubuntuRealtimeJob?.cancel()
+        ubuntuRealtimeJob = null
         android.util.Log.d("CommunityRepository", "[COMM] Realtime subscriptions stopped")
     }
 
@@ -988,17 +1023,13 @@ class CommunityRepository @Inject constructor(
                     ?: authService.getCurrentUserId()?.trim()?.lowercase()
             }
             .distinctUntilChanged()
-            .flatMapLatest { activeUserId ->
+            .flatMapLatest {
                 communityDao.getAllCommunitiesFlow()
                     .distinctUntilChanged()
                     .map { entities ->
                         entities
                             .filter { entity ->
-                                !entity.is_deleted && (
-                                    entity.is_public ||
-                                        entity.is_member ||
-                                        entity.creator_id.trim().lowercase() == activeUserId
-                                    )
+                                !entity.is_deleted
                             }
                             .map { entity ->
                                 CommunityWithLastMessage(
@@ -1027,7 +1058,7 @@ class CommunityRepository @Inject constructor(
             id = cleanId,
             name = item.title.ifBlank { "Comunidad" },
             image = item.avatarUrl.ifBlank { null },
-            description = item.subtitle.takeIf { it.isNotBlank() },
+            description = item.description.takeIf { it.isNotBlank() },
             is_public = item.isPublic,
             created_at = updatedAt,
             creator_id = creatorId,
@@ -1036,6 +1067,7 @@ class CommunityRepository @Inject constructor(
             is_member = isMember,
             is_deleted = false,
             only_admins_can_talk = item.onlyAdminsCanTalk,
+            daily_message_limit = item.dailyMessageLimit.coerceIn(0, 1000),
             current_user_role = item.currentUserRole
         )
     }
@@ -1097,6 +1129,7 @@ class CommunityRepository @Inject constructor(
 
     override suspend fun syncCommunities(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            retryPendingCommunityMessages()
             if (authService.isLocalFallbackModeEnabled()) {
                 return@withContext syncCommunitiesFromLocalFallback()
             }
@@ -1521,9 +1554,6 @@ class CommunityRepository @Inject constructor(
     }
 
 
-
-
-
     suspend fun searchCommunities(query: String): Result<List<Community>> = withContext(Dispatchers.IO) {
         try {
             if (authService.isLocalFallbackModeEnabled() && localFallbackApiClient.isConfigured) {
@@ -1532,25 +1562,17 @@ class CommunityRepository @Inject constructor(
                 val token = authService.getAccessTokenAwait()
                     ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
                 val cleanQuery = query.trim()
-                val communities = localFallbackApiClient.loadMessagesInbox(token, "communities")
-                    .getOrThrow()
-                    .items
-                    .asSequence()
-                    .filter { item -> item.isPublic && item.id.isNotBlank() }
-                    .map { item -> communityFromFallbackInbox(item, userId) }
-                    .filter { community ->
-                        cleanQuery.isBlank() ||
-                            community.name.contains(cleanQuery, ignoreCase = true) ||
-                            community.description?.contains(cleanQuery, ignoreCase = true) == true ||
-                            community.category?.contains(cleanQuery, ignoreCase = true) == true
-                    }
-                    .distinctBy { it.id.trim().lowercase() }
-                    .toList()
-                return@withContext Result.success(communities)
+                return@withContext localFallbackApiClient.exploreCommunities(token, cleanQuery)
             }
             var response = supabaseConfig.client.postgrest["communities"].select {
                 filter { 
-                    ilike("name", "%$query%")
+                    if (query.isNotBlank()) {
+                        or {
+                            ilike("name", "%$query%")
+                            ilike("description", "%$query%")
+                            ilike("category", "%$query%")
+                        }
+                    }
                     eq("is_public", true)
                     eq("is_deleted", false)
                 }
@@ -1569,11 +1591,17 @@ class CommunityRepository @Inject constructor(
         description: String?,
         imageBytes: ByteArray?,
         isPublic: Boolean,
-        onlyAdminsCanTalk: Boolean = false
+        onlyAdminsCanTalk: Boolean = false,
+        dailyMessageLimit: Int = 0
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var cleanId = communityId.trim().lowercase()
+            var trimmedName = name.trim()
+            if (trimmedName.isBlank()) {
+                return@withContext Result.failure(Exception("El nombre de la comunidad no puede estar vacío."))
+            }
+            var normalizedDescription = description?.trim().orEmpty()
             var community = getCommunityById(cleanId) ?: return@withContext Result.failure(Exception("Community not found"))
             var privileges = resolveCommunityGovernancePrivileges(community, me)
             CollectionGovernanceSupport.requireCanManageCollection(
@@ -1583,26 +1611,78 @@ class CommunityRepository @Inject constructor(
             var imageUrl: String? = null
             
             if (imageBytes != null) {
-                var uploadResult = uploadCommunityImage(cleanId, imageBytes)
-                if (uploadResult.isSuccess) {
-                    imageUrl = uploadResult.getOrNull()
-                }
+                imageUrl = uploadCommunityImage(cleanId, imageBytes).getOrThrow()
             }
 
             val updatePayload = buildJsonObject {
-                put("name", name)
-                put("description", description ?: "")
+                put("name", trimmedName)
+                put("description", normalizedDescription)
                 put("is_public", isPublic)
                 put("only_admins_can_talk", onlyAdminsCanTalk)
+                put("daily_message_limit", dailyMessageLimit.coerceIn(0, 1000))
                 if (imageUrl != null) put("image", imageUrl)
             }
-            collectionAdminRemoteStore.updateCollectionInfo(
-                collectionTable = "communities",
-                scopeId = cleanId,
-                payload = updatePayload
-            ).getOrThrow()
-            
-            syncCommunities()
+            val primaryResult = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("No token"))
+                localFallbackApiClient.updateCommunityInfo(
+                    token,
+                    cleanId,
+                    trimmedName,
+                    normalizedDescription,
+                    isPublic,
+                    onlyAdminsCanTalk,
+                    dailyMessageLimit,
+                    imageUrl
+                )
+            } else {
+                collectionAdminRemoteStore.updateCollectionInfo(
+                    collectionTable = "communities",
+                    scopeId = cleanId,
+                    payload = updatePayload
+                )
+            }
+
+            val finalResult = if (primaryResult.isSuccess) {
+                primaryResult
+            } else if (localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(primaryResult.exceptionOrNull() ?: Exception("No token"))
+                localFallbackApiClient.updateCommunityInfo(
+                    token,
+                    cleanId,
+                    trimmedName,
+                    normalizedDescription,
+                    isPublic,
+                    onlyAdminsCanTalk,
+                    dailyMessageLimit,
+                    imageUrl
+                )
+            } else {
+                primaryResult
+            }
+
+            finalResult.getOrThrow()
+
+            val cached = communityDao.getCommunityById(cleanId)
+            val updatedCommunity = community.copy(
+                name = trimmedName,
+                description = normalizedDescription.ifBlank { null },
+                image = imageUrl ?: community.image,
+                is_public = isPublic,
+                only_admins_can_talk = onlyAdminsCanTalk,
+                daily_message_limit = dailyMessageLimit.coerceIn(0, 1000)
+            )
+            communityDao.insertCommunities(
+                listOf(cached?.copy(
+                    name = updatedCommunity.name,
+                    description = updatedCommunity.description,
+                    image = updatedCommunity.image,
+                    is_public = updatedCommunity.is_public,
+                    only_admins_can_talk = updatedCommunity.only_admins_can_talk,
+                    daily_message_limit = updatedCommunity.daily_message_limit
+                ) ?: CommunityEntity.fromDomain(updatedCommunity))
+            )
+            scope.launch { syncCommunities() }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -1686,7 +1766,7 @@ class CommunityRepository @Inject constructor(
             fallbackBucket = "communities",
             filePrefix = "audio_comm",
             extension = "m4a",
-            contentType = "audio/m4a"
+            contentType = "audio/mp4"
         )
 
 
@@ -1992,13 +2072,41 @@ class CommunityRepository @Inject constructor(
                 // Best effort audit only.
             }
 
+            var outgoingMediaUrl = mediaUrl
+            PendingOutgoingMediaStore.resolve(context, mediaUrl)?.let { localMediaUri ->
+                val uploadResult = collectionMediaStore.uploadMessageMediaFromUri(
+                    context = context,
+                    ownerId = cleanId,
+                    sourceUri = localMediaUri,
+                    preferredMediaType = contentType,
+                    primaryBucket = "community-media",
+                    fallbackBucket = "communities",
+                    filePrefix = "media_comm"
+                )
+                outgoingMediaUrl = uploadResult.getOrElse { error ->
+                    val retryable = CollectionRepositorySupport.isRetryableNetworkError(
+                        error as? Exception ?: Exception(error),
+                        transientNetworkRetryCodes
+                    )
+                    if (retryable) return@withContext Result.success(Unit)
+                    communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
+                    return@withContext Result.failure(error)
+                }
+                msg = msg.copy(media_url = outgoingMediaUrl)
+                communityDao.insertMessages(
+                    listOf(CommunityMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
+                )
+                updateCommunityMessageInFlow(cleanId, msg)
+                PendingOutgoingMediaStore.delete(context, localMediaUri)
+            }
+
             val msgJson = buildJsonObject {
                 put("id", msgId)
                 put("community_id", cleanId)
                 put("sender_id", senderId)
                 put("content", finalContent)
                 put("content_type", contentType)
-                put("media_url", mediaUrl)
+                put("media_url", outgoingMediaUrl)
                 put("reply_to_id", replyToId)
                 put("poll_id", pollId)
                 put("created_at", now)
@@ -2016,10 +2124,13 @@ class CommunityRepository @Inject constructor(
                         communityId = cleanId,
                         content = finalContent,
                         contentType = contentType,
-                        mediaUrl = mediaUrl,
+                        mediaUrl = outgoingMediaUrl,
                         mediaSize = 0L,
                         replyToId = replyToId,
-                        messageId = msgId
+                        messageId = msgId,
+                        isForwarded = isForwarded,
+                        forwardedFromMessageId = forwardedFromMessageId,
+                        forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
                         val synced = serverMessage.copy(community_id = cleanId, status = "sent")
                         communityDao.insertMessages(
@@ -2045,6 +2156,25 @@ class CommunityRepository @Inject constructor(
             }
             if (result.isFailure) {
                 val syncError = result.exceptionOrNull()
+                val shouldRemainQueued = syncError?.message?.contains("Sesion Ubuntu no disponible", ignoreCase = true) == true ||
+                    (syncError != null && CollectionRepositorySupport.isRetryableNetworkError(
+                        syncError as? Exception ?: Exception(syncError),
+                        transientNetworkRetryCodes
+                    ))
+                if (shouldRemainQueued) {
+                    communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
+                    communityDao.getMessageById(msgId)?.toDomain()?.let { queued -> updateCommunityMessageInFlow(cleanId, queued) }
+                    runCatching {
+                        operationGuard.audit(
+                            action = GuardedAction.COMMUNITY_MESSAGE_SEND,
+                            actorId = senderId,
+                            scopeId = cleanId,
+                            outcome = GuardOutcome.QUEUED,
+                            attributes = mapOf("message_id" to msgId, "reason" to "network_unavailable")
+                        )
+                    }
+                    return@withContext Result.success(Unit)
+                }
                 android.util.Log.e("CommunityRepository", "❌ [SERVER-FAIL] Falló subida de mensaje comunidad $msgId", syncError)
                 try {
                     operationGuard.audit(
@@ -2257,8 +2387,27 @@ class CommunityRepository @Inject constructor(
         val pending = communityDao.getPendingOutgoingMessages(maxBatch)
         if (pending.isEmpty()) return
 
-        pending.forEach { pendingEntity ->
-            if (pendingEntity.sender_id.trim().lowercase() != userId) return@forEach
+        pending.forEach { originalEntity ->
+            if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
+            var pendingEntity = originalEntity
+            PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
+                val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
+                    context = context,
+                    ownerId = pendingEntity.community_id,
+                    sourceUri = localMediaUri,
+                    preferredMediaType = pendingEntity.content_type,
+                    primaryBucket = "community-media",
+                    fallbackBucket = "communities",
+                    filePrefix = "media_comm"
+                ).getOrElse { error ->
+                    android.util.Log.w("CommunityRepository", "Pending community media still unavailable: ${pendingEntity.id}", error)
+                    return@forEach
+                }
+                pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+                communityDao.insertMessages(listOf(pendingEntity))
+                updateCommunityMessageInFlow(pendingEntity.community_id, pendingEntity.toDomain())
+                PendingOutgoingMediaStore.delete(context, localMediaUri)
+            }
 
             val payload = buildJsonObject {
                 put("id", pendingEntity.id)
@@ -2285,7 +2434,10 @@ class CommunityRepository @Inject constructor(
                         mediaUrl = pendingEntity.media_url,
                         mediaSize = 0L,
                         replyToId = pendingEntity.reply_to_id,
-                        messageId = pendingEntity.id
+                        messageId = pendingEntity.id,
+                        isForwarded = pendingEntity.is_forwarded,
+                        forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
+                        forwardedFromUserId = pendingEntity.forwarded_from_user_id
                     ).onSuccess { serverMessage ->
                         communityDao.updateMessageSyncStatus(pendingEntity.id, isSynced = true, pendingAction = null)
                         updateCommunityMessageInFlow(
@@ -2310,16 +2462,74 @@ class CommunityRepository @Inject constructor(
             filePrefix = "media_comm"
         )
 
+    suspend fun sendCommunityMediaMessage(
+        communityId: String,
+        sourceUri: android.net.Uri,
+        contentType: String,
+        content: String
+    ): Result<Unit> {
+        val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("Not authenticated"))
+        val messageId = UUID.randomUUID().toString().lowercase()
+        val pending = PendingOutgoingMediaStore.persist(
+            context = context,
+            accountId = accountId,
+            namespace = "community",
+            messageId = messageId,
+            sourceUri = sourceUri,
+            preferredMediaType = contentType
+        ).getOrElse { return Result.failure(it) }
+        return sendCommunityMessage(
+            communityId = communityId,
+            content = content,
+            contentType = contentType,
+            mediaUrl = pending.uri.toString(),
+            messageId = messageId
+        )
+    }
+
 
 
     suspend fun editCommunityMessage(messageId: String, newContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: return@withContext Result.failure(Exception("Not authenticated"))
+            val normalizedContent = newContent.trim()
+            if (normalizedContent.isBlank()) return@withContext Result.failure(Exception("El mensaje no puede estar vacío"))
+            val existing = communityDao.getMessageById(messageId)?.toDomain()
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("No token"))
+                val communityId = existing?.community_id?.trim()?.lowercase()
+                    ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
+                localFallbackApiClient.editCollectionMessage(
+                    accessToken = token,
+                    collection = "communities",
+                    roomId = communityId,
+                    messageId = messageId,
+                    content = normalizedContent
+                ).getOrElse { return@withContext Result.failure(it) }
+
+                val updated = existing.copy(content = normalizedContent, is_edited = true)
+                communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(updated)))
+                updateCommunityMessageInFlow(communityId, updated)
+                return@withContext Result.success(Unit)
+            }
+
             var updateJson = buildJsonObject {
-                put("content", newContent)
+                put("content", normalizedContent)
                 put("is_edited", true)
             }
             supabaseConfig.client.postgrest["community_messages"].update(updateJson) {
-                filter { eq("id", messageId) }
+                filter {
+                    eq("id", messageId)
+                    eq("sender_id", userId)
+                }
+            }
+            existing?.copy(content = normalizedContent, is_edited = true)?.let { updated ->
+                communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(updated)))
+                updateCommunityMessageInFlow(updated.community_id, updated)
             }
             Result.success(Unit)
         } catch (e: Exception) {
@@ -2352,6 +2562,25 @@ class CommunityRepository @Inject constructor(
                     listOf(conectate.com.data.local.entity.CommunityMessageEntity.fromDomain(optimisticMessage))
                 )
                 updateCommunityMessageInFlow(optimisticMessage.community_id, optimisticMessage)
+            }
+
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("No token"))
+                val communityId = existing?.community_id?.trim()?.lowercase()
+                    ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
+                val result = localFallbackApiClient.deleteCollectionMessage(
+                    accessToken = token,
+                    collection = "communities",
+                    roomId = communityId,
+                    messageId = messageId,
+                    forEveryone = forEveryone
+                )
+                if (result.isFailure && existing != null) {
+                    communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(existing)))
+                    updateCommunityMessageInFlow(communityId, existing)
+                }
+                return@withContext result
             }
 
             val remoteDeleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
@@ -2688,8 +2917,3 @@ class CommunityRepository @Inject constructor(
     }
 
 }
-
-
-
-
-

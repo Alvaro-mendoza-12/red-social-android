@@ -4,19 +4,34 @@ import conectate.com.core.media.MediaUploadGuard
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import android.content.Context
+import android.net.Uri
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
 import java.security.MessageDigest
+import java.net.URLDecoder
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okio.BufferedSink
 
 @Serializable
 
@@ -41,8 +56,17 @@ class StorageService @Inject constructor(
     private val authService: AuthService,
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val mediaUploadGuard: MediaUploadGuard,
-    private val appMetrics: AppMetrics
+    private val appMetrics: AppMetrics,
+    @ApplicationContext private val context: Context
 ) {
+
+    private val largeUploadClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.MINUTES)
+        .readTimeout(2, TimeUnit.MINUTES)
+        .callTimeout(20, TimeUnit.MINUTES)
+        .retryOnConnectionFailure(false)
+        .build()
 
     suspend fun uploadFile(
         bucketName: String,
@@ -188,6 +212,145 @@ class StorageService @Inject constructor(
         }
     }
 
+
+    /**
+     * Upload a large file from a [Uri] to storage, streaming it with progress callbacks.
+     * Returns a [StorageResponse] whose [StorageResponse.Key] contains the server-assigned
+     * object path (includes owner prefix), so callers must use that key when building
+     * the public URL to avoid ownership-mismatch 403 errors.
+     */
+    suspend fun uploadFileFromUri(
+        bucketName: String,
+        fileName: String,
+        sourceUri: Uri,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+        onProgress: (Float) -> Unit
+    ): Result<StorageResponse> = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
+        val normalizedPath = normalizeStoragePath(fileName)
+            ?: return@withContext Result.failure(Exception("Invalid storage path"))
+        val canonicalContentType = normalizeContentType(contentType)
+        val metricAttrs = mapOf(
+            "bucket" to bucketName,
+            "content_type" to canonicalContentType,
+            "bytes" to sizeBytes.toString()
+        )
+
+        val accessToken = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("No access token available"))
+
+        val headerBytes = try {
+            context.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                val buffer = ByteArray(512)
+                val read = stream.read(buffer)
+                if (read > 0) buffer.copyOf(read) else ByteArray(0)
+            } ?: ByteArray(0)
+        } catch (e: Exception) {
+            return@withContext Result.failure(e)
+        }
+        val validation = mediaUploadGuard.validateMetadata(
+            bucketName = bucketName,
+            fileName = normalizedPath,
+            sizeBytes = sizeBytes,
+            contentType = canonicalContentType,
+            headerBytes = headerBytes
+        )
+        if (!validation.allowed) {
+            appMetrics.recordFailure(
+                metric = "media_upload",
+                attributes = metricAttrs + ("reason" to (validation.reason ?: "validation_failed"))
+            )
+            return@withContext Result.failure(Exception(validation.reason ?: "Upload blocked by media policy"))
+        }
+
+        val isLocalFallbackUpload = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
+        val backendName = if (isLocalFallbackUpload) "local_fallback_stream" else "supabase_stream"
+        val uploadUrl = run {
+            val base = if (isLocalFallbackUpload) {
+                localFallbackApiClient.baseUrl.trimEnd('/')
+            } else {
+                config.supabaseUrl.trimEnd('/')
+            }
+            val pathSegments = normalizedPath.split("/").filter { it.isNotEmpty() }
+                .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+            "$base/storage/v1/object/$bucketName/$pathSegments"
+        }
+
+        val requestBody = object : RequestBody() {
+            override fun contentType() = canonicalContentType.toMediaTypeOrNull()
+            override fun contentLength() = sizeBytes
+            override fun writeTo(sink: BufferedSink) {
+                val buffer = ByteArray(128 * 1024)
+                var uploaded = 0L
+                val source = context.contentResolver.openInputStream(sourceUri)
+                    ?: throw java.io.IOException("Cannot open source URI")
+                source.use { stream ->
+                    var read: Int
+                    while (stream.read(buffer).also { read = it } != -1) {
+                        sink.write(buffer, 0, read)
+                        uploaded += read
+                        if (sizeBytes > 0) onProgress((uploaded.toFloat() / sizeBytes).coerceIn(0f, 1f))
+                    }
+                }
+            }
+        }
+
+        val request = Request.Builder()
+            .url(uploadUrl)
+            .put(requestBody)
+            .header("Authorization", "Bearer $accessToken")
+            .header("apikey", config.supabaseAnonKey)
+            .header("Content-Type", canonicalContentType)
+            .header("x-upsert", allowOverwrite.toString())
+            .header("cache-control", "3600")
+            .build()
+
+        try {
+            largeUploadClient.newCall(request).execute().use { response ->
+                val responseText = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    appMetrics.recordFailure("media_upload", attributes = metricAttrs + ("http_status" to response.code.toString()))
+                    return@withContext Result.failure(
+                        buildSupabaseHttpException(response.code, responseText, "No se pudo subir el archivo.")
+                    )
+                }
+                onProgress(1f)
+                appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs + ("backend" to backendName))
+                appMetrics.recordLatency(
+                    metric = "media_upload",
+                    durationMs = System.currentTimeMillis() - startedAt,
+                    attributes = metricAttrs + mapOf("backend" to backendName, "bytes" to sizeBytes.toString())
+                )
+                // Parse server response to get the real storage path (includes owner prefix)
+                val serverKey = runCatching {
+                    val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(responseText)
+                    val obj = json as? JsonObject
+                    val serverPath = obj?.get("path")?.jsonPrimitive?.content
+                    val fullKey = obj?.get("Key")?.jsonPrimitive?.content
+                    when {
+                        !serverPath.isNullOrBlank() -> serverPath.trim()
+                        !fullKey.isNullOrBlank() && fullKey.contains('/') -> fullKey.substringAfter('/')
+                        else -> null
+                    }
+                }.getOrNull() ?: normalizedPath
+                Result.success(
+                    StorageResponse(
+                        Key = serverKey,
+                        Name = serverKey,
+                        BucketId = bucketName,
+                        Size = sizeBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                        ContentType = canonicalContentType
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            appMetrics.recordFailure("media_upload", e, metricAttrs)
+            Result.failure(e)
+        }
+    }
+
     suspend fun downloadFile(bucketName: String, fileName: String): Result<ByteArray> {
         return try {
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured &&
@@ -271,6 +434,23 @@ class StorageService @Inject constructor(
         }
     }
 
+    suspend fun deleteFileByPublicUrl(publicUrl: String): Result<Unit> {
+        val marker = "/storage/v1/object/public/"
+        val normalized = publicUrl.trim().replace("\\", "/")
+        val markerIndex = normalized.indexOf(marker, ignoreCase = true)
+        if (markerIndex < 0) return Result.failure(Exception("Invalid public storage URL"))
+        val encodedReference = normalized
+            .substring(markerIndex + marker.length)
+            .substringBefore('?')
+            .substringBefore('#')
+        val segments = encodedReference.split('/').filter { it.isNotBlank() }
+        if (segments.size < 2) return Result.failure(Exception("Invalid public storage URL"))
+        val bucket = URLDecoder.decode(segments.first(), "UTF-8")
+        val objectPath = segments.drop(1)
+            .joinToString("/") { URLDecoder.decode(it, "UTF-8") }
+        return deleteFile(bucket, objectPath)
+    }
+
     suspend fun listFiles(bucketName: String, path: String = ""): Result<List<String>> {
         return try {
             var accessToken = authService.getAccessTokenAwait()
@@ -317,11 +497,15 @@ class StorageService @Inject constructor(
             if (fileName.startsWith("http", ignoreCase = true)) {
                 return UbuntuStorageUrl.rewrite(fileName).orEmpty()
             }
-            var normalizedPath = normalizeStoragePath(fileName) ?: return ""
+            var normalizedPath = normalizeStoragePath(fileName)
+                ?.removePrefix("${bucketName.trim()}/")
+                ?: return ""
             return localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath)
         }
         var baseUrl = config.supabaseUrl.removeSuffix("/")
-        var normalizedPath = normalizeStoragePath(fileName) ?: return ""
+        var normalizedPath = normalizeStoragePath(fileName)
+            ?.removePrefix("${bucketName.trim()}/")
+            ?: return ""
         // Join segments manually for simple GET URL
         val encodedFileName = normalizedPath
             .split("/")

@@ -6,6 +6,7 @@ import conectate.com.core.repository.RepositoryCallHandler
 import conectate.com.core.result.AppResult
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuRealtimeClient
+import conectate.com.data.localfallback.AccountDeletedEvents
 import conectate.com.data.model.Notification
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
@@ -397,6 +398,10 @@ class NotificationRepository @Inject constructor(
             ubuntuRealtimeClient.updateAccessToken(token)
             ubuntuRealtimeClient.subscribe("user:$userId")
             ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.event == "account_deleted") {
+                    AccountDeletedEvents.notifyAccountDeleted()
+                    return@collect
+                }
                 if (envelope.event != "notification") return@collect
                 val payload = envelope.payload["notification"]?.jsonObject ?: return@collect
                 val notification = supabaseConfig.json.decodeFromJsonElement<Notification>(payload)

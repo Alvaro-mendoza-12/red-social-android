@@ -29,6 +29,7 @@ data class CommunityEntity(
     val unread_count: Int = 0,
     val is_deleted: Boolean = false,
     val only_admins_can_talk: Boolean = false,
+    val daily_message_limit: Int = 0,
     val is_member: Boolean = false
 ) {
     fun toDomain(): Community {
@@ -45,6 +46,7 @@ data class CommunityEntity(
             last_message_at = last_message_at,
             is_deleted = is_deleted,
             only_admins_can_talk = only_admins_can_talk,
+            daily_message_limit = daily_message_limit,
             is_member = is_member
         )
     }
@@ -65,6 +67,7 @@ data class CommunityEntity(
                 unread_count = unreadCount,
                 is_deleted = community.is_deleted,
                 only_admins_can_talk = community.only_admins_can_talk,
+                daily_message_limit = community.daily_message_limit,
                 is_member = community.is_member
             )
         }

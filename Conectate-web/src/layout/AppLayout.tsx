@@ -77,7 +77,7 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
     match: (pathname) => pathname.startsWith('/app/social'),
     meta: {
       kicker: '',
-      title: 'Conéctate',
+      title: 'Novvin',
       subtitle: '',
       layout: 'wide',
     },
@@ -106,6 +106,24 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
       kicker: 'Voz',
       title: 'Salas de voz',
       subtitle: 'Entra a canales activos, escucha a la comunidad y retoma salas recientes.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/live'),
+    meta: {
+      kicker: 'Directos',
+      title: 'En vivo',
+      subtitle: 'Emite con cámara o pantalla y descubre transmisiones activas.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/proximity'),
+    meta: {
+      kicker: 'Proximidad',
+      title: 'Personas cerca',
+      subtitle: 'Radar privado y conexiones aleatorias con revelado gradual.',
       layout: 'wide',
     },
   },
@@ -184,7 +202,7 @@ function readNavCollapsedPreference(): boolean {
 function resolveShellRouteMeta(pathname: string): ShellRouteMeta {
   return (
     shellRouteMetaCatalog.find((entry) => entry.match(pathname))?.meta ?? {
-      kicker: 'Conectate Web',
+      kicker: 'Novvin Web',
       title: 'Experiencia conectada',
       subtitle: 'Mensajes, social, videos y voz listos para trabajar como una app diaria.',
       layout: 'wide',
@@ -800,7 +818,7 @@ export function AppLayout() {
             <div className="incoming-call-copy">
               <span>{incomingCall.isVideo ? 'Videollamada entrante' : 'Llamada entrante'}</span>
               <strong>{incomingCall.callerName}</strong>
-              <p>{incomingCall.title || 'Conectate'}</p>
+              <p>{incomingCall.title || 'Novvin'}</p>
             </div>
             <div className="incoming-call-actions">
               <button className="incoming-call-btn decline" type="button" onClick={declineIncomingCall}>
@@ -827,10 +845,10 @@ export function AppLayout() {
 
         <div className={isNavCollapsed ? 'brand-block rail-brand' : 'brand-block row-between'}>
           <Link to="/app/messages" className={isNavCollapsed ? 'brand-link compact' : 'brand-link'}>
-            <img src="/conectate-logo.svg" alt="Conectate" className="brand-logo" />
+            <img src="/conectate-logo.svg" alt="Novvin" className="brand-logo" />
             {!isNavCollapsed ? (
               <span className="brand-copy">
-                <strong>Conectate</strong>
+                <strong>Novvin</strong>
                 <small>Web</small>
               </span>
             ) : null}

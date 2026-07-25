@@ -32,9 +32,9 @@ class RankingRepository @Inject constructor(
             if (supabaseConfig.isLocalFallbackPrimary) {
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(Exception("No access token available"))
-                val response = supabaseConfig.httpClient.get("${localFallbackApiClient.baseUrl}/v1/data/profiles/search") {
+                val response = supabaseConfig.httpClient.get("${localFallbackApiClient.baseUrl}/v1/data/profiles/ranking") {
                     header("Authorization", "Bearer $token")
-                    parameter("q", "")
+                    parameter("metric", if (filter == "posts") "posts" else "followers")
                     parameter("limit", "100")
                 }
                 if (!response.status.isSuccess()) {

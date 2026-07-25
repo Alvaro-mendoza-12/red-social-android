@@ -1,0 +1,14 @@
+[Unit]
+Description=Conectate private translation service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/alvaro
+ExecStart=/home/alvaro/conectate-translator-venv/bin/libretranslate --host 172.17.0.1 --port 5000 --load-only es,en,pt,fr --disable-web-ui --disable-files-translation --char-limit 1200 --threads 2
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

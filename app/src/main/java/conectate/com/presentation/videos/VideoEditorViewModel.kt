@@ -1,6 +1,7 @@
 package conectate.com.presentation.videos
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.media.MediaCodecInfo
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -13,6 +14,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.Brightness
@@ -23,6 +25,7 @@ import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbFilter
 import androidx.media3.effect.SpeedChangeEffect
+import androidx.media3.effect.TimestampWrapper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.Composition
@@ -35,20 +38,24 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
-import com.google.common.collect.ImmutableList
 import conectate.com.util.VideoDeviceTier
 import conectate.com.util.VideoPerformanceProfile
 import conectate.com.util.VideoPerformanceProfiles
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.ByteBuffer
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @HiltViewModel
 class VideoEditorViewModel @Inject constructor() : ViewModel() {
@@ -58,6 +65,9 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     private val _exportProgress = MutableStateFlow(0f)
     val exportProgress = _exportProgress.asStateFlow()
+
+    private val _exportStage = MutableStateFlow(EditorExportStage.IDLE)
+    val exportStage = _exportStage.asStateFlow()
 
     private val _timeline = MutableStateFlow(EditorTimeline())
     val timeline = _timeline.asStateFlow()
@@ -77,7 +87,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private val _editorHint = MutableStateFlow<String?>(null)
     val editorHint = _editorHint.asStateFlow()
 
+    private val _timelineThumbnails = MutableStateFlow<List<TimelineThumbnail>>(emptyList())
+    val timelineThumbnails = _timelineThumbnails.asStateFlow()
+
+    private val _isPreparingTimeline = MutableStateFlow(false)
+    val isPreparingTimeline = _isPreparingTimeline.asStateFlow()
+
     private var exoPlayer: ExoPlayer? = null
+    private var thumbnailJob: Job? = null
+    private var thumbnailRequestId = 0
 
     fun getPlayer(context: Context): ExoPlayer {
         if (exoPlayer == null) {
@@ -92,8 +110,14 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
+        thumbnailRequestId += 1
+        thumbnailJob?.cancel()
         exoPlayer?.release()
         exoPlayer = null
+        _timelineThumbnails.value.forEach { thumbnail ->
+            if (!thumbnail.bitmap.isRecycled) thumbnail.bitmap.recycle()
+        }
+        _timelineThumbnails.value = emptyList()
     }
 
     fun setExportQuality(quality: ExportQuality) {
@@ -131,29 +155,87 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val initialClip = EditorClip(
             id = System.currentTimeMillis(),
             uri = uri,
-            durationMs = durationMs
+            durationMs = durationMs,
+            sourceDurationMs = durationMs
         )
         _timeline.value = EditorTimeline(
             tracks = listOf(mainTrack.copy(clips = listOf(initialClip)))
         )
+        _selectedClipId.value = initialClip.id
+        _currentTimeMs.value = 0L
 
-        val player = getPlayer(context)
-        player.setMediaItem(MediaItem.fromUri(uri))
-        player.prepare()
-        player.setPlaybackSpeed(1f)
+        getPlayer(context).setPlaybackSpeed(1f)
+        syncTimelineWithPlayer()
+        loadTimelineThumbnails(context.applicationContext, uri, durationMs, profile)
         _editorHint.value = "Modo ${profile.label}"
+    }
+
+    private fun loadTimelineThumbnails(
+        context: Context,
+        uri: Uri,
+        durationMs: Long,
+        profile: VideoPerformanceProfile
+    ) {
+        thumbnailJob?.cancel()
+        val requestId = ++thumbnailRequestId
+        _isPreparingTimeline.value = true
+        val frameCount = when (profile.tier) {
+            VideoDeviceTier.LOW -> 6
+            VideoDeviceTier.BALANCED -> 8
+            VideoDeviceTier.HIGH -> 10
+        }
+        thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            val frames = mutableListOf<TimelineThumbnail>()
+            try {
+                retriever.setDataSource(context, uri)
+                calculateTimelineThumbnailTimes(durationMs, frameCount).forEach { timeMs ->
+                    val source = retriever.getFrameAtTime(
+                        timeMs * 1_000L,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    ) ?: return@forEach
+                    val targetWidth = 160
+                    val targetHeight = ((source.height.toFloat() / source.width.coerceAtLeast(1)) * targetWidth)
+                        .roundToInt()
+                        .coerceIn(72, 160)
+                    val scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+                    if (scaled !== source) source.recycle()
+                    frames += TimelineThumbnail(timeMs = timeMs, bitmap = scaled)
+                }
+                if (requestId == thumbnailRequestId) {
+                    _timelineThumbnails.value = frames
+                } else {
+                    frames.forEach { frame ->
+                        if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                frames.forEach { frame ->
+                    if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
+                }
+                throw cancelled
+            } catch (_: Throwable) {
+                frames.forEach { frame ->
+                    if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
+                }
+                if (requestId == thumbnailRequestId) {
+                    _timelineThumbnails.value = emptyList()
+                }
+            } finally {
+                runCatching { retriever.release() }
+                if (requestId == thumbnailRequestId) {
+                    _isPreparingTimeline.value = false
+                }
+            }
+        }
     }
 
     private fun syncTimelineWithPlayer() {
         val player = exoPlayer ?: return
-        val videoClips = _timeline.value.tracks
-            .firstOrNull { it.type == TrackType.VIDEO }
-            ?.clips
-            ?.filter { it.uri != null }
-            .orEmpty()
+        val videoClips = previewVideoClips()
         if (videoClips.isEmpty()) return
 
-        val currentPosition = player.currentPosition
+        val currentTimelinePosition = _currentTimeMs.value
         val wasPlaying = player.isPlaying
 
         player.setMediaItems(
@@ -162,15 +244,71 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                     .setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder()
                             .setStartPositionMs(clip.startOffsetMs)
-                            .setEndPositionMs(clip.startOffsetMs + clip.durationMs)
+                            .setEndPositionMs(
+                                (clip.startOffsetMs + clip.durationMs).coerceAtMost(
+                                    clip.sourceDurationMs.takeIf { it > 0L }
+                                        ?: (clip.startOffsetMs + clip.durationMs)
+                                )
+                            )
                             .build()
                     )
                     .build()
             }
         )
         player.prepare()
-        player.seekTo(currentPosition)
+        seekPlayerToTimelineTime(currentTimelinePosition)
+        syncSelectedClipPreview()
         if (wasPlaying) player.play()
+    }
+
+    private fun previewVideoClips(): List<EditorClip> {
+        return _timeline.value.tracks
+            .firstOrNull { it.type == TrackType.VIDEO }
+            ?.clips
+            ?.filter { it.uri != null && it.durationMs > 0L }
+            ?.sortedBy { it.startMs }
+            .orEmpty()
+    }
+
+    private fun seekPlayerToTimelineTime(requestedTimeMs: Long) {
+        val player = exoPlayer ?: return
+        val clips = previewVideoClips()
+        if (clips.isEmpty()) return
+        val durationMs = clips.maxOfOrNull { it.endMs } ?: 0L
+        val safeTime = requestedTimeMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+        val index = clips.indexOfFirst { safeTime < it.endMs }
+            .takeIf { it >= 0 }
+            ?: clips.lastIndex
+        val clip = clips[index]
+        val relativePosition = (safeTime - clip.startMs).coerceIn(0L, clip.durationMs)
+        player.seekTo(index, relativePosition)
+        _currentTimeMs.value = clip.startMs + relativePosition
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun syncSelectedClipPreview() {
+        val clip = _selectedClipId.value?.let(::findClipById)
+            ?.takeIf { it.type == ClipType.VIDEO }
+            ?: _timeline.value.tracks
+                .firstOrNull { it.type == TrackType.VIDEO }
+                ?.clips
+                ?.firstOrNull()
+        val player = exoPlayer ?: return
+        if (clip == null) {
+            player.setVideoEffects(emptyList())
+            player.volume = 1f
+            return
+        }
+        val effects = mutableListOf<Effect>()
+        clip.aspectRatio.ratio?.let { ratio ->
+            effects += Presentation.createForAspectRatio(
+                ratio,
+                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
+            )
+        }
+        effects += buildColorEffects(clip)
+        player.setVideoEffects(effects)
+        player.volume = clip.originalAudioVolume.coerceIn(0f, 1f)
     }
 
     private fun findClipById(clipId: Long): EditorClip? {
@@ -185,66 +323,45 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val maxSpeed = (_performanceProfile.value?.editorMaxSpeed ?: 3f).coerceAtLeast(1f)
         val speed = id?.let { findClipById(it)?.speed }?.coerceIn(0.5f, maxSpeed) ?: 1f
         player.setPlaybackSpeed(speed)
+        syncSelectedClipPreview()
     }
 
     fun updateCurrentTime(timeMs: Long) {
-        _currentTimeMs.value = timeMs
-        exoPlayer?.seekTo(timeMs)
+        seekPlayerToTimelineTime(timeMs)
+    }
+
+    /** Advances the visible playhead from the decoder without forcing another seek. */
+    fun updatePlaybackPosition() {
+        val player = exoPlayer ?: return
+        val clips = previewVideoClips()
+        val clip = clips.getOrNull(player.currentMediaItemIndex) ?: return
+        _currentTimeMs.value = (clip.startMs + player.currentPosition)
+            .coerceIn(clip.startMs, clip.endMs)
     }
 
     fun duplicateClip(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long) {
         val current = _timeline.value
-        var clipToDuplicate: EditorClip? = null
-        var trackType: TrackType? = null
-        current.tracks.forEach { track ->
-            track.clips.find { it.id == clipId }?.let {
-                clipToDuplicate = it
-                trackType = track.type
-            }
-        }
-        if (clipToDuplicate != null && trackType != null) {
-            val original = clipToDuplicate!!
-            val newClip = original.copy(
-                id = System.currentTimeMillis() + (0..1000).random(),
-                startMs = original.endMs
-            )
-            _timeline.value = _timeline.value.copy(
-                tracks = _timeline.value.tracks.map { track ->
-                    if (track.type == trackType) {
-                        val list = track.clips.toMutableList()
-                        val idx = list.indexOfFirst { it.id == clipId }
-                        if (idx != -1) list.add(idx + 1, newClip)
-                        track.copy(clips = list)
-                    } else track
-                }
-            )
+        val updated = current.duplicateClipAfter(
+            clipId = clipId,
+            newClipId = System.currentTimeMillis() + (0..1000).random()
+        )
+        if (updated != current) {
+            _timeline.value = updated
             syncTimelineWithPlayer()
         }
     }
 
     fun splitClip(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, atTimeMs: Long) {
-        _timeline.value = _timeline.value.copy(
-            tracks = _timeline.value.tracks.map { track ->
-                val clipIndex = track.clips.indexOfFirst { it.id == clipId }
-                if (clipIndex == -1) return@map track
-                val clip = track.clips[clipIndex]
-                val relativeTime = atTimeMs - clip.startMs
-                if (relativeTime <= 0 || relativeTime >= clip.durationMs) return@map track
-                val first = clip.copy(durationMs = relativeTime)
-                val second = clip.copy(
-                    id = System.currentTimeMillis() + 1,
-                    startMs = atTimeMs,
-                    startOffsetMs = clip.startOffsetMs + relativeTime,
-                    durationMs = clip.durationMs - relativeTime
-                )
-                val list = track.clips.toMutableList()
-                list.removeAt(clipIndex)
-                list.add(clipIndex, first)
-                list.add(clipIndex + 1, second)
-                track.copy(clips = list)
-            }
+        val current = _timeline.value
+        val updated = current.splitClipAt(
+            clipId = clipId,
+            atTimeMs = atTimeMs,
+            newClipId = System.currentTimeMillis() + 1L
         )
-        syncTimelineWithPlayer()
+        if (updated != current) {
+            _timeline.value = updated
+            syncTimelineWithPlayer()
+        }
     }
 
     fun removeClip(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long) {
@@ -252,7 +369,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             tracks = _timeline.value.tracks.map { track ->
                 track.copy(clips = track.clips.filter { it.id != clipId })
             }
-        )
+        ).reflowVideoTracks()
         if (_selectedClipId.value == clipId) {
             _selectedClipId.value = null
             exoPlayer?.setPlaybackSpeed(1f)
@@ -279,6 +396,22 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         if (_selectedClipId.value == clipId) exoPlayer?.setPlaybackSpeed(clamped)
     }
 
+    fun updateClipTrim(context: Context, clipId: Long, trimStartMs: Long, trimEndMs: Long) {
+        val clip = findClipById(clipId) ?: return
+        val sourceDuration = clip.sourceDurationMs
+            .takeIf { it > 0L }
+            ?: resolveDurationMs(context, clip.uri ?: return)
+        val safeRange = sanitizeTrimRange(sourceDuration, trimStartMs, trimEndMs)
+        _timeline.value = _timeline.value.updateClip(clipId) {
+            it.copy(
+                startOffsetMs = safeRange.first,
+                durationMs = safeRange.last - safeRange.first
+            )
+        }.reflowVideoTracks()
+        _currentTimeMs.value = clip.startMs
+        syncTimelineWithPlayer()
+    }
+
     private fun canAddOverlay(): Boolean {
         val maxOverlays = _performanceProfile.value?.editorOverlayLimit ?: 8
         val currentCount = _timeline.value.tracks
@@ -295,6 +428,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         if (!canAddOverlay()) return
         val cleanText = text.trim().take(140)
         if (cleanText.isBlank()) return
+        val projectDurationMs = _timeline.value.durationMs().coerceAtLeast(500L)
+        val overlayStartMs = timeMs.coerceIn(0L, (projectDurationMs - 500L).coerceAtLeast(0L))
         val tracks = _timeline.value.tracks.toMutableList()
         var textTrackIndex = tracks.indexOfFirst { it.type == TrackType.TEXT }
         if (textTrackIndex == -1) {
@@ -305,8 +440,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             id = System.currentTimeMillis(),
             type = ClipType.TEXT,
             text = cleanText,
-            startMs = timeMs,
-            durationMs = 5000L,
+            startMs = overlayStartMs,
+            durationMs = (projectDurationMs - overlayStartMs).coerceIn(500L, 5_000L),
             fontSize = 32f
         )
         tracks[textTrackIndex] = tracks[textTrackIndex].copy(clips = tracks[textTrackIndex].clips + newClip)
@@ -323,6 +458,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     fun addStickerOverlay(@Suppress("UNUSED_PARAMETER") context: Context, resId: Int, timeMs: Long) {
         if (!canAddOverlay()) return
+        val projectDurationMs = _timeline.value.durationMs().coerceAtLeast(500L)
+        val overlayStartMs = timeMs.coerceIn(0L, (projectDurationMs - 500L).coerceAtLeast(0L))
         val tracks = _timeline.value.tracks.toMutableList()
         var stickerTrackIndex = tracks.indexOfFirst { it.type == TrackType.STICKER }
         if (stickerTrackIndex == -1) {
@@ -333,8 +470,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             id = System.currentTimeMillis(),
             type = ClipType.STICKER,
             resId = resId,
-            startMs = timeMs,
-            durationMs = 3000L
+            startMs = overlayStartMs,
+            durationMs = (projectDurationMs - overlayStartMs).coerceIn(500L, 3_000L)
         )
         tracks[stickerTrackIndex] = tracks[stickerTrackIndex].copy(clips = tracks[stickerTrackIndex].clips + newClip)
         _timeline.value = _timeline.value.copy(tracks = tracks)
@@ -352,6 +489,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             _exportProgress.value = 0f
+            _exportStage.value = EditorExportStage.PREPARING
 
             val primary = resolveExportConfig(profile, _selectedExportQuality.value)
             val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 2_400_000), 96_000)
@@ -361,21 +499,29 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
             for ((index, config) in attempts.withIndex()) {
                 try {
-                    if (index > 0) _editorHint.value = "Reintentando con perfil compatible."
+                    if (index > 0) {
+                        _editorHint.value = "Reintentando con perfil compatible."
+                        _exportStage.value = EditorExportStage.OPTIMIZING
+                    }
                     successUri = runExportAttempt(context, timeline, profile, config)
-                    if (successUri != null) break
+                    break
                 } catch (e: Throwable) {
                     lastError = e
                 }
             }
 
             _isExporting.value = false
-            if (successUri != null) {
+            val exportedUri = successUri
+            if (exportedUri != null) {
                 _exportProgress.value = 1f
-                onSuccess(successUri!!)
+                _exportStage.value = EditorExportStage.COMPLETED
+                withContext(Dispatchers.Main) { onSuccess(exportedUri) }
             } else {
                 _exportProgress.value = 0f
-                onError(lastError?.message ?: "No se pudo exportar el video")
+                _exportStage.value = EditorExportStage.FAILED
+                withContext(Dispatchers.Main) {
+                    onError(lastError?.message ?: "No se pudo exportar el video")
+                }
             }
         }
     }
@@ -405,6 +551,9 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
                 val videoEffects = buildClipEffects(context, clip, timeline, profile, config)
                 val audioProcessors = mutableListOf<AudioProcessor>()
+                if (abs(clip.originalAudioVolume - 1f) > 0.01f) {
+                    audioProcessors += VolumeAudioProcessor(clip.originalAudioVolume)
+                }
                 if (abs(clip.speed - 1f) > 0.01f) {
                     val speedProvider = object : SpeedProvider {
                         override fun getSpeed(timeUs: Long): Float = clip.speed.coerceIn(0.5f, 4f)
@@ -429,9 +578,42 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 sequences += EditedMediaItemSequence(items)
             }
         }
+        val musicClips = timeline.tracks
+            .filter { it.type == TrackType.AUDIO }
+            .flatMap { it.clips }
+            .filter { it.type == ClipType.AUDIO && it.uri != null }
+        musicClips.forEach { clip ->
+            val sourceDuration = clip.sourceDurationMs
+                .takeIf { it > 0L }
+                ?: clip.durationMs.coerceAtLeast(1_000L)
+            val playableDuration = minOf(sourceDuration, clip.durationMs.coerceAtLeast(1_000L))
+            val musicItem = MediaItem.fromUri(clip.uri!!).buildUpon()
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs(clip.startOffsetMs.coerceAtLeast(0L))
+                        .setEndPositionMs(
+                            (clip.startOffsetMs + playableDuration).coerceAtMost(sourceDuration)
+                        )
+                        .build()
+                )
+                .build()
+            val audioEffects = mutableListOf<AudioProcessor>()
+            if (abs(clip.musicVolume - 1f) > 0.01f) {
+                audioEffects += VolumeAudioProcessor(clip.musicVolume)
+            }
+            val editedMusic = EditedMediaItem.Builder(musicItem)
+                .setRemoveVideo(true)
+                .setEffects(Effects(audioEffects, emptyList()))
+                .build()
+            sequences += EditedMediaItemSequence.Builder(editedMusic)
+                .setIsLooping(clip.durationMs > playableDuration)
+                .build()
+        }
         if (sequences.isEmpty()) throw IllegalStateException("No hay secuencias válidas")
 
-        val composition = Composition.Builder(sequences).build()
+        val composition = Composition.Builder(sequences)
+            .experimentalSetForceAudioTrack(musicClips.isNotEmpty())
+            .build()
         val videoSettings = VideoEncoderSettings.Builder()
             .setBitrate(config.videoBitrate)
             .setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
@@ -466,11 +648,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             })
             .build()
 
+        _exportStage.value = EditorExportStage.RENDERING
         transformer.start(composition, outputFile.absolutePath)
         val holder = ProgressHolder()
         while (!done.isCompleted) {
             if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
                 _exportProgress.value = holder.progress / 100f
+                if (holder.progress >= 95) {
+                    _exportStage.value = EditorExportStage.FINALIZING
+                }
             }
             delay(220)
         }
@@ -493,22 +679,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         }
         effects += Presentation.createForHeight(config.videoHeight)
 
-        if (abs(clip.brightness) > 0.01f) effects += Brightness(clip.brightness.coerceIn(-1f, 1f))
-        val c = (clip.contrast - 1f).coerceIn(-0.9f, 0.9f)
-        if (abs(c) > 0.01f) effects += Contrast(c)
-        val sat = ((clip.saturation - 1f) * 100f).coerceIn(-100f, 100f)
-        if (abs(sat) > 0.5f) effects += HslAdjustment.Builder().adjustSaturation(sat).build()
+        effects += buildColorEffects(clip)
 
-        when (clip.filterType) {
-            FilterType.NONE -> Unit
-            FilterType.BLACK_WHITE -> effects += RgbFilter.createGrayscaleFilter()
-            FilterType.SEPIA -> effects += HslAdjustment.Builder().adjustHue(18f).adjustSaturation(-20f).build()
-            FilterType.VINTAGE -> effects += HslAdjustment.Builder().adjustSaturation(-12f).adjustLightness(-6f).build()
-            FilterType.HIGH_CONTRAST -> effects += Contrast(0.42f)
-            FilterType.HIGH_SATURATION -> effects += HslAdjustment.Builder().adjustSaturation(45f).build()
-        }
-
-        val overlays = mutableListOf<androidx.media3.effect.TextureOverlay>()
         timeline.tracks
             .filter { it.type == TrackType.TEXT || it.type == TrackType.STICKER }
             .flatMap { it.clips }
@@ -523,9 +695,53 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 val xPos = ((overlay.x / 500f) - 1f).coerceIn(-1f, 1f)
                 val yPos = (1f - (overlay.y / 500f)).coerceIn(-1f, 1f)
                 val settings = OverlaySettings.Builder().setBackgroundFrameAnchor(xPos, yPos).build()
-                overlays += BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
+                val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
+                val visibleStartMs = (maxOf(overlay.startMs, clip.startMs) - clip.startMs)
+                    .coerceAtLeast(0L)
+                val visibleEndMs = (minOf(overlay.endMs, clip.endMs) - clip.startMs)
+                    .coerceAtMost(clip.durationMs)
+                if (visibleEndMs > visibleStartMs) {
+                    effects += TimestampWrapper(
+                        OverlayEffect(
+                            listOf<androidx.media3.effect.TextureOverlay>(bitmapOverlay)
+                        ),
+                        visibleStartMs * 1_000L,
+                        visibleEndMs * 1_000L
+                    )
+                }
             }
-        if (overlays.isNotEmpty()) effects += OverlayEffect(ImmutableList.copyOf(overlays))
+        return effects
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun buildColorEffects(clip: EditorClip): List<Effect> {
+        val effects = mutableListOf<Effect>()
+        if (abs(clip.brightness) > 0.01f) {
+            effects += Brightness(clip.brightness.coerceIn(-1f, 1f))
+        }
+        val contrast = (clip.contrast - 1f).coerceIn(-0.9f, 0.9f)
+        if (abs(contrast) > 0.01f) effects += Contrast(contrast)
+        val saturation = ((clip.saturation - 1f) * 100f).coerceIn(-100f, 100f)
+        if (abs(saturation) > 0.5f) {
+            effects += HslAdjustment.Builder().adjustSaturation(saturation).build()
+        }
+
+        when (clip.filterType) {
+            FilterType.NONE -> Unit
+            FilterType.BLACK_WHITE -> effects += RgbFilter.createGrayscaleFilter()
+            FilterType.SEPIA -> effects += HslAdjustment.Builder()
+                .adjustHue(18f)
+                .adjustSaturation(-20f)
+                .build()
+            FilterType.VINTAGE -> effects += HslAdjustment.Builder()
+                .adjustSaturation(-12f)
+                .adjustLightness(-6f)
+                .build()
+            FilterType.HIGH_CONTRAST -> effects += Contrast(0.42f)
+            FilterType.HIGH_SATURATION -> effects += HslAdjustment.Builder()
+                .adjustSaturation(45f)
+                .build()
+        }
         return effects
     }
 
@@ -590,33 +806,38 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 saturation = saturation.coerceIn(0f, 2f)
             )
         }
-        syncTimelineWithPlayer()
+        syncSelectedClipPreview()
     }
 
     fun applyFilter(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, filterType: FilterType) {
         _timeline.value = _timeline.value.updateClip(clipId) { it.copy(filterType = filterType) }
-        syncTimelineWithPlayer()
+        syncSelectedClipPreview()
     }
 
     fun setAspectRatio(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, aspectRatio: AspectRatio) {
         _timeline.value = _timeline.value.updateClip(clipId) { it.copy(aspectRatio = aspectRatio) }
-        syncTimelineWithPlayer()
+        syncSelectedClipPreview()
     }
 
-    fun addMusicTrack(@Suppress("UNUSED_PARAMETER") context: Context, musicUri: Uri) {
+    fun addMusicTrack(context: Context, musicUri: Uri) {
         val tracks = _timeline.value.tracks.toMutableList()
         var audioTrackIndex = tracks.indexOfFirst { it.type == TrackType.AUDIO }
         if (audioTrackIndex == -1) {
             tracks.add(EditorTrack(type = TrackType.AUDIO))
             audioTrackIndex = tracks.size - 1
         }
-        val duration = tracks.find { it.type == TrackType.VIDEO }?.clips?.firstOrNull()?.durationMs ?: 30_000L
+        val duration = tracks.find { it.type == TrackType.VIDEO }
+            ?.clips
+            ?.maxOfOrNull { it.endMs }
+            ?: 30_000L
+        val sourceDuration = resolveDurationMs(context, musicUri)
         val musicClip = EditorClip(
             id = System.currentTimeMillis(),
             type = ClipType.AUDIO,
             uri = musicUri,
             startMs = 0,
-            durationMs = duration
+            durationMs = duration,
+            sourceDurationMs = sourceDuration
         )
         tracks[audioTrackIndex] = tracks[audioTrackIndex].copy(clips = listOf(musicClip))
         _timeline.value = _timeline.value.copy(tracks = tracks)
@@ -624,6 +845,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     fun setOriginalAudioVolume(clipId: Long, volume: Float) {
         _timeline.value = _timeline.value.updateClip(clipId) { it.copy(originalAudioVolume = volume.coerceIn(0f, 1f)) }
+        if (_selectedClipId.value == clipId) syncSelectedClipPreview()
     }
 
     fun setMusicVolume(volume: Float) {
@@ -671,6 +893,7 @@ data class EditorClip(
     val resId: Int? = null,
     val startMs: Long = 0,
     val durationMs: Long = 0,
+    val sourceDurationMs: Long = 0,
     val startOffsetMs: Long = 0,
     val volume: Float = 1.0f,
     val speed: Float = 1.0f,
@@ -713,4 +936,141 @@ enum class ExportQuality(val label: String) {
     PERFORMANCE("Rendimiento"),
     BALANCED("Equilibrado"),
     HIGH("Alta")
+}
+
+enum class EditorExportStage(val label: String) {
+    IDLE("Listo para exportar"),
+    PREPARING("Preparando proyecto"),
+    OPTIMIZING("Optimizando para tu equipo"),
+    RENDERING("Procesando video"),
+    FINALIZING("Finalizando archivo"),
+    COMPLETED("Video listo"),
+    FAILED("No se pudo exportar")
+}
+
+data class TimelineThumbnail(
+    val timeMs: Long,
+    val bitmap: Bitmap
+)
+
+internal fun calculateTimelineThumbnailTimes(durationMs: Long, requestedCount: Int): List<Long> {
+    val safeDuration = durationMs.coerceAtLeast(1L)
+    val count = requestedCount.coerceIn(1, 12)
+    val segment = safeDuration.toDouble() / count
+    return List(count) { index ->
+        ((index + 0.5) * segment)
+            .toLong()
+            .coerceIn(0L, safeDuration - 1L)
+    }
+}
+
+internal fun EditorTimeline.durationMs(): Long {
+    val videoDuration = tracks.asSequence()
+        .filter { it.type == TrackType.VIDEO }
+        .flatMap { it.clips.asSequence() }
+        .maxOfOrNull { it.endMs }
+        ?.coerceAtLeast(0L)
+    if (videoDuration != null && videoDuration > 0L) return videoDuration
+    return tracks.asSequence()
+        .flatMap { it.clips.asSequence() }
+        .maxOfOrNull { it.endMs }
+        ?.coerceAtLeast(0L)
+        ?: 0L
+}
+
+internal fun EditorTimeline.reflowVideoTracks(): EditorTimeline {
+    return copy(
+        tracks = tracks.map { track ->
+            if (track.type != TrackType.VIDEO) return@map track
+            var cursorMs = 0L
+            track.copy(
+                clips = track.clips.map { clip ->
+                    clip.copy(startMs = cursorMs).also { cursorMs += it.durationMs }
+                }
+            )
+        }
+    )
+}
+
+internal fun EditorTimeline.duplicateClipAfter(clipId: Long, newClipId: Long): EditorTimeline {
+    var changed = false
+    val updated = copy(
+        tracks = tracks.map { track ->
+            val index = track.clips.indexOfFirst { it.id == clipId }
+            if (index < 0) return@map track
+            val original = track.clips[index]
+            val clips = track.clips.toMutableList().apply {
+                add(index + 1, original.copy(id = newClipId, startMs = original.endMs))
+            }
+            changed = true
+            track.copy(clips = clips)
+        }
+    )
+    return if (changed) updated.reflowVideoTracks() else this
+}
+
+internal fun EditorTimeline.splitClipAt(
+    clipId: Long,
+    atTimeMs: Long,
+    newClipId: Long
+): EditorTimeline {
+    var changed = false
+    val updated = copy(
+        tracks = tracks.map { track ->
+            val index = track.clips.indexOfFirst { it.id == clipId }
+            if (index < 0) return@map track
+            val clip = track.clips[index]
+            val relativeTimeMs = atTimeMs - clip.startMs
+            if (relativeTimeMs <= 0L || relativeTimeMs >= clip.durationMs) return@map track
+            val first = clip.copy(durationMs = relativeTimeMs)
+            val second = clip.copy(
+                id = newClipId,
+                startMs = atTimeMs,
+                startOffsetMs = clip.startOffsetMs + relativeTimeMs,
+                durationMs = clip.durationMs - relativeTimeMs
+            )
+            val clips = track.clips.toMutableList().apply {
+                removeAt(index)
+                add(index, first)
+                add(index + 1, second)
+            }
+            changed = true
+            track.copy(clips = clips)
+        }
+    )
+    return if (changed) updated.reflowVideoTracks() else this
+}
+
+internal fun sanitizeTrimRange(
+    sourceDurationMs: Long,
+    requestedStartMs: Long,
+    requestedEndMs: Long
+): LongRange {
+    val duration = sourceDurationMs.coerceAtLeast(1_000L)
+    val minimumClipDuration = minOf(1_000L, duration)
+    val start = requestedStartMs.coerceIn(0L, duration - minimumClipDuration)
+    val end = requestedEndMs.coerceIn(start + minimumClipDuration, duration)
+    return start..end
+}
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private class VolumeAudioProcessor(gain: Float) : BaseAudioProcessor() {
+    private val gain = gain.coerceIn(0f, 1f)
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val output = replaceOutputBuffer(inputBuffer.remaining())
+        while (inputBuffer.remaining() >= Short.SIZE_BYTES) {
+            val sample = inputBuffer.short.toInt()
+            val scaled = (sample * gain).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            output.putShort(scaled.toShort())
+        }
+        output.flip()
+    }
 }

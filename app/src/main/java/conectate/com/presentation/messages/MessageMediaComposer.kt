@@ -1,0 +1,878 @@
+package conectate.com.presentation.messages
+
+import android.Manifest
+import android.content.ContentUris
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.ImageDecoder
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Hd
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Locale
+import java.util.UUID
+import kotlin.math.max
+
+data class OutgoingMessageMedia(
+    val uri: Uri,
+    val type: String
+)
+
+private data class DeviceMedia(
+    val id: Long,
+    val uri: Uri,
+    val type: String,
+    val durationMs: Long,
+    val dateAdded: Long
+)
+
+private data class ComposerEditState(
+    val rotateQuarterTurns: Int = 0,
+    val drawEnabled: Boolean = false,
+    val brushColor: Color = Color.White,
+    val overlayText: String = "",
+    val overlayEmoji: String = "",
+    val strokes: List<List<Offset>> = emptyList(),
+    val previewSize: IntSize = IntSize.Zero
+)
+
+@Composable
+fun MessageMediaComposer(
+    initialFilter: String = "all",
+    initialSelectedUris: List<Pair<Uri, String>> = emptyList(),
+    initialStep: String = "gallery",
+    isSending: Boolean,
+    onDismiss: () -> Unit,
+    onSend: (List<OutgoingMessageMedia>, String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var filter by remember(initialFilter) { mutableStateOf(initialFilter) }
+    var isLoading by remember { mutableStateOf(true) }
+    var media by remember { mutableStateOf<List<DeviceMedia>>(emptyList()) }
+    val selected = remember { mutableStateListOf<DeviceMedia>() }
+    val edits = remember { mutableStateMapOf<Uri, ComposerEditState>() }
+    var step by remember { mutableStateOf(initialStep) }
+    var activeIndex by remember { mutableStateOf(0) }
+    var caption by remember { mutableStateOf("") }
+    var preparing by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val permissions = remember {
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
+    var hasPermission by remember {
+        mutableStateOf(permissions.any { permission ->
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        })
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        hasPermission = result.values.any { it }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission) permissionLauncher.launch(permissions)
+    }
+
+    LaunchedEffect(initialSelectedUris) {
+        if (initialSelectedUris.isNotEmpty() && selected.isEmpty()) {
+            selected.addAll(initialSelectedUris.map {
+                DeviceMedia(
+                    id = it.first.hashCode().toLong(),
+                    uri = it.first,
+                    type = if (it.second.startsWith("video")) "video" else "image",
+                    durationMs = 0L,
+                    dateAdded = 0L
+                )
+            })
+        }
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (!hasPermission) {
+            isLoading = false
+            return@LaunchedEffect
+        }
+        isLoading = true
+        media = withContext(Dispatchers.IO) { loadMessageGalleryMedia(context) }
+        isLoading = false
+    }
+
+    Dialog(
+        onDismissRequest = { if (!isSending && !preparing) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+            when (step) {
+                "gallery" -> MessageGalleryStep(
+                    media = media,
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    selected = selected,
+                    isLoading = isLoading,
+                    hasPermission = hasPermission,
+                    onDismiss = onDismiss,
+                    onToggle = { item ->
+                        if (selected.any { it.uri == item.uri }) {
+                            selected.removeAll { it.uri == item.uri }
+                        } else if (selected.size < 30) {
+                            selected.add(item)
+                        }
+                    },
+                    onContinue = {
+                        if (selected.isNotEmpty()) {
+                            activeIndex = 0
+                            step = "editor"
+                        }
+                    }
+                )
+                else -> MessageEditorStep(
+                    selected = selected,
+                    edits = edits,
+                    activeIndex = activeIndex.coerceIn(0, (selected.size - 1).coerceAtLeast(0)),
+                    caption = caption,
+                    isSending = isSending || preparing,
+                    error = error,
+                    onCaptionChange = { caption = it.take(800) },
+                    onBack = { step = "gallery" },
+                    onDismiss = onDismiss,
+                    onActiveIndexChange = { activeIndex = it.coerceIn(0, selected.lastIndex) },
+                    onRemove = { item ->
+                        selected.removeAll { it.uri == item.uri }
+                        edits.remove(item.uri)
+                        activeIndex = activeIndex.coerceAtMost((selected.size - 1).coerceAtLeast(0))
+                        if (selected.isEmpty()) step = "gallery"
+                    },
+                    onEditChange = { uri, edit -> edits[uri] = edit },
+                    onSend = {
+                        if (isSending || preparing || selected.isEmpty()) return@MessageEditorStep
+                        error = null
+                        preparing = true
+                        scope.launch {
+                            val outgoing = withContext(Dispatchers.Default) {
+                                selected.map { item ->
+                                    val edit = edits[item.uri] ?: ComposerEditState()
+                                    val isGif = context.contentResolver.getType(item.uri)
+                                        ?.equals("image/gif", ignoreCase = true) == true
+                                    val uri = if (item.type == "image" && !isGif) {
+                                        runCatching { processComposerImage(context, item.uri, edit) }
+                                            .getOrElse { item.uri }
+                                    } else {
+                                        item.uri
+                                    }
+                                    OutgoingMessageMedia(uri, item.type)
+                                }
+                            }
+                            preparing = false
+                            onSend(outgoing, caption.trim())
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageGalleryStep(
+    media: List<DeviceMedia>,
+    filter: String,
+    onFilterChange: (String) -> Unit,
+    selected: List<DeviceMedia>,
+    isLoading: Boolean,
+    hasPermission: Boolean,
+    onDismiss: () -> Unit,
+    onToggle: (DeviceMedia) -> Unit,
+    onContinue: () -> Unit
+) {
+    val filtered = remember(media, filter) {
+        when (filter) {
+            "image" -> media.filter { it.type == "image" }
+            "video" -> media.filter { it.type == "video" }
+            else -> media
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            }
+            Text(
+                text = "Enviar foto o video",
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            if (selected.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = onContinue,
+                    modifier = Modifier.size(44.dp),
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Done, contentDescription = "Continuar")
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip("all", "Todo", filter, onFilterChange)
+            FilterChip("image", "Fotos", filter, onFilterChange)
+            FilterChip("video", "Videos", filter, onFilterChange)
+        }
+
+        when {
+            !hasPermission -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Permite acceso a fotos y videos para elegir archivos.", color = Color.White)
+            }
+            isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White)
+            }
+            filtered.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No hay media disponible.", color = Color.White)
+            }
+            else -> LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                contentPadding = PaddingValues(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(filtered, key = { "${it.type}-${it.id}" }) { item ->
+                    val selectedIndex = selected.indexOfFirst { it.uri == item.uri }
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clickable { onToggle(item) }
+                    ) {
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (item.type == "video") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(5.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.Black.copy(alpha = 0.62f))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.PlayCircle, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(formatComposerDuration(item.durationMs), color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(6.dp)
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(if (selectedIndex >= 0) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.45f))
+                                .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selectedIndex >= 0) {
+                                Text("${selectedIndex + 1}", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChip(
+    id: String,
+    label: String,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    AssistChip(
+        onClick = { onSelect(id) },
+        label = { Text(label, color = if (selected == id) Color.Black else Color.White) },
+        leadingIcon = {
+            Icon(
+                imageVector = when (id) {
+                    "image" -> Icons.Default.Image
+                    "video" -> Icons.Default.VideoLibrary
+                    else -> Icons.Default.AddPhotoAlternate
+                },
+                contentDescription = null,
+                tint = if (selected == id) Color.Black else Color.White
+            )
+        },
+        modifier = if (selected == id) Modifier.background(Color.White, RoundedCornerShape(20.dp)) else Modifier
+    )
+}
+
+@Composable
+private fun MessageEditorStep(
+    selected: List<DeviceMedia>,
+    edits: Map<Uri, ComposerEditState>,
+    activeIndex: Int,
+    caption: String,
+    isSending: Boolean,
+    error: String?,
+    onCaptionChange: (String) -> Unit,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+    onActiveIndexChange: (Int) -> Unit,
+    onRemove: (DeviceMedia) -> Unit,
+    onEditChange: (Uri, ComposerEditState) -> Unit,
+    onSend: () -> Unit
+) {
+    val active = selected.getOrNull(activeIndex) ?: return
+    val edit = edits[active.uri] ?: ComposerEditState()
+    val strokes = remember(active.uri, edit.strokes) { mutableStateListOf<List<Offset>>().apply { addAll(edit.strokes) } }
+    var activeStroke by remember(active.uri) { mutableStateOf<List<Offset>>(emptyList()) }
+    val brushPalette = remember {
+        listOf(
+            Color.White,
+            Color(0xFFFF4D4D),
+            Color(0xFFFFD54F),
+            Color(0xFF4CAF50),
+            Color(0xFF42A5F5),
+            Color(0xFFAB47BC)
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .imePadding()
+    ) {
+        if (active.type == "video") {
+            AsyncImage(
+                model = active.uri,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(72.dp)
+            )
+        } else {
+            AsyncImage(
+                model = active.uri,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { onEditChange(active.uri, edit.copy(previewSize = it)) }
+                    .pointerInput(edit.drawEnabled, active.uri) {
+                        if (!edit.drawEnabled) return@pointerInput
+                        detectDragGestures(
+                            onDragStart = { offset -> activeStroke = listOf(offset) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                activeStroke = activeStroke + change.position
+                            },
+                            onDragEnd = {
+                                if (activeStroke.size > 1) {
+                                    strokes.add(activeStroke)
+                                    onEditChange(active.uri, edit.copy(strokes = strokes.toList()))
+                                }
+                                activeStroke = emptyList()
+                            },
+                            onDragCancel = { activeStroke = emptyList() }
+                        )
+                    }
+            )
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                (strokes + listOf(activeStroke)).forEach { stroke ->
+                    for (i in 1 until stroke.size) {
+                        drawLine(
+                            color = edit.brushColor,
+                            start = stroke[i - 1],
+                            end = stroke[i],
+                            strokeWidth = 6f,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+            if (edit.overlayText.isNotBlank() || edit.overlayEmoji.isNotBlank()) {
+                Text(
+                    text = listOf(edit.overlayEmoji, edit.overlayText).filter(String::isNotBlank).joinToString(" "),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(Color.Black.copy(alpha = 0.38f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack, enabled = !isSending) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Galería", tint = Color.White)
+            }
+            Spacer(Modifier.weight(1f))
+            if (active.type == "image") {
+                RoundToolButton(Icons.Default.RotateRight, "Girar") {
+                    onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
+                }
+                RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled) {
+                    onEditChange(active.uri, edit.copy(drawEnabled = !edit.drawEnabled))
+                }
+                RoundToolButton(Icons.Default.EmojiEmotions, "Emoji") {
+                    onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
+                }
+                RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank()) {
+                    onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
+                }
+            } else {
+                RoundToolButton(Icons.Default.Hd, "HD") {}
+            }
+            IconButton(onClick = onDismiss, enabled = !isSending) {
+                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            }
+        }
+
+        if (active.type == "image") {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 64.dp, end = 12.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = if (edit.drawEnabled) "Dibujo" else if (edit.overlayText.isNotBlank()) "Texto" else "Editar",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                brushPalette.forEach { color ->
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .border(
+                                width = if (edit.brushColor == color) 3.dp else 1.dp,
+                                color = if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.7f),
+                                shape = CircleShape
+                            )
+                            .clickable { onEditChange(active.uri, edit.copy(brushColor = color, drawEnabled = true)) }
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
+                .navigationBarsPadding()
+                .padding(12.dp)
+        ) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(selected.size) { index ->
+                    val item = selected[index]
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                width = if (index == activeIndex) 2.dp else 0.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onActiveIndexChange(index) }
+                    ) {
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (item.type == "video") {
+                            Icon(Icons.Default.PlayCircle, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(22.dp))
+                        }
+                        IconButton(
+                            onClick = { onRemove(item) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(20.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = caption,
+                onValueChange = onCaptionChange,
+                placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
+                minLines = 1,
+                maxLines = 4,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    disabledTextColor = Color.White.copy(alpha = 0.55f),
+                    cursorColor = Color.White,
+                    focusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                    unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                    disabledContainerColor = Color.Black.copy(alpha = 0.42f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
+                    focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
+                    unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
+                )
+            )
+            if (!error.isNullOrBlank()) {
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
+                    color = Color.White.copy(alpha = 0.75f),
+                    modifier = Modifier.weight(1f)
+                )
+                FloatingActionButton(
+                    onClick = { if (!isSending) onSend() },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = "Enviar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoundToolButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .padding(horizontal = 2.dp)
+            .size(42.dp)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
+                CircleShape
+            )
+            .border(
+                width = if (selected) 2.dp else 0.dp,
+                color = if (selected) Color.White else Color.Transparent,
+                shape = CircleShape
+            )
+    ) {
+        Icon(icon, contentDescription = label, tint = Color.White)
+    }
+}
+
+private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
+    val out = mutableListOf<DeviceMedia>()
+    val imageProjection = arrayOf(
+        MediaStore.Images.Media._ID,
+        MediaStore.Images.Media.DATE_ADDED
+    )
+    context.contentResolver.query(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        imageProjection,
+        null,
+        null,
+        "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    )?.use { cursor ->
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idColumn)
+            out.add(
+                DeviceMedia(
+                    id = id,
+                    uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
+                    type = "image",
+                    durationMs = 0,
+                    dateAdded = cursor.getLong(dateColumn)
+                )
+            )
+        }
+    }
+
+    val videoProjection = arrayOf(
+        MediaStore.Video.Media._ID,
+        MediaStore.Video.Media.DATE_ADDED,
+        MediaStore.Video.Media.DURATION
+    )
+    context.contentResolver.query(
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        videoProjection,
+        null,
+        null,
+        "${MediaStore.Video.Media.DATE_ADDED} DESC"
+    )?.use { cursor ->
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+        val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+        val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idColumn)
+            out.add(
+                DeviceMedia(
+                    id = id,
+                    uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id),
+                    type = "video",
+                    durationMs = cursor.getLong(durationColumn),
+                    dateAdded = cursor.getLong(dateColumn)
+                )
+            )
+        }
+    }
+    return out.sortedByDescending { it.dateAdded }.take(500)
+}
+
+private fun ComposerEditState.hasRealEdits(): Boolean {
+    return rotateQuarterTurns != 0 || overlayText.isNotBlank() || overlayEmoji.isNotBlank() || strokes.any { it.size > 1 }
+}
+
+private fun processComposerImage(context: Context, sourceUri: Uri, edit: ComposerEditState): Uri {
+    val decoded = decodeComposerBitmap(context, sourceUri) ?: return sourceUri
+    val rotated = rotateComposerBitmap(decoded, edit.rotateQuarterTurns)
+    val merged = drawComposerOverlays(rotated, edit)
+    val file = File(context.cacheDir, "message_media_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.jpg")
+    FileOutputStream(file).use { output ->
+        flattenComposerBitmapForJpeg(merged).compress(Bitmap.CompressFormat.JPEG, 86, output)
+    }
+    return file.toUri()
+}
+
+private fun decodeComposerBitmap(context: Context, uri: Uri): Bitmap? {
+    val maxDimension = 2560
+    return runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.isMutableRequired = true
+                val largest = maxOf(info.size.width, info.size.height)
+                if (largest > maxDimension) {
+                    val scale = maxDimension.toFloat() / largest.toFloat()
+                    decoder.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        }
+    }.getOrNull()
+}
+
+private fun rotateComposerBitmap(bitmap: Bitmap, quarterTurns: Int): Bitmap {
+    val turns = ((quarterTurns % 4) + 4) % 4
+    if (turns == 0) return bitmap
+    val matrix = Matrix().apply { postRotate((turns * 90).toFloat()) }
+    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+}
+
+private fun drawComposerOverlays(bitmap: Bitmap, edit: ComposerEditState): Bitmap {
+    val mutable = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = AndroidCanvas(mutable)
+    val w = mutable.width.toFloat()
+    val h = mutable.height.toFloat()
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        textSize = max(32f, w * 0.052f)
+        setShadowLayer(8f, 0f, 0f, AndroidColor.BLACK)
+    }
+    val label = listOf(edit.overlayEmoji, edit.overlayText).filter(String::isNotBlank).joinToString(" ")
+    if (label.isNotBlank()) {
+        canvas.drawText(label.take(80), w * 0.08f, h * 0.18f, textPaint)
+    }
+
+    val size = edit.previewSize
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = edit.brushColor.toArgb()
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = max(6f, w * 0.008f)
+    }
+    if (size.width > 0 && size.height > 0) {
+        edit.strokes.forEach { stroke ->
+            for (i in 1 until stroke.size) {
+                val p0 = stroke[i - 1]
+                val p1 = stroke[i]
+                canvas.drawLine(
+                    (p0.x / size.width.toFloat()).coerceIn(0f, 1f) * w,
+                    (p0.y / size.height.toFloat()).coerceIn(0f, 1f) * h,
+                    (p1.x / size.width.toFloat()).coerceIn(0f, 1f) * w,
+                    (p1.y / size.height.toFloat()).coerceIn(0f, 1f) * h,
+                    strokePaint
+                )
+            }
+        }
+    }
+    return mutable
+}
+
+private fun flattenComposerBitmapForJpeg(bitmap: Bitmap): Bitmap {
+    if (!bitmap.hasAlpha()) return bitmap
+    val flattened = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(flattened)
+    canvas.drawColor(AndroidColor.WHITE)
+    canvas.drawBitmap(bitmap, 0f, 0f, null)
+    return flattened
+}
+
+private fun formatComposerDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+}

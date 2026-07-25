@@ -73,7 +73,7 @@ describe('EnterpriseLayout', () => {
     )
 
     // Verificar elementos principales
-    expect(screen.getByText('Conéctate')).toBeInTheDocument()
+    expect(screen.getByText('Novvin')).toBeInTheDocument()
     expect(screen.getByText('Social Platform')).toBeInTheDocument()
   })
 
@@ -299,7 +299,7 @@ describe('EnterpriseLayout', () => {
     )
 
     // El layout debería renderizar incluso si hay errores en dependencias
-    expect(screen.getByText('Conéctate')).toBeInTheDocument()
+    expect(screen.getByText('Novvin')).toBeInTheDocument()
 
     console.error = originalError
   })
@@ -315,7 +315,7 @@ describe('EnterpriseLayout', () => {
 
     // Verificar que los componentes se carguen de forma lazy
     await waitFor(() => {
-      expect(screen.getByText('Conéctate')).toBeInTheDocument()
+      expect(screen.getByText('Novvin')).toBeInTheDocument()
     }, { timeout: 5000 })
   })
 
@@ -345,7 +345,7 @@ describe('EnterpriseLayout', () => {
 
     // Verificar que QueryClient está disponible
     await waitFor(() => {
-      expect(screen.getByText('Conéctate')).toBeInTheDocument()
+      expect(screen.getByText('Novvin')).toBeInTheDocument()
     })
   })
 
@@ -366,7 +366,9 @@ describe('EnterpriseLayout', () => {
     
     // Disparar evento de offline
     const offlineEvent = new Event('offline')
-    window.dispatchEvent(offlineEvent)
+    act(() => {
+      window.dispatchEvent(offlineEvent)
+    })
 
     await waitFor(() => {
       expect(screen.getByText('Desconectado')).toBeInTheDocument()
@@ -397,7 +399,7 @@ describe('EnterpriseLayout - Edge Cases', () => {
     )
 
     // Debería adaptarse al viewport pequeño
-    expect(screen.getByText('Conéctate')).toBeInTheDocument()
+    expect(screen.getByText('Novvin')).toBeInTheDocument()
   })
 
   test('maneja conexión lenta', async () => {
@@ -420,7 +422,7 @@ describe('EnterpriseLayout - Edge Cases', () => {
     )
 
     // Debería renderizar incluso con conexión lenta
-    expect(screen.getByText('Conéctate')).toBeInTheDocument()
+    expect(screen.getByText('Novvin')).toBeInTheDocument()
   })
 
   test('maneja errores de red', async () => {

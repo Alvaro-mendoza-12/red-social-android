@@ -20,10 +20,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
+import coil.Coil
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.presentation.components.MediaItem
+import conectate.com.presentation.components.ZoomableImageViewer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,8 +39,7 @@ fun FullScreenImageScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var snackbarHostState = remember { SnackbarHostState() }
-
+    val snackbarHostState = remember { SnackbarHostState() }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -87,14 +89,12 @@ fun FullScreenImageScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(imageUrl)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Full Screen Image",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
+            ZoomableImageViewer(
+                item = MediaItem(
+                    id = imageUrl,
+                    url = imageUrl,
+                    type = "image"
+                )
             )
         }
     }
@@ -103,10 +103,16 @@ fun FullScreenImageScreen(
 suspend fun saveImageToGallery(context: android.content.Context, imageUrl: String, onResult: (Boolean) -> Unit) {
     withContext(Dispatchers.IO) {
         try {
-            val loader = coil.ImageLoader(context)
+            val loader = Coil.imageLoader(context)
+            val resolvedUrl = UbuntuStorageUrl.rewrite(imageUrl) ?: imageUrl
+            val sourceKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl)
             val request = ImageRequest.Builder(context)
-                .data(imageUrl)
+                .data(resolvedUrl)
                 .allowHardware(false)
+                .memoryCachePolicy(CachePolicy.DISABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .networkCachePolicy(CachePolicy.ENABLED)
+                .diskCacheKey(sourceKey)
                 .build()
             val result = (loader.execute(request) as? coil.request.SuccessResult)?.drawable
             val bitmap = (result as? android.graphics.drawable.BitmapDrawable)?.bitmap

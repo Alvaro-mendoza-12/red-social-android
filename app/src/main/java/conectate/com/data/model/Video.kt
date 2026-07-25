@@ -30,5 +30,7 @@ data class Video(
     @SerialName("tags") val tags: List<String> = emptyList(),
     @SerialName("liked_by_me") val likedByMe: Boolean = false,
     @SerialName("shared_by_me") val sharedByMe: Boolean = false,
+    @SerialName("favorite_count") val favoriteCount: Int = 0,
+    @SerialName("favorited_by_me") val favoritedByMe: Boolean = false,
     @SerialName("is_verified") val isVerified: Boolean = false
 )

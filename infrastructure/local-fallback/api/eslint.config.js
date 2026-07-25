@@ -1,0 +1,1 @@
+export default [{files: ['src/**/*.js'], rules: {'no-undef': 'error'}, languageOptions: {globals: {require: true, module: true, process: true, console: true, Buffer: true, __dirname: true, exports: true, setTimeout: true, clearTimeout: true}}}]

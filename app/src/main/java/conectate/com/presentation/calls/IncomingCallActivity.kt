@@ -132,10 +132,12 @@ class IncomingCallActivity : ComponentActivity() {
 
         setContent {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
+            val appTheme by themePreferences.appTheme.collectAsStateWithLifecycle()
             val fontOption by themePreferences.fontOption.collectAsStateWithLifecycle()
             val textScale by themePreferences.textScale.collectAsStateWithLifecycle()
             RedSocialTheme(
                 darkTheme = isDarkMode,
+                appTheme = appTheme,
                 fontOption = fontOption,
                 textScale = textScale
             ) {

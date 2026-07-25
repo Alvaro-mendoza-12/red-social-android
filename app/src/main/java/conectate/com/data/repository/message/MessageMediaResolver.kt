@@ -1,6 +1,7 @@
 package conectate.com.data.repository.message
 
 import android.net.Uri
+import android.os.SystemClock
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
@@ -11,6 +12,9 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -34,6 +38,11 @@ internal class MessageMediaResolver(
         coerceInputValues = true
         isLenient = true
     }
+    private data class CachedPlayableUrl(val value: String, val expiresAtElapsedMs: Long)
+    private val playableUrlCache = mutableMapOf<String, CachedPlayableUrl>()
+    private val playableUrlInFlight = mutableMapOf<String, CompletableDeferred<Result<String>>>()
+    private val playableUrlCacheMutex = Mutex()
+    private val playableUrlTtlMs = 50L * 60L * 1000L
 
     suspend fun getPlayableUrl(path: String): Result<String> {
         var trimmed = path.trim()
@@ -43,29 +52,61 @@ internal class MessageMediaResolver(
 
         var location = resolveStorageLocation(trimmed)
             ?: return Result.failure(Exception("Ruta multimedia invalida"))
+        val accountScope = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        val cacheKey = "$accountScope:${location.bucket}:${location.objectPath}"
 
-        android.util.Log.d(
-            "MessageMediaResolver",
-            "getPlayableUrl RAW: $path -> BUCKET: ${location.bucket}, PATH: ${location.objectPath}"
-        )
+        val now = SystemClock.elapsedRealtime()
+        var ownsResolution = false
+        val pending = playableUrlCacheMutex.withLock {
+            playableUrlCache[cacheKey]
+                ?.takeIf { it.expiresAtElapsedMs > now }
+                ?.let { return Result.success(it.value) }
 
-        val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
-        if (signed.isSuccess) {
-            android.util.Log.d("MessageMediaResolver", "getPlayableUrl SIGNED OK")
-            val signedUrl = signed.getOrThrow()
-            return Result.success(UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl)
+            playableUrlInFlight[cacheKey] ?: CompletableDeferred<Result<String>>().also {
+                playableUrlInFlight[cacheKey] = it
+                ownsResolution = true
+            }
         }
 
-        android.util.Log.w(
-            "MessageMediaResolver",
-            "getPlayableUrl SIGNED FAILED: ${signed.exceptionOrNull()?.message}. Returning fallback."
-        )
+        if (!ownsResolution) return pending.await()
 
-        return if (trimmed.startsWith("http", ignoreCase = true)) {
-            Result.success(UbuntuStorageUrl.rewrite(trimmed) ?: trimmed)
-        } else {
-            Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(location.bucket, location.objectPath)).orEmpty())
+        val result = runCatching {
+            android.util.Log.d(
+                "MessageMediaResolver",
+                "getPlayableUrl RAW: $path -> BUCKET: ${location.bucket}, PATH: ${location.objectPath}"
+            )
+
+            val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
+            if (signed.isSuccess) {
+                android.util.Log.d("MessageMediaResolver", "getPlayableUrl SIGNED OK")
+                val signedUrl = signed.getOrThrow()
+                UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl
+            } else {
+                android.util.Log.w(
+                    "MessageMediaResolver",
+                    "getPlayableUrl SIGNED FAILED: ${signed.exceptionOrNull()?.message}. Returning fallback."
+                )
+                if (trimmed.startsWith("http", ignoreCase = true)) {
+                    UbuntuStorageUrl.rewrite(trimmed) ?: trimmed
+                } else {
+                    UbuntuStorageUrl.rewrite(
+                        storageService.getPublicUrl(location.bucket, location.objectPath)
+                    ).orEmpty()
+                }
+            }
         }
+
+        playableUrlCacheMutex.withLock {
+            if (result.isSuccess && result.getOrThrow().isNotBlank()) {
+                playableUrlCache[cacheKey] = CachedPlayableUrl(
+                    result.getOrThrow(),
+                    SystemClock.elapsedRealtime() + playableUrlTtlMs
+                )
+            }
+            playableUrlInFlight.remove(cacheKey)
+        }
+        pending.complete(result)
+        return result
     }
 
     fun getShareableUrl(path: String): Result<String> {
@@ -140,7 +181,7 @@ internal class MessageMediaResolver(
         }
 
         val allowed = if (rpcChecked) {
-            allowedByServer || !sessionStateStore.isViewOnceConsumed(consumptionKey)
+            allowedByServer
         } else {
             !sessionStateStore.isViewOnceConsumed(consumptionKey)
         }

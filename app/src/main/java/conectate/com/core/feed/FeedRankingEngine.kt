@@ -11,7 +11,8 @@ interface FeedRankingEngine {
         posts: List<Post>,
         currentUserId: String?,
         friendIds: Set<String> = emptySet(),
-        signalSnapshot: FeedSignalSnapshot = FeedSignalSnapshot.EMPTY
+        signalSnapshot: FeedSignalSnapshot = FeedSignalSnapshot.EMPTY,
+        interestTerms: Set<String> = emptySet()
     ): List<Post>
 }
 
@@ -22,7 +23,8 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
         posts: List<Post>,
         currentUserId: String?,
         friendIds: Set<String>,
-        signalSnapshot: FeedSignalSnapshot
+        signalSnapshot: FeedSignalSnapshot,
+        interestTerms: Set<String>
     ): List<Post> {
         if (posts.isEmpty()) return emptyList()
 
@@ -48,6 +50,7 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
             val verifiedBoost = if (post.isVerified) 0.22 else 0.0
             val affinityBoost = if (post.likedByMe || post.sharedByMe) 0.30 else 0.0
             val trendBoost = if (engagement >= 40 && ageHours <= 8.0) 0.28 else 0.0
+            val interestBoost = interestScore(post, interestTerms)
             val tieBreaker = ((post.id.hashCode() and 0xFFFF).toDouble() / 65_535.0) * 0.01
 
             val totalScore = (engagementScore * 0.55) +
@@ -60,6 +63,7 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
                 affinityBoost +
                 trendBoost -
                 noveltyPenalty +
+                interestBoost +
                 tieBreaker
 
             post to totalScore
@@ -99,6 +103,16 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
                 normalized.contains(".png") || normalized.contains(".webp") -> "image"
             else -> "media"
         }
+    }
+
+    private fun interestScore(post: Post, interestTerms: Set<String>): Double {
+        if (interestTerms.isEmpty()) return 0.0
+        val text = post.content.lowercase()
+        val matches = interestTerms.count { term ->
+            val normalized = term.trim().lowercase()
+            normalized.length >= 2 && text.contains(normalized)
+        }
+        return (matches.coerceAtMost(4) * 0.42)
     }
 
     private fun diversifyByAuthor(sorted: List<Post>): List<Post> {

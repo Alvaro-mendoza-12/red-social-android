@@ -8,6 +8,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,8 +45,28 @@ fun LiveViewerScreen(
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
 
+    fun leaveViewer() {
+        manualLeaveRequested = true
+        viewModel.leaveLive()
+        navController.popBackStack()
+    }
+
+    DisposableEffect(liveId) {
+        onDispose {
+            // Idempotent cleanup also covers navigation gestures and route
+            // replacement, not only the explicit "Salir" button.
+            viewModel.leaveLive()
+        }
+    }
+
     LaunchedEffect(liveId) {
-        viewModel.joinAsViewer(liveId)
+        try {
+            viewModel.joinAsViewer(liveId)
+        } catch (e: Exception) {
+            android.util.Log.e("LiveViewerScreen", "Error joining live", e)
+            AppFeedbackBus.showError("Error al unirse al live: ${e.message}")
+            navController.popBackStack()
+        }
     }
 
     LaunchedEffect(session?.stream?.id) {
@@ -78,7 +99,7 @@ fun LiveViewerScreen(
     }
 
     BackHandler {
-        navController.popBackStack()
+        leaveViewer()
     }
 
     val stateOverlayText = when {
@@ -110,7 +131,7 @@ fun LiveViewerScreen(
             "Conectando directo…"
         },
         leadingTopBarAction = {
-            IconButton(onClick = { navController.popBackStack() }) {
+            IconButton(onClick = ::leaveViewer) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
                     contentDescription = "Volver",
@@ -134,7 +155,7 @@ fun LiveViewerScreen(
                         .putExtra(
                             Intent.EXTRA_TEXT,
                             buildString {
-                                append("Mira este live en Conectate")
+                                append("Mira este live en Novvin")
                                 if (!stream?.hostName.isNullOrBlank()) append(": ${stream?.hostName}")
                             }
                         )
@@ -143,11 +164,7 @@ fun LiveViewerScreen(
             )
             LiveActionChip(
                 text = "Salir",
-                onClick = {
-                    manualLeaveRequested = true
-                    viewModel.leaveLive()
-                    navController.popBackStack()
-                }
+                onClick = ::leaveViewer
             )
         }
     )

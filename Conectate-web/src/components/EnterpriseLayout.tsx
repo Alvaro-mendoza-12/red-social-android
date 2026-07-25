@@ -219,7 +219,7 @@ export const EnterpriseLayout: React.FC<EnterpriseLayoutProps> = ({ children }) 
                         <span className="text-white font-bold text-lg">C</span>
                       </div>
                       <div>
-                        <h1 className="font-bold text-gray-900 dark:text-white">Conéctate</h1>
+                        <h1 className="font-bold text-gray-900 dark:text-white">Novvin</h1>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Social Platform</p>
                       </div>
                     </motion.div>
@@ -387,7 +387,7 @@ export const EnterpriseLayout: React.FC<EnterpriseLayoutProps> = ({ children }) 
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar en Conéctate..."
+                  placeholder="Buscar en Novvin..."
                   className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500 focus:bg-white dark:focus:bg-gray-700 transition-all"
                 />
               </div>

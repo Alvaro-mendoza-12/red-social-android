@@ -7,19 +7,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.presentation.components.UserItem
-import androidx.compose.material3.SwipeToDismiss
-import androidx.compose.material3.rememberDismissState
-import androidx.compose.material3.DismissValue
-import androidx.compose.material3.DismissDirection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,53 +59,53 @@ fun FriendRequestsScreen(
                     items(requests, key = { it.id }) { user ->
                         val acceptedTimestamp = acceptedRequests[user.id]
                         val isConfirmed = acceptedTimestamp != null
-                        
-                        // SwipeToDismiss only for confirmed items
+
                         if (isConfirmed) {
-                             val dismissState = rememberDismissState(
-                                confirmValueChange = {
-                                    if (it == DismissValue.DismissedToStart || it == DismissValue.DismissedToEnd) {
-                                        viewModel.dismissConfirmedRequest(user.id)
-                                        true
-                                    } else false
-                                }
-                            )
-                            
-                            SwipeToDismiss(
-                                state = dismissState,
-                                background = {
-                                    val color = Color.Red
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 20.dp),
-                                        contentAlignment = if (dismissState.dismissDirection == DismissDirection.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
+                            UserItem(
+                                user = user,
+                                onClick = { navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(user.id)) },
+                                trailingContent = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Text("Eliminar", color = Color.White)
-                                    }
-                                },
-                                dismissContent = {
-                                    UserItem(
-                                        user = user,
-                                        onClick = { navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(user.id)) },
-                                        trailingContent = {
-                                            Column(horizontalAlignment = Alignment.End) {
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
                                                 Text(
                                                     text = "Confirmado",
                                                     color = MaterialTheme.colorScheme.primary,
                                                     style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                                )
-                                                // Format timestamp simply for now
-                                                val date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(acceptedTimestamp!!))
-                                                Text(
-                                                    text = date,
-                                                    color = Color.Gray,
-                                                    style = MaterialTheme.typography.labelSmall
+                                                    fontWeight = FontWeight.Bold
                                                 )
                                             }
+                                            val date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(acceptedTimestamp!!))
+                                            Text(
+                                                text = date,
+                                                color = Color.Gray,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
                                         }
-                                    )
+                                        IconButton(
+                                            onClick = { viewModel.dismissConfirmedRequest(user.id) },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Eliminar",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             )
                         } else {

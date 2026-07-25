@@ -50,6 +50,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.StorageService
 import java.io.File
@@ -104,6 +105,7 @@ class VideoRepository @Inject constructor(
     private val upstashCache: UpstashCacheService,
     private val appMetrics: AppMetrics,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     @ApplicationContext private val context: Context
 ) {
     /**
@@ -119,10 +121,41 @@ class VideoRepository @Inject constructor(
     private val activeCommentCollectors = mutableMapOf<String, Int>()
     private val activeStatsSubscriptionJobs = mutableMapOf<String, Job>()
     private val activeStatsCollectors = mutableMapOf<String, Int>()
+    private val viewSessionRegistry = VideoViewSessionRegistry()
     private val cacheJson = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
         encodeDefaults = true
+    }
+    private val localFeedCache by lazy(LazyThreadSafetyMode.NONE) {
+        context.getSharedPreferences("video_feed_metadata_cache", Context.MODE_PRIVATE)
+    }
+
+    private fun accountScopedFeedKey(scope: String): String {
+        val accountId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
+        return "$scope:$accountId"
+    }
+
+    private fun readLocalFeed(scope: String): List<Video> = runCatching {
+        localFeedCache.getString(accountScopedFeedKey(scope), null)
+            ?.let { cacheJson.decodeFromString<List<Video>>(it) }
+            ?.map { it.normalizedStorageUrls() }
+            .orEmpty()
+    }.getOrDefault(emptyList())
+
+    private fun persistLocalFeed(scope: String, videos: List<Video>) {
+        if (videos.isEmpty()) return
+        runCatching {
+            localFeedCache.edit()
+                .putString(accountScopedFeedKey(scope), cacheJson.encodeToString(videos.take(50)))
+                .apply()
+        }.onFailure { error ->
+            android.util.Log.w("VideoRepository", "No se pudo guardar la caché local del feed", error)
+        }
+    }
+
+    private fun clearLocalFeed(scope: String) {
+        localFeedCache.edit().remove(accountScopedFeedKey(scope)).apply()
     }
 
     private fun shouldUseUbuntuBackend(): Boolean =
@@ -176,6 +209,10 @@ class VideoRepository @Inject constructor(
             context.contentResolver.openFileDescriptor(videoUri, "r")?.use { it.statSize }
         }.getOrNull() ?: -1L
 
+        if (fileSizeBytes <= 0L) {
+            return@withContext Result.failure(Exception("No se pudo validar el tamaño del video."))
+        }
+
         if (fileSizeBytes > MAX_UPLOAD_FILE_SIZE_BYTES) {
             return@withContext Result.failure(
                 Exception(
@@ -200,7 +237,9 @@ class VideoRepository @Inject constructor(
             val fpsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
             val fps = fpsStr?.toFloatOrNull() ?: 30f
 
-            val isTooLarge = width > 1920 || height > 1920 || (width * height > 1930000)
+            val longEdge = maxOf(width, height)
+            val shortEdge = minOf(width, height)
+            val isTooLarge = longEdge > 1920 || shortEdge > 1080 || (width.toLong() * height.toLong() > 2_073_600L)
 
             when {
                 durationSeconds <= 0L -> Result.failure(Exception("No se pudo validar la duración del video."))
@@ -281,48 +320,49 @@ class VideoRepository @Inject constructor(
     fun getVideos(offset: Int = 0, limit: Int = 20, random: Boolean = false): Flow<List<Video>> = flow {
         val startedAt = System.currentTimeMillis()
         val cacheKey = "videos:public:offset=$offset:limit=$limit:random=$random"
-        
+        val localSnapshot = if (offset == 0) readLocalFeed("public") else emptyList()
+        var hasFallbackEmission = localSnapshot.isNotEmpty()
+
+        if (hasFallbackEmission) emit(localSnapshot)
+
         try {
             if (offset == 0 && !random) {
-                val cached = upstashCache.get(cacheKey)
-                val cachedVideos = cached
+                val cachedVideos = upstashCache.get(cacheKey)
                     ?.let { runCatching { cacheJson.decodeFromString<List<Video>>(it) }.getOrNull() }
                     ?.map { it.normalizedStorageUrls() }
                     ?.takeIf { it.isNotEmpty() }
                 if (cachedVideos != null) {
                     appMetrics.incrementCounter("videos_cache_hit")
-                    emit(cachedVideos)
+                    if (cachedVideos != localSnapshot) emit(cachedVideos)
+                    hasFallbackEmission = true
                 }
             }
 
-            var accessToken = authService.getAccessTokenAwait()
+            val accessToken = authService.getAccessTokenAwait()
             if (accessToken != null) {
                 if (shouldUseUbuntuBackend()) {
-                    val result = localFallbackApiClient.loadVideos(accessToken, limit, offset)
+                    val result = localFallbackApiClient.loadVideos(
+                        accessToken = accessToken,
+                        limit = limit,
+                        offset = offset,
+                        recommended = random
+                    )
                     if (result.isSuccess) {
-                        val videos = if (random) {
-                            result.getOrThrow().sortedByDescending { 
-                                (it.likeCount * 3 + it.commentCount * 5 + it.shareCount * 10 + it.views) * Math.random() 
-                            }
-                        } else result.getOrThrow()
+                        val videos = result.getOrThrow()
                         videos.forEach { video ->
-                            updateLocalVideoStats(
-                                video.id,
-                                video.views,
-                                video.likeCount,
-                                video.commentCount,
-                                video.shareCount
-                            )
+                            updateLocalVideoStats(video.id, video.views, video.likeCount, video.commentCount, video.shareCount)
                         }
-                        emit(videos.map { mergeWithLocalVideoStats(it.normalizedStorageUrls()) })
+                        val deliveredVideos = videos.map { mergeWithLocalVideoStats(it.normalizedStorageUrls()) }
+                        if (offset == 0 && deliveredVideos.isNotEmpty()) persistLocalFeed("public", deliveredVideos)
+                        if (deliveredVideos.isNotEmpty() || !hasFallbackEmission) emit(deliveredVideos)
                     } else {
                         appMetrics.recordFailure("videos_fetch", result.exceptionOrNull(), mapOf("source" to "ubuntu"))
-                        emit(emptyList())
+                        if (!hasFallbackEmission) emit(emptyList())
                     }
                     return@flow
                 }
 
-                var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
                     parameter("limit", limit.toString())
@@ -335,17 +375,27 @@ class VideoRepository @Inject constructor(
                 if (response.status.isSuccess()) {
                     val videos: List<Video> = response.body<List<Video>>().map { it.normalizedStorageUrls() }
                     val deliveredVideos = if (random) {
-                        videos.sortedByDescending { 
-                            (it.likeCount * 3 + it.commentCount * 5 + it.shareCount * 10 + it.views) * Math.random() 
-                        }
+                        videos.sortedWith(
+                            compareByDescending<Video> {
+                                it.likeCount.toLong() * 3L +
+                                    it.commentCount.toLong() * 5L +
+                                    it.shareCount.toLong() * 10L +
+                                    it.views.toLong()
+                            }.thenByDescending { video ->
+                                runCatching { java.time.Instant.parse(video.created_at).toEpochMilli() }
+                                    .recoverCatching { java.time.OffsetDateTime.parse(video.created_at).toInstant().toEpochMilli() }
+                                    .getOrDefault(0L)
+                            }.thenBy { it.id }
+                        )
                     } else videos
-                    
-                    if (offset == 0 && !random && deliveredVideos.isNotEmpty()) {
-                        val stored = runCatching {
-                            upstashCache.set(cacheKey, cacheJson.encodeToString(deliveredVideos), 300)
-                        }.getOrDefault(false)
-                        if (stored) {
-                            appMetrics.incrementCounter("videos_cache_store")
+
+                    if (offset == 0 && deliveredVideos.isNotEmpty()) {
+                        persistLocalFeed("public", deliveredVideos)
+                        if (!random) {
+                            val stored = runCatching {
+                                upstashCache.set(cacheKey, cacheJson.encodeToString(deliveredVideos), 300)
+                            }.getOrDefault(false)
+                            if (stored) appMetrics.incrementCounter("videos_cache_store")
                         }
                     }
 
@@ -358,25 +408,25 @@ class VideoRepository @Inject constructor(
                         durationMs = System.currentTimeMillis() - startedAt,
                         attributes = mapOf("source" to "public")
                     )
-                    emit(deliveredVideos)
+                    if (deliveredVideos.isNotEmpty() || !hasFallbackEmission) emit(deliveredVideos)
                 } else {
                     appMetrics.recordFailure(
                         metric = "videos_fetch",
                         attributes = mapOf("source" to "public", "http_status" to response.status.value.toString())
                     )
-                    emit(emptyList())
+                    if (!hasFallbackEmission) emit(emptyList())
                 }
             } else {
                 appMetrics.recordFailure(
                     metric = "videos_fetch",
                     attributes = mapOf("source" to "public", "reason" to "no_token")
                 )
-                emit(emptyList())
+                if (!hasFallbackEmission) emit(emptyList())
             }
         } catch (e: Exception) {
             android.util.Log.e("VideoRepository", "Error fetching public videos", e)
             appMetrics.recordFailure("videos_fetch", e, mapOf("source" to "public"))
-            emit(emptyList())
+            if (!hasFallbackEmission) emit(emptyList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -416,11 +466,18 @@ class VideoRepository @Inject constructor(
 
 
     fun getFollowingVideos(): Flow<List<Video>> = flow {
+        var hasFallbackEmission = false
         try {
             val currentUserId = authService.getCurrentUserId()
             if (currentUserId == null) {
                 emit(emptyList())
                 return@flow
+            }
+
+            val localVideos = readLocalFeed("following")
+            if (localVideos.isNotEmpty()) {
+                emit(localVideos)
+                hasFallbackEmission = true
             }
 
             val idResponse = supabaseConfig.client.from("follows")
@@ -450,13 +507,15 @@ class VideoRepository @Inject constructor(
                 var videos: List<Video> = videoResponse.decodeList<Video>().map { it.normalizedStorageUrls() }
                 var sharedIds = getUserSharedContentIds(currentUserId, "video")
                 videos = videos.map { it.copy(sharedByMe = sharedIds.contains(it.id)).normalizedStorageUrls() }
+                persistLocalFeed("following", videos)
                 emit(videos)
             } else {
+                clearLocalFeed("following")
                 emit(emptyList())
             }
         } catch (e: Exception) {
             android.util.Log.e("VideoRepository", "Error fetching following videos", e)
-            emit(emptyList())
+            if (!hasFallbackEmission) emit(emptyList())
         }
     }
 
@@ -466,8 +525,11 @@ class VideoRepository @Inject constructor(
         videoUri: VideoUriType,
         thumbnailUri: android.net.Uri?,
         isPublic: Boolean,
-        tags: List<String>
+        tags: List<String>,
+        onUploadProgress: (Float) -> Unit = {}
     ): Result<String> {
+        val uploadedObjects = mutableListOf<Pair<String, String>>()
+        var metadataPersisted = false
         return try {
             var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("Usuario no identificado"))
@@ -481,6 +543,7 @@ class VideoRepository @Inject constructor(
             val uploadMetadata = validateUploadVideo(videoUri).getOrElse { error ->
                 return Result.failure(error)
             }
+            onUploadProgress(0.03f)
 
             // Extraer hashtags de la descripción si no se proveyeron tags
             val finalTags = if (tags.isNotEmpty()) {
@@ -497,20 +560,28 @@ class VideoRepository @Inject constructor(
                     )
                 )
             }
+            onUploadProgress(0.08f)
 
             // 1. Upload Video
-            val videoBytes = withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(videoUri)?.use { it.readBytes() }
-            } ?: return Result.failure(Exception("No se pudo leer el video"))
-            
             val videoFileName = "${userId}/${UUID.randomUUID()}.mp4"
-            val videoUploadResult = storageService.uploadFile("videos", videoFileName, videoBytes, "video/mp4")
+            val videoUploadResult = storageService.uploadFileFromUri(
+                bucketName = "videos",
+                fileName = videoFileName,
+                sourceUri = videoUri,
+                sizeBytes = uploadMetadata.fileSizeBytes,
+                contentType = "video/mp4",
+                allowOverwrite = true,
+                onProgress = { progress -> onUploadProgress(0.08f + progress * 0.82f) }
+            )
             
             if (videoUploadResult.isFailure) {
                 return Result.failure(videoUploadResult.exceptionOrNull() ?: Exception("Error subiendo video"))
             }
             
-            val videoPublicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("videos", videoFileName)).orEmpty()
+            val videoRemoteKey = videoUploadResult.getOrThrow().Key ?: videoFileName
+            uploadedObjects += "videos" to videoRemoteKey
+            val videoPublicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("videos", videoRemoteKey)).orEmpty()
+            onUploadProgress(0.9f)
 
             // 2. Upload Thumbnail (Manual or Auto-generated)
             var thumbPublicUrl = ""
@@ -538,20 +609,23 @@ class VideoRepository @Inject constructor(
                     android.util.Log.e("VideoRepository", "Error auto-generating thumbnail", e)
                 }
             }
-            
+
             // Upload thumbnail if we have one (manual or auto-generated)
             if (thumbBytes != null) {
                 try {
                     val thumbFileName = "${userId}/${UUID.randomUUID()}.jpg"
                     val thumbUploadResult = storageService.uploadFile("thumbnails", thumbFileName, thumbBytes, "image/jpeg")
                     if (thumbUploadResult.isSuccess) {
-                        thumbPublicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("thumbnails", thumbFileName)).orEmpty()
+                        val thumbRemoteKey = thumbUploadResult.getOrThrow().Key ?: thumbFileName
+                        uploadedObjects += "thumbnails" to thumbRemoteKey
+                        thumbPublicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("thumbnails", thumbRemoteKey)).orEmpty()
                         android.util.Log.d("VideoRepository", "Thumbnail uploaded: $thumbPublicUrl")
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("VideoRepository", "Error uploading thumbnail", e)
                 }
             }
+            onUploadProgress(0.95f)
 
             val currentProfile = userRepository.getUserById(userId).getOrNull()
                 ?: userRepository.ensureCurrentProfile().getOrNull()
@@ -605,6 +679,8 @@ class VideoRepository @Inject constructor(
                         created.exceptionOrNull() ?: Exception("Error guardando metadatos en Ubuntu")
                     )
                 }
+                metadataPersisted = true
+                onUploadProgress(1f)
                 val createdVideo = created.getOrThrow()
                 updateLocalVideoStats(
                     createdVideo.id,
@@ -629,8 +705,9 @@ class VideoRepository @Inject constructor(
                  header("Prefer", "return=minimal")
                  setBody(videoRequest)
              }
-             
+
               if (response.status.isSuccess()) {
+                  metadataPersisted = true
                   // 4. Increment user's post_count
                   try {
                       supabaseConfig.httpClient.post(
@@ -663,6 +740,18 @@ class VideoRepository @Inject constructor(
              }
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            if (!metadataPersisted) {
+                cleanupUploadedObjects(uploadedObjects)
+            }
+        }
+    }
+
+    private suspend fun cleanupUploadedObjects(objects: List<Pair<String, String>>) {
+        objects.asReversed().forEach { (bucket, key) ->
+            storageService.deleteFile(bucket, key).onFailure { error ->
+                android.util.Log.w("VideoRepository", "No se pudo limpiar $bucket/$key", error)
+            }
         }
     }
 
@@ -699,8 +788,8 @@ class VideoRepository @Inject constructor(
             }
 
             val safeUserName = sanitizeDownloadFilePart(video.userName.ifBlank { "usuario" })
-            var filename = "Conectate_@${safeUserName}_${System.currentTimeMillis()}.mp4"
-            val relativePath = "${Environment.DIRECTORY_MOVIES}/Conectate"
+            var filename = "Novvin_@${safeUserName}_${System.currentTimeMillis()}.mp4"
+            val relativePath = "${Environment.DIRECTORY_MOVIES}/Novvin"
             val finalBytes = watermarkedFile.readBytes()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -710,8 +799,8 @@ class VideoRepository @Inject constructor(
                     put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    put(MediaStore.MediaColumns.TITLE, "Conectate @${video.userName}")
-                    put(MediaStore.Video.Media.DESCRIPTION, "Video descargado desde Conectate | @${video.userName}")
+                    put(MediaStore.MediaColumns.TITLE, "Novvin @${video.userName}")
+                    put(MediaStore.Video.Media.DESCRIPTION, "Video descargado desde Novvin | @${video.userName}")
                 }
 
                 val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
@@ -727,7 +816,7 @@ class VideoRepository @Inject constructor(
                 resolver.update(uri, contentValues, null, null)
             } else {
                 val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-                val conectateDir = java.io.File(moviesDir, "Conectate").apply {
+                val conectateDir = java.io.File(moviesDir, "Novvin").apply {
                     if (!exists()) {
                         mkdirs()
                     }
@@ -884,9 +973,42 @@ class VideoRepository @Inject constructor(
         }
     }
 
-    suspend fun incrementViews(videoId: String): Result<Unit> {
+    /**
+     * Records at most one view for the same account and video during this app process.
+     * Callers are still responsible for waiting until real playback crosses the UI threshold.
+     *
+     * @return true when this call performed the remote increment, false when the session had
+     * already recorded (or is currently recording) the same video.
+     */
+    suspend fun incrementViews(videoId: String): Result<Boolean> {
+        val cleanVideoId = canonicalVideoId(videoId)
+        if (cleanVideoId.isBlank()) {
+            return Result.failure(IllegalArgumentException("Video id is blank"))
+        }
+
+        val accountId = authService.getCurrentUserId()
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: VideoViewSessionRegistry.ANONYMOUS_ACCOUNT
+
+        if (!viewSessionRegistry.tryStart(accountId, cleanVideoId)) {
+            return Result.success(false)
+        }
+
         return try {
-            var accessToken = authService.getAccessTokenAwait() // RPC might work with anon too if configured, but auth is safer
+            val result = incrementViewsRemotely(cleanVideoId)
+            viewSessionRegistry.finish(accountId, cleanVideoId, result.isSuccess)
+            result.map { true }
+        } catch (cancelled: CancellationException) {
+            viewSessionRegistry.finish(accountId, cleanVideoId, succeeded = false)
+            throw cancelled
+        }
+    }
+
+    private suspend fun incrementViewsRemotely(videoId: String): Result<Unit> {
+        return try {
+            val accessToken = authService.getAccessTokenAwait()
             if (shouldUseUbuntuBackend()) {
                 val token = accessToken ?: return Result.failure(Exception("No access token"))
                 val result = localFallbackApiClient.incrementVideoView(token, videoId)
@@ -900,9 +1022,9 @@ class VideoRepository @Inject constructor(
                 }
                 return result.map { Unit }
             }
-            
-            // Use RPC to bypass RLS UPDATE restriction for views
-            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_video_views") {
+
+            // Use RPC to bypass RLS UPDATE restriction for views.
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/increment_video_views") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 if (accessToken != null) {
                     header("Authorization", "Bearer $accessToken")
@@ -912,20 +1034,24 @@ class VideoRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-            android.util.Log.d("VideoRepository", "incrementViews SUCCESS for $videoId")
-            // Update local Room database immediately
-            updateLocalVideoViewCount(videoId, 1)
-            Result.success(Unit)
-        } else {
-            val errBody = try { response.body<String>() } catch (e: Exception) { "no body" }
-            android.util.Log.e("VideoRepository", "incrementViews FAILURE for $videoId: ${response.status} - $errBody")
-            Result.failure(Exception("Failed to increment views: ${response.status}"))
+                android.util.Log.d("VideoRepository", "incrementViews SUCCESS for $videoId")
+                updateLocalVideoViewCount(videoId, 1)
+                Result.success(Unit)
+            } else {
+                val errBody = try { response.body<String>() } catch (_: Exception) { "no body" }
+                android.util.Log.e(
+                    "VideoRepository",
+                    "incrementViews FAILURE for $videoId: ${response.status} - $errBody"
+                )
+                Result.failure(Exception("Failed to increment views: ${response.status}"))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            android.util.Log.e("VideoRepository", "incrementViews CRASH for $videoId", e)
+            Result.failure(e)
         }
-    } catch (e: Exception) {
-        android.util.Log.e("VideoRepository", "incrementViews CRASH for $videoId", e)
-        Result.failure(e)
     }
-}
 
     fun getCommentsFlow(videoId: String): Flow<List<VideoComment>> = callbackFlow {
         android.util.Log.d("VideoRepository", "getCommentsFlow called for videoId: $videoId")
@@ -1023,7 +1149,17 @@ class VideoRepository @Inject constructor(
     private suspend fun subscribeToVideoComments(videoId: String) {
         android.util.Log.d("VideoRepository", "Starting Realtime subscription for video: $videoId")
         if (supabaseConfig.isLocalFallbackPrimary) {
-            android.util.Log.d("VideoRepository", "Ubuntu primary backend: Supabase Realtime video comments disabled")
+            val token = authService.getAccessTokenAwait() ?: return
+            val channel = "video-comments:${canonicalVideoId(videoId)}"
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.subscribe(channel)
+            try {
+                ubuntuRealtimeClient.events
+                    .filter { it.channel == channel && it.event.startsWith("video_comment_") }
+                    .collect { refreshCommentsFromNetwork(videoId) }
+            } finally {
+                ubuntuRealtimeClient.unsubscribe(channel)
+            }
             return
         }
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -1432,11 +1568,15 @@ class VideoRepository @Inject constructor(
                 val comment = inserted.getOrThrow()
                     .copy(videoId = videoId, parentId = normalizeCommentParentId(parentId))
                     .normalizedStorageUrls()
-                withContext(Dispatchers.IO) {
-                    videoCommentDao.insertComment(VideoCommentEntity.fromDomain(comment))
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        videoCommentDao.insertComment(VideoCommentEntity.fromDomain(comment))
+                    }
+                    updateLocalVideoCommentCount(videoId, 1)
+                    refreshCommentsFromNetwork(videoId)
+                }.onFailure { error ->
+                    android.util.Log.w("VideoRepository", "El comentario se guardó, pero falló la actualización local", error)
                 }
-                updateLocalVideoCommentCount(videoId, 1)
-                refreshCommentsFromNetwork(videoId)
                 return Result.success(comment)
             }
 
@@ -1632,34 +1772,53 @@ class VideoRepository @Inject constructor(
     }
 
     suspend fun sendAudioComment(videoId: String, audioFile: java.io.File): Result<Unit> {
+        if (!audioFile.isFile || audioFile.length() <= 0L) {
+            return Result.failure(Exception("El audio está vacío o no se puede leer"))
+        }
+        android.util.Log.d("VideoRepository", "sendAudioComment called for videoId=$videoId, file=${audioFile.name}")
+        authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+        val filename = "comment_${UUID.randomUUID()}.m4a"
+        var remoteKey: String? = null
+        var metadataPersisted = false
+
         return try {
-            android.util.Log.d("VideoRepository", "sendAudioComment called for videoId=$videoId, file=${audioFile.name}")
-            authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            
-            // Upload Audio
-            val bytes = audioFile.readBytes()
-            var filename = "comment_${UUID.randomUUID()}.m4a"
-            android.util.Log.d("VideoRepository", "Uploading audio file: $filename, size=${bytes.size} bytes")
-            val uploadResult = storageService.uploadFile("video-comments-media", filename, bytes, "audio/mp4")
-            
-            if (uploadResult.isSuccess) {
-                 val publicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("video-comments-media", filename)).orEmpty()
-                 android.util.Log.d("VideoRepository", "Audio uploaded successfully: $publicUrl")
-                 // Return the result of addComment directly
-                 return addComment(
-                     videoId = videoId,
-                     content = "[Audio]",
-                     contentType = "audio",
-                     mediaUrl = publicUrl
-                 ).map { Unit }
-            } else {
-                var error = uploadResult.exceptionOrNull() ?: Exception("Upload failed")
+            val uploadResult = storageService.uploadFileFromUri(
+                bucketName = "video-comments-media",
+                fileName = filename,
+                sourceUri = Uri.fromFile(audioFile),
+                sizeBytes = audioFile.length(),
+                contentType = "audio/mp4",
+                allowOverwrite = false,
+                onProgress = {}
+            )
+            if (uploadResult.isFailure) {
+                val error = uploadResult.exceptionOrNull() ?: Exception("Upload failed")
                 android.util.Log.e("VideoRepository", "Audio upload failed: ${error.message}", error)
                 return Result.failure(error)
             }
-        } catch (e: Exception) { 
+
+            val uploadedKey = uploadResult.getOrThrow().Key ?: filename
+            remoteKey = uploadedKey
+            val publicUrl = UbuntuStorageUrl.rewrite(
+                storageService.getPublicUrl("video-comments-media", uploadedKey)
+            ).orEmpty()
+            if (publicUrl.isBlank()) return Result.failure(Exception("No se pudo generar la URL del audio"))
+
+            val result = addComment(
+                videoId = videoId,
+                content = "[Audio]",
+                contentType = "audio",
+                mediaUrl = publicUrl
+            ).map { Unit }
+            metadataPersisted = result.isSuccess
+            result
+        } catch (e: Exception) {
             android.util.Log.e("VideoRepository", "Exception in sendAudioComment", e)
-            Result.failure(e) 
+            Result.failure(e)
+        } finally {
+            if (!metadataPersisted) {
+                remoteKey?.let { cleanupUploadedObjects(listOf("video-comments-media" to it)) }
+            }
         }
     }
 
@@ -1702,9 +1861,10 @@ class VideoRepository @Inject constructor(
                 var fallbackResponse = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/video_comments") {
                     header("Authorization", "Bearer $accessToken")
                     header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Prefer", "return=representation")
                     parameter("id", "eq.$commentId")
                 }
-                fallbackResponse.status.isSuccess()
+                fallbackResponse.status.isSuccess() && fallbackResponse.bodyAsText().trim() != "[]"
             } else {
                 return Result.failure(Exception("No tienes permisos para eliminar este comentario."))
             }
@@ -1721,6 +1881,44 @@ class VideoRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun addStickerComment(videoId: String, stickerUrl: String, label: String): Result<VideoComment> =
+        addComment(
+            videoId = videoId,
+            content = label.ifBlank { "Sticker" },
+            contentType = "sticker",
+            mediaUrl = stickerUrl
+        )
+
+    suspend fun editComment(commentId: String, content: String): Result<Unit> {
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Edición no disponible en el backend actual."))
+        val videoId = videoCommentDao.getCommentById(commentId)?.videoId
+        val result = localFallbackApiClient.editVideoComment(token, commentId, content.trim())
+        if (result.isSuccess && !videoId.isNullOrBlank()) refreshCommentsFromNetwork(videoId)
+        return result
+    }
+
+    suspend fun setCommentReaction(commentId: String, reactionType: String?): Result<Unit> {
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Reacciones no disponibles en el backend actual."))
+        val videoId = videoCommentDao.getCommentById(commentId)?.videoId
+        val result = localFallbackApiClient.setVideoCommentReaction(token, commentId, reactionType)
+        if (result.isSuccess && !videoId.isNullOrBlank()) refreshCommentsFromNetwork(videoId)
+        return result
+    }
+
+    suspend fun reportComment(commentId: String, reason: String, details: String = ""): Result<Unit> {
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Reportes no disponibles en el backend actual."))
+        return localFallbackApiClient.reportVideoComment(token, commentId, reason, details)
+    }
+
+    suspend fun setVideoFavorite(videoId: String, favorite: Boolean): Result<Unit> {
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Favoritos no disponibles en el backend actual."))
+        return localFallbackApiClient.setVideoFavorite(token, videoId, favorite)
     }
 
     suspend fun likeVideo(videoId: String): Result<Unit> {
@@ -2942,6 +3140,34 @@ class VideoRepository @Inject constructor(
         }
     }
 
+    fun getFavoriteVideos(userId: String): Flow<List<Video>> = flow {
+        val cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        if (!shouldUseUbuntuBackend()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        val token = authService.getAccessToken()
+        if (token.isNullOrBlank()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        emit(
+            localFallbackApiClient.loadVideos(
+                accessToken = token,
+                limit = 100,
+                offset = 0,
+                favoritedBy = cleanUserId
+            ).getOrThrow().map { it.normalizedStorageUrls() }
+        )
+    }
+
     private fun Video.normalizedStorageUrls(): Video = copy(
         userProfileImage = UbuntuStorageUrl.rewrite(userProfileImage).orEmpty(),
         videoUrl = UbuntuStorageUrl.rewrite(videoUrl).orEmpty(),
@@ -3013,7 +3239,32 @@ class VideoRepository @Inject constructor(
     }
 }
 
+internal class VideoViewSessionRegistry {
+    private data class Key(val accountId: String, val videoId: String)
 
+    private val lock = Any()
+    private val recorded = mutableSetOf<Key>()
+    private val inFlight = mutableSetOf<Key>()
 
+    fun tryStart(accountId: String, videoId: String): Boolean = synchronized(lock) {
+        val key = Key(accountId.canonicalSessionPart(), videoId.canonicalSessionPart())
+        if (key in recorded || key in inFlight) {
+            false
+        } else {
+            inFlight += key
+            true
+        }
+    }
 
+    fun finish(accountId: String, videoId: String, succeeded: Boolean) = synchronized(lock) {
+        val key = Key(accountId.canonicalSessionPart(), videoId.canonicalSessionPart())
+        inFlight -= key
+        if (succeeded) recorded += key
+    }
 
+    private fun String.canonicalSessionPart(): String = trim().lowercase()
+
+    companion object {
+        const val ANONYMOUS_ACCOUNT = "anonymous"
+    }
+}

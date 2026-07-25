@@ -1,5 +1,9 @@
 import type { User } from '@supabase/supabase-js'
-import { getRuntimeBackendUrl, subscribeRuntimeBackend } from '../runtimeBackend'
+import {
+  getRuntimeBackendUrl,
+  refreshRuntimeBackend,
+  subscribeRuntimeBackend,
+} from '../runtimeBackend'
 
 export type FallbackUser = {
   id: string
@@ -126,11 +130,14 @@ export async function fallbackApiJson<T>(
   const payload = await parseFallbackResponse(response)
   if (!response.ok) {
     const code = String(payload.error || payload.message || '').trim()
-    if (requiresAuth && (code === 'WEB_SESSION_REVOKED' || code === 'INVALID_TOKEN')) {
+    if (requiresAuth && (code === 'WEB_SESSION_REVOKED' || code === 'INVALID_TOKEN' || code === 'ACCOUNT_DELETED')) {
       clearFallbackSession()
     }
     if (code === 'WEB_SESSION_REVOKED') {
       throw new Error('Tu sesión web fue cerrada desde la APK móvil por seguridad.')
+    }
+    if (code === 'ACCOUNT_DELETED') {
+      throw new Error('Esta cuenta fue eliminada y la sesión dejó de ser válida.')
     }
     throw new Error(code || 'No se pudo consultar el servidor Ubuntu.')
   }
@@ -139,9 +146,30 @@ export async function fallbackApiJson<T>(
 
 async function fetchFallback(path: string, init: RequestInit): Promise<Response> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const firstBaseUrl = fallbackApiUrl
+  const canRetryBody = !(
+    typeof ReadableStream !== 'undefined' && init.body instanceof ReadableStream
+  )
   try {
-    return await fetch(`${fallbackApiUrl}${normalizedPath}`, init)
+    const response = await fetch(`${firstBaseUrl}${normalizedPath}`, init)
+    if (![502, 503, 504].includes(response.status) || !canRetryBody) return response
+
+    const refreshedUrl = await refreshRuntimeBackend(`${firstBaseUrl}${normalizedPath}`)
+    return refreshedUrl
+      ? await fetch(`${refreshedUrl}${normalizedPath}`, init)
+      : response
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (canRetryBody) {
+      const refreshedUrl = await refreshRuntimeBackend(`${firstBaseUrl}${normalizedPath}`)
+      if (refreshedUrl) {
+        try {
+          return await fetch(`${refreshedUrl}${normalizedPath}`, init)
+        } catch (retryError) {
+          if (retryError instanceof DOMException && retryError.name === 'AbortError') throw retryError
+        }
+      }
+    }
     console.error('Conectate Ubuntu backend is unreachable', error)
     throw new Error(fallbackConnectionErrorMessage())
   }

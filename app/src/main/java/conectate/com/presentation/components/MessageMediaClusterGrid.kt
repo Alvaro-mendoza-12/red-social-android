@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +24,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
+import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Message
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -33,12 +37,21 @@ fun MessageMediaClusterGrid(
     onResolveUrl: suspend (String) -> String?,
     onMessageClick: (Message, String?) -> Unit,
     onMessageLongClick: (Message) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMedia: ((messages: List<Message>, initialIndex: Int) -> Unit)? = null
 ) {
     if (messages.isEmpty()) return
 
     val visibleMessages = messages.take(4)
     val hiddenCount = (messages.size - visibleMessages.size).coerceAtLeast(0)
+    val openMedia: (Message, String?) -> Unit = { message, resolvedUrl ->
+        val initialIndex = messages.indexOfFirst { it.id == message.id }
+        if (onOpenMedia != null && initialIndex >= 0) {
+            onOpenMedia(messages, initialIndex)
+        } else {
+            onMessageClick(message, resolvedUrl)
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -50,7 +63,7 @@ fun MessageMediaClusterGrid(
                     message = visibleMessages.first(),
                     isSelected = selectedMessageIds.contains(visibleMessages.first().id),
                     onResolveUrl = onResolveUrl,
-                    onMessageClick = onMessageClick,
+                    onMessageClick = openMedia,
                     onMessageLongClick = onMessageLongClick,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -68,7 +81,7 @@ fun MessageMediaClusterGrid(
                             message = mediaMessage,
                             isSelected = selectedMessageIds.contains(mediaMessage.id),
                             onResolveUrl = onResolveUrl,
-                            onMessageClick = onMessageClick,
+                            onMessageClick = openMedia,
                             onMessageLongClick = onMessageLongClick,
                             modifier = Modifier
                                 .weight(1f)
@@ -89,7 +102,7 @@ fun MessageMediaClusterGrid(
                         message = visibleMessages[0],
                         isSelected = selectedMessageIds.contains(visibleMessages[0].id),
                         onResolveUrl = onResolveUrl,
-                        onMessageClick = onMessageClick,
+                        onMessageClick = openMedia,
                         onMessageLongClick = onMessageLongClick,
                         modifier = Modifier
                             .weight(1f)
@@ -106,7 +119,7 @@ fun MessageMediaClusterGrid(
                                 message = mediaMessage,
                                 isSelected = selectedMessageIds.contains(mediaMessage.id),
                                 onResolveUrl = onResolveUrl,
-                                onMessageClick = onMessageClick,
+                                onMessageClick = openMedia,
                                 onMessageLongClick = onMessageLongClick,
                                 modifier = Modifier
                                     .weight(1f)
@@ -133,7 +146,7 @@ fun MessageMediaClusterGrid(
                                     message = mediaMessage,
                                     isSelected = selectedMessageIds.contains(mediaMessage.id),
                                     onResolveUrl = onResolveUrl,
-                                    onMessageClick = onMessageClick,
+                                    onMessageClick = openMedia,
                                     onMessageLongClick = onMessageLongClick,
                                     moreOverlay = moreOverlay,
                                     modifier = Modifier
@@ -167,6 +180,7 @@ private fun MessageMediaClusterTile(
     modifier: Modifier = Modifier,
     moreOverlay: Int = 0
 ) {
+    val context = LocalContext.current
     val resolvedUrl by produceState<String?>(initialValue = message.media_url, key1 = message.media_url) {
         val rawUrl = message.media_url?.trim().orEmpty()
         if (rawUrl.isBlank()) {
@@ -174,11 +188,11 @@ private fun MessageMediaClusterTile(
             return@produceState
         }
 
-        value = if (!rawUrl.startsWith("http") || rawUrl.contains("supabase")) {
-            onResolveUrl(rawUrl) ?: rawUrl
-        } else {
-            rawUrl
-        }
+        value = onResolveUrl(rawUrl) ?: rawUrl
+    }
+    val imageUrl = UbuntuStorageUrl.rewrite(resolvedUrl ?: message.media_url)
+    val imageRequest = androidx.compose.runtime.remember(context, imageUrl) {
+        MediaImageRequestFactory.preview(context, imageUrl)
     }
 
     Box(
@@ -190,7 +204,7 @@ private fun MessageMediaClusterTile(
             )
     ) {
         SubcomposeAsyncImage(
-            model = resolvedUrl ?: message.media_url,
+            model = imageRequest,
             contentDescription = "Imagen del chat",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
@@ -225,7 +239,8 @@ private fun MessageMediaClusterTile(
             }
         )
 
-        if (message.content_type.trim().lowercase() == "gif") {
+        val normalizedType = message.content_type.trim().lowercase()
+        if (normalizedType == "gif" || normalizedType == "image/gif") {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -241,6 +256,17 @@ private fun MessageMediaClusterTile(
                     fontWeight = FontWeight.Bold
                 )
             }
+        }
+
+        if (isVideoMediaType(normalizedType)) {
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = "Reproducir video",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(44.dp)
+            )
         }
 
         if (moreOverlay > 0) {

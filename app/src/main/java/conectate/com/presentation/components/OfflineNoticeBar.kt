@@ -15,9 +15,9 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun OfflineNoticeBar(
+    modifier: Modifier = Modifier,
     message: String = "Conéctate a internet",
-    onRetry: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onRetry: (() -> Unit)? = null
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),

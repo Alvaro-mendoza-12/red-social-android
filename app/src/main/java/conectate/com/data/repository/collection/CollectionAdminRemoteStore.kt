@@ -115,10 +115,15 @@ internal class CollectionAdminRemoteStore(
         payload: JsonObject
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            supabaseConfig.client.postgrest[collectionTable].update(payload) {
+            val result = supabaseConfig.client.postgrest[collectionTable].update(payload) {
                 filter { eq("id", scopeId.trim().lowercase()) }
+                select()
+            }.decodeList<JsonObject>()
+            if (result.isEmpty()) {
+                Result.failure(Exception("No se pudo actualizar (revisa si tienes permisos)"))
+            } else {
+                Result.success(Unit)
             }
-            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }

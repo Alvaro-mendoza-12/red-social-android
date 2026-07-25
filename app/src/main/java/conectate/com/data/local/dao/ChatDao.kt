@@ -58,6 +58,10 @@ interface ChatDao {
             last_message_sender_id = :senderId,
             is_deleted = 0
         WHERE id = :chatId
+          AND (
+              last_message_at IS NULL
+              OR COALESCE(julianday(:timestamp), 0) >= COALESCE(julianday(last_message_at), 0)
+          )
         """
     )
     suspend fun updateLastMessage(

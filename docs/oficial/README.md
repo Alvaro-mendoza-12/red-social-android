@@ -18,6 +18,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 7. [Operación en producción / runbook](06-operaciones-runbook.md)
 8. [Seguridad y legal](07-seguridad-legal.md)
 9. [Pruebas, release y handoff](08-pruebas-release-handoff.md)
+10. [IA propia de Conectate (Novvin)](09-ia-conectate.md)
 
 ## Reglas para quien trabaje en este proyecto
 
@@ -43,4 +44,3 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 - **DuckDNS TXT discovery**: mecanismo de descubrimiento para que la app encuentre la URL pública actual.
 - **TURN/STUN**: infraestructura para que WebRTC pueda conectar audio/video/pantalla entre redes distintas.
 - **CGNAT**: restricción del proveedor de internet que impide exponer puertos públicos directamente desde el router.
-

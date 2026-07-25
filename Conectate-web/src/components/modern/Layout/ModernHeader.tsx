@@ -40,7 +40,7 @@ export function ModernHeader({ onMenuClick, currentView }: ModernHeaderProps) {
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
-              <span className="text-lg font-bold text-slate-900 dark:text-white">CONÉCTATE</span>
+              <span className="text-lg font-bold text-slate-900 dark:text-white">NOVVIN</span>
             </div>
           )}
         </div>
@@ -144,7 +144,7 @@ export function ModernHeader({ onMenuClick, currentView }: ModernHeaderProps) {
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
                   <div className="p-3 border-b border-slate-200 dark:border-slate-700">
                     <p className="text-sm font-medium text-slate-900 dark:text-white">Usuario Demo</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">usuario@conectate.com</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">usuario@correo.com</p>
                   </div>
                   <div className="py-2">
                     <a

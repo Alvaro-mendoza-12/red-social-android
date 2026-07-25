@@ -16,7 +16,8 @@ class FeedRankingEngineML @Inject constructor(
         posts: List<Post>,
         currentUserId: String?,
         friendIds: Set<String>,
-        signalSnapshot: FeedSignalSnapshot
+        signalSnapshot: FeedSignalSnapshot,
+        interestTerms: Set<String>
     ): List<Post> {
         if (posts.isEmpty()) return emptyList()
 
@@ -28,6 +29,7 @@ class FeedRankingEngineML @Inject constructor(
                     currentUserId = currentUserId,
                     friendIds = friendIds,
                     signalSnapshot = signalSnapshot,
+                    interestTerms = interestTerms,
                     nowMs = nowMs
                 )
             }
@@ -50,6 +52,7 @@ class FeedRankingEngineML @Inject constructor(
         currentUserId: String?,
         friendIds: Set<String>,
         signalSnapshot: FeedSignalSnapshot,
+        interestTerms: Set<String>,
         nowMs: Long
     ): Double {
         val rawEngagement = post.likeCount + (post.commentCount * 2.2) + (post.shareCount * 3.1)
@@ -69,6 +72,7 @@ class FeedRankingEngineML @Inject constructor(
         val richMediaBoost = if (post.mediaUrls.isNotEmpty() || !post.mediaUrlLegacy.isNullOrBlank()) 0.16 else 0.0
         val affinityBoost = if (post.likedByMe || post.sharedByMe) 0.22 else 0.0
         val textQualityBoost = scoreTextQuality(post.content)
+        val interestBoost = interestScore(post, interestTerms)
         val tieBreaker = ((post.id.hashCode() and 0xFFFF).toDouble() / 65_535.0) * 0.01
 
         return (engagementScore * 0.62) +
@@ -81,6 +85,7 @@ class FeedRankingEngineML @Inject constructor(
             affinityBoost +
             textQualityBoost -
             seenPenalty +
+            interestBoost +
             tieBreaker
     }
 
@@ -91,6 +96,16 @@ class FeedRankingEngineML @Inject constructor(
         val punctuationBoost = if (trimmed.any { it == '?' || it == '!' }) 0.03 else 0.0
         val capsPenalty = if (trimmed.length > 8 && trimmed == trimmed.uppercase()) 0.06 else 0.0
         return lengthScore + punctuationBoost - capsPenalty
+    }
+
+    private fun interestScore(post: Post, interestTerms: Set<String>): Double {
+        if (interestTerms.isEmpty()) return 0.0
+        val content = post.content.lowercase()
+        val matches = interestTerms.count { term ->
+            val normalized = term.trim().lowercase()
+            normalized.length >= 2 && content.contains(normalized)
+        }
+        return matches.coerceAtMost(4) * 0.42
     }
 
     private fun ageHours(createdAt: String, nowMs: Long): Double {

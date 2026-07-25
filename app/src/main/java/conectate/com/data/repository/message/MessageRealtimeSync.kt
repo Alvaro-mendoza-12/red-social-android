@@ -74,9 +74,12 @@ class MessageRealtimeSync @Inject constructor(
         Log.d(TAG, "[START] Iniciando listener realtime para usuario: $cleanUserId")
 
         globalListenerJob?.cancel()
+        queueProcessorJob?.cancel()
+        while (messageChannel.tryReceive().isSuccess) {
+            // Discard events captured for the previous authenticated account.
+        }
         
         // v22.3: Iniciar procesador de cola secuencial
-        queueProcessorJob?.cancel()
         queueProcessorJob = scope.launch {
             for (item in messageChannel) {
                 try {
@@ -154,9 +157,12 @@ class MessageRealtimeSync @Inject constructor(
             val token = authService.getAccessToken()?.trim().orEmpty()
             if (token.isBlank()) return@launch
             ubuntuRealtimeClient.updateAccessToken(token)
-            ubuntuRealtimeClient.subscribe("user:$userId")
+            ubuntuRealtimeClient.replaceUserSubscription(userId)
             ubuntuRealtimeClient.events.collect { envelope ->
+                if (envelope.channel != "user:$userId") return@collect
                 if (envelope.event != "message") return@collect
+                val eventChatId = envelope.payload["chatId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (eventChatId.startsWith("room:")) return@collect
                 val record = envelope.payload["message"]?.jsonObject ?: return@collect
                 val action = envelope.payload["action"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
                 val queuedAction = when (action) {
@@ -362,6 +368,12 @@ class MessageRealtimeSync @Inject constructor(
         Log.w(TAG, "CLEAR ALL: Limpiando estado en memoria de realtime sync")
         globalListenerJob?.cancel()
         globalListenerJob = null
+        queueProcessorJob?.cancel()
+        queueProcessorJob = null
+        while (messageChannel.tryReceive().isSuccess) {
+            // Remove queued events so another account cannot consume them.
+        }
+        ubuntuRealtimeClient.clearUserSubscriptions()
         chatMutexes.clear()
         transientIdMap.clear()
         _userChats.value = emptyList()

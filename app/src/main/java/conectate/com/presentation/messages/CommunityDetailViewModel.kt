@@ -19,6 +19,13 @@ class CommunityDetailViewModel @Inject constructor(
     private val userRepository: conectate.com.data.repository.UserRepository
 ) : ViewModel() {
 
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage = _actionMessage.asStateFlow()
+
+    fun consumeActionMessage() {
+        _actionMessage.value = null
+    }
+
     private val _community = MutableStateFlow<Community?>(null)
     val community = _community.asStateFlow()
 
@@ -37,6 +44,9 @@ class CommunityDetailViewModel @Inject constructor(
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin = _isAdmin.asStateFlow()
 
+    private val _isCreator = MutableStateFlow(false)
+    val isCreator = _isCreator.asStateFlow()
+
     private var communityId: String? = null
 
     init {
@@ -47,6 +57,11 @@ class CommunityDetailViewModel @Inject constructor(
     fun loadCommunityDetails(id: String) {
         communityId = id
         _isLoading.value = true
+        _community.value = null
+        _members.value = emptyList()
+        _isMember.value = false
+        _isAdmin.value = false
+        _isCreator.value = false
         
         // 1. Force Sync
         viewModelScope.launch {
@@ -59,13 +74,7 @@ class CommunityDetailViewModel @Inject constructor(
                 _community.value = comm
                 if (comm != null) {
                     _isLoading.value = false
-                    
-                    val myId = _currentUserId.value
-                    val amICreator = sameCommunityUserId(comm.creator_id, myId)
-                    val amIAdmin = _members.value.find { sameCommunityUserId(it.user_id, myId) }
-                        ?.role
-                        .isCommunityAdminRole()
-                    _isAdmin.value = amICreator || amIAdmin
+                    recomputePermissions()
                 }
             }
         }
@@ -86,33 +95,23 @@ class CommunityDetailViewModel @Inject constructor(
             loadMembers()
             
             communityRepository.getMembersFlow(id).collect { basicMembers ->
-                if (basicMembers.isNotEmpty()) {
-                    val currentMap = _members.value.associateBy { it.user_id }
-                    
-                    val enriched = basicMembers.map { basic ->
-                        val cached = currentMap[basic.user_id]
-                        if (cached != null) {
-                            cached.copy(role = basic.role)
-                        } else {
-                            basic
-                        }
-                    }
-                    
-                    // If we have nameless members, force a reload
-                    if (enriched.any { it.userName == null && it.user_id != _currentUserId.value }) {
-                        loadMembers()
+                val currentMap = _members.value.associateBy { it.user_id }
+
+                val enriched = basicMembers.map { basic ->
+                    val cached = currentMap[basic.user_id]
+                    if (cached != null) {
+                        cached.copy(role = basic.role)
                     } else {
-                        _members.value = enriched
+                        basic
                     }
-                    
-                    // Recalculate permissions on member update
-                    val myId = _currentUserId.value
-                    val comm = _community.value
-                    val amICreator = sameCommunityUserId(comm?.creator_id, myId)
-                    val amIAdmin = enriched.find { sameCommunityUserId(it.user_id, myId) }
-                        ?.role
-                        .isCommunityAdminRole()
-                    _isAdmin.value = amICreator || amIAdmin
+                }
+
+                // If we have nameless members, force a reload
+                if (enriched.any { it.userName == null && it.user_id != _currentUserId.value }) {
+                    loadMembers()
+                } else {
+                    _members.value = enriched
+                    recomputePermissions()
                 }
             }
         }
@@ -185,13 +184,34 @@ class CommunityDetailViewModel @Inject constructor(
         imageBytes: ByteArray?,
         isPublic: Boolean,
         onlyAdminsCanTalk: Boolean,
+        dailyMessageLimit: Int,
         onSuccess: () -> Unit
     ) {
         val id = communityId ?: return
         viewModelScope.launch {
-            val result = communityRepository.updateCommunityInfo(id, name, description, imageBytes, isPublic, onlyAdminsCanTalk)
+            val result = communityRepository.updateCommunityInfo(
+                communityId = id,
+                name = name,
+                description = description,
+                imageBytes = imageBytes,
+                isPublic = isPublic,
+                onlyAdminsCanTalk = onlyAdminsCanTalk,
+                dailyMessageLimit = dailyMessageLimit
+            )
+
             if (result.isSuccess) {
+                _community.value = _community.value?.copy(
+                    name = name.trim(),
+                    description = description?.trim().orEmpty().ifBlank { null },
+                    is_public = isPublic,
+                    only_admins_can_talk = onlyAdminsCanTalk,
+                    daily_message_limit = dailyMessageLimit.coerceIn(0, 1000)
+                )
                 onSuccess()
+            } else {
+                val msg = result.exceptionOrNull()?.message ?: "No se pudo guardar los cambios"
+                android.util.Log.e("CommunityDetailVM", "updateCommunityInfo failed. id=$id msg=$msg", result.exceptionOrNull())
+                _actionMessage.value = msg
             }
         }
     }
@@ -202,8 +222,20 @@ class CommunityDetailViewModel @Inject constructor(
             val membersResult = communityRepository.getCommunityMembers(id)
             if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
+                recomputePermissions()
             }
         }
+    }
+
+    private fun recomputePermissions() {
+        val myId = _currentUserId.value
+        val comm = _community.value
+        val amICreator = sameCommunityUserId(comm?.creator_id, myId)
+        val amIAdmin = _members.value.find { sameCommunityUserId(it.user_id, myId) }
+            ?.role
+            .isCommunityAdminRole()
+        _isCreator.value = amICreator
+        _isAdmin.value = amICreator || amIAdmin
     }
 }
 

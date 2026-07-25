@@ -34,6 +34,37 @@ export class WebRTCManager {
     }
   }
 
+  setLocalStream(stream: MediaStream, stopPrevious: boolean = true): void {
+    if (stopPrevious && this.localStream && this.localStream !== stream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+    }
+    this.localStream = stream;
+  }
+
+  async replaceOutgoingTrack(kind: 'audio' | 'video', track: MediaStreamTrack): Promise<void> {
+    if (!this.localStream) this.localStream = new MediaStream();
+    this.localStream.getTracks()
+      .filter((current) => current.kind === kind && current.id !== track.id)
+      .forEach((current) => {
+        this.localStream?.removeTrack(current);
+        current.stop();
+      });
+    if (!this.localStream.getTracks().some((current) => current.id === track.id)) {
+      this.localStream.addTrack(track);
+    }
+
+    const replacements: Promise<void>[] = [];
+    this.peerConnections.forEach((connection) => {
+      const sender = connection.getSenders().find((candidate) => candidate.track?.kind === kind);
+      if (sender) {
+        replacements.push(sender.replaceTrack(track));
+      } else {
+        connection.addTrack(track, this.localStream!);
+      }
+    });
+    await Promise.all(replacements);
+  }
+
   createPeerConnection(peerId: string, isInitiator: boolean): RTCPeerConnection {
     const configuration = {
       iceServers: this.iceServers

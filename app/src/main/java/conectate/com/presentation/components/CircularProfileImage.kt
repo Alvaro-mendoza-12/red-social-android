@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.CachePolicy
@@ -48,6 +48,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun CircularProfileImage(
@@ -96,12 +97,14 @@ fun CircularProfileImage(
     val fallbackInitial = remember(fallbackName) {
         avatarFallbackInitial(fallbackName)
     }
-    val request = remember(resolvedImageUrl) {
+    val cacheKey = remember(imageUrl) { UbuntuStorageUrl.stableCacheKey(imageUrl) }
+    val request = remember(resolvedImageUrl, cacheKey) {
         resolvedImageUrl?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
-                .diskCacheKey(UbuntuStorageUrl.stableCacheKey(imageUrl))
+                .memoryCacheKey(cacheKey)
+                .diskCacheKey(cacheKey)
+                .placeholderMemoryCacheKey(cacheKey)
                 .crossfade(false)
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
@@ -130,65 +133,75 @@ fun CircularProfileImage(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
+            val hasSuccessfulImage = remember(cacheKey) { mutableStateOf(false) }
             if (resolvedImageUrl.isNullOrEmpty()) {
                 AvatarFallback(
                     initial = fallbackInitial,
                     size = size
                 )
             } else if (isVideoAvatar) {
-                val exoPlayer = remember(resolvedImageUrl) {
-                    ExoPlayer.Builder(context).build().apply {
+                val exoPlayerState = remember(resolvedImageUrl) { mutableStateOf<ExoPlayer?>(null) }
+                val playerReleased = remember(resolvedImageUrl) { AtomicBoolean(false) }
+                DisposableEffect(resolvedImageUrl) {
+                    playerReleased.set(false)
+                    val player = ExoPlayer.Builder(context).build().apply {
                         repeatMode = Player.REPEAT_MODE_ONE
                         volume = 0f
-                        playWhenReady = false
-                        setMediaItem(MediaItem.fromUri(resolvedImageUrl))
+                        playWhenReady = true
+                        setMediaItem(MediaItem.fromUri(resolvedImageUrl!!))
                         prepare()
                     }
-                }
-                LaunchedEffect(effectiveMuted, exoPlayer) {
-                    exoPlayer.volume = if (effectiveMuted) 0f else 1f
-                    exoPlayer.playWhenReady = true
-                }
-                val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
-                DisposableEffect(exoPlayer) {
+                    exoPlayerState.value = player
                     onDispose {
-                        textureViewRef.value?.let { exoPlayer.clearVideoTextureView(it) }
-                        exoPlayer.release()
+                        playerReleased.set(true)
+                        exoPlayerState.value = null
+                        player.stop()
+                        player.release()
                     }
                 }
-                AndroidView(
-                    factory = { viewContext ->
-                        TextureView(viewContext).apply {
-                            isOpaque = false
-                            textureViewRef.value = this
-                            exoPlayer.setVideoTextureView(this)
+                val exoPlayer = exoPlayerState.value
+                if (exoPlayer != null) {
+                    LaunchedEffect(effectiveMuted, exoPlayer) {
+                        if (!playerReleased.get()) {
+                            exoPlayer.volume = if (effectiveMuted) 0f else 1f
+                            exoPlayer.playWhenReady = true
                         }
-                    },
-                    update = { textureView ->
-                        textureViewRef.value = textureView
-                        exoPlayer.setVideoTextureView(textureView)
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            shape = CircleShape
-                            clip = true
-                        }
-                        .clip(CircleShape)
-                )
+                    }
+                    val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
+                    AndroidView(
+                        factory = { viewContext ->
+                            TextureView(viewContext).apply {
+                                isOpaque = false
+                                textureViewRef.value = this
+                                exoPlayer.setVideoTextureView(this)
+                            }
+                        },
+                        update = { textureView ->
+                            if (!playerReleased.get()) {
+                                textureViewRef.value = textureView
+                                exoPlayer.setVideoTextureView(textureView)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                shape = CircleShape
+                                clip = true
+                            }
+                            .clip(CircleShape)
+                    )
+                }
             } else {
-                // Load image with Coil
-                SubcomposeAsyncImage(
+                if (!hasSuccessfulImage.value) {
+                    AvatarFallback(initial = fallbackInitial, size = size)
+                }
+                AsyncImage(
                     model = request,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    loading = {
-                        AvatarFallback(initial = fallbackInitial, size = size)
-                    },
-                    error = {
-                        AvatarFallback(initial = fallbackInitial, size = size)
-                    }
+                    onSuccess = { hasSuccessfulImage.value = true },
+                    onError = { hasSuccessfulImage.value = false }
                 )
             }
         }

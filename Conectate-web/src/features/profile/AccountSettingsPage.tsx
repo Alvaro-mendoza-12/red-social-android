@@ -10,6 +10,43 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
 import { loadFallbackProfileMe, updateFallbackProfileMe, uploadFallbackFile } from '../../core/fallbackData'
 
+type ProfileSectionId = 'welcome' | 'music' | 'interests' | 'hobbies' | 'career' | 'games' | 'sports' | 'books' | 'availability'
+type ProfileSectionVisibility = 'everyone' | 'followers' | 'only_me'
+
+const profileSectionLabels: Record<ProfileSectionId, string> = {
+  welcome: 'Bienvenida',
+  music: 'Música de entrada',
+  interests: 'Intereses',
+  hobbies: 'Hobbies',
+  career: 'Carrera o profesión',
+  games: 'Videojuegos',
+  sports: 'Deportes',
+  books: 'Libros',
+  availability: 'Disponibilidad',
+}
+
+const defaultSectionVisibility = (): Record<ProfileSectionId, ProfileSectionVisibility> =>
+  Object.fromEntries(Object.keys(profileSectionLabels).map((key) => [key, 'everyone'])) as Record<ProfileSectionId, ProfileSectionVisibility>
+
+function profileSectionVisibilityFrom(value: unknown): Record<ProfileSectionId, ProfileSectionVisibility> {
+  const result = defaultSectionVisibility()
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  for (const key of Object.keys(profileSectionLabels) as ProfileSectionId[]) {
+    const raw = String((value as Record<string, unknown>)[key] ?? '').trim().toLowerCase()
+    const normalized = raw === 'connections' ? 'followers' : raw
+    if (normalized === 'everyone' || normalized === 'followers' || normalized === 'only_me') result[key] = normalized
+  }
+  return result
+}
+
+function profileSectionOrderFrom(value: unknown): ProfileSectionId[] {
+  const defaults = Object.keys(profileSectionLabels) as ProfileSectionId[]
+  const requested = Array.isArray(value)
+    ? value.map((entry) => String(entry).trim().toLowerCase()).filter((entry): entry is ProfileSectionId => entry in profileSectionLabels)
+    : []
+  return [...new Set([...requested, ...defaults])]
+}
+
 type SettingsModel = {
   displayName: string
   username: string
@@ -17,6 +54,7 @@ type SettingsModel = {
   avatarUrl: string
   coverUrl: string
   interestsText: string
+  hobbiesText: string
   linkedGamesText: string
   gameLogoUrlsText: string
   favoriteMusicUrl: string
@@ -24,6 +62,8 @@ type SettingsModel = {
   favoriteSport: string
   career: string
   availabilitySchedule: string
+  profileSectionVisibility: Record<ProfileSectionId, ProfileSectionVisibility>
+  profileSectionOrder: ProfileSectionId[]
   lastSeenVisibility: string
   onlineStatusVisibility: string
   isPrivate: boolean
@@ -87,6 +127,7 @@ export function AccountSettingsPage() {
     avatarUrl: '',
     coverUrl: '',
     interestsText: '',
+    hobbiesText: '',
     linkedGamesText: '',
     gameLogoUrlsText: '',
     favoriteMusicUrl: '',
@@ -94,6 +135,8 @@ export function AccountSettingsPage() {
     favoriteSport: '',
     career: '',
     availabilitySchedule: '',
+    profileSectionVisibility: defaultSectionVisibility(),
+    profileSectionOrder: profileSectionOrderFrom([]),
     lastSeenVisibility: 'everyone',
     onlineStatusVisibility: 'everyone',
     isPrivate: false,
@@ -133,6 +176,7 @@ export function AccountSettingsPage() {
       model.avatarUrl,
       model.coverUrl,
       model.interestsText,
+      model.hobbiesText,
       model.linkedGamesText,
       model.favoriteMusicUrl,
       model.favoriteBook,
@@ -153,6 +197,7 @@ export function AccountSettingsPage() {
     model.favoriteMusicUrl,
     model.favoriteSport,
     model.interestsText,
+    model.hobbiesText,
     model.linkedGamesText,
     model.username,
   ])
@@ -215,6 +260,17 @@ export function AccountSettingsPage() {
           bio: textOf(profile, ['bio'], ''),
           avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'], textOf(metadata, ['avatar_url'], '')),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
+          interestsText: csvFromArray(profile.interests),
+          hobbiesText: csvFromArray(profile.hobbies),
+          linkedGamesText: csvFromArray(profile.linked_games),
+          gameLogoUrlsText: gameLogoTextFromJson(profile.game_logo_urls),
+          favoriteMusicUrl: textOf(profile, ['favorite_music_url'], ''),
+          favoriteBook: textOf(profile, ['favorite_book'], ''),
+          favoriteSport: textOf(profile, ['favorite_sport'], ''),
+          career: textOf(profile, ['career'], ''),
+          availabilitySchedule: textOf(profile, ['availability_schedule'], ''),
+          profileSectionVisibility: profileSectionVisibilityFrom(profile.profile_section_visibility ?? profile.profileSectionVisibility),
+          profileSectionOrder: profileSectionOrderFrom(profile.profile_section_order ?? profile.profileSectionOrder),
           lastSeenVisibility: textOf(profile, ['last_seen_visibility', 'lastSeenVisibility'], current.lastSeenVisibility),
           onlineStatusVisibility: textOf(profile, ['online_status_visibility', 'onlineStatusVisibility'], current.onlineStatusVisibility),
           isPrivate: toBoolean(profile.is_private ?? profile.isPrivate),
@@ -255,6 +311,7 @@ export function AccountSettingsPage() {
         avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
         coverUrl: textOf(row, ['cover_url', 'banner_url'], ''),
         interestsText: csvFromArray(row.interests),
+        hobbiesText: csvFromArray(row.hobbies),
         linkedGamesText: csvFromArray(row.linked_games),
         gameLogoUrlsText: gameLogoTextFromJson(row.game_logo_urls),
         favoriteMusicUrl: textOf(row, ['favorite_music_url'], ''),
@@ -262,6 +319,8 @@ export function AccountSettingsPage() {
         favoriteSport: textOf(row, ['favorite_sport'], ''),
         career: textOf(row, ['career'], ''),
         availabilitySchedule: textOf(row, ['availability_schedule'], ''),
+        profileSectionVisibility: profileSectionVisibilityFrom(row.profile_section_visibility ?? row.profileSectionVisibility),
+        profileSectionOrder: profileSectionOrderFrom(row.profile_section_order ?? row.profileSectionOrder),
         lastSeenVisibility: textOf(row, ['last_seen_visibility'], 'everyone'),
         onlineStatusVisibility: textOf(row, ['online_status_visibility'], 'everyone'),
         isPrivate: toBoolean(row.is_private),
@@ -291,6 +350,18 @@ export function AccountSettingsPage() {
           bio: model.bio.trim() || null,
           avatarUrl: model.avatarUrl.trim() || null,
           coverUrl: model.coverUrl.trim() || null,
+          username: model.username.trim() || null,
+          interests: csvToArray(model.interestsText),
+          hobbies: csvToArray(model.hobbiesText),
+          linkedGames: csvToArray(model.linkedGamesText),
+          gameLogoUrls: gameLogoJsonFromText(model.gameLogoUrlsText),
+          favoriteMusicUrl: model.favoriteMusicUrl.trim() || null,
+          favoriteBook: model.favoriteBook.trim() || null,
+          favoriteSport: model.favoriteSport.trim() || null,
+          career: model.career.trim() || null,
+          availabilitySchedule: model.availabilitySchedule.trim() || null,
+          profileSectionVisibility: model.profileSectionVisibility,
+          profileSectionOrder: model.profileSectionOrder,
           isPrivate: model.isPrivate,
           profileVisibility: model.profileVisibility,
           lastSeenVisibility: model.lastSeenVisibility,
@@ -324,6 +395,7 @@ export function AccountSettingsPage() {
         avatar_url: model.avatarUrl.trim() || null,
         cover_url: model.coverUrl.trim() || null,
         interests: csvToArray(model.interestsText),
+        hobbies: csvToArray(model.hobbiesText),
         linked_games: csvToArray(model.linkedGamesText),
         game_logo_urls: gameLogoJsonFromText(model.gameLogoUrlsText),
         favorite_music_url: model.favoriteMusicUrl.trim() || null,
@@ -331,6 +403,8 @@ export function AccountSettingsPage() {
         favorite_sport: model.favoriteSport.trim() || null,
         career: model.career.trim() || null,
         availability_schedule: model.availabilitySchedule.trim() || null,
+        profile_section_visibility: model.profileSectionVisibility,
+        profile_section_order: model.profileSectionOrder,
         last_seen_visibility: model.lastSeenVisibility,
         online_status_visibility: model.onlineStatusVisibility,
         updated_at: new Date().toISOString(),
@@ -645,6 +719,12 @@ export function AccountSettingsPage() {
               />
               <input
                 className="text-input"
+                placeholder="Pasatiempos separados por coma"
+                value={model.hobbiesText}
+                onChange={(event) => setModel((current) => ({ ...current, hobbiesText: event.target.value }))}
+              />
+              <input
+                className="text-input"
                 placeholder="Juegos separados por coma"
                 value={model.linkedGamesText}
                 onChange={(event) => setModel((current) => ({ ...current, linkedGamesText: event.target.value }))}
@@ -653,7 +733,7 @@ export function AccountSettingsPage() {
             <textarea
               className="text-input textarea-input settings-form-span-2"
               rows={3}
-              placeholder="Logos de juegos: Minecraft=https://..."
+              placeholder="Logos oficiales: Juego=https://cdn.cloudflare.steamstatic.com/..."
               value={model.gameLogoUrlsText}
               onChange={(event) => setModel((current) => ({ ...current, gameLogoUrlsText: event.target.value }))}
             />
@@ -690,6 +770,50 @@ export function AccountSettingsPage() {
               value={model.availabilitySchedule}
               onChange={(event) => setModel((current) => ({ ...current, availabilitySchedule: event.target.value }))}
             />
+            <div className="settings-mini-grid">
+              {model.profileSectionOrder.map((section, sectionIndex) => (
+                <div key={section} className="settings-stack">
+                  <span>{profileSectionLabels[section]}</span>
+                  <span className="row-actions">
+                    <button
+                      className="mini-action-btn"
+                      type="button"
+                      disabled={sectionIndex === 0}
+                      onClick={() => setModel((current) => {
+                        const order = [...current.profileSectionOrder]
+                        ;[order[sectionIndex - 1], order[sectionIndex]] = [order[sectionIndex], order[sectionIndex - 1]]
+                        return { ...current, profileSectionOrder: order }
+                      })}
+                    >Subir</button>
+                    <button
+                      className="mini-action-btn"
+                      type="button"
+                      disabled={sectionIndex === model.profileSectionOrder.length - 1}
+                      onClick={() => setModel((current) => {
+                        const order = [...current.profileSectionOrder]
+                        ;[order[sectionIndex], order[sectionIndex + 1]] = [order[sectionIndex + 1], order[sectionIndex]]
+                        return { ...current, profileSectionOrder: order }
+                      })}
+                    >Bajar</button>
+                  </span>
+                  <select
+                    className="text-input tiny-input"
+                    value={model.profileSectionVisibility[section]}
+                    onChange={(event) => setModel((current) => ({
+                      ...current,
+                      profileSectionVisibility: {
+                        ...current.profileSectionVisibility,
+                        [section]: event.target.value as ProfileSectionVisibility,
+                      },
+                    }))}
+                  >
+                    <option value="everyone">Todos</option>
+                    <option value="followers">Seguidores</option>
+                    <option value="only_me">Solo yo</option>
+                  </select>
+                </div>
+              ))}
+            </div>
             <button className="ghost-btn" type="button" disabled={savingProfile} onClick={() => void saveProfileBasics()}>
               {savingProfile ? 'Guardando...' : 'Guardar perfil'}
             </button>
@@ -812,7 +936,7 @@ export function AccountSettingsPage() {
           <div>
             <h3>Acceso y QR</h3>
             <p>
-              Mantén el acceso por correo, pero suma también el QR seguro de Conectate Web y el QR
+              Mantén el acceso por correo, pero suma también el QR seguro de Novvin Web y el QR
               de perfil para compartirte rápido.
             </p>
           </div>
@@ -826,7 +950,7 @@ export function AccountSettingsPage() {
               <p>Enviaremos acceso al correo actual para abrir otra sesión o validar con OTP.</p>
             </div>
             <div className="surface-subcard">
-              <strong>Conectate Web por QR</strong>
+              <strong>Novvin Web por QR</strong>
               <p>Genera un código temporal y apruébalo desde tu móvil como en WhatsApp Web.</p>
             </div>
             <div className="row-actions wrap">
@@ -847,7 +971,7 @@ export function AccountSettingsPage() {
               <QrCodeTile
                 value={profileQrValue}
                 title="Mi código de perfil"
-                description="Cuando alguien lo escanea desde Conectate móvil, abre tu perfil directamente."
+                description="Cuando alguien lo escanea desde Novvin móvil, abre tu perfil directamente."
                 compact
               />
             ) : null}
@@ -912,7 +1036,7 @@ export function AccountSettingsPage() {
                 updateWebPreferences({ accentTheme: event.target.value as typeof webPreferences.accentTheme })
               }
             >
-              <option value="conectate">Conectate</option>
+              <option value="conectate">Novvin</option>
               <option value="ocean">Océano</option>
               <option value="violet">Violeta</option>
               <option value="emerald">Esmeralda</option>

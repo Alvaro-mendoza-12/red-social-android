@@ -141,10 +141,8 @@ fun CallScreen(
         }
     }
     LaunchedEffect(active?.callId, hasMicPermission) {
-        if (active?.callId.isNullOrBlank() || !hasMicPermission) {
-            viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
-            return@LaunchedEffect
-        }
+        if (active?.callId.isNullOrBlank() || !hasMicPermission) return@LaunchedEffect
+        viewModel.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 500)
     }
     LaunchedEffect(active?.callId, active?.isVideo) {
         if (active?.isVideo != true) return@LaunchedEffect
@@ -229,6 +227,9 @@ fun CallScreen(
         CallConnectionState.ENDED -> "Finalizada"
         else -> ""
     }
+    val hasVideoContent = active.isVideo ||
+        localVideoTrack != null ||
+        remoteVideoTracks.isNotEmpty()
 
     Scaffold(
         containerColor = Color.Black
@@ -302,7 +303,7 @@ fun CallScreen(
                         )
                     }
 
-                    if (!active.isVideo) {
+                    if (!hasVideoContent) {
                     Spacer(modifier = Modifier.height(22.dp))
                     if (remoteParticipants.size <= 1) {
                         Box(contentAlignment = Alignment.Center) {
@@ -353,7 +354,7 @@ fun CallScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (active.isVideo) {
+                    if (hasVideoContent) {
                         val remoteVideoTrack = primaryRemote?.let { participant ->
                             remoteVideoTracks[participant.socketId]
                                 ?: remoteVideoTracks[participant.userId]
@@ -685,13 +686,13 @@ private fun FloatingCallReaction(
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 2_400, easing = LinearOutSlowInEasing)
+            animationSpec = tween(durationMillis = 4_200, easing = FastOutSlowInEasing)
         )
     }
     val p = progress.value
-    val offsetY = -260f * p
-    val alpha = (1f - p).coerceIn(0f, 1f)
-    val scale = 0.88f + (0.52f * p)
+    val offsetY = -190f * p
+    val alpha = if (p < 0.68f) 1f else ((1f - p) / 0.32f).coerceIn(0f, 1f)
+    val scale = 0.92f + (0.18f * p)
 
     Box(
         modifier = modifier

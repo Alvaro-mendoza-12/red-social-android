@@ -7,8 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
@@ -22,7 +20,6 @@ object IncomingCallNotificationFactory {
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
         val channel = NotificationChannel(
             context.getString(R.string.call_notification_channel_id),
             "Llamadas",
@@ -32,13 +29,8 @@ object IncomingCallNotificationFactory {
             enableVibration(true)
             setShowBadge(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setSound(
-                ringtoneUri,
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
+            // IncomingCallForegroundService owns the single looping ringtone.
+            setSound(null, null)
         }
 
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -81,7 +73,7 @@ object IncomingCallNotificationFactory {
         )
 
         val callerPerson = Person.Builder()
-            .setName(invite.callerName.ifBlank { "Conéctate" })
+            .setName(invite.callerName.ifBlank { "Novvin" })
             .setImportant(true)
             .apply {
                 avatarBitmap?.let { setIcon(IconCompat.createWithBitmap(it)) }
@@ -90,15 +82,16 @@ object IncomingCallNotificationFactory {
 
         return NotificationCompat.Builder(context, context.getString(R.string.call_notification_channel_id))
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(invite.callerName.ifBlank { "Conéctate" })
+            .setContentTitle(invite.callerName.ifBlank { "Novvin" })
             .setContentText(if (invite.isVideo) "Videollamada entrante" else "Llamada entrante")
-            .setSubText("Conéctate")
+            .setSubText("Novvin")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(false)
+            .setSilent(true)
             .setLargeIcon(avatarBitmap)
             .setColor(ContextCompat.getColor(context, R.color.red_primary))
             .setColorized(true)

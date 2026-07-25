@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Heart, MessageCircle, MoreHorizontal, Plus, Repeat, Search, Send, Share2, Shuffle, SlidersHorizontal, Star, X } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Heart, MessageCircle, MoreHorizontal, Plus, Radio, Repeat, Search, Send, Share2, SlidersHorizontal, Star, Upload, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
@@ -16,10 +16,12 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
   loadFallbackFollows,
+  loadFallbackLiveStreams,
   loadFallbackVideos,
   setFallbackVideoFavorite,
   setFallbackVideoReaction,
   uploadFallbackFile,
+  type FallbackLiveStream,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import {
@@ -30,7 +32,8 @@ import {
   reelAuthorAvatarSource,
 } from '../../core/profileMediaFields'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
-import { createShuffleSeed, filterFriendFeedItems, shuffleFeedItems } from './reelFeedOrder'
+import { filterFriendFeedItems } from './reelFeedOrder'
+import { LiveFeedCard, LiveStrip } from '../live/LiveStrip'
 
 type ReelItem = {
   id: string
@@ -60,7 +63,7 @@ type TrimPreviewFrame = {
   src: string
 }
 
-type FeedSort = 'random' | 'new' | 'likes' | 'views'
+type FeedSort = 'recommended' | 'new' | 'likes' | 'views'
 type FeedMode = 'friends' | 'recommended'
 type CoverInputMode = 'upload' | 'frame'
 type WatermarkDetectionResult = {
@@ -248,8 +251,8 @@ function ReelFeedCard({
                   if (typeof window !== 'undefined') {
                     const shareUrl = `${window.location.origin}/app/reels/${item.id}`
                     const sendIntent = {
-                      title: item.title || 'Video de Conectate',
-                      text: `Mira este video en Conectate: ${shareUrl}`,
+                      title: item.title || 'Video de Novvin',
+                      text: `Mira este video en Novvin: ${shareUrl}`,
                       url: shareUrl,
                     }
                     if (navigator.share) {
@@ -617,6 +620,7 @@ export function ReelsPage() {
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<ReelItem[]>([])
+  const [liveStreams, setLiveStreams] = useState<FallbackLiveStream[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -633,8 +637,7 @@ export function ReelsPage() {
   const [onlyMine, setOnlyMine] = useState(false)
   const [feedMode, setFeedMode] = useState<FeedMode>('recommended')
   const [followingIds, setFollowingIds] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState<FeedSort>('random')
-  const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
+  const [sortBy, setSortBy] = useState<FeedSort>('recommended')
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
@@ -686,14 +689,14 @@ export function ReelsPage() {
       )
     }
 
-    if (sortBy === 'random') return shuffleFeedItems(next, shuffleSeed)
+    if (sortBy === 'recommended') return next
 
     return [...next].sort((a, b) => {
       if (sortBy === 'likes') return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       if (sortBy === 'views') return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
     })
-  }, [feedMode, followingIds, items, onlyMine, searchQuery, shuffleSeed, sortBy, user])
+  }, [feedMode, followingIds, items, onlyMine, searchQuery, sortBy, user])
 
   const loadVideos = useCallback(async (options?: { silent?: boolean }) => {
     if (useUbuntu) {
@@ -840,6 +843,28 @@ export function ReelsPage() {
     }
     void loadVideos({ silent: false })
   }, [loadVideos, reelsCacheKey])
+
+  useEffect(() => {
+    if (!useUbuntu) {
+      setLiveStreams([])
+      return
+    }
+    let cancelled = false
+    const loadLives = async () => {
+      try {
+        const response = await loadFallbackLiveStreams(12)
+        if (!cancelled) setLiveStreams(response.items.filter((stream) => Boolean(stream.is_active)))
+      } catch {
+        if (!cancelled) setLiveStreams([])
+      }
+    }
+    void loadLives()
+    const interval = window.setInterval(() => void loadLives(), 12_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [useUbuntu])
 
   useEffect(() => {
     if (useUbuntu) return
@@ -1360,7 +1385,7 @@ export function ReelsPage() {
     const shareUrl = `${window.location.origin}/app/reels/${item.id}`
     if (navigator.share) {
       void navigator
-        .share({ title: item.title || 'Video de Conectate', text: item.description || '', url: shareUrl })
+        .share({ title: item.title || 'Video de Novvin', text: item.description || '', url: shareUrl })
         .catch(() => undefined)
     } else {
       void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
@@ -1426,8 +1451,7 @@ export function ReelsPage() {
             aria-pressed={feedMode === 'friends'}
             onClick={() => {
               setFeedMode('friends')
-              setSortBy('random')
-              setShuffleSeed(createShuffleSeed())
+              setSortBy('recommended')
             }}
           >
             Amigos
@@ -1438,8 +1462,7 @@ export function ReelsPage() {
             aria-pressed={feedMode === 'recommended'}
             onClick={() => {
               setFeedMode('recommended')
-              setSortBy('random')
-              setShuffleSeed(createShuffleSeed())
+              setSortBy('recommended')
             }}
           >
             Recomendado
@@ -1455,29 +1478,27 @@ export function ReelsPage() {
             <div className="reels-filter-popover">
               <label>Orden
                 <select value={sortBy} onChange={(event) => setSortBy(event.target.value as FeedSort)}>
-                  <option value="random">Aleatorio</option>
+                  <option value="recommended">Recomendado</option>
                   <option value="new">Más recientes</option>
                   <option value="likes">Más likes</option>
                   <option value="views">Más vistas</option>
                 </select>
               </label>
-              <button
-                className="ghost-btn"
-                type="button"
-                onClick={() => {
-                  setSortBy('random')
-                  setShuffleSeed(createShuffleSeed())
-                }}
-              >
-                <Shuffle aria-hidden="true" size={17} />
-                Mezclar videos
-              </button>
               <label className="checkbox-inline"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />Solo mis videos</label>
             </div>
           </details>
-          <button className="primary-btn reels-publish-button" type="button" onClick={() => setShowUploadForm(true)} title="Publicar video" aria-label="Publicar video"><Plus aria-hidden="true" /><span>Publicar</span></button>
+          <details className="reels-create-menu">
+            <summary className="primary-btn reels-publish-button" title="Crear" aria-label="Abrir opciones para crear"><Plus aria-hidden="true" /><span>Crear</span></summary>
+            <div className="reels-create-popover" role="menu">
+              <button type="button" role="menuitem" onClick={() => setShowUploadForm(true)}><Upload aria-hidden="true" /><span><strong>Subir video</strong><small>Publicar un reel</small></span></button>
+              <Link role="menuitem" to="/app/live?create=1"><Radio aria-hidden="true" /><span><strong>Crear directo</strong><small>Cámara o pantalla</small></span></Link>
+              <Link role="menuitem" to="/app/live"><Search aria-hidden="true" /><span><strong>Ver directos</strong><small>Emisiones activas</small></span></Link>
+            </div>
+          </details>
         </div>
       </div>
+
+      <LiveStrip compact />
 
       {showUploadForm ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowUploadForm(false)}>
         <article className="surface-card section-stack video-upload-dialog" role="dialog" aria-modal="true" aria-label="Publicar video" onMouseDown={(event) => event.stopPropagation()}>
@@ -1734,17 +1755,24 @@ export function ReelsPage() {
         />
       ) : (
         <div className="reels-vertical-feed">
-          {visibleItems.map((item) => (
-            <ReelFeedCard
-              key={item.id}
-              item={item}
-              currentUserId={user?.id}
-              onLike={(video) => void toggleVideoLike(video)}
-              onFavorite={(video) => void toggleVideoFavorite(video)}
-              onShare={(video) => shareVideo(video)}
-              onToggleProfileShare={(video) => void toggleProfileShare(video)}
-            />
-          ))}
+          {visibleItems.map((item, index) => {
+            const live = liveStreams.length > 0 && (index + 1) % 6 === 0
+              ? liveStreams[Math.floor(index / 6) % liveStreams.length]
+              : null
+            return (
+              <Fragment key={item.id}>
+                <ReelFeedCard
+                  item={item}
+                  currentUserId={user?.id}
+                  onLike={(video) => void toggleVideoLike(video)}
+                  onFavorite={(video) => void toggleVideoFavorite(video)}
+                  onShare={(video) => shareVideo(video)}
+                  onToggleProfileShare={(video) => void toggleProfileShare(video)}
+                />
+                {live ? <LiveFeedCard stream={live} /> : null}
+              </Fragment>
+            )
+          })}
         </div>
       )}
     </section>

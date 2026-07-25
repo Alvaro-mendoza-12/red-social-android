@@ -3,6 +3,7 @@ package conectate.com.data.repository
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Moment
@@ -54,6 +55,7 @@ class MomentRepository @Inject constructor(
         private const val MOMENTS_FALLBACK_POLL_INTERVAL_MS = 45_000L
         private const val MAX_MOMENT_VIDEO_DURATION_SECONDS = 25L
         private const val MAX_MOMENT_VIDEO_DURATION_MS = MAX_MOMENT_VIDEO_DURATION_SECONDS * 1_000L
+        private const val MAX_MOMENT_MEDIA_BYTES = 35L * 1024 * 1024
         private const val IMAGE_MOMENT_DISPLAY_DURATION_MS = 6_000L
     }
 
@@ -595,12 +597,23 @@ class MomentRepository @Inject constructor(
         caption: String? = null,
         allowReplies: Boolean = true
     ): Result<Moment> = withContext(Dispatchers.IO) {
+        val uploadedObjects = mutableListOf<Pair<String, String>>()
+        var metadataPersisted = false
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user logged in"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             // 1. Upload media
-            val rawBytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+            val sourceSizeBytes = queryUriSizeBytes(mediaUri)
+            if (sourceSizeBytes > MAX_MOMENT_MEDIA_BYTES) {
+                return@withContext Result.failure(Exception("El archivo supera el límite de 35 MB."))
+            }
+            val requestedVideo = mediaType.trim().lowercase() == "video"
+            val rawBytes = if (requestedVideo) {
+                readUriHeaderBytes(mediaUri)
+            } else {
+                context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+            }
                 ?: return@withContext Result.failure(Exception("Failed to read media file"))
 
             val payload = resolveMomentMediaPayload(mediaUri = mediaUri, mediaType = mediaType, bytes = rawBytes)
@@ -623,10 +636,28 @@ class MomentRepository @Inject constructor(
             val uuid = UUID.randomUUID().toString()
             var fileName = "${userId}/$uuid.${payload.extension}"
              
-            val uploadResult = storageService.uploadFile("moment-media", fileName, payload.bytes, payload.contentType)
+            val uploadResult = if (normalizedMediaType == "video") {
+                val mediaSizeBytes = sourceSizeBytes
+                if (mediaSizeBytes <= 0L) {
+                    return@withContext Result.failure(Exception("No se pudo validar el tamaño del video."))
+                }
+                storageService.uploadFileFromUri(
+                    bucketName = "moment-media",
+                    fileName = fileName,
+                    sourceUri = mediaUri,
+                    sizeBytes = mediaSizeBytes,
+                    contentType = payload.contentType,
+                    allowOverwrite = true,
+                    onProgress = {}
+                )
+            } else {
+                storageService.uploadFile("moment-media", fileName, payload.bytes, payload.contentType)
+            }
             if (uploadResult.isFailure) return@withContext Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
 
-            val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", fileName)).orEmpty()
+            val mediaRemoteKey = uploadResult.getOrThrow().Key ?: fileName
+            uploadedObjects += "moment-media" to mediaRemoteKey
+            val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", mediaRemoteKey)).orEmpty()
 
             // 1.1 Generate and Upload Thumbnail
             var thumbnailUrl: String? = null
@@ -643,7 +674,9 @@ class MomentRepository @Inject constructor(
                     val thumbFileName = "${userId}/${uuid}_thumb.jpg"
                     val thumbUpload = storageService.uploadFile("moment-media", thumbFileName, thumbBytes, "image/jpeg")
                     if (thumbUpload.isSuccess) {
-                        thumbnailUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", thumbFileName))
+                        val thumbRemoteKey = thumbUpload.getOrThrow().Key ?: thumbFileName
+                        uploadedObjects += "moment-media" to thumbRemoteKey
+                        thumbnailUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", thumbRemoteKey))
                     }
                 }
             } catch (e: Exception) {
@@ -685,6 +718,7 @@ class MomentRepository @Inject constructor(
                     caption = caption,
                     allowReplies = allowReplies
                 ).getOrElse { return@withContext Result.failure(it) }
+                metadataPersisted = true
                 refreshMoments()
                 return@withContext Result.success(createdMoment.normalizedStorageUrls())
             }
@@ -698,6 +732,7 @@ class MomentRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
+                metadataPersisted = true
                 val createdMoment: Moment = response.body<List<Moment>>().first()
                 Result.success(createdMoment)
             } else {
@@ -707,6 +742,18 @@ class MomentRepository @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("MomentRepository", "Exception creating moment", e)
             Result.failure(e)
+        } finally {
+            if (!metadataPersisted) {
+                cleanupUploadedMomentObjects(uploadedObjects)
+            }
+        }
+    }
+
+    private suspend fun cleanupUploadedMomentObjects(objects: List<Pair<String, String>>) {
+        objects.asReversed().forEach { (bucket, key) ->
+            storageService.deleteFile(bucket, key).onFailure { error ->
+                android.util.Log.w("MomentRepository", "No se pudo limpiar $bucket/$key", error)
+            }
         }
     }
 
@@ -846,6 +893,32 @@ class MomentRepository @Inject constructor(
             android.util.Log.e("MomentRepository", "Image transcode to JPEG failed", e)
             null
         }
+    }
+
+    private fun readUriHeaderBytes(uri: Uri, maxBytes: Int = 512): ByteArray? {
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buffer = ByteArray(maxBytes)
+            val read = stream.read(buffer)
+            if (read > 0) buffer.copyOf(read) else null
+        }
+    }
+
+    private fun queryUriSizeBytes(uri: Uri): Long {
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0 && cursor.moveToFirst()) {
+                    val value = cursor.getLong(index)
+                    if (value > 0L) return value
+                }
+            }
+        }
+        runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                if (descriptor.length > 0L) return descriptor.length
+            }
+        }
+        return 0L
     }
 
 

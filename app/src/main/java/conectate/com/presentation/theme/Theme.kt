@@ -4,62 +4,26 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import conectate.com.data.local.prefs.AppFontOption
+import conectate.com.data.local.prefs.AppThemeOption
 
 internal val AppTypography = Typography
-
-private val DarkColorScheme = darkColorScheme(
-    primary = RedPrimary,
-    onPrimary = TextOnPrimary,
-    primaryContainer = RedPrimaryDark,
-    onPrimaryContainer = TextOnPrimary,
-    secondary = RedSecondary,
-    onSecondary = TextOnPrimary,
-    secondaryContainer = RedSecondaryDark,
-    onSecondaryContainer = TextOnPrimary,
-    tertiary = RedSecondaryLight,
-    background = BackgroundDark,
-    onBackground = Color.White,
-    surface = SurfaceDark,
-    onSurface = Color.White,
-    error = ErrorColor,
-    onError = TextOnPrimary
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = RedPrimary,
-    onPrimary = TextOnPrimary,
-    primaryContainer = RedPrimaryLight,
-    onPrimaryContainer = TextPrimary,
-    secondary = RedSecondary,
-    onSecondary = TextOnPrimary,
-    secondaryContainer = RedSecondaryLight,
-    onSecondaryContainer = TextPrimary,
-    tertiary = RedSecondaryDark,
-    background = BackgroundLight,
-    onBackground = TextPrimary,
-    surface = SurfaceLight,
-    onSurface = TextPrimary,
-    error = ErrorColor,
-    onError = TextOnPrimary
-)
 
 @Composable
 fun RedSocialTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    appTheme: AppThemeOption = AppThemeOption.CONECTATE,
     fontOption: AppFontOption = AppFontOption.DEFAULT,
     textScale: Float = 1f,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = appColorScheme(appTheme, darkTheme)
     val typography = buildAppTypography(
         fontFamily = appFontFamilyFor(fontOption.storageValue),
         textScale = textScale
@@ -81,7 +45,8 @@ fun RedSocialTheme(
                     @Suppress("DEPRECATION")
                     window.statusBarColor = colorScheme.primary.toArgb()
                 }
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
+                    colorScheme.primary.luminance() > 0.5f
             }
         }
     }

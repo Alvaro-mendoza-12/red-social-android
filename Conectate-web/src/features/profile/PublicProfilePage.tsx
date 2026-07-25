@@ -33,6 +33,30 @@ type PublicProfileData = {
   avatarMediaType: string
   coverUrl: string
   isPrivate: boolean
+  profileWelcome: string
+  interests: string[]
+  hobbies: string[]
+  linkedGames: string[]
+  career: string
+  favoriteSport: string
+  favoriteMusicUrl: string
+  badges: Array<{ id: string; name: string; icon: string }>
+  profileFrame: string
+}
+
+function stringArrayFrom(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => String(entry).trim()).filter(Boolean) : []
+}
+
+function profileBadgesFrom(value: unknown): Array<{ id: string; name: string; icon: string }> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as GenericRow
+    const id = textOf(row, ['id'], '')
+    if (!id) return []
+    return [{ id, name: textOf(row, ['name'], id), icon: textOf(row, ['icon'], '') }]
+  })
 }
 
 type PublicProfileStats = {
@@ -74,6 +98,15 @@ function mapPublicProfile(
     avatarMediaType: avatarMediaTypeSource(row, avatarSource, fallbackAvatarMediaType),
     coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
     isPrivate: Boolean(row.is_private ?? row.isPrivate),
+    profileWelcome: textOf(row, ['profile_welcome', 'profileWelcome'], ''),
+    interests: stringArrayFrom(row.interests),
+    hobbies: stringArrayFrom(row.hobbies),
+    linkedGames: stringArrayFrom(row.linked_games ?? row.linkedGames),
+    career: textOf(row, ['career'], ''),
+    favoriteSport: textOf(row, ['favorite_sport', 'favoriteSport'], ''),
+    favoriteMusicUrl: textOf(row, ['favorite_music_url', 'favoriteMusicUrl'], ''),
+    badges: profileBadgesFrom(row.badges),
+    profileFrame: textOf(row, ['profile_frame', 'profileFrame'], ''),
   }
 }
 
@@ -308,7 +341,7 @@ export function PublicProfilePage() {
     if (!url) return
     try {
       if (navigator.share) {
-        await navigator.share({ title: profile?.name ?? 'Perfil Conectate', url })
+        await navigator.share({ title: profile?.name ?? 'Perfil Novvin', url })
         setShareStatus('Enlace compartido.')
         return
       }
@@ -410,19 +443,42 @@ export function PublicProfilePage() {
           {profile.coverUrl ? <img src={profile.coverUrl} alt={`Portada de ${profile.name}`} /> : null}
         </div>
         <div className="public-profile-identity">
-          <SafeAvatar
-            url={profile.avatarUrl}
-            mediaType={profile.avatarMediaType}
-            name={profile.name || profile.id}
-            size="lg"
-            className="public-profile-avatar"
-          />
+          <div className={`profile-avatar-frame profile-avatar-frame--${profile.profileFrame || 'none'}`}>
+            <SafeAvatar
+              url={profile.avatarUrl}
+              mediaType={profile.avatarMediaType}
+              name={profile.name || profile.id}
+              size="lg"
+              className="public-profile-avatar"
+            />
+          </div>
           <div>
             <h3>{profile.name}</h3>
             <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
           </div>
         </div>
         <p>{profile.bio || 'Sin biografía'}</p>
+        {profile.badges.length ? (
+          <div className="chip-row">
+            {profile.badges.map((badge) => <span className="folder-tag" key={badge.id}>{badge.icon} {badge.name}</span>)}
+          </div>
+        ) : null}
+        {profile.profileWelcome ? <p className="muted-line">{profile.profileWelcome}</p> : null}
+        {(profile.career || profile.favoriteSport || profile.interests.length || profile.hobbies.length || profile.linkedGames.length) ? (
+          <div className="chip-row">
+            {profile.career ? <span className="folder-tag">{profile.career}</span> : null}
+            {profile.favoriteSport ? <span className="folder-tag">{profile.favoriteSport}</span> : null}
+            {profile.interests.map((interest) => <span key={`interest-${interest}`} className="folder-tag">{interest}</span>)}
+            {profile.hobbies.map((hobby) => <span key={`hobby-${hobby}`} className="folder-tag">{hobby}</span>)}
+            {profile.linkedGames.map((game) => <span key={`game-${game}`} className="folder-tag">{game}</span>)}
+          </div>
+        ) : null}
+        {profile.favoriteMusicUrl ? (
+          <div className="section-stack">
+            <small>Música de entrada · reproducción manual</small>
+            <audio controls preload="none" src={profile.favoriteMusicUrl}>Tu navegador no puede reproducir este audio.</audio>
+          </div>
+        ) : null}
         <nav className="public-profile-stats" aria-label="Estadísticas del perfil">
           <span><strong>{stats.posts}</strong><small>Publicaciones</small></span>
           <span><strong>{stats.followers}</strong><small>Seguidores</small></span>

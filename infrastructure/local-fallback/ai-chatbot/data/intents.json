@@ -1,0 +1,833 @@
+{
+  "version": 5,
+  "language": "es",
+  "intents": [
+    {
+      "id": "saludo",
+      "patterns": [
+        "hola",
+        "buenos dias",
+        "buenas tardes",
+        "buenas noches",
+        "que tal",
+        "hey Novvin",
+        "hola asistente",
+        "hay alguien",
+        "quiero comenzar",
+        "necesito ayuda"
+      ],
+      "responses": [
+        "Hola, soy Novvin. Puedo orientarte con perfiles, publicaciones, videos, mensajes, grupos, comunidades, voz y seguridad en Conectate.",
+        "Hola. Soy Novvin, el asistente de Conectate. Dime que quieres hacer y lo resolvemos paso a paso.",
+        "Hola, que gusto verte. Puedo ayudarte a encontrar una funcion o explicarte como usar Conectate."
+      ],
+      "suggestions": ["Editar mi perfil", "Crear una publicacion", "Buscar grupos"]
+    },
+    {
+      "id": "identidad_novvin",
+      "patterns": [
+        "quien eres",
+        "como te llamas",
+        "eres Novvin",
+        "que es Novvin",
+        "para que sirve Novvin",
+        "eres una inteligencia artificial",
+        "eres un bot",
+        "quien te creo",
+        "eres de Conectate",
+        "que puedes responder",
+        "nombre del asistente propio",
+        "como se llama la inteligencia de Conectate",
+        "presentate asistente",
+        "quien es la ia de esta aplicacion"
+      ],
+      "responses": [
+        "Soy Novvin, la inteligencia artificial propia de Conectate. Estoy empezando y mi trabajo es orientarte dentro de la aplicacion.",
+        "Me llamo Novvin. Fui creado para ayudarte a usar Conectate y voy mejorando con conocimiento revisado por el equipo.",
+        "Soy el asistente de Conectate. Puedo explicar funciones de la aplicacion y guiarte cuando tengas una duda."
+      ],
+      "suggestions": ["Que puedes hacer", "Que es Conectate", "Ayuda general"]
+    },
+    {
+      "id": "que_es_conectate",
+      "patterns": [
+        "que es Conectate",
+        "para que sirve Conectate",
+        "explicame la aplicacion",
+        "como funciona esta red social",
+        "que puedo hacer en Conectate",
+        "cuales son las funciones",
+        "que ofrece la aplicacion",
+        "es una red social",
+        "como empiezo a usar Conectate",
+        "presentame Conectate"
+      ],
+      "responses": [
+        "Conectate es una red social para conversar, publicar contenido, ver videos, participar en grupos y comunidades y mantener tu perfil.",
+        "En Conectate puedes hablar con otras personas, compartir publicaciones y Momentos, subir videos, entrar a comunidades y personalizar tu perfil.",
+        "Conectate reune mensajes, contenido social, videos, grupos, comunidades y salas de voz en una sola aplicacion."
+      ],
+      "suggestions": ["Mensajes", "Social", "Videos", "Perfil"]
+    },
+    {
+      "id": "ayuda_general",
+      "patterns": [
+        "ayudame a usar la aplicacion",
+        "no se que hacer",
+        "donde encuentro las opciones",
+        "quiero una guia",
+        "necesito orientacion",
+        "muestrame como funciona",
+        "como navego por Conectate",
+        "donde esta el menu",
+        "que hago primero",
+        "quiero aprender a usarla",
+        "por cual seccion debo empezar",
+        "orientame para elegir una seccion",
+        "no conozco el punto de inicio de la aplicacion",
+        "que parte de Conectate abro primero"
+      ],
+      "responses": [
+        "La barra inferior te lleva a Mensajes, Videos, Social y Perfil. Dime cual de esas secciones quieres usar y te doy los pasos.",
+        "Puedes empezar completando tu perfil, buscar conversaciones o explorar Social. Si me dices tu objetivo, te indico la ruta exacta.",
+        "Estoy para guiarte. Describe lo que quieres conseguir, por ejemplo cambiar tu foto, publicar o crear un grupo."
+      ],
+      "suggestions": ["Completar perfil", "Enviar mensaje", "Explorar Social"]
+    },
+    {
+      "id": "perfil_editar",
+      "patterns": [
+        "como edito mi perfil",
+        "quiero cambiar mi nombre",
+        "quiero cambiar mi biografia",
+        "editar informacion personal",
+        "actualizar mi perfil",
+        "donde esta editar perfil",
+        "cambiar mi descripcion",
+        "modificar nombre de usuario",
+        "completar datos del perfil",
+        "guardar cambios del perfil",
+        "editar la descripcion visible de mi cuenta",
+        "cambiar los datos que aparecen en mi cuenta",
+        "actualizar el texto de mi perfil",
+        "modificar la informacion mostrada en mi perfil"
+      ],
+      "responses": [
+        "Ve a Perfil y toca Editar perfil. Cambia los datos que necesites y pulsa Guardar al terminar.",
+        "Entra en Perfil, abre Editar perfil y modifica tu nombre, biografia u otros datos disponibles.",
+        "La opcion Editar perfil esta en tu propia pagina de perfil. Revisa los cambios antes de guardarlos."
+      ],
+      "suggestions": ["Cambiar foto", "Cambiar portada", "Privacidad del perfil"]
+    },
+    {
+      "id": "perfil_foto",
+      "patterns": [
+        "como cambio mi foto de perfil",
+        "quiero poner otra foto",
+        "seleccionar imagen de perfil",
+        "recortar foto de perfil",
+        "hacer zoom a mi foto",
+        "quitar foto de perfil",
+        "mi foto no se actualiza",
+        "subir una imagen al perfil",
+        "cambiar el avatar",
+        "elegir foto de la galeria",
+        "ajustar el encuadre del avatar",
+        "mi imagen redonda queda recortada",
+        "acomodar la fotografia de mi cuenta",
+        "centrar la cara en la foto"
+      ],
+      "responses": [
+        "Abre Perfil, toca Editar perfil y selecciona la foto. Podras previsualizarla, moverla y recortarla antes de guardar.",
+        "Para cambiar tu avatar entra a Editar perfil, elige una imagen de la galeria y ajusta el recorte como prefieras.",
+        "En Editar perfil toca tu foto actual. Selecciona la nueva imagen, revisa la vista previa y confirma el cambio."
+      ],
+      "suggestions": ["Cambiar portada", "Editar perfil", "Foto no carga"]
+    },
+    {
+      "id": "perfil_portada",
+      "patterns": [
+        "como cambio mi portada",
+        "poner foto de portada",
+        "recortar imagen de portada",
+        "mi portada no carga",
+        "quitar la portada",
+        "seleccionar una portada",
+        "ajustar foto de cabecera",
+        "hacer zoom en la portada",
+        "cambiar fondo del perfil",
+        "portada del usuario",
+        "cambiar la cabecera de mi cuenta",
+        "poner un banner en el perfil",
+        "imagen superior del perfil",
+        "nuevo fondo para la cabecera"
+      ],
+      "responses": [
+        "En Perfil toca Editar perfil y selecciona la portada. Ajusta su posicion y recorte en la vista previa antes de guardar.",
+        "Puedes cambiar la portada desde Editar perfil. Elige una imagen horizontal y comprueba como se vera.",
+        "Toca la portada dentro del editor de perfil, selecciona la imagen y confirma cuando el encuadre quede bien."
+      ],
+      "suggestions": ["Cambiar foto", "Editar perfil", "Imagen no carga"]
+    },
+    {
+      "id": "perfil_privacidad",
+      "patterns": [
+        "quien puede ver mi perfil",
+        "ocultar mi perfil",
+        "hacer privada mi cuenta",
+        "visibilidad del perfil",
+        "proteger mis publicaciones",
+        "ocultar seguidores",
+        "controlar quien me sigue",
+        "perfil publico o privado",
+        "limitar mi informacion",
+        "configurar privacidad del perfil"
+      ],
+      "responses": [
+        "En Perfil abre Ajustes y luego Privacidad. Alli puedes revisar la visibilidad disponible para tu cuenta y contenido.",
+        "Usa las opciones de Privacidad de tu perfil para controlar quien puede encontrarte y ver lo que compartes.",
+        "Revisa cada control de privacidad antes de cambiarlo para asegurarte de que tu perfil quede como deseas."
+      ],
+      "suggestions": ["Cuenta privada", "Bloquear usuario", "Seguridad"]
+    },
+    {
+      "id": "publicaciones_crear",
+      "patterns": [
+        "como hago una publicacion",
+        "quiero publicar una foto",
+        "subir una publicacion",
+        "crear un post",
+        "publicar un texto",
+        "compartir una imagen",
+        "agregar video a una publicacion",
+        "donde esta el boton publicar",
+        "escribir una publicacion",
+        "publicar en Social"
+      ],
+      "responses": [
+        "En Social toca Publicar, escribe tu texto, agrega una foto o video si quieres y confirma la publicacion.",
+        "Abre Social y usa el boton Publicar. Revisa el texto y el contenido multimedia antes de enviarlo.",
+        "Para crear una publicacion entra en Social, selecciona Publicar y completa el contenido que quieres compartir."
+      ],
+      "suggestions": ["Agregar foto", "Publicar Momento", "Privacidad"]
+    },
+    {
+      "id": "publicaciones_interaccion",
+      "patterns": [
+        "como doy me gusta",
+        "comentar una publicacion",
+        "compartir un post",
+        "guardar en favoritos",
+        "ver comentarios",
+        "quitar un me gusta",
+        "responder un comentario",
+        "eliminar mi comentario",
+        "guardar una publicacion",
+        "interactuar en Social"
+      ],
+      "responses": [
+        "Debajo de cada publicacion encontraras las acciones disponibles para reaccionar, comentar, compartir o guardar.",
+        "Abre la publicacion para ver sus comentarios y respuestas. Usa el icono correspondiente para cada accion.",
+        "Puedes quitar una reaccion repitiendo el toque sobre ella. Las opciones adicionales aparecen en el menu de la publicacion."
+      ],
+      "suggestions": ["Comentar", "Favoritos", "Reportar contenido"]
+    },
+    {
+      "id": "publicaciones_eliminar",
+      "patterns": [
+        "como borro una publicacion",
+        "eliminar mi post",
+        "editar una publicacion",
+        "me equivoque al publicar",
+        "quitar una foto de Social",
+        "borrar contenido publicado",
+        "modificar el texto de mi post",
+        "menu de mi publicacion",
+        "administrar mis publicaciones",
+        "eliminar una imagen publicada"
+      ],
+      "responses": [
+        "Abre tu publicacion y entra en su menu de opciones. Si eres el autor, alli encontraras las acciones disponibles para editarla o eliminarla.",
+        "Ve a tu perfil, abre la publicacion y usa el menu. Confirma con cuidado si eliges eliminar, porque esa accion puede ser permanente.",
+        "Las opciones de administracion aparecen en el menu de tu propia publicacion."
+      ],
+      "suggestions": ["Crear publicacion", "Ver mi perfil", "Reportar"]
+    },
+    {
+      "id": "momentos_crear",
+      "patterns": [
+        "que son los Momentos",
+        "como subo un Momento",
+        "publicar una historia",
+        "subir foto a Momento",
+        "grabar un Momento",
+        "poner texto en un Momento",
+        "elegir video para Momento",
+        "crear contenido temporal",
+        "donde veo los Momentos",
+        "usar la camara en Momentos"
+      ],
+      "responses": [
+        "En Social abre Momentos, elige una foto o video de la galeria o usa la camara, agrega texto si deseas y publica.",
+        "Los Momentos permiten compartir fotos o videos rapidos. Antes de publicar puedes revisar el contenido y escribir un mensaje.",
+        "Para crear uno entra a Momentos, selecciona o graba el contenido y confirma cuando la vista previa quede lista."
+      ],
+      "suggestions": ["Elegir foto", "Grabar video", "Privacidad del Momento"]
+    },
+    {
+      "id": "momentos_problemas",
+      "patterns": [
+        "no veo lo que escribo en Momento",
+        "el teclado tapa el texto",
+        "no funciona la camara de Momentos",
+        "no puedo grabar un Momento",
+        "mi Momento no se publica",
+        "video de Momento falla",
+        "foto de Momento no carga",
+        "texto oculto al publicar",
+        "pantalla tapada por el teclado",
+        "error al crear historia"
+      ],
+      "responses": [
+        "Comprueba los permisos de Camara, Microfono y Fotos de Conectate. Si el teclado tapa el campo, cierra y vuelve a abrir el editor; informa el problema si continua.",
+        "Verifica permisos y espacio disponible. Luego intenta nuevamente desde Momentos con una foto o video corto.",
+        "Si la publicacion no termina, revisa tu conexion y conserva el contenido para volver a intentarlo."
+      ],
+      "suggestions": ["Revisar permisos", "Problemas de carga", "Reportar error"]
+    },
+    {
+      "id": "videos_publicar",
+      "patterns": [
+        "como subo un video",
+        "quiero publicar un video",
+        "seleccionar video de galeria",
+        "grabar un video nuevo",
+        "subir un clip",
+        "donde publico videos",
+        "agregar descripcion al video",
+        "compartir video en Conectate",
+        "elegir portada del video",
+        "confirmar subida de video"
+      ],
+      "responses": [
+        "En Videos toca Publicar, selecciona o graba el archivo, revisa la vista previa, agrega la informacion y confirma la subida.",
+        "Para publicar un clip abre Videos y pulsa Publicar. Manten la aplicacion abierta hasta que termine la carga.",
+        "Elige el video desde la galeria o grabalo, revisa su edicion y publicalo cuando estes conforme."
+      ],
+      "suggestions": ["Editar video", "Video no carga", "Grabar video"]
+    },
+    {
+      "id": "videos_editor",
+      "patterns": [
+        "como edito un video",
+        "recortar un video",
+        "agregar musica al video",
+        "poner texto en el video",
+        "usar stickers en video",
+        "cambiar volumen del video",
+        "poner una superposicion",
+        "dividir el clip",
+        "vista previa del editor",
+        "exportar video editado"
+      ],
+      "responses": [
+        "En el editor usa la linea de tiempo para recortar el clip y las herramientas para texto, audio, stickers o superposicion. Reproduce la vista previa antes de exportar.",
+        "Selecciona una herramienta del editor, aplica el cambio y revisalo en la vista previa. Exporta solo cuando el resultado este listo.",
+        "Para un ajuste preciso mueve el cursor de la linea de tiempo, recorta los extremos y comprueba audio e imagen antes de publicar."
+      ],
+      "suggestions": ["Recortar", "Agregar texto", "Agregar audio"]
+    },
+    {
+      "id": "videos_subida_error",
+      "patterns": [
+        "Que ago si al intentar subir un video me sale un error",
+        "video no carga",
+        "error al subir un video",
+        "el video no se puede subir",
+        "falla la subida del video",
+        "no termina de cargar mi video",
+        "el clip queda cargando al publicarlo",
+        "error al exportar el video",
+        "el video editado no exporta",
+        "la exportacion del clip se detiene",
+        "no puedo publicar el video por un error",
+        "falla el procesamiento antes de subir",
+        "el video se queda procesando",
+        "subida de video cancelada",
+        "sale error despues de editar el video",
+        "mi archivo falla cuando intento publicarlo"
+      ],
+      "responses": [
+        "Ese fallo puede ocurrir en la exportacion local o durante la subida. Primero identifica en cual etapa se detiene y prueba los pasos de diagnostico sin borrar tu proyecto.",
+        "No repitas la carga a ciegas: conserva el proyecto, comprueba espacio y conexion, y prueba con un clip corto para separar un error del archivo de uno de la subida.",
+        "Si el video no termina de exportarse o cargarse, revisa el punto exacto del fallo y guarda el mensaje de error; esa informacion permite corregir la causa sin perder la edicion."
+      ],
+      "suggestions": ["Revisar exportacion", "Probar clip corto", "Reportar error"]
+    },
+    {
+      "id": "videos_reproduccion",
+      "patterns": [
+        "los videos no cargan",
+        "video se queda negro",
+        "no se reproduce el video",
+        "el video se detiene",
+        "no escucho el audio",
+        "video de dos segundos no aparece",
+        "la miniatura no carga",
+        "reproduccion lenta",
+        "pantalla negra en Videos",
+        "error al ver un clip"
+      ],
+      "responses": [
+        "Revisa tu conexion y vuelve a abrir el video. Si solo falla un contenido, usa su menu para informar el problema.",
+        "Comprueba el volumen, la conexion y que Conectate este actualizado. Los videos cortos tambien deberian reproducirse normalmente.",
+        "Si la pantalla permanece negra, sal del video y abrelo otra vez. Reporta el contenido si el error continua."
+      ],
+      "suggestions": ["Revisar conexion", "Reportar problema", "Publicar video"]
+    },
+    {
+      "id": "mensajes_enviar",
+      "patterns": [
+        "como mando un mensaje",
+        "abrir un chat",
+        "buscar una conversacion",
+        "iniciar chat nuevo",
+        "escribir a una persona",
+        "enviar mensaje de texto",
+        "no encuentro un contacto",
+        "donde estan mis chats",
+        "responder una conversacion",
+        "mandar mensaje privado",
+        "comenzar una conversacion privada",
+        "hablar por privado con alguien",
+        "iniciar una charla con otra persona",
+        "contactar a un usuario por chat"
+      ],
+      "responses": [
+        "En Mensajes busca el nombre de la persona o toca Nuevo para iniciar una conversacion. Tambien puedes abrir el chat desde su perfil.",
+        "Abre Mensajes, selecciona una conversacion y escribe en el campo inferior. Pulsa Enviar cuando termines.",
+        "Para un chat nuevo usa la busqueda o el boton Nuevo y selecciona a la persona."
+      ],
+      "suggestions": ["Enviar foto", "Favoritos", "Crear grupo"]
+    },
+    {
+      "id": "mensajes_multimedia",
+      "patterns": [
+        "enviar foto por mensaje",
+        "mandar un video por chat",
+        "grabar audio",
+        "compartir un archivo",
+        "abrir imagen del chat",
+        "hacer zoom a una foto recibida",
+        "guardar foto del mensaje",
+        "usar la camara en chat",
+        "enviar contenido multimedia",
+        "reproducir video del mensaje",
+        "mandar una nota de voz por chat",
+        "enviar fotografia y audio",
+        "compartir foto dentro de una conversacion",
+        "grabar mensaje de audio privado"
+      ],
+      "responses": [
+        "Dentro del chat usa el boton de adjuntar para elegir foto, video u otra opcion disponible. Revisa la vista previa antes de enviar.",
+        "Abre la conversacion y toca Adjuntar. Para ver una imagen recibida a pantalla completa, tocala y usa el gesto de zoom.",
+        "Los permisos de Fotos, Camara y Microfono deben estar activos para compartir contenido desde esas fuentes."
+      ],
+      "suggestions": ["Revisar permisos", "Abrir imagen", "Enviar mensaje"]
+    },
+    {
+      "id": "mensajes_organizar",
+      "patterns": [
+        "como marco un chat favorito",
+        "archivar una conversacion",
+        "ver mensajes archivados",
+        "fijar un chat",
+        "eliminar una conversacion",
+        "silenciar mensajes",
+        "ordenar mis chats",
+        "buscar mensajes antiguos",
+        "sacar chat de archivados",
+        "favoritos de mensajes",
+        "encontrar los chats que archive",
+        "buscar una conversacion archivada",
+        "recuperar un chat del archivo",
+        "donde quedo mi conversacion guardada"
+      ],
+      "responses": [
+        "Usa el menu de cada conversacion para ver las acciones disponibles, como favorito, archivar, fijar, silenciar o eliminar.",
+        "Los chats archivados y favoritos se consultan desde sus filtros en la bandeja de Mensajes.",
+        "Para organizar un chat abre su menu. Revisa bien antes de eliminar una conversacion."
+      ],
+      "suggestions": ["Favoritos", "Archivados", "Buscar chat"]
+    },
+    {
+      "id": "grupos_crear",
+      "patterns": [
+        "como creo un grupo",
+        "hacer un grupo nuevo",
+        "agregar personas a un grupo",
+        "poner nombre al grupo",
+        "crear chat grupal",
+        "invitar amigos al grupo",
+        "elegir foto del grupo",
+        "donde estan los grupos",
+        "configurar grupo nuevo",
+        "iniciar conversacion grupal",
+        "armar un chat con varios amigos",
+        "conversacion con varias personas",
+        "juntar amigos en un solo chat",
+        "crear una charla multiple"
+      ],
+      "responses": [
+        "En Mensajes abre la pestaña Grupos, toca Nuevo, elige participantes, asigna nombre y foto y confirma la creacion.",
+        "Para crear un grupo entra a Mensajes y luego Grupos. Selecciona a los miembros y completa la informacion solicitada.",
+        "Abre Grupos desde Mensajes y usa la opcion de crear. Podras invitar personas y personalizarlo."
+      ],
+      "suggestions": ["Invitar personas", "Administrar grupo", "Comunidades"]
+    },
+    {
+      "id": "grupos_gestion",
+      "patterns": [
+        "administrar un grupo",
+        "cambiar foto del grupo",
+        "cambiar nombre del grupo",
+        "sacar miembro del grupo",
+        "hacer administrador",
+        "salir de un grupo",
+        "silenciar grupo",
+        "ver miembros del grupo",
+        "eliminar un grupo",
+        "permisos del grupo"
+      ],
+      "responses": [
+        "Abre el grupo y toca su nombre para ver informacion, miembros y opciones. Algunas acciones solo aparecen para administradores.",
+        "La configuracion del grupo permite gestionar miembros, nombre, imagen y notificaciones segun tu rol.",
+        "Para salir o silenciar un grupo abre su informacion y selecciona la accion correspondiente."
+      ],
+      "suggestions": ["Ver miembros", "Silenciar", "Crear comunidad"]
+    },
+    {
+      "id": "comunidades_unirse",
+      "patterns": [
+        "como entro a una comunidad",
+        "buscar comunidades",
+        "unirme a una comunidad",
+        "explorar comunidades",
+        "solicitar ingreso",
+        "ver miembros de comunidad",
+        "salir de una comunidad",
+        "encontrar comunidad por nombre",
+        "participar en comunidad",
+        "donde estan las comunidades",
+        "quiero participar en un espacio de comunidad",
+        "entrar a un espacio que ya existe",
+        "acceder a una comunidad de otras personas",
+        "formar parte de una comunidad existente"
+      ],
+      "responses": [
+        "En Mensajes abre Comunidades, busca la que te interesa y usa Unirme o Solicitar ingreso segun su configuracion.",
+        "Puedes explorar Comunidades desde su pestaña. Abre una para revisar su descripcion y reglas antes de unirte.",
+        "Para salir de una comunidad entra a su informacion y usa la opcion correspondiente."
+      ],
+      "suggestions": ["Explorar", "Crear comunidad", "Reglas"]
+    },
+    {
+      "id": "comunidades_crear",
+      "patterns": [
+        "como creo una comunidad",
+        "hacer comunidad nueva",
+        "poner reglas de comunidad",
+        "administrar comunidad",
+        "invitar miembros a comunidad",
+        "cambiar foto de comunidad",
+        "crear espacio publico",
+        "nombre para mi comunidad",
+        "moderadores de comunidad",
+        "configurar privacidad de comunidad"
+      ],
+      "responses": [
+        "En Mensajes entra a Comunidades y toca Nuevo. Completa nombre, descripcion, imagen, privacidad y reglas antes de crearla.",
+        "Para una comunidad nueva abre la pestaña Comunidades, usa Crear y configura como podran entrar sus miembros.",
+        "Despues de crearla, revisa miembros, moderadores y reglas desde la informacion de la comunidad."
+      ],
+      "suggestions": ["Agregar reglas", "Invitar miembros", "Privacidad"]
+    },
+    {
+      "id": "voz_salas",
+      "patterns": [
+        "como entro a una sala de voz",
+        "crear sala de voz",
+        "hacer una llamada",
+        "no funciona el microfono",
+        "silenciarme en una sala",
+        "invitar a llamada de voz",
+        "salir de sala de voz",
+        "no escucho a los participantes",
+        "permisos del microfono",
+        "donde esta Voz"
+      ],
+      "responses": [
+        "En Mensajes abre Voz para ver o crear salas. Concede permiso de Microfono y revisa que no estes silenciado.",
+        "Para entrar a una sala toca Voz, selecciona la sala y confirma. Puedes silenciar tu microfono durante la conversacion.",
+        "Si no escuchas audio, comprueba volumen, salida de sonido, conexion y permiso de Microfono."
+      ],
+      "suggestions": ["Crear sala", "Revisar microfono", "Mensajes"]
+    },
+    {
+      "id": "notificaciones",
+      "patterns": [
+        "no me llegan notificaciones",
+        "silenciar notificaciones",
+        "activar avisos",
+        "notificaciones de mensajes",
+        "quitar sonido de alertas",
+        "avisos de grupos",
+        "configurar notificaciones",
+        "notificacion de llamada",
+        "ver avisos pendientes",
+        "recibo demasiadas alertas",
+        "android no me avisa los mensajes",
+        "no aparecen alertas cuando me escriben",
+        "quiero recibir avisos de chats",
+        "activar alertas de conversaciones"
+      ],
+      "responses": [
+        "Revisa los ajustes de Notificaciones dentro de Conectate y los permisos de la aplicacion en Android.",
+        "Puedes silenciar conversaciones concretas desde su menu y ajustar los avisos generales en Configuracion.",
+        "Si no recibes alertas, confirma que Android permita notificaciones y que el ahorro de bateria no limite Conectate."
+      ],
+      "suggestions": ["Permisos de Android", "Silenciar chat", "Ajustes"]
+    },
+    {
+      "id": "privacidad_seguridad",
+      "patterns": [
+        "privacidad de mi cuenta",
+        "seguridad de mi cuenta",
+        "quien puede ver mis datos",
+        "proteger mi informacion",
+        "sesiones abiertas",
+        "cambiar configuracion de privacidad",
+        "cuenta privada",
+        "evitar que me encuentren",
+        "controlar mis datos",
+        "consejos de seguridad"
+      ],
+      "responses": [
+        "En Perfil abre Ajustes y Privacidad. Usa una contrasena unica, revisa la visibilidad de tu cuenta y no compartas codigos de acceso.",
+        "Protege tu cuenta con una contrasena segura y revisa periodicamente las opciones de privacidad y sesiones.",
+        "Conectate nunca deberia pedirte la contrasena dentro de un chat. Reporta cualquier mensaje sospechoso."
+      ],
+      "suggestions": ["Cuenta privada", "Cambiar contrasena", "Reportar usuario"]
+    },
+    {
+      "id": "reportes_bloqueo",
+      "patterns": [
+        "como bloqueo a un usuario",
+        "reportar una cuenta",
+        "denunciar una publicacion",
+        "alguien me molesta",
+        "reportar un mensaje",
+        "desbloquear una persona",
+        "denunciar comentario ofensivo",
+        "contenido inapropiado",
+        "acoso en Conectate",
+        "que pasa al bloquear"
+      ],
+      "responses": [
+        "Abre el perfil o contenido, entra en su menu y elige Bloquear o Reportar. Incluye el motivo correcto para facilitar la revision.",
+        "Si alguien te incomoda, deja de responder, guarda evidencia si es necesario y usa Bloquear y Reportar.",
+        "El bloqueo limita el contacto con esa persona. Las denuncias se envian para revision segun las normas de Conectate."
+      ],
+      "suggestions": ["Bloquear", "Reportar contenido", "Privacidad"]
+    },
+    {
+      "id": "recuperar_cuenta",
+      "patterns": [
+        "olvide mi contrasena",
+        "recuperar mi cuenta",
+        "no puedo iniciar sesion",
+        "cambiar la contrasena",
+        "restablecer acceso",
+        "no entra mi correo",
+        "mi codigo no llega",
+        "cuenta bloqueada",
+        "no recuerdo mis datos",
+        "problema con el inicio de sesion"
+      ],
+      "responses": [
+        "En la pantalla de inicio usa Recuperar contrasena y sigue las instrucciones enviadas al medio asociado a tu cuenta.",
+        "Verifica que el correo sea correcto y revisa spam. Nunca compartas el codigo de recuperacion con otra persona.",
+        "Si no puedes entrar, intenta recuperar la contrasena y confirma que estes usando la cuenta correcta."
+      ],
+      "suggestions": ["Recuperar contrasena", "Revisar correo", "Seguridad"]
+    },
+    {
+      "id": "apariencia_configuracion",
+      "patterns": [
+        "cambiar tema de la aplicacion",
+        "usar modo oscuro",
+        "configurar Conectate",
+        "cambiar idioma",
+        "ajustes de la aplicacion",
+        "aumentar tamano del texto",
+        "personalizar apariencia",
+        "donde esta configuracion",
+        "modo claro",
+        "preferencias de la cuenta"
+      ],
+      "responses": [
+        "Abre Perfil y entra en Ajustes para consultar las preferencias de apariencia, cuenta y aplicacion disponibles.",
+        "La configuracion se encuentra desde tu perfil. Algunas opciones tambien dependen de los ajustes de Android.",
+        "Para cambiar la apariencia revisa Ajustes en Conectate y las preferencias de pantalla de tu dispositivo."
+      ],
+      "suggestions": ["Modo oscuro", "Notificaciones", "Privacidad"]
+    },
+    {
+      "id": "problemas_carga",
+      "patterns": [
+        "la aplicacion no responde",
+        "Conectate se queda cargando",
+        "pantalla congelada",
+        "las fotos no aparecen",
+        "no carga mi perfil",
+        "error de conexion",
+        "la aplicacion esta lenta",
+        "contenido en blanco",
+        "se cerro la aplicacion",
+        "algo dejo de funcionar"
+      ],
+      "responses": [
+        "Comprueba tu conexion y vuelve a abrir la pantalla. Si Conectate no responde, espera unos segundos y registra que estabas haciendo para poder informar el fallo.",
+        "Revisa internet, espacio libre y que la aplicacion este actualizada. Si el problema continua, informa la pantalla y accion exactas.",
+        "No borres los datos de la aplicacion sin necesidad. Primero intenta salir de la pantalla, volver a entrar y reportar el error si se repite."
+      ],
+      "suggestions": ["Revisar conexion", "Reportar error", "Fotos no cargan"]
+    },
+    {
+      "id": "permisos_android",
+      "patterns": [
+        "dar permiso a la camara",
+        "activar el microfono",
+        "permiso para fotos",
+        "Conectate no tiene permisos",
+        "elegir imagen no funciona",
+        "la camara no abre",
+        "no puedo grabar audio",
+        "permitir notificaciones en Android",
+        "ajustes de permisos",
+        "acceso a mis videos"
+      ],
+      "responses": [
+        "En Android abre Informacion de la aplicacion, entra en Permisos y habilita solo Camara, Microfono, Fotos o Notificaciones cuando los necesites.",
+        "Si rechazaste un permiso, puedes activarlo desde Ajustes de Android, Aplicaciones, Conectate y Permisos.",
+        "Concede unicamente los permisos necesarios para la funcion que vas a usar y vuelve a Conectate."
+      ],
+      "suggestions": ["Camara", "Microfono", "Fotos"]
+    },
+    {
+      "id": "amistades_seguidores",
+      "patterns": [
+        "como sigo a alguien",
+        "dejar de seguir usuario",
+        "ver mis seguidores",
+        "buscar amigos",
+        "enviar solicitud de amistad",
+        "ver a quien sigo",
+        "aceptar seguidor",
+        "encontrar una persona",
+        "por que perdi un seguidor",
+        "bloquear un seguidor"
+      ],
+      "responses": [
+        "Busca a la persona y abre su perfil para ver la accion disponible de seguir o conectar. Tus listas aparecen desde el perfil.",
+        "En tu Perfil toca Seguidores o Siguiendo para consultar las listas. Abre una cuenta para gestionar la relacion.",
+        "Para encontrar a alguien usa la busqueda y verifica el nombre de usuario antes de seguirlo."
+      ],
+      "suggestions": ["Buscar persona", "Ver seguidores", "Privacidad"]
+    },
+    {
+      "id": "novvin_historial",
+      "patterns": [
+        "donde estan mis chats con Novvin",
+        "ver conversaciones anteriores",
+        "crear nuevo chat de inteligencia artificial",
+        "volver a un chat anterior",
+        "borrar conversacion de Novvin",
+        "guardar historial de Novvin",
+        "cambiar entre chats",
+        "mis mensajes con la IA",
+        "abrir historial del asistente",
+        "nuevo chat con Novvin"
+      ],
+      "responses": [
+        "En la cabecera del chat de Novvin abre Historial para ver, cambiar o eliminar conversaciones. El boton Nuevo crea otra sin borrar las anteriores.",
+        "Tus conversaciones con Novvin quedan organizadas en el Historial. Selecciona cualquiera para continuar donde la dejaste.",
+        "Usa Nuevo chat para empezar otro tema. Los chats anteriores permanecen en el selector de historial."
+      ],
+      "suggestions": ["Ver historial", "Nuevo chat", "Eliminar chat"]
+    },
+    {
+      "id": "despedida",
+      "patterns": [
+        "gracias",
+        "muchas gracias",
+        "listo",
+        "eso era todo",
+        "adios",
+        "hasta luego",
+        "nos vemos",
+        "ya termine",
+        "me ayudaste",
+        "cerrar conversacion"
+      ],
+      "responses": [
+        "Listo. Aqui estare cuando necesites ayuda con Conectate.",
+        "De nada. Puedes volver a este chat cuando quieras continuar.",
+        "Me alegra haberte ayudado. Nos vemos en Conectate."
+      ],
+      "suggestions": []
+    }
+  ],
+  "outOfDomain": {
+    "patterns": [
+      "dime algo fuera de tu base de conocimiento",
+      "responde cualquier cosa que no conozcas",
+      "habla de un tema que no tengas guardado",
+      "inventa informacion sobre algo desconocido",
+      "escribe una novela completa",
+      "crea un cuento de cien paginas",
+      "dame una receta para cocinar pasta",
+      "como preparo una sopa",
+      "que color combina con ropa violeta",
+      "recomienda un estilo de zapatos",
+      "quien invento la silla",
+      "cuentame la biografia de una persona cualquiera",
+      "haz una prediccion del futuro",
+      "adivina lo que estoy pensando",
+      "escribe la letra completa de una cancion",
+      "resume un libro que no te he dado",
+      "dame informacion que no este verificada",
+      "contesta aunque no sepas la respuesta",
+      "elige un tema al azar fuera de Conectate",
+      "quiero una respuesta sin importar si es cierta",
+      "hablame de cocina internacional",
+      "explica un deporte que no conoces",
+      "recomienda una pelicula al azar",
+      "describe un lugar que no esta en tus datos",
+      "inventa una noticia",
+      "dime un dato sin comprobar",
+      "habla de cualquier celebridad",
+      "crea una historia ficticia larga",
+      "responde una pregunta fuera de tu alcance",
+      "quiero probar si puedes alucinar"
+    ]
+  },
+  "fallback": {
+    "responses": [
+      "Aun estoy aprendiendo. Puedo ayudarte mejor si mencionas la seccion de Conectate y lo que quieres hacer.",
+      "Todavia no tengo una respuesta segura para eso. Prueba describiendo el problema con perfil, Social, Videos, Mensajes, grupos o seguridad.",
+      "No quiero darte una indicacion incorrecta. Cuentame en que pantalla estas y que accion intentas realizar."
+    ],
+    "suggestions": ["Perfil", "Publicaciones", "Videos", "Mensajes", "Seguridad"]
+  }
+}

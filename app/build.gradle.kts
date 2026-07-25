@@ -37,22 +37,22 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 35
-        versionCode = 41
-        versionName = "3.0.1"
+        versionCode = 45
+        versionName = "3.0.5"
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
         if (secretsFile.exists()) {
             FileInputStream(secretsFile).use(props::load)
-            val upstashRestUrl = props.getProperty("UPSTASH_REST_URL") ?: ""
-            val upstashToken = props.getProperty("UPSTASH_TOKEN") ?: ""
             val tmdbApiKey = props.getProperty("TMDB_API_KEY") ?: ""
-            val realDebridToken = props.getProperty("REAL_DEBRID_TOKEN") ?: ""
             val fallbackApiUrl = props.getNonBlank("FALLBACK_API_URL")
                 ?: props.getNonBlank("LOCAL_FALLBACK_API_URL")
                 ?: throw GradleException(
                     "FALLBACK_API_URL or LOCAL_FALLBACK_API_URL is required in secrets.properties for Ubuntu backend builds."
                 )
+            val signalingUrl = props.getNonBlank("SIGNALING_URL")
+                ?: props.getNonBlank("VOICE_SIGNALING_URL")
+                ?: ""
             val backendConfigUrl = props.getNonBlank("BACKEND_CONFIG_URL")
                 ?: ""
             val backendDiscoveryHost = props.getNonBlank("BACKEND_DISCOVERY_HOST")
@@ -60,12 +60,10 @@ android {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
             buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
+            buildConfigField("String", "SIGNALING_URL", signalingUrl.asBuildConfigString())
             buildConfigField("String", "BACKEND_CONFIG_URL", backendConfigUrl.asBuildConfigString())
             buildConfigField("String", "BACKEND_DISCOVERY_HOST", backendDiscoveryHost.asBuildConfigString())
-            buildConfigField("String", "UPSTASH_REST_URL", upstashRestUrl.asBuildConfigString())
-            buildConfigField("String", "UPSTASH_TOKEN", upstashToken.asBuildConfigString())
             buildConfigField("String", "TMDB_API_KEY", tmdbApiKey.asBuildConfigString())
-            buildConfigField("String", "REAL_DEBRID_TOKEN", realDebridToken.asBuildConfigString())
         } else {
             throw GradleException(
                 "secrets.properties is required and must define FALLBACK_API_URL or LOCAL_FALLBACK_API_URL for Ubuntu backend builds."
@@ -118,8 +116,8 @@ android {
         }
 
         getByName("release") {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             isDebuggable = false
 
             proguardFiles(
@@ -189,6 +187,12 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+    arg("room.generateKotlin", "true")
+}
+
 tasks.register("qualityGateDebug") {
     group = "verification"
     description = "Runs the local quality gate (unit tests + lint) for debug."
@@ -228,7 +232,7 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.client.logging)
 
-    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
+    implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
 

@@ -215,16 +215,18 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun switchAccount(accountId: String) {
+    fun switchAccount(accountId: String, onSuccess: (User) -> Unit = {}) {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            var result = authRepository.switchAccount(accountId)
-            _authState.value = result.fold(
+            val result = authRepository.switchAccount(accountId)
+            result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
                     _accountSwitchMessage.value = "Cuenta cambiada correctamente."
-                    AuthState.Success(it)
+                    _authState.value = AuthState.Success(it)
+                    onSuccess(it)
                 },
                 onFailure = {
                     val invalidStoredSession = looksLikeStoredAccountSessionIssue(it.message)
@@ -237,7 +239,7 @@ class AuthViewModel @Inject constructor(
                         mapAccountSwitchError(it)
                     }
                     _accountSwitchMessage.value = friendlyMessage
-                    when (it) {
+                    _authState.value = when (it) {
                         is AccountSuspendedException -> AuthState.Suspended(
                             suspensionEndDate = it.suspensionEndDate,
                             reason = it.reason

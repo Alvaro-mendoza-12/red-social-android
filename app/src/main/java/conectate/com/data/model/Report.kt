@@ -1,6 +1,7 @@
 package conectate.com.data.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import java.time.LocalDateTime
 import java.util.UUID
 
@@ -14,6 +15,9 @@ data class Report(
     val reason: String? = null,
     val description: String? = null,
     val evidence_url: String? = null,
+    @SerialName("content_type") val contentType: String? = null,
+    @SerialName("content_id") val contentId: String? = null,
     val status: String? = "pendiente",
-    val created_at: String? = null
+    val created_at: String? = null,
+    val updated_at: String? = null
 )

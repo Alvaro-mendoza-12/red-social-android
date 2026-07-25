@@ -58,9 +58,7 @@ import conectate.com.presentation.components.AppAppearanceSettingsSection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
-private val ChatSettingsBackground = Color(0xFF050505)
-private val ChatSettingsPanel = Color(0xFF101010)
-private val ChatSettingsDivider = Color(0xFF2C2D34)
+// Colors now resolved via MaterialTheme.colorScheme for light/dark compatibility
 
 @HiltViewModel
 class ChatSettingsViewModel @Inject constructor(
@@ -115,7 +113,7 @@ fun ChatSettingsScreen(
     val chatBackground by viewModel.chatBackground.collectAsState()
 
     Scaffold(
-        containerColor = ChatSettingsBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -130,9 +128,9 @@ fun ChatSettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ChatSettingsBackground,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -140,7 +138,7 @@ fun ChatSettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(ChatSettingsBackground)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -155,7 +153,7 @@ fun ChatSettingsScreen(
                     onFontOptionChanged = viewModel::setFontOption,
                     onTextScaleChanged = viewModel::setTextScale,
                     title = "Estilo de la app",
-                    subtitle = "Tema, tipografía y tamaño que se aplican en Conéctate."
+                    subtitle = "Tema, tipografía y tamaño que se aplican en Novvin."
                 )
             }
 
@@ -254,7 +252,7 @@ fun ChatSettingsScreen(
 private fun SettingsPanel(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = ChatSettingsPanel,
+        color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -271,7 +269,7 @@ private fun SettingsPanel(content: @Composable ColumnScope.() -> Unit) {
 private fun SectionTitle(title: String) {
     Text(
         text = title,
-        color = Color.White,
+        color = MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
@@ -294,25 +292,25 @@ private fun SettingSwitchRow(
             )
         },
         headlineContent = {
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
         },
         supportingContent = {
-            Text(subtitle, color = Color.White.copy(alpha = 0.62f))
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         },
         trailingContent = {
             Switch(checked = checked, onCheckedChange = onCheckedChange)
         },
         colors = ListItemDefaults.colors(
             containerColor = Color.Transparent,
-            headlineColor = Color.White,
-            supportingColor = Color.White.copy(alpha = 0.62f)
+            headlineColor = MaterialTheme.colorScheme.onSurface,
+            supportingColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     )
 }
 
 @Composable
 private fun SettingDivider() {
-    Divider(color = ChatSettingsDivider, thickness = 1.dp)
+    Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 }
 
 private data class ChatChoice(

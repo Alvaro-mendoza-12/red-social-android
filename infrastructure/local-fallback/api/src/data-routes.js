@@ -285,24 +285,7 @@ function profileName(row, fallback = 'Usuario') {
 }
 
 function profileAvatar(row) {
-  return versionedAssetUrl(
-    textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'picture', 'image'], ''),
-    textOf(row, ['updated_at', 'created_at'], ''),
-  )
-}
-
-function versionedAssetUrl(url, versionSource) {
-  const cleanUrl = String(url || '').trim()
-  if (!cleanUrl || cleanUrl.startsWith('data:')) return cleanUrl
-  const versionMs = toMillis(versionSource)
-  const version = versionMs > 0 ? String(versionMs) : String(versionSource || '').trim()
-  if (!version) return cleanUrl
-  const [base, hash = ''] = cleanUrl.split('#', 2)
-  const stripped = base
-    .replace(/([?&])v=[^&#]*&?/g, '$1')
-    .replace(/[?&]$/, '')
-  const separator = stripped.includes('?') ? '&' : '?'
-  return `${stripped}${separator}v=${encodeURIComponent(version)}${hash ? `#${hash}` : ''}`
+  return textOf(row, ['avatar_url', 'photo_url', 'profile_image', 'picture', 'image'], '')
 }
 
 function profileId(row) {
@@ -1710,12 +1693,15 @@ async function fallbackUserProfileRows(pool, limit = 5000) {
             COALESCE(o.profile->>'profile_theme', o.profile->>'profileTheme', 'conectate') AS profile_theme,
             COALESCE(o.profile->>'profile_effect', o.profile->>'profileEffect', 'none') AS profile_effect,
             COALESCE(o.profile->>'profile_welcome', o.profile->>'profileWelcome') AS profile_welcome,
-            ARRAY_REMOVE(ARRAY[
-              CASE WHEN o.profile ? 'profile_welcome' AND BTRIM(COALESCE(o.profile->>'profile_welcome', '')) = '' THEN 'profile_welcome' END,
-              CASE WHEN o.profile ? 'avatar_url' AND BTRIM(COALESCE(o.profile->>'avatar_url', '')) = '' THEN 'avatar_url' END,
-              CASE WHEN o.profile ? 'avatar_media_type' AND BTRIM(COALESCE(o.profile->>'avatar_media_type', '')) = '' THEN 'avatar_media_type' END,
-              CASE WHEN o.profile ? 'cover_url' AND BTRIM(COALESCE(o.profile->>'cover_url', '')) = '' THEN 'cover_url' END
-            ], NULL) AS __clear_fields,
+            COALESCE(
+              o.profile->'__clear_fields',
+              to_jsonb(ARRAY_REMOVE(ARRAY[
+                CASE WHEN o.profile ? 'profile_welcome' AND BTRIM(COALESCE(o.profile->>'profile_welcome', '')) = '' THEN 'profile_welcome' END,
+                CASE WHEN o.profile ? 'avatar_url' AND BTRIM(COALESCE(o.profile->>'avatar_url', '')) = '' THEN 'avatar_url' END,
+                CASE WHEN o.profile ? 'avatar_media_type' AND BTRIM(COALESCE(o.profile->>'avatar_media_type', '')) = '' THEN 'avatar_media_type' END,
+                CASE WHEN o.profile ? 'cover_url' AND BTRIM(COALESCE(o.profile->>'cover_url', '')) = '' THEN 'cover_url' END
+              ]::text[], NULL))
+            ) AS __clear_fields,
             COALESCE(o.profile->>'is_private', o.profile->>'isPrivate', 'false') AS is_private,
             COALESCE(o.profile->>'favorites_public', o.profile->>'favoritesPublic', 'false') AS favorites_public,
             COALESCE(o.profile->>'break_mode', o.profile->>'breakMode', 'off') AS break_mode,
@@ -1965,6 +1951,10 @@ function normalizeProfileForPublic(row, fallbackId = '') {
   const presence = lastSeenVisibility === 'everyone' || onlineStatusVisibility === 'everyone'
     ? presenceFields(row)
     : { is_online: false, last_seen: null }
+  const publicBadges = Array.isArray(row?.badges)
+    ? row.badges.filter((badge) => badge && typeof badge === 'object').slice(0, 12)
+    : []
+  const profileFrame = cleanText(row?.profile_frame ?? row?.profileFrame, 40).toLowerCase()
   return {
     id,
     user_id: textOf(row, ['user_id', 'userId'], ''),
@@ -2002,6 +1992,8 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     following_count: numberOf(row, ['following_count'], 0),
     post_count: numberOf(row, ['post_count', 'posts_count'], 0),
     is_verified: boolOf(row, ['is_verified', 'verified'], false),
+    badges: publicBadges,
+    profile_frame: new Set(['gold', 'neon', 'ruby', 'ocean']).has(profileFrame) ? profileFrame : '',
     is_private: boolOf(row, ['is_private', 'private'], false),
     favorites_public: boolOf(row, ['favorites_public', 'favoritesPublic'], false),
     break_mode: textOf(row, ['break_mode', 'breakMode'], 'off'),
@@ -2169,7 +2161,7 @@ function buildProfileForUser(user, importedProfile = {}, overrideProfile = {}) {
     display_name: profileName(merged, user.display_name || user.email),
     full_name: textOf(merged, ['full_name'], profileName(merged, user.display_name || user.email)),
     avatar_url: avatarExplicitlyOverridden
-      ? versionedAssetUrl(String(overrideProfile.avatar_url || '').trim(), textOf(merged, ['updated_at', 'created_at'], ''))
+      ? String(overrideProfile.avatar_url || '').trim()
       : profileAvatar(merged),
     avatar_media_type: textOf(merged, ['avatar_media_type', 'avatarMediaType'], ''),
     avatar_video_muted: boolOf(merged, ['avatar_video_muted', 'avatarVideoMuted'], true),
@@ -2218,8 +2210,9 @@ function profilePatchFromBody(body) {
   for (const [targetKey, sourceKeys] of stringFields) {
     for (const sourceKey of sourceKeys) {
       if (Object.prototype.hasOwnProperty.call(body || {}, sourceKey)) {
+        if (body[sourceKey] == null) break
         const value = cleanText(body[sourceKey], targetKey.endsWith('_url') ? 700 : 280)
-        if (value || body[sourceKey] === null || body[sourceKey] === '') patch[targetKey] = value
+        if (value || body[sourceKey] === '') patch[targetKey] = value
         break
       }
     }
@@ -2231,14 +2224,14 @@ function profilePatchFromBody(body) {
     ['linked_games', ['linked_games', 'linkedGames']],
   ]) {
     const sourceKey = aliases.find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-    if (!sourceKey) continue
+    if (!sourceKey || body[sourceKey] == null) continue
     const values = Array.isArray(body[sourceKey]) ? body[sourceKey] : []
     patch[field] = [...new Set(values.map((value) => cleanText(value, 80)).filter(Boolean))].slice(0, 40)
   }
 
   const gameLogosKey = ['game_logo_urls', 'gameLogoUrls']
     .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-  if (gameLogosKey) {
+  if (gameLogosKey && body[gameLogosKey] != null) {
     const rawLogos = body[gameLogosKey] && typeof body[gameLogosKey] === 'object' && !Array.isArray(body[gameLogosKey])
       ? body[gameLogosKey]
       : {}
@@ -2268,31 +2261,31 @@ function profilePatchFromBody(body) {
 
   const sectionOrderKey = ['profile_section_order', 'profileSectionOrder']
     .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-  if (sectionOrderKey) {
+  if (sectionOrderKey && body[sectionOrderKey] != null) {
     patch.profile_section_order = normalizeProfileSectionOrder(body[sectionOrderKey])
   }
 
   const sectionVisibilityKey = ['profile_section_visibility', 'profileSectionVisibility']
     .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-  if (sectionVisibilityKey) {
+  if (sectionVisibilityKey && body[sectionVisibilityKey] != null) {
     patch.profile_section_visibility = normalizeProfileSectionVisibility(body[sectionVisibilityKey])
   }
 
-  if (Object.prototype.hasOwnProperty.call(body || {}, 'is_private')) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'is_private') && body.is_private != null) {
     patch.is_private = Boolean(body.is_private)
-  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'isPrivate')) {
+  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'isPrivate') && body.isPrivate != null) {
     patch.is_private = Boolean(body.isPrivate)
   }
 
-  if (Object.prototype.hasOwnProperty.call(body || {}, 'favorites_public')) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'favorites_public') && body.favorites_public != null) {
     patch.favorites_public = Boolean(body.favorites_public)
-  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'favoritesPublic')) {
+  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'favoritesPublic') && body.favoritesPublic != null) {
     patch.favorites_public = Boolean(body.favoritesPublic)
   }
 
   const breakModeKey = ['break_mode', 'breakMode']
     .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-  if (breakModeKey) {
+  if (breakModeKey && body[breakModeKey] != null) {
     const breakMode = cleanText(body[breakModeKey], 20).toLowerCase()
     if (new Set(['off', 'mute', 'hidden']).has(breakMode)) patch.break_mode = breakMode
   }
@@ -2312,29 +2305,30 @@ function profilePatchFromBody(body) {
   ]
   for (const [targetKey, sourceKeys, allowedValues, maxLength] of appearanceFields) {
     const sourceKey = sourceKeys.find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-    if (!sourceKey) continue
+    if (!sourceKey || body[sourceKey] == null) continue
     const value = cleanText(body[sourceKey], maxLength).toLowerCase()
     if (allowedValues.has(value)) patch[targetKey] = value
   }
 
   const welcomeKey = ['profile_welcome', 'profileWelcome']
     .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
-  if (welcomeKey) {
+  if (welcomeKey && body[welcomeKey] != null) {
     patch.profile_welcome = cleanText(body[welcomeKey], 120)
   }
 
-  if (Object.prototype.hasOwnProperty.call(body || {}, 'avatar_video_muted')) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'avatar_video_muted') && body.avatar_video_muted != null) {
     patch.avatar_video_muted = Boolean(body.avatar_video_muted)
-  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'avatarVideoMuted')) {
+  } else if (Object.prototype.hasOwnProperty.call(body || {}, 'avatarVideoMuted') && body.avatarVideoMuted != null) {
     patch.avatar_video_muted = Boolean(body.avatarVideoMuted)
   }
 
-  const rawAvatarDuration = Object.prototype.hasOwnProperty.call(body || {}, 'avatar_duration_ms')
-    ? body.avatar_duration_ms
-    : body?.avatarDurationMs
-  const avatarDurationMs = Number(rawAvatarDuration || 0)
-  if (Number.isFinite(avatarDurationMs) && avatarDurationMs >= 0) {
-    patch.avatar_duration_ms = Math.min(2_000, Math.round(avatarDurationMs))
+  const avatarDurationKey = ['avatar_duration_ms', 'avatarDurationMs']
+    .find((key) => Object.prototype.hasOwnProperty.call(body || {}, key))
+  if (avatarDurationKey && body[avatarDurationKey] != null) {
+    const avatarDurationMs = Number(body[avatarDurationKey])
+    if (Number.isFinite(avatarDurationMs) && avatarDurationMs >= 0) {
+      patch.avatar_duration_ms = Math.min(2_000, Math.round(avatarDurationMs))
+    }
   }
 
   if (patch.display_name && !patch.full_name) {
@@ -2342,6 +2336,24 @@ function profilePatchFromBody(body) {
   }
 
   return patch
+}
+
+function profileClearFields(profile) {
+  const clearableFields = [
+    'bio', 'country', 'city', 'status',
+    'interests', 'hobbies', 'linked_games', 'game_logo_urls',
+    'favorite_music_url', 'favorite_book', 'favorite_sport', 'career', 'availability_schedule',
+    'profile_section_order', 'profile_section_visibility',
+    'profile_welcome', 'avatar_url', 'avatar_media_type', 'cover_url',
+  ]
+  return clearableFields.filter((field) => {
+    if (!Object.prototype.hasOwnProperty.call(profile || {}, field)) return false
+    const value = profile[field]
+    if (value == null) return true
+    if (typeof value === 'string') return value.trim() === ''
+    if (Array.isArray(value)) return value.length === 0
+    return typeof value === 'object' && Object.keys(value).length === 0
+  })
 }
 
 function isOwnedBy(row, identity) {
@@ -2469,13 +2481,79 @@ function profileSearchCard(profile) {
     city: visible.city,
     status: visible.status,
     is_verified: visible.is_verified,
+    badges: visible.badges,
+    profile_frame: visible.profile_frame,
     is_private: visible.is_private,
     break_mode: visible.break_mode,
     profile_visibility: visible.profile_visibility,
     is_online: visible.is_online,
     last_seen: visible.last_seen,
+    followers_count: numberOf(visible, ['followers_count', 'follower_count'], 0),
+    following_count: numberOf(visible, ['following_count'], 0),
+    post_count: numberOf(visible, ['post_count', 'posts_count'], 0),
     updated_at: visible.updated_at,
   }
+}
+
+function rankPublicProfiles({ profiles, follows, posts, metric = 'followers', limit = 100 }) {
+  const cleanMetric = new Set(['followers', 'following', 'posts']).has(metric) ? metric : 'followers'
+  const boundedLimit = Math.max(1, Math.min(Number(limit) || 100, 250))
+  const profilesByKey = new Map()
+  const keyByAlias = new Map()
+  const counters = new Map()
+
+  for (const profile of profiles || []) {
+    const aliases = profileAliasSet(profile)
+    const key = normalizeId(profile?.id) || Array.from(aliases)[0]
+    if (!key) continue
+    profilesByKey.set(key, profile)
+    counters.set(key, { followers: 0, following: 0, posts: 0 })
+    for (const alias of aliases) keyByAlias.set(alias, key)
+  }
+
+  const seenFollows = new Set()
+  for (const row of follows || []) {
+    const followerAlias = normalizeId(textOf(row, ['follower_id', 'user_id'], ''))
+    const followingAlias = normalizeId(textOf(row, ['following_id', 'target_user_id'], ''))
+    const followerKey = keyByAlias.get(followerAlias)
+    const followingKey = keyByAlias.get(followingAlias)
+    if (!followerKey || !followingKey || followerKey === followingKey) continue
+    const pairKey = `${followerKey}:${followingKey}`
+    if (seenFollows.has(pairKey)) continue
+    seenFollows.add(pairKey)
+    counters.get(followerKey).following += 1
+    counters.get(followingKey).followers += 1
+  }
+
+  const seenPosts = new Set()
+  for (const row of posts || []) {
+    const ownerAlias = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id', 'profile_id'], ''))
+    const ownerKey = keyByAlias.get(ownerAlias)
+    if (!ownerKey) continue
+    const postId = normalizeId(textOf(row, ['id', 'post_id'], '')) || `${ownerKey}:${seenPosts.size}`
+    if (seenPosts.has(postId)) continue
+    seenPosts.add(postId)
+    counters.get(ownerKey).posts += 1
+  }
+
+  return Array.from(profilesByKey.entries())
+    .map(([key, profile]) => {
+      const count = counters.get(key)
+      return profileSearchCard({
+        ...profile,
+        followers_count: count.followers,
+        following_count: count.following,
+        post_count: count.posts,
+      })
+    })
+    .filter((profile) => textOf(profile, ['break_mode', 'breakMode'], 'off').toLowerCase() !== 'hidden')
+    .sort((a, b) => {
+      const field = cleanMetric === 'posts' ? 'post_count' : `${cleanMetric}_count`
+      const delta = numberOf(b, [field], 0) - numberOf(a, [field], 0)
+      if (delta !== 0) return delta
+      return toMillis(b.updated_at) - toMillis(a.updated_at)
+    })
+    .slice(0, boundedLimit)
 }
 
 async function currentUserOwnsStorageObject(pool, currentUserId, rawUrl, allowedBuckets) {
@@ -2499,6 +2577,33 @@ async function currentUserOwnsStorageObject(pool, currentUserId, rawUrl, allowed
     [reference.bucket, currentUserId, candidateNames],
   )
   return Boolean(rows[0])
+}
+
+async function resolveOwnedStorageUrl(pool, currentUserId, rawUrl, allowedBuckets) {
+  const reference = parsePublicStorageObjectUrl(rawUrl, allowedBuckets)
+  if (!reference) return null
+  const candidateNames = [reference.objectPath]
+  if (!reference.objectPath.startsWith(`${currentUserId}/`)) {
+    candidateNames.push(`${currentUserId}/${reference.objectPath}`)
+  }
+  const { rows } = await pool.query(
+    `SELECT name FROM fallback_storage_objects
+     WHERE bucket_id = $1 AND owner_id = $2::uuid AND name = ANY($3::text[])
+     ORDER BY array_position($3::text[], name) LIMIT 1`,
+    [reference.bucket, currentUserId, candidateNames],
+  )
+  if (!rows[0]) return null
+  const actualName = String(rows[0].name)
+  const raw = String(rawUrl).trim()
+  if (actualName === reference.objectPath) return raw
+  // El cliente omite el prefijo owner-id en la URL; se reescribe para apuntar al objeto REAL
+  // (sin el prefijo, el servido de imagenes devuelve 404 y se ve la inicial por defecto).
+  const marker = `/storage/v1/object/public/${reference.bucket}/`
+  const idx = raw.indexOf(marker)
+  if (idx < 0) return raw
+  const base = raw.slice(0, idx + marker.length)
+  const encoded = actualName.split('/').map((seg) => encodeURIComponent(seg)).join('/')
+  return base + encoded
 }
 
 async function currentUserOwnsStorageObjects(pool, currentUserId, rawUrls, allowedBuckets) {
@@ -3991,7 +4096,7 @@ async function ensureLocalDataTables(pool) {
   await ensureProximityTables(pool)
 }
 
-function registerDataRoutes(app, { pool, authRequired }) {
+function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser }) {
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
@@ -4005,7 +4110,13 @@ function registerDataRoutes(app, { pool, authRequired }) {
     createLocalNotification: createLocalNotificationBestEffort,
     currentUserOwnsStorageObject,
   })
-  registerAdminModerationRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerAdminModerationRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+    deleteExternalAuthUser,
+  })
   registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   app.post('/v1/data/messages/translate', authRequired, async (req, res, next) => {
@@ -4076,7 +4187,9 @@ function registerDataRoutes(app, { pool, authRequired }) {
         ['created_at', 'updated_at'],
       ).slice(0, 12)
 
-      setPrivateShortCache(res, 10)
+      res.setHeader('Cache-Control', 'private, no-store, max-age=0')
+      res.setHeader('Pragma', 'no-cache')
+      res.vary('Authorization')
       res.json({
         profile: mergedProfile,
         posts: myPosts,
@@ -4100,11 +4213,15 @@ function registerDataRoutes(app, { pool, authRequired }) {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
+      const profiles = await importedRows(pool, 'profiles', 5000)
+      const importedProfile =
+        profiles.find((row) => rowMatchesAny(row, ['id', 'user_id', 'profile_id', 'supabase_user_id'], identity.ids)) ||
+        profiles.find((row) => normalizeId(row.email) === identity.email) ||
+        fallbackProfileRow(user)
 
       const patch = profilePatchFromBody(req.body || {})
       if (Object.keys(patch).length === 0) {
-        const current = buildProfileForUser(user, fallbackProfileRow(user), await localProfileOverride(pool, user.id))
-        return res.json({ profile: current, stats: {} })
+        return res.status(400).json({ error: 'PROFILE_PATCH_EMPTY' })
       }
 
       // La propiedad del objeto de storage solo se valida cuando el avatar/portada CAMBIA de verdad.
@@ -4115,25 +4232,29 @@ function registerDataRoutes(app, { pool, authRequired }) {
       // debilitar la seguridad: seguir es imposible poner un avatar/portada nuevo que no sea tuyo.
       const currentProfileOverride = await localProfileOverride(pool, user.id)
       const trimUrl = (value) => String(value || '').trim()
-      const currentAvatarUrl = trimUrl(currentProfileOverride.avatar_url || user.avatar_url)
-      const currentCoverUrl = trimUrl(currentProfileOverride.cover_url || user.cover_url)
+      const currentProfile = buildProfileForUser(user, importedProfile, currentProfileOverride)
+      const currentAvatarUrl = trimUrl(currentProfile.avatar_url)
+      const currentCoverUrl = trimUrl(currentProfile.cover_url)
 
-      if (
-        patch.avatar_url &&
-        trimUrl(patch.avatar_url) !== currentAvatarUrl &&
-        !(await currentUserOwnsStorageObject(pool, user.id, patch.avatar_url, ['avatars']))
-      ) {
-        return res.status(403).json({ error: 'PROFILE_AVATAR_NOT_OWNED' })
+      // Valida propiedad Y normaliza la URL al objeto REAL (con owner-id). Si el cliente manda la
+      // URL sin el prefijo owner-id, se reescribe para que la foto SE PUEDA MOSTRAR.
+      if (patch.avatar_url && trimUrl(patch.avatar_url) !== currentAvatarUrl) {
+        const resolvedAvatar = await resolveOwnedStorageUrl(pool, user.id, patch.avatar_url, ['avatars'])
+        if (!resolvedAvatar) {
+          return res.status(403).json({ error: 'PROFILE_AVATAR_NOT_OWNED' })
+        }
+        patch.avatar_url = resolvedAvatar
       }
-      if (
-        patch.cover_url &&
-        trimUrl(patch.cover_url) !== currentCoverUrl &&
-        !(await currentUserOwnsStorageObject(pool, user.id, patch.cover_url, ['avatars']))
-      ) {
-        return res.status(403).json({ error: 'PROFILE_COVER_NOT_OWNED' })
+      if (patch.cover_url && trimUrl(patch.cover_url) !== currentCoverUrl) {
+        const resolvedCover = await resolveOwnedStorageUrl(pool, user.id, patch.cover_url, ['avatars'])
+        if (!resolvedCover) {
+          return res.status(403).json({ error: 'PROFILE_COVER_NOT_OWNED' })
+        }
+        patch.cover_url = resolvedCover
       }
 
       patch.updated_at = new Date().toISOString()
+      patch.__clear_fields = profileClearFields({ ...currentProfileOverride, ...patch })
 
       await pool.query(
         `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
@@ -4211,7 +4332,7 @@ function registerDataRoutes(app, { pool, authRequired }) {
         display_name: nextDisplayName || user.display_name,
         avatar_url: hasAvatarPatch ? nextAvatarUrl : user.avatar_url,
       }
-      const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
+      const current = buildProfileForUser(refreshedUser, importedProfile, await localProfileOverride(pool, user.id))
       res.json({ profile: current, stats: {} })
     } catch (error) {
       next(error)
@@ -4348,6 +4469,33 @@ function registerDataRoutes(app, { pool, authRequired }) {
         .map(profileSearchCard)
       setPrivateShortCache(res, 10)
       res.json({ items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/profiles/ranking', authRequired, async (req, res, next) => {
+    try {
+      const metric = cleanText(req.query.metric || 'followers', 20).toLowerCase()
+      if (!['followers', 'following', 'posts'].includes(metric)) {
+        return res.status(400).json({ error: 'RANKING_METRIC_INVALID' })
+      }
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 250))
+      const [profiles, follows, importedPosts, fallbackPosts] = await Promise.all([
+        allPublicProfiles(pool),
+        combinedFollows(pool),
+        importedRows(pool, 'posts', 20_000),
+        localPosts(pool, 20_000),
+      ])
+      const items = rankPublicProfiles({
+        profiles,
+        follows,
+        posts: [...importedPosts, ...fallbackPosts],
+        metric,
+        limit,
+      })
+      setPrivateShortCache(res, 10)
+      res.json({ items, metric, limit })
     } catch (error) {
       next(error)
     }
@@ -9490,6 +9638,9 @@ module.exports = {
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   parsePublicStorageObjectUrl,
+  profileClearFields,
+  profilePatchFromBody,
+  rankPublicProfiles,
   sameStorageObjectReference,
   storageObjectExists,
   profileForViewer,

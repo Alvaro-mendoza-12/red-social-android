@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -43,6 +44,13 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
 
+data class AccountSwitchUiState(
+    val isSwitching: Boolean = false,
+    val targetAccountId: String? = null,
+    val targetDisplayName: String? = null,
+    val targetAvatarUrl: String? = null
+)
+
 @Singleton
 class AuthRepository @Inject constructor(
     private val authService: AuthService,
@@ -60,6 +68,9 @@ class AuthRepository @Inject constructor(
             android.util.Log.e("AuthRepository", "Uncaught repository coroutine exception", throwable)
         }
     )
+    private val accountSwitchMutex = Mutex()
+    private val _accountSwitchUiState = MutableStateFlow(AccountSwitchUiState())
+    val accountSwitchUiState: StateFlow<AccountSwitchUiState> = _accountSwitchUiState
 
     @kotlinx.serialization.Serializable
     private data class SuspensionStateResponse(
@@ -93,9 +104,10 @@ class AuthRepository @Inject constructor(
             return Result.failure(Exception("Debes aceptar las políticas de privacidad para crear tu cuenta."))
         }
 
-        var acceptedAt = if (acceptedPrivacyPolicy) java.time.OffsetDateTime.now().toString() else null
+        val acceptedAt = java.time.OffsetDateTime.now().toString()
+        val normalizedName = name.trim()
+        val normalizedCountry = country.trim()
 
-        // 1️⃣ SIGN UP
         val signUpResult = authService.signUp(
             email = email,
             password = password,
@@ -115,133 +127,79 @@ class AuthRepository @Inject constructor(
         val authResponse = signUpResult.getOrNull()
             ?: return Result.failure(Exception("Sesión nula"))
 
-        var userId = authResponse.user.id
-        var uploadedAvatarUrl: String? = null
-
-        // 2️⃣ (OPCIONAL) SUBIR FOTO ANTES DE CREAR PERFIL
-        if (imageUri != null) {
-            uploadedAvatarUrl = userRepository.uploadProfileImage(imageUri)
-                .onFailure {
-                    android.util.Log.e("AuthRepository", "Profile image upload failed during sign up", it)
-                }
-                .getOrNull()
-        }
-
-        if (authService.isLocalFallbackSession()) {
-            runCatching {
-                authService.updateUserMetadata(
-                    fullName = name,
-                    avatarUrl = uploadedAvatarUrl,
-                    displayName = name,
-                    country = country,
-                    privacyPolicyAccepted = acceptedPrivacyPolicy,
-                    privacyPolicyAcceptedAt = acceptedAt
-                )
-            }.onFailure {
-                android.util.Log.w("AuthRepository", "Failed to update local fallback signup metadata", it)
-            }
-
-            val localUser = resolveLocalFallbackSessionUser(
-                fallbackEmail = email,
-                fallbackDisplayName = name,
-                fallbackAvatarUrl = uploadedAvatarUrl,
-                fallbackCountry = country
-            )
-            accountSessionRepository.captureCurrentAccount(
-                displayName = localUser.displayName,
-                avatarUrl = localUser.avatar_url
-            ).onFailure {
-                android.util.Log.w("AuthRepository", "Failed to save local fallback quick-switch session", it)
-            }
-            return Result.success(localUser)
-        }
-
-        // 3️⃣ CREAR PERFIL YA CON AVATAR SI EXISTE
+        val userId = authResponse.user.id
+        val usesUbuntuBackend = authService.isLocalFallbackSession()
         var user = User(
             id = userId,
             email = email,
-            display_name = name,
-            full_name = name,
-            country = country,
-            avatar_url = uploadedAvatarUrl
+            display_name = normalizedName,
+            full_name = normalizedName,
+            country = normalizedCountry,
+            privacy_policy_accepted = true,
+            privacy_policy_accepted_at = acceptedAt
         )
 
-        val profileResult = userRepository.createProfile(
-            user = user,
-            privacyPolicyAccepted = acceptedPrivacyPolicy
-        )
-        if (profileResult.isFailure) {
-            return Result.failure(profileResult.exceptionOrNull() ?: Exception("Unknown profile creation error"))
+        // The Ubuntu registration endpoint already creates its profile shell. Supabase needs
+        // the profile row before storage is attached, otherwise a failed first upload used to
+        // trigger a second slow attempt and could leave the account without its selected image.
+        if (!usesUbuntuBackend) {
+            userRepository.createProfile(user = user, privacyPolicyAccepted = true)
+                .getOrElse { return Result.failure(it) }
         }
 
-        runCatching {
-            authService.updateUserMetadata(
-                fullName = name,
-                avatarUrl = uploadedAvatarUrl,
-                displayName = name,
-                country = country,
-                privacyPolicyAccepted = acceptedPrivacyPolicy,
-                privacyPolicyAcceptedAt = acceptedAt
+        val uploadedAvatarUrl = imageUri?.let { selectedImage ->
+            userRepository.uploadProfileImage(selectedImage).getOrElse { error ->
+                android.util.Log.e("AuthRepository", "Profile image upload failed after account creation", error)
+                return Result.failure(
+                    Exception(
+                        "La cuenta fue creada, pero no se pudo subir la foto. Inicia sesión y vuelve a elegirla: ${error.message ?: "error de carga"}",
+                        error
+                    )
+                )
+            }
+        }
+
+        if (usesUbuntuBackend || uploadedAvatarUrl != null) {
+            val profileUpdate = userRepository.updateProfile(
+                userId = userId,
+                request = UpdateProfileRequest(
+                    display_name = normalizedName.takeIf { usesUbuntuBackend && it.isNotBlank() },
+                    country = normalizedCountry.takeIf { usesUbuntuBackend && it.isNotBlank() },
+                    avatar_url = uploadedAvatarUrl
+                )
             )
-        }.onFailure {
+            if (profileUpdate.isFailure) {
+                val error = profileUpdate.exceptionOrNull()
+                return Result.failure(
+                    Exception(
+                        "La cuenta fue creada, pero no se pudo guardar el perfil: ${error?.message ?: "error de persistencia"}",
+                        error
+                    )
+                )
+            }
+        }
+
+        authService.updateUserMetadata(
+            fullName = normalizedName,
+            avatarUrl = uploadedAvatarUrl,
+            displayName = normalizedName,
+            country = normalizedCountry,
+            privacyPolicyAccepted = true,
+            privacyPolicyAcceptedAt = acceptedAt
+        ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to sync signup metadata", it)
         }
 
-        var hydratedUser = userRepository.ensureCurrentProfile(
-            user.copy(avatar_url = uploadedAvatarUrl)
-        ).getOrElse {
-            android.util.Log.w("AuthRepository", "Failed to hydrate current profile after sign up", it)
-            user.copy(avatar_url = uploadedAvatarUrl)
-        }
-
-        val normalizedRequestedName = name.trim()
-        val normalizedRequestedCountry = country.trim()
-        var resolvedAvatarUrl = hydratedUser.avatar_url ?: uploadedAvatarUrl
-
-        if (imageUri != null && resolvedAvatarUrl.isNullOrBlank()) {
-            userRepository.uploadProfileImage(imageUri)
-                .onSuccess { retriedAvatarUrl ->
-                    resolvedAvatarUrl = retriedAvatarUrl
-                }
-                .onFailure {
-                    android.util.Log.w("AuthRepository", "Retry profile image upload failed after sign up", it)
-                }
-        }
-
-        val needsProfileBackfill =
-            (normalizedRequestedName.isNotBlank() && hydratedUser.displayName != normalizedRequestedName) ||
-                (normalizedRequestedCountry.isNotBlank() && hydratedUser.country != normalizedRequestedCountry) ||
-                (!resolvedAvatarUrl.isNullOrBlank() && hydratedUser.avatar_url != resolvedAvatarUrl)
-
-        if (needsProfileBackfill) {
-            userRepository.updateProfile(
-                userId = userId,
-                request = UpdateProfileRequest(
-                    display_name = normalizedRequestedName.takeIf { it.isNotBlank() && hydratedUser.displayName != it },
-                    country = normalizedRequestedCountry.takeIf { it.isNotBlank() && hydratedUser.country != it },
-                    avatar_url = resolvedAvatarUrl?.takeIf { hydratedUser.avatar_url != it }
-                )
-            ).onFailure {
-                android.util.Log.w("AuthRepository", "Signup profile backfill failed", it)
-            }
-
-            hydratedUser = userRepository.ensureCurrentProfile(
-                hydratedUser.copy(
-                    display_name = normalizedRequestedName.takeIf { it.isNotBlank() } ?: hydratedUser.display_name,
-                    full_name = normalizedRequestedName.takeIf { it.isNotBlank() } ?: hydratedUser.full_name,
-                    country = normalizedRequestedCountry.takeIf { it.isNotBlank() } ?: hydratedUser.country,
-                    avatar_url = resolvedAvatarUrl ?: hydratedUser.avatar_url
-                )
-            ).getOrElse {
-                android.util.Log.w("AuthRepository", "Failed to rehydrate current profile after signup backfill", it)
-                hydratedUser.copy(
-                    display_name = normalizedRequestedName.takeIf { it.isNotBlank() } ?: hydratedUser.display_name,
-                    full_name = normalizedRequestedName.takeIf { it.isNotBlank() } ?: hydratedUser.full_name,
-                    country = normalizedRequestedCountry.takeIf { it.isNotBlank() } ?: hydratedUser.country,
-                    avatar_url = resolvedAvatarUrl ?: hydratedUser.avatar_url
-                )
-            }
-        }
+        user = user.copy(avatar_url = uploadedAvatarUrl)
+        val hydratedUser = userRepository.ensureCurrentProfile(user).getOrElse { error ->
+            android.util.Log.w("AuthRepository", "Failed to hydrate current profile after sign up", error)
+            user
+        }.copy(
+            display_name = normalizedName.takeIf { it.isNotBlank() },
+            full_name = normalizedName.takeIf { it.isNotBlank() },
+            country = normalizedCountry.takeIf { it.isNotBlank() },
+            avatar_url = uploadedAvatarUrl
+        )
 
         accountSessionRepository.captureCurrentAccount(
             displayName = hydratedUser.displayName,
@@ -753,6 +711,16 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun switchAccount(accountId: String): Result<User> {
+        if (!accountSwitchMutex.tryLock()) {
+            return Result.failure(IllegalStateException("Ya hay un cambio de cuenta en curso."))
+        }
+        val targetAccount = accountSessionRepository.accounts.value.firstOrNull { it.id == accountId }
+        _accountSwitchUiState.value = AccountSwitchUiState(
+            isSwitching = true,
+            targetAccountId = accountId,
+            targetDisplayName = targetAccount?.display_name ?: targetAccount?.email,
+            targetAvatarUrl = targetAccount?.avatar_url
+        )
         val previousAccessToken = authService.getAccessToken()?.trim()
         val previousRefreshToken = authService.getRefreshToken()?.trim()
         var previousUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -777,13 +745,13 @@ class AuthRepository @Inject constructor(
             authService.clearLocalDataForAccountSwitch()
 
             val switched = accountSessionRepository.switchAccount(accountId)
-                .getOrElse { return Result.failure(it) }
+                .getOrThrow()
 
             authService.ensureValidAccessToken()
-                .getOrElse { return Result.failure(it) }
+                .getOrThrow()
 
             var userId = authService.getCurrentUserId() ?: switched.user_id
-                ?: return Result.failure(Exception("No se pudo activar la sesión"))
+                ?: throw IllegalStateException("No se pudo activar la sesión")
 
             var user = userRepository.getUserById(userId).getOrNull()
                 ?: authService.getCurrentUserProfileSeed()?.let { seed ->
@@ -851,6 +819,9 @@ class AuthRepository @Inject constructor(
                 e
             }
             Result.failure(normalizedFailure)
+        } finally {
+            _accountSwitchUiState.value = AccountSwitchUiState()
+            accountSwitchMutex.unlock()
         }
     }
 

@@ -62,7 +62,7 @@ fun CommunityDetailScreen(
     LaunchedEffect(community, members, isLoading) {
         if (!isLoading && community != null && currentUserId != null) {
             val isStillMember = members.any { it.user_id == currentUserId }
-            if (community?.is_deleted == true || (!community?.is_public!! && members.isNotEmpty() && !isStillMember)) {
+            if (community?.is_deleted == true || (community?.is_public == false && members.isNotEmpty() && !isStillMember)) {
                 showDeletedByOtherAlert = true
             }
         } else if (!isLoading && community == null) {
@@ -286,8 +286,8 @@ fun CommunityDetailScreen(
         EditCommunityDialog(
             community = community!!,
             onDismiss = { showEditCommunityDialog = false },
-            onConfirm = { name, desc, img, isPub, onlyAdmins ->
-                viewModel.updateCommunityInfo(name, desc, img, isPub, onlyAdmins) {
+            onConfirm = { name, desc, img, isPub, onlyAdmins, limit ->
+                viewModel.updateCommunityInfo(name, desc, img, isPub, onlyAdmins, limit) {
                     showEditCommunityDialog = false
                 }
             }
@@ -346,12 +346,13 @@ fun CommunityDetailScreen(
 fun EditCommunityDialog(
     community: conectate.com.data.model.Community,
     onDismiss: () -> Unit,
-    onConfirm: (String, String?, ByteArray?, Boolean, Boolean) -> Unit
+    onConfirm: (String, String?, ByteArray?, Boolean, Boolean, Int) -> Unit
 ) {
     var name by remember { mutableStateOf(community.name) }
     var description by remember { mutableStateOf(community.description ?: "") }
     var isPublic by remember { mutableStateOf(community.is_public) }
     var onlyAdminsCanTalk by remember { mutableStateOf(community.only_admins_can_talk) }
+    var dailyMessageLimit by remember { mutableStateOf(community.daily_message_limit.toString()) }
     var selectedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -374,6 +375,14 @@ fun EditCommunityDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre") })
                 OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Descripción") })
+                OutlinedTextField(
+                    value = dailyMessageLimit,
+                    onValueChange = { dailyMessageLimit = it.filter { char -> char.isDigit() } },
+                    label = { Text("Límite diario de mensajes") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    )
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -396,7 +405,10 @@ fun EditCommunityDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name, description, selectedImageBytes, isPublic, onlyAdminsCanTalk) }) {
+            Button(onClick = {
+                val limit = dailyMessageLimit.toIntOrNull() ?: 0
+                onConfirm(name, description, selectedImageBytes, isPublic, onlyAdminsCanTalk, limit)
+            }) {
                 Text("Guardar")
             }
         },

@@ -1,7 +1,7 @@
 package conectate.com.presentation.auth
 
 import android.Manifest
-import android.os.Build
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -58,11 +58,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.core.content.ContextCompat
 import conectate.com.data.model.StoredAccountSession
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -78,6 +80,7 @@ fun WebLoginScannerScreen(
     initialNonce: String? = null,
     viewModel: WebLoginScannerViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var manualPayload by rememberSaveable { mutableStateOf("") }
     var attemptedAutoLaunch by rememberSaveable { mutableStateOf(false) }
@@ -101,11 +104,10 @@ fun WebLoginScannerScreen(
     }
 
     fun requestScan() {
-        val needsRuntimePermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-        if (needsRuntimePermission) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        } else {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             scanLauncher.launch(defaultScanOptions())
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -256,7 +258,7 @@ fun WebLoginScannerScreen(
 
 private fun defaultScanOptions(): ScanOptions {
     return ScanOptions().apply {
-        setPrompt("Escanea el QR de Conectate Web")
+        setPrompt("Escanea el QR de Novvin Web")
         setBeepEnabled(false)
         setOrientationLocked(true)
         setCaptureActivity(PortraitQrCaptureActivity::class.java)
@@ -290,7 +292,7 @@ private fun HeroCard() {
                 )
             }
             Text(
-                text = "Conecta Conectate Web de forma segura",
+                text = "Conecta Novvin Web de forma segura",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )

@@ -1,5 +1,6 @@
 package conectate.com.presentation.messages
 
+import conectate.com.presentation.messages.OutgoingMessageMedia
 import androidx.compose.runtime.Composable
 
 import android.Manifest
@@ -128,11 +129,17 @@ fun ChatScreen(
     
     var showStorageDisabledDialog by remember { mutableStateOf(false) }
     
+    val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
+    var showUnifiedMediaPicker by remember { mutableStateOf(false) }
+
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showRecentGifSheet by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
     var pendingMediaUri by remember { mutableStateOf<Uri?>(null) }
     var pendingMediaType by remember { mutableStateOf<String?>(null) }
     var pendingMediaCaption by remember { mutableStateOf("") }
+    var pendingMediaQueue by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     
     // Full screen media state
     var fullScreenMediaItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
@@ -202,29 +209,27 @@ fun ChatScreen(
         }
     }
     
+    var showMediaComposer by remember { mutableStateOf(false) }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "image"
-            pendingMediaCaption = ""
-        }
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        viewModel.sendMediaBatch(
+            uris.take(10).map { uri -> OutgoingMessageMedia(uri = uri, type = "image") }
+        )
     }
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "video"
-            pendingMediaCaption = ""
-        }
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris: List<Uri> ->
+        viewModel.sendMediaBatch(
+            uris.take(10).map { uri -> OutgoingMessageMedia(uri = uri, type = "video") }
+        )
     }
 
     val viewOnceImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             pendingMediaUri = uri
             pendingMediaType = "view_once_image"
@@ -233,8 +238,8 @@ fun ChatScreen(
     }
 
     val viewOnceVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             pendingMediaUri = uri
             pendingMediaType = "view_once_video"
@@ -261,7 +266,7 @@ fun ChatScreen(
     }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
+        contract = PickPhoneContactContract()
     ) { contactUri: Uri? ->
         if (contactUri == null) return@rememberLauncherForActivityResult
         val payload = resolvePickedContact(context, contactUri)
@@ -280,18 +285,6 @@ fun ChatScreen(
         }
     }
 
-    val contactsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            contactPickerLauncher.launch(null)
-        } else {
-            scope.launch {
-                snackbarHostState.showSnackbar("Permiso de contactos denegado.")
-            }
-        }
-    }
-
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -307,8 +300,8 @@ fun ChatScreen(
     }
 
     val scheduleImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             scheduledMediaUri = uri
             scheduledMediaType = "image"
@@ -316,8 +309,8 @@ fun ChatScreen(
     }
 
     val scheduleVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
         if (uri != null) {
             scheduledMediaUri = uri
             scheduledMediaType = "video"
@@ -334,6 +327,13 @@ fun ChatScreen(
     
     // Message Actions State
     val messages = (chatState as? ChatUiState.Success)?.messages ?: emptyList()
+    val recentGifUrls = remember(messages) {
+        messages.asReversed()
+            .filter { it.content_type == "gif" }
+            .mapNotNull { it.media_url?.trim()?.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(24)
+    }
     val visibleMessageIds by remember(messages, listState) {
         derivedStateOf {
             listState.layoutInfo.visibleItemsInfo
@@ -974,13 +974,15 @@ fun ChatScreen(
                                         showScheduledMessagesDialog = true
                                     }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Auto traducción") },
-                                    onClick = {
-                                        showMenu = false
-                                        showTranslateDialog = true
-                                    }
-                                )
+                                if (viewModel.isSecureTranslationAvailable) {
+                                    DropdownMenuItem(
+                                        text = { Text("Auto traducción") },
+                                        onClick = {
+                                            showMenu = false
+                                            showTranslateDialog = true
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Resumen del chat") },
                                     onClick = {
@@ -1057,13 +1059,42 @@ fun ChatScreen(
                                 key = { _, item -> item.id },
                                 contentType = { _, item -> item.content_type }
                             ) { index, message ->
-                                if (shouldShowDateSeparator(state.messages, index)) {
-                                    DateSeparator(label = formatDateSeparatorLabel(message.created_at))
+                                val mediaGroup = remember(state.messages, message.id) {
+                                    conectate.com.presentation.components.mediaGridClusterAt(
+                                        messages = state.messages,
+                                        index = index
+                                    )
                                 }
-                                val isSelected = selectedMessages.contains(message.id)
-                                MessageBubble(
-                                    message = message,
-                                    isFromCurrentUser = message.sender_id == currentUserId,
+
+                                if (mediaGroup == null) {
+                                    // Skip, already rendered in previous group
+                                } else if (mediaGroup.size > 1) {
+                                    if (shouldShowDateSeparator(state.messages, index)) {
+                                        DateSeparator(label = formatDateSeparatorLabel(message.created_at))
+                                    }
+                                    conectate.com.presentation.components.MediaGridMessageBubble(
+                                        messages = mediaGroup,
+                                        isFromCurrentUser = message.sender_id == currentUserId,
+                                        onClick = { selectedMessage ->
+                                            conectate.com.presentation.components.buildMessageMediaViewerSelection(
+                                                messages = state.messages,
+                                                selectedMessageId = selectedMessage.id,
+                                                reverseOrder = true
+                                            )?.let { selection ->
+                                                fullScreenImageInitialIndex = selection.initialIndex
+                                                fullScreenMediaItems = selection.items
+                                            }
+                                        },
+                                        onResolveUrl = { viewModel.getPlayableUrl(it) }
+                                    )
+                                } else {
+                                    if (shouldShowDateSeparator(state.messages, index)) {
+                                        DateSeparator(label = formatDateSeparatorLabel(message.created_at))
+                                    }
+                                    val isSelected = selectedMessages.contains(message.id)
+                                    MessageBubble(
+                                        message = message,
+                                        isFromCurrentUser = message.sender_id == currentUserId,
                                     isSelected = isSelected,
                                     onLongClick = {
                                         viewModel.onMessageLongClick(message)
@@ -1087,19 +1118,16 @@ fun ChatScreen(
                                                     fullScreenImageInitialIndex = 0
                                                 }
                                             }
-                                        } else if ((message.content_type == "image" || message.content_type == "video" || message.content_type == "gif" || message.content_type == "sticker") && message.media_url != null) {
+                                        } else if (conectate.com.presentation.components.isGalleryMediaType(message.content_type) && message.media_url != null) {
                                             val currentMessages = (chatState as? ChatUiState.Success)?.messages ?: emptyList()
-                                            // Reverse so newest is at the start (index 0)
-                                            val mediaItems = currentMessages
-                                                .filter { (it.content_type == "image" || it.content_type == "video" || it.content_type == "gif" || it.content_type == "sticker") && it.media_url != null && !it.deleted_for_all }
-                                                .map { conectate.com.presentation.components.MediaItem(it.id, it.media_url!!, it.content_type) }
-                                                .reversed()
-                                            
-                                            val initialRawUrl = message.media_url
-                                            val index = mediaItems.indexOfFirst { it.url == initialRawUrl }.coerceAtLeast(0)
-                                            
-                                            fullScreenImageInitialIndex = index
-                                            fullScreenMediaItems = mediaItems
+                                            conectate.com.presentation.components.buildMessageMediaViewerSelection(
+                                                messages = currentMessages,
+                                                selectedMessageId = message.id,
+                                                reverseOrder = true
+                                            )?.let { selection ->
+                                                fullScreenImageInitialIndex = selection.initialIndex
+                                                fullScreenMediaItems = selection.items
+                                            }
                                         }
                                     },
                                     onSwipeReply = { viewModel.onSwipeToReply(it) },
@@ -1171,6 +1199,7 @@ fun ChatScreen(
                                 )
                             }
                         }
+                    }
                     }
                     is ChatUiState.Error -> {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1499,7 +1528,9 @@ fun ChatScreen(
                         ),
                         trailingIcon = {
                              Row {
-                                 IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
+                                 IconButton(onClick = {
+                                     showMediaComposer = true
+                                 }) {
                                      Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                  }
                              }
@@ -1508,10 +1539,6 @@ fun ChatScreen(
                     
                     Spacer(modifier = Modifier.width(4.dp))
                     
-
-
-    // ... (rest of code)
-
                     // Send / Mic Button
                     val isTextEmpty = messageText.isBlank()
                     
@@ -1570,32 +1597,6 @@ fun ChatScreen(
         }
         }
     }
-    
-    if (pendingMediaUri != null && pendingMediaType != null) {
-        MediaCaptionPreviewDialog(
-            mediaUri = pendingMediaUri!!,
-            mediaType = pendingMediaType!!,
-            caption = pendingMediaCaption,
-            onCaptionChange = { pendingMediaCaption = it },
-            onDismiss = {
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            onConfirm = { editedUri, editedCaption ->
-                val type = pendingMediaType ?: return@MediaCaptionPreviewDialog
-                viewModel.sendMediaMessage(
-                    uri = editedUri,
-                    messageType = type,
-                    content = editedCaption.trim()
-                )
-                pendingMediaUri = null
-                pendingMediaType = null
-                pendingMediaCaption = ""
-            },
-            isSending = isSending
-        )
-    }
 
     if (showBackgroundSheet) {
         ChatBackgroundPickerSheet(
@@ -1637,7 +1638,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            imagePickerLauncher.launch("image/*")
+                            showMediaComposer = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1652,7 +1653,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            videoPickerLauncher.launch("video/*")
+                            showMediaComposer = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1697,7 +1698,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            gifPickerLauncher.launch("image/gif")
+                            showRecentGifSheet = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1742,7 +1743,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            viewOnceImagePickerLauncher.launch("image/*")
+                            viewOnceImagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1757,7 +1758,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            viewOnceVideoPickerLauncher.launch("video/*")
+                            viewOnceVideoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1772,15 +1773,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.READ_CONTACTS
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                            ) {
-                                contactPickerLauncher.launch(null)
-                            } else {
-                                contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-                            }
+                            contactPickerLauncher.launch(Unit)
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1835,6 +1828,15 @@ fun ChatScreen(
         }
     }
 
+    if (showRecentGifSheet) {
+        RecentGifPickerSheet(
+            recentUrls = recentGifUrls,
+            onSelect = { url -> showRecentGifSheet = false; viewModel.sendRecentGif(url) },
+            onChooseFromDevice = { showRecentGifSheet = false; gifPickerLauncher.launch("image/gif") },
+            onDismiss = { showRecentGifSheet = false }
+        )
+    }
+
     if (showStickerCatalogDialog) {
         StickerPanel(
             visible = showStickerCatalogDialog,
@@ -1882,18 +1884,24 @@ fun ChatScreen(
                         label = { Text("Autodestrucción segundos (opcional)") },
                         singleLine = true
                     )
-                    OutlinedTextField(
-                        value = scheduleTranslateLang,
-                        onValueChange = { scheduleTranslateLang = it.trim().lowercase().take(12) },
-                        label = { Text("Traducir a (opcional, ej: en)") },
-                        singleLine = true
-                    )
+                    if (viewModel.isSecureTranslationAvailable) {
+                        OutlinedTextField(
+                            value = scheduleTranslateLang,
+                            onValueChange = { scheduleTranslateLang = it.trim().lowercase().take(12) },
+                            label = { Text("Traducir a (opcional, ej: en)") },
+                            singleLine = true
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { scheduleImagePickerLauncher.launch("image/*") }) {
-                            Text("Adjuntar imagen")
+                        OutlinedButton(onClick = { scheduleImagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                            Icon(Icons.Default.Image, "Imagen")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Imagen")
                         }
-                        OutlinedButton(onClick = { scheduleVideoPickerLauncher.launch("video/*") }) {
-                            Text("Adjuntar video")
+                        OutlinedButton(onClick = { scheduleVideoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }) {
+                            Icon(Icons.Default.Videocam, "Video")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Video")
                         }
                     }
                     if (scheduledMediaType != null) {
@@ -1916,7 +1924,11 @@ fun ChatScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val selfDestruct = scheduleSelfDestructText.toIntOrNull()
-                    val translate = scheduleTranslateLang.trim().ifBlank { null }
+                    val translate = if (viewModel.isSecureTranslationAvailable) {
+                        scheduleTranslateLang.trim().ifBlank { null }
+                    } else {
+                        null
+                    }
                     val mediaUri = scheduledMediaUri
                     val mediaType = scheduledMediaType
                     if (mediaUri != null && mediaType != null) {
@@ -2081,7 +2093,7 @@ fun ChatScreen(
                             .setAllowedOverRoaming(true)
                         
                         // Guess filename
-                        val filename = "Conectate_${System.currentTimeMillis()}.${if (item.type == "video") "mp4" else "jpg"}"
+                        val filename = "Novvin_${System.currentTimeMillis()}.${if (item.type == "video") "mp4" else "jpg"}"
                         request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, filename)
                         
                         val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
@@ -2097,7 +2109,17 @@ fun ChatScreen(
     )
 }
 
-// --- NEW DIALOGS ---
+    if (showMediaComposer) {
+        MessageMediaComposer(
+            isSending = false,
+            onDismiss = { showMediaComposer = false },
+            onSend = { mediaList, mediaCaption ->
+                showMediaComposer = false
+                viewModel.sendMediaBatch(mediaList, mediaCaption)
+            }
+        )
+    }
+
     if (showNicknameDialog) {
         var nicknameText by remember { mutableStateOf(currentNickname ?: "") }
         AlertDialog(

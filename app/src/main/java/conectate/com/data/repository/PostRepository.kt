@@ -15,12 +15,19 @@ import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
+import conectate.com.util.canonicalizeMediaContentType
+import conectate.com.util.inferMimeTypeFromBytes
+import conectate.com.util.preferredExtensionForMime
+import conectate.com.util.uploadReportEvidence
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +45,14 @@ import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.*
 import java.io.File
+
+sealed interface PostMutationEvent {
+    val postId: String
+
+    data class Deleted(override val postId: String) : PostMutationEvent
+    data class ContentUpdated(override val postId: String, val content: String) : PostMutationEvent
+    data class VisibilityUpdated(override val postId: String, val visibility: String) : PostMutationEvent
+}
 
 @Singleton
 class PostRepository @Inject constructor(
@@ -58,6 +73,8 @@ class PostRepository @Inject constructor(
         coerceInputValues = true
         encodeDefaults = true
     }
+    private val _mutationEvents = MutableSharedFlow<PostMutationEvent>(extraBufferCapacity = 32)
+    val mutationEvents: SharedFlow<PostMutationEvent> = _mutationEvents.asSharedFlow()
 
     @Serializable
     private data class PostReactionRequest(
@@ -86,6 +103,7 @@ class PostRepository @Inject constructor(
         "CARE",
         "FIRE"
     )
+    private val maxPostMediaBytes = 25L * 1024 * 1024
 
     fun getGlobalPosts(offset: Int = 0, limit: Int = 20): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
@@ -477,6 +495,8 @@ class PostRepository @Inject constructor(
 
     suspend fun createPost(content: String, mediaUris: List<Uri>, visibility: String = "public"): Result<Post> {
         var startedAt = System.currentTimeMillis()
+        val uploadedObjects = mutableListOf<Pair<String, String>>()
+        var metadataPersisted = false
         return try {
             var userId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("Usuario no identificado"))
@@ -523,12 +543,24 @@ class PostRepository @Inject constructor(
                         ?: return Result.failure(Exception("No se pudo leer un archivo multimedia"))
 
                     var fileName = "${userId}/${UUID.randomUUID()}.${mediaPayload.extension}"
-                    var uploadResult = storageService.uploadFile(
-                        bucketName = "post-media",
-                        fileName = fileName,
-                        bytes = mediaPayload.bytes,
-                        contentType = mediaPayload.contentType
-                    )
+                    var uploadResult = if (mediaPayload.sizeBytes > 0L) {
+                        storageService.uploadFileFromUri(
+                            bucketName = "post-media",
+                            fileName = fileName,
+                            sourceUri = uri,
+                            sizeBytes = mediaPayload.sizeBytes,
+                            contentType = mediaPayload.contentType,
+                            allowOverwrite = true,
+                            onProgress = {}
+                        )
+                    } else {
+                        storageService.uploadFile(
+                            bucketName = "post-media",
+                            fileName = fileName,
+                            bytes = mediaPayload.bytes ?: return Result.failure(Exception("No se pudo leer el archivo multimedia")),
+                            contentType = mediaPayload.contentType
+                        )
+                    }
 
                     if (uploadResult.isSuccess) {
                         if (firstMediaType == null) {
@@ -539,8 +571,15 @@ class PostRepository @Inject constructor(
                                 else -> "file"
                             }
                         }
-                        UbuntuStorageUrl.rewrite(storageService.getPublicUrl("post-media", fileName))
-                            ?.let { mediaUrls.add(it) }
+                        val remoteKey = uploadResult.getOrThrow().Key ?: fileName
+                        uploadedObjects += "post-media" to remoteKey
+                        val publicUrl = UbuntuStorageUrl.rewrite(
+                            storageService.getPublicUrl("post-media", remoteKey)
+                        ).orEmpty()
+                        if (publicUrl.isBlank()) {
+                            return Result.failure(Exception("No se pudo obtener la URL del archivo subido"))
+                        }
+                        mediaUrls.add(publicUrl)
                     } else {
                         val error = uploadResult.exceptionOrNull()
                         appMetrics.recordFailure(
@@ -578,6 +617,7 @@ class PostRepository @Inject constructor(
                     visibility = visibility
                 )
                 if (created.isSuccess) {
+                    metadataPersisted = true
                     appMetrics.incrementCounter(
                         metric = "post_create_success",
                         attributes = mapOf("source" to "ubuntu", "media_count" to mediaUrls.size.toString())
@@ -613,6 +653,7 @@ class PostRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
+                metadataPersisted = true
                 val createdPost: List<Post> = response.body()
                 var postId = createdPost.first().id
                 
@@ -646,6 +687,18 @@ class PostRepository @Inject constructor(
         } catch (e: Exception) {
             appMetrics.recordFailure("post_create", e)
             Result.failure(e)
+        } finally {
+            if (!metadataPersisted) {
+                cleanupUploadedPostObjects(uploadedObjects)
+            }
+        }
+    }
+
+    private suspend fun cleanupUploadedPostObjects(objects: List<Pair<String, String>>) {
+        objects.asReversed().forEach { (bucket, key) ->
+            storageService.deleteFile(bucket, key).onFailure { error ->
+                android.util.Log.w("PostRepository", "No se pudo limpiar $bucket/$key", error)
+            }
         }
     }
 
@@ -855,15 +908,29 @@ class PostRepository @Inject constructor(
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return localFallbackApiClient.deletePost(accessToken, postId)
+                val result = localFallbackApiClient.deletePost(accessToken, postId)
+                result.onSuccess { _mutationEvents.tryEmit(PostMutationEvent.Deleted(postId)) }
+                return result
             }
             
-            supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Prefer", "return=representation")
                 parameter("id", "eq.$postId")
             }
-            Result.success(Unit)
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                if (body.trim() == "[]") {
+                    Result.failure(Exception("No se pudo eliminar (la publicación no existe o no tienes permisos)"))
+                } else {
+                    invalidateGlobalPostCache()
+                    _mutationEvents.tryEmit(PostMutationEvent.Deleted(postId))
+                    Result.success(Unit)
+                }
+            } else {
+                Result.failure(Exception("Error HTTP ${response.status.value}: $body"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -873,21 +940,33 @@ class PostRepository @Inject constructor(
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return localFallbackApiClient.updatePost(
+                val result = localFallbackApiClient.updatePost(
                     accessToken = accessToken,
                     postId = postId,
                     visibility = visibility
                 ).map { Unit }
+                result.onSuccess {
+                    _mutationEvents.tryEmit(PostMutationEvent.VisibilityUpdated(postId, visibility))
+                }
+                return result
             }
 
-            supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
+                header("Prefer", "return=representation")
                 parameter("id", "eq.$postId")
                 setBody(mapOf("visibility" to visibility))
             }
-            Result.success(Unit)
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                invalidateGlobalPostCache()
+                _mutationEvents.tryEmit(PostMutationEvent.VisibilityUpdated(postId, visibility))
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Error HTTP ${response.status.value}: $body"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -897,21 +976,33 @@ class PostRepository @Inject constructor(
         return try {
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return localFallbackApiClient.updatePost(
+                val result = localFallbackApiClient.updatePost(
                     accessToken = accessToken,
                     postId = postId,
                     content = content
                 ).map { Unit }
+                result.onSuccess {
+                    _mutationEvents.tryEmit(PostMutationEvent.ContentUpdated(postId, content))
+                }
+                return result
             }
 
-            supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+            val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json")
+                header("Prefer", "return=representation")
                 parameter("id", "eq.$postId")
                 setBody(mapOf("content" to content))
             }
-            Result.success(Unit)
+            val body = response.bodyAsText()
+            if (response.status.isSuccess() && body.trim() != "[]") {
+                invalidateGlobalPostCache()
+                _mutationEvents.tryEmit(PostMutationEvent.ContentUpdated(postId, content))
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No se pudo actualizar la publicación: HTTP ${response.status.value} $body"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1064,73 +1155,95 @@ class PostRepository @Inject constructor(
     }
 
     suspend fun addAudioComment(postId: String, audioFile: File): Result<Unit> {
+        if (!audioFile.isFile || audioFile.length() <= 0L) {
+            return Result.failure(Exception("El audio está vacío o no se puede leer"))
+        }
+        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("No user"))
+        val fileName = "$userId/comment_${UUID.randomUUID()}.m4a"
+        var remoteKey: String? = null
+        var metadataPersisted = false
+
         return try {
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return Result.failure(Exception("No user"))
-            
-            // Upload Audio
-            var bytes = audioFile.readBytes()
-            var fileName = "$userId/comment_${UUID.randomUUID()}.m4a"
-            var uploadResult = storageService.uploadFile("post-comments-media", fileName, bytes, "audio/mp4")
-            
-            if (uploadResult.isSuccess) {
-                 val publicUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("post-comments-media", fileName)).orEmpty()
-                 
-                 // add_audio_to_post_comments.sql is part of the release manifest, so audio comments
-                 // store both a stable text marker and the media metadata columns.
-                 
-                 var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            val uploadResult = storageService.uploadFileFromUri(
+                bucketName = "post-comments-media",
+                fileName = fileName,
+                sourceUri = Uri.fromFile(audioFile),
+                sizeBytes = audioFile.length(),
+                contentType = "audio/mp4",
+                allowOverwrite = false,
+                onProgress = {}
+            )
+            if (uploadResult.isFailure) {
+                return Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
+            }
 
-                 if (supabaseConfig.isLocalFallbackPrimary) {
-                    return localFallbackApiClient.addPostComment(
-                        accessToken = accessToken,
-                        postId = postId,
-                        content = "[Audio]",
-                        mediaUrl = publicUrl,
-                        mediaType = "audio"
-                    ).map { Unit }
-                 }
+            val uploadedKey = uploadResult.getOrThrow().Key ?: fileName
+            remoteKey = uploadedKey
+            val publicUrl = UbuntuStorageUrl.rewrite(
+                storageService.getPublicUrl("post-comments-media", uploadedKey)
+            ).orEmpty()
+            if (publicUrl.isBlank()) return Result.failure(Exception("No se pudo generar la URL del audio"))
 
-                 var queryParams = mutableMapOf(
-                    "post_id" to postId,
-                    "user_id" to userId,
-                    "content" to "[Audio]",
-                    "media_url" to publicUrl,
-                    "content_type" to "audio"
-                 )
+            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val result = localFallbackApiClient.addPostComment(
+                    accessToken = accessToken,
+                    postId = postId,
+                    content = "[Audio]",
+                    mediaUrl = publicUrl,
+                    mediaType = "audio"
+                ).map { Unit }
+                metadataPersisted = result.isSuccess
+                return result
+            }
 
-                 var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
-                    header("Authorization", "Bearer $accessToken")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    header("Prefer", "return=representation")
-                    setBody(queryParams)
-                 }
-                 
-                 if (response.status.isSuccess()) {
-                     // Notify
-                     getPostById(postId).onSuccess { post ->
+            val queryParams = mapOf(
+                "post_id" to postId,
+                "user_id" to userId,
+                "content" to "[Audio]",
+                "media_url" to publicUrl,
+                "content_type" to "audio"
+            )
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                header("Prefer", "return=representation")
+                setBody(queryParams)
+            }
+
+            if (response.status.isSuccess()) {
+                metadataPersisted = true
+                runCatching {
+                    getPostById(postId).onSuccess { post ->
                         notificationRepository.sendNotification(
                             recipientId = post.userId,
                             type = "comment_post",
                             targetId = postId,
                             content = "Envió un audio"
                         )
-                     }
-                     Result.success(Unit)
-                 } else {
-                     var errorBody = response.body<String>()
-                     if (errorBody.contains("undefined column")) {
-                         // Graceful fallback for devices pointed to a DB that has not run the manifest yet.
-                         return addComment(postId, "[Audio]$publicUrl").map { Unit }
-                     }
-                     Result.failure(Exception("Error adding audio comment: ${response.status}"))
-                 }
+                    }
+                }.onFailure { error ->
+                    android.util.Log.w("PostRepository", "No se pudo notificar el comentario de audio", error)
+                }
+                Result.success(Unit)
             } else {
-                Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
+                val errorBody = response.body<String>()
+                if (errorBody.contains("undefined column")) {
+                    val fallback = addComment(postId, "[Audio]$publicUrl").map { Unit }
+                    metadataPersisted = fallback.isSuccess
+                    fallback
+                } else {
+                    Result.failure(Exception("Error adding audio comment: ${response.status}"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            if (!metadataPersisted) {
+                remoteKey?.let { cleanupUploadedPostObjects(listOf("post-comments-media" to it)) }
+            }
         }
     }
 
@@ -1308,6 +1421,187 @@ class PostRepository @Inject constructor(
         }
     }
 
+    suspend fun addStickerComment(
+        postId: String,
+        stickerUrl: String,
+        parentId: String? = null
+    ): Result<conectate.com.data.model.Comment> {
+        val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+        if (!supabaseConfig.isLocalFallbackPrimary) {
+            return Result.failure(Exception("Los stickers requieren el servidor principal."))
+        }
+        return localFallbackApiClient.addPostComment(
+            accessToken = accessToken,
+            postId = postId,
+            content = "[Sticker]",
+            parentId = parentId,
+            mediaUrl = stickerUrl,
+            mediaType = "sticker"
+        )
+    }
+
+    suspend fun submitContentReport(
+        contentType: String,
+        contentId: String,
+        reportedUserId: String,
+        reportedUserName: String,
+        reason: String,
+        details: String?,
+        evidenceUri: Uri?
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
+        var uploadedEvidenceKey: String? = null
+        var reportPersisted = false
+        try {
+            val normalizedContentType = contentType.trim().lowercase()
+            if (normalizedContentType !in setOf("post", "comment")) {
+                return@withContext Result.failure(Exception("Tipo de contenido inválido"))
+            }
+
+            val currentUserId = authService.getCurrentUserId()?.trim()
+                ?: return@withContext Result.failure(Exception("No user"))
+            val accessToken = authService.getAccessToken()
+                ?: return@withContext Result.failure(Exception("No token"))
+
+            val cleanContentId = contentId.trim()
+            val cleanReportedUserId = reportedUserId.trim()
+            if (cleanContentId.isBlank() || cleanReportedUserId.isBlank()) {
+                return@withContext Result.failure(Exception("Reporte incompleto"))
+            }
+            if (cleanReportedUserId.equals(currentUserId, ignoreCase = true)) {
+                return@withContext Result.failure(Exception("No puedes reportar tu propio contenido"))
+            }
+
+            val moderatedReason = moderationService.moderate(
+                text = reason.trim(),
+                context = ModerationContext.REPORT_REASON
+            )
+            val moderatedDetails = moderationService.moderate(
+                text = details.orEmpty().trim(),
+                context = ModerationContext.REPORT_DESCRIPTION
+            )
+            if (moderatedReason.verdict == ModerationVerdict.BLOCK ||
+                moderatedDetails.verdict == ModerationVerdict.BLOCK
+            ) {
+                appMetrics.recordFailure(
+                    metric = "content_report_submit",
+                    attributes = mapOf("reason" to "moderation_block", "content_type" to normalizedContentType)
+                )
+                return@withContext Result.failure(Exception("El reporte contiene contenido no permitido"))
+            }
+
+            val sanitizedReason = moderatedReason.sanitizedText.trim()
+            val sanitizedDetails = moderatedDetails.sanitizedText.trim().ifBlank { null }
+            if (sanitizedReason.isBlank()) {
+                return@withContext Result.failure(Exception("El motivo del reporte es obligatorio"))
+            }
+
+            var evidenceUrl: String? = null
+            if (evidenceUri != null) {
+                val uploadedEvidence = uploadReportEvidence(
+                    context = context,
+                    storageService = storageService,
+                    userId = currentUserId,
+                    sourceUri = evidenceUri
+                ).getOrElse { error ->
+                    return@withContext Result.failure(error)
+                }
+                uploadedEvidenceKey = uploadedEvidence.objectKey
+                evidenceUrl = uploadedEvidence.publicUrl
+            }
+
+            val currentUser = userRepository.getUserById(currentUserId).getOrNull()
+            val reporterName = currentUser?.username
+                ?: currentUser?.display_name
+                ?: currentUser?.full_name
+                ?: "Usuario"
+            val safeReportedName = reportedUserName.trim().take(80).ifBlank { "Usuario" }
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val result = localFallbackApiClient.submitContentReport(
+                    accessToken = accessToken,
+                    contentType = normalizedContentType,
+                    contentId = cleanContentId,
+                    reportedUserId = cleanReportedUserId,
+                    reportedUserName = safeReportedName,
+                    reason = sanitizedReason,
+                    description = sanitizedDetails,
+                    evidenceUrl = evidenceUrl
+                )
+                if (result.isSuccess) {
+                    reportPersisted = true
+                    appMetrics.incrementCounter(
+                        metric = "content_report_submit_success",
+                        attributes = mapOf("source" to "ubuntu", "content_type" to normalizedContentType)
+                    )
+                    appMetrics.recordLatency(
+                        metric = "content_report_submit",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = mapOf("source" to "ubuntu", "content_type" to normalizedContentType)
+                    )
+                }
+                return@withContext result
+            }
+
+            val payload = mutableMapOf<String, String?>(
+                "reporter_id" to currentUserId,
+                "reporter_name" to reporterName,
+                "reported_user_id" to cleanReportedUserId,
+                "reported_user_name" to safeReportedName,
+                "reason" to sanitizedReason,
+                "description" to sanitizedDetails,
+                "evidence_url" to evidenceUrl,
+                "content_type" to normalizedContentType,
+                "content_id" to cleanContentId,
+                "status" to "pendiente"
+            )
+
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                header("Prefer", "return=representation")
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                reportPersisted = true
+                appMetrics.incrementCounter(
+                    metric = "content_report_submit_success",
+                    attributes = mapOf("content_type" to normalizedContentType)
+                )
+                appMetrics.recordLatency(
+                    metric = "content_report_submit",
+                    durationMs = System.currentTimeMillis() - startedAt,
+                    attributes = mapOf("content_type" to normalizedContentType)
+                )
+                Result.success(Unit)
+            } else {
+                val errorBody = runCatching { response.bodyAsText() }.getOrDefault("")
+                appMetrics.recordFailure(
+                    metric = "content_report_submit",
+                    attributes = mapOf(
+                        "http_status" to response.status.value.toString(),
+                        "content_type" to normalizedContentType
+                    )
+                )
+                Result.failure(Exception("Error enviando reporte: ${response.status} $errorBody"))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PostRepository", "Error submitting content report", e)
+            appMetrics.recordFailure("content_report_submit", e)
+            Result.failure(e)
+        } finally {
+            if (!reportPersisted) {
+                uploadedEvidenceKey?.let { key ->
+                    storageService.deleteFile("report-evidence", key).onFailure { cleanupError ->
+                        android.util.Log.w("PostRepository", "Could not clean report evidence", cleanupError)
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun notifyMentionsForPostComment(
         postId: String,
         commentId: String,
@@ -1392,29 +1686,47 @@ class PostRepository @Inject constructor(
     }
 
     private data class MediaPayload(
-        val bytes: ByteArray,
+        val bytes: ByteArray?,
+        val sizeBytes: Long,
         val contentType: String,
         val extension: String
     )
 
     private fun readMediaPayload(uri: Uri): MediaPayload? {
-        var bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-        if (bytes.isEmpty()) return null
+        val header = context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buffer = ByteArray(512)
+            val count = stream.read(buffer)
+            if (count > 0) buffer.copyOf(count) else null
+        } ?: return null
+        val sizeBytes = runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                descriptor.length.takeIf { it > 0L }
+            }
+        }.getOrNull() ?: 0L
+        if (sizeBytes > maxPostMediaBytes) return null
 
-        val detectedContentType = context.contentResolver.getType(uri)
-            ?: guessMimeFromUri(uri)
-            ?: "application/octet-stream"
+        val detectedContentType = canonicalizeMediaContentType(inferMimeTypeFromBytes(header))
+            ?: canonicalizeMediaContentType(context.contentResolver.getType(uri))
+            ?: canonicalizeMediaContentType(guessMimeFromUri(uri))
+            ?: return null
+        if (detectedContentType !in setOf("image/jpeg", "image/png", "image/webp", "video/mp4")) {
+            return null
+        }
 
-        var extension = MimeTypeMap.getSingleton()
-            .getExtensionFromMimeType(detectedContentType)
-            ?.ifBlank { null }
-            ?: uri.lastPathSegment?.substringAfterLast('.', "")
-                ?.lowercase()
-                ?.ifBlank { null }
-            ?: "bin"
+        val extension = preferredExtensionForMime(detectedContentType)
+            ?: MimeTypeMap.getSingleton().getExtensionFromMimeType(detectedContentType)
+            ?: return null
+        val bytes = if (sizeBytes > 0L) {
+            null
+        } else {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?.takeIf { it.isNotEmpty() && it.size.toLong() <= maxPostMediaBytes }
+                ?: return null
+        }
 
         return MediaPayload(
             bytes = bytes,
+            sizeBytes = sizeBytes,
             contentType = detectedContentType,
             extension = extension
         )
@@ -1469,6 +1781,18 @@ class PostRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun setCommentReaction(commentId: String, reactionType: String?): Result<Unit> {
+        val normalized = reactionType?.trim()?.uppercase()
+        if (normalized != null && normalized !in setOf("LIKE", "DISLIKE")) {
+            return Result.failure(IllegalArgumentException("Reacción inválida"))
+        }
+        val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+        if (!supabaseConfig.isLocalFallbackPrimary) {
+            return Result.failure(Exception("Las reacciones de comentarios requieren el servidor principal."))
+        }
+        return localFallbackApiClient.setPostCommentReaction(accessToken, commentId, normalized)
     }
 }
 

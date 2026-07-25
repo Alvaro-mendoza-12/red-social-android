@@ -224,7 +224,7 @@ private fun FontCatalogRow(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "Conectate 123",
+                text = "Novvin 123",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = appFontFamilyFor(option.storageValue),
                 color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -18,6 +18,7 @@ fun canonicalizeMediaContentType(contentType: String?): String? {
     if (clean.isBlank()) return null
     return when (clean) {
         "image/jpg" -> "image/jpeg"
+        "audio/m4a", "audio/x-m4a" -> "audio/mp4"
         else -> clean
     }
 }
@@ -29,9 +30,19 @@ fun preferredExtensionForMime(contentType: String?): String? {
         "image/webp" -> "webp"
         "image/gif" -> "gif"
         "video/mp4" -> "mp4"
+        "video/webm" -> "webm"
         "audio/mpeg" -> "mp3"
         "audio/wav" -> "wav"
         "audio/mp4" -> "m4a"
+        "audio/ogg" -> "ogg"
+        "audio/webm" -> "webm"
+        "application/pdf" -> "pdf"
+        "application/zip" -> "zip"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx"
+        "text/plain" -> "txt"
+        "text/csv" -> "csv"
         else -> null
     }
 }

@@ -115,7 +115,7 @@ export function LoginPage() {
       } catch (caught) {
         if (!cancelled) {
           setQrPairing(null)
-          setError(toPairingError(caught, 'No se pudo generar el QR de Conectate Web.'))
+          setError(toPairingError(caught, 'No se pudo generar el QR de Novvin Web.'))
         }
       } finally {
         if (!cancelled) {
@@ -265,7 +265,7 @@ export function LoginPage() {
           })
           setError(null)
           setInfo(
-            'Por la migración a Ubuntu, crea una nueva contraseña local una sola vez para seguir usando Conectate normalmente en web y móvil.',
+            'Por la migración a Ubuntu, crea una nueva contraseña local una sola vez para seguir usando Novvin normalmente en web y móvil.',
           )
           return
         }
@@ -451,13 +451,13 @@ export function LoginPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <img src="/conectate-logo.svg" alt="Conectate" className="auth-logo-img" />
+                <img src="/conectate-logo.svg" alt="Novvin" className="auth-logo-img" />
                 <div>
-                  <p className="brand-tag auth-panel-tag">Conectate</p>
+                  <p className="brand-tag auth-panel-tag">Novvin</p>
                   <span>Red social privada</span>
                 </div>
               </div>
-              <h1>Entrar a Conectate</h1>
+              <h1>Entrar a Novvin</h1>
               <p>
                 Accede con tu contraseña o aprueba un QR desde tu móvil.
               </p>
@@ -639,13 +639,13 @@ export function LoginPage() {
                 {creatingQr ? (
                   <StatusView
                     title="Generando QR"
-                    description="Preparando un QR temporal y seguro para Conectate Web..."
+                    description="Preparando un QR temporal y seguro para Novvin Web..."
                   />
                 ) : qrPairing?.qrUrl ? (
                   <QrCodeTile
                     value={qrPairing.qrUrl}
                     title="Escanéalo desde el móvil"
-                    description="Abre Conectate en tu teléfono, entra a Perfil y aprueba el acceso web."
+                    description="Abre Novvin en tu teléfono, entra a Perfil y aprueba el acceso web."
                   />
                 ) : (
                   <StatusView
@@ -658,7 +658,7 @@ export function LoginPage() {
               <div className="surface-subcard auth-qr-copy">
                 <strong>Cómo funciona</strong>
                 <p>1. La web genera un QR temporal.</p>
-                <p>2. Lo escaneas desde Perfil en Conectate móvil.</p>
+                <p>2. Lo escaneas desde Perfil en Novvin móvil.</p>
                 <p>3. El móvil aprueba o rechaza la sesión.</p>
                 <p>4. Si apruebas, esta ventana entra automáticamente.</p>
               </div>

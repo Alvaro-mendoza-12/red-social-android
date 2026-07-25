@@ -1,0 +1,349 @@
+{
+  "version": 3,
+  "guides": {
+    "perfil_editar": {
+      "label": "editar el perfil",
+      "steps": [
+        "Abre Perfil desde la barra inferior.",
+        "Toca Editar perfil.",
+        "Cambia nombre, biografia o los datos disponibles.",
+        "Revisa la vista previa y guarda los cambios."
+      ],
+      "tip": "Si un cambio no aparece, vuelve al perfil y actualiza la pantalla.",
+      "followUp": "Dime que dato quieres cambiar y te indico la opcion exacta."
+    },
+    "perfil_foto": {
+      "label": "la foto de perfil",
+      "steps": [
+        "Entra en Perfil y toca Editar perfil.",
+        "Toca tu foto actual y elige una imagen de la galeria.",
+        "Mueve la imagen o usa zoom hasta lograr el encuadre.",
+        "Confirma el recorte y guarda el perfil."
+      ],
+      "tip": "Una imagen cuadrada y bien iluminada suele verse mejor en el circulo del perfil.",
+      "followUp": "¿La dificultad esta al elegir, recortar o guardar la foto?"
+    },
+    "perfil_portada": {
+      "label": "la portada del perfil",
+      "steps": [
+        "Abre Perfil y entra en Editar perfil.",
+        "Toca la portada y selecciona una imagen horizontal.",
+        "Ajusta posicion y zoom en la previsualizacion.",
+        "Confirma el recorte y guarda."
+      ],
+      "tip": "Evita colocar texto importante cerca de los bordes porque puede recortarse en otras pantallas.",
+      "followUp": "¿Quieres cambiar la portada o solucionar una que no carga?"
+    },
+    "publicaciones_crear": {
+      "label": "crear una publicacion",
+      "steps": [
+        "Abre Social.",
+        "Toca Publicar.",
+        "Escribe el texto y agrega foto o video si lo deseas.",
+        "Revisa el contenido y confirma la publicacion."
+      ],
+      "tip": "Espera a que termine la carga antes de salir de la pantalla.",
+      "followUp": "Puedo ayudarte con el texto, la foto o el video de la publicacion."
+    },
+    "publicaciones_interaccion": {
+      "label": "interactuar con publicaciones",
+      "steps": [
+        "Abre la publicacion que te interesa.",
+        "Usa los iconos para reaccionar, comentar, compartir o guardar.",
+        "Entra al menu adicional para reportar u ocultar contenido.",
+        "Toca nuevamente una reaccion para retirarla."
+      ],
+      "tip": "El icono de estrella representa Favoritos en Conectate.",
+      "followUp": "¿Quieres comentar, compartir o guardar en Favoritos?"
+    },
+    "momentos_crear": {
+      "label": "crear un Momento",
+      "steps": [
+        "En Social abre Momentos.",
+        "Selecciona una foto o video, o abre la camara.",
+        "Agrega texto y ajusta el contenido en la vista previa.",
+        "Publica cuando todo quede visible correctamente."
+      ],
+      "tip": "Concede permisos de Camara, Microfono y Fotos solo cuando uses esas funciones.",
+      "followUp": "¿Estas eligiendo un archivo o intentando grabarlo directamente?"
+    },
+    "momentos_problemas": {
+      "label": "problemas con Momentos",
+      "steps": [
+        "Comprueba los permisos de Camara, Microfono y Fotos.",
+        "Verifica que tengas conexion y espacio libre.",
+        "Prueba con un archivo corto para aislar el problema.",
+        "Si vuelve a fallar, anota la accion exacta y reportala."
+      ],
+      "tip": "No borres los datos de Conectate; eso puede cerrar tu sesion y eliminar borradores locales.",
+      "followUp": "Cuéntame si falla la camara, el texto, la vista previa o la publicacion."
+    },
+    "videos_publicar": {
+      "label": "publicar un video",
+      "steps": [
+        "Abre Videos y toca Publicar.",
+        "Elige un video o grabalo desde la aplicacion.",
+        "Edita el recorte, portada, audio y elementos visuales.",
+        "Reproduce la vista previa completa y exporta.",
+        "Agrega titulo o descripcion y confirma la subida."
+      ],
+      "tip": "Mantener Conectate abierta durante la exportacion y subida evita interrupciones.",
+      "followUp": "¿Necesitas ayuda para editar, exportar o subir el video?"
+    },
+    "videos_editor": {
+      "label": "el editor de video",
+      "steps": [
+        "Selecciona el clip en la linea de tiempo.",
+        "Usa Dividir o los controles de recorte para ajustar la duracion.",
+        "Añade texto, stickers, audio, filtros o superposiciones en sus pistas.",
+        "Mueve el cabezal y reproduce cada cambio en la vista previa.",
+        "Elige calidad y exporta el resultado final."
+      ],
+      "tip": "En equipos modestos, 720p ofrece mejor equilibrio entre calidad, velocidad y memoria.",
+      "followUp": "Dime que edicion quieres hacer y te explico esa herramienta."
+    },
+    "videos_subida_error": {
+      "label": "errores al exportar o subir videos",
+      "steps": [
+        "Conserva el proyecto y anota si falla antes de terminar la exportacion o despues, durante la subida.",
+        "Comprueba que haya espacio libre suficiente y cierra otras tareas pesadas antes de exportar de nuevo.",
+        "Si la exportacion termina, usa una conexion estable y manten Conectate abierta mientras se completa la subida.",
+        "Prueba con un clip corto sin efectos para saber si el problema depende del archivo o del flujo de publicacion.",
+        "Si continua, guarda el texto exacto del error, duracion y formato del archivo para incluirlos en el reporte."
+      ],
+      "tip": "No borres el proyecto ni los datos de la aplicacion durante el diagnostico; primero conserva una copia del video original.",
+      "followUp": "¿El error aparece al exportar, al procesar o cuando ya esta subiendo?"
+    },
+    "videos_reproduccion": {
+      "label": "reproducir videos",
+      "steps": [
+        "Comprueba la conexion y el volumen del dispositivo.",
+        "Cierra el video y vuelve a abrirlo.",
+        "Prueba otro video para saber si el fallo es del archivo.",
+        "Reporta el contenido si solo ese video queda negro o sin audio."
+      ],
+      "tip": "Los clips de pocos segundos tambien deben reproducirse y repetirse normalmente.",
+      "followUp": "¿Ves pantalla negra, carga infinita o falta de audio?"
+    },
+    "mensajes_enviar": {
+      "label": "enviar mensajes",
+      "steps": [
+        "Abre Mensajes.",
+        "Busca a la persona o toca Nuevo.",
+        "Selecciona la conversacion y escribe en el campo inferior.",
+        "Pulsa Enviar."
+      ],
+      "tip": "Tambien puedes iniciar un chat desde el perfil de otra persona.",
+      "followUp": "¿No encuentras al usuario o el mensaje no se envia?"
+    },
+    "mensajes_multimedia": {
+      "label": "archivos en mensajes",
+      "steps": [
+        "Abre la conversacion.",
+        "Toca Adjuntar y elige foto, video, camara o audio.",
+        "Revisa la vista previa.",
+        "Confirma el envio."
+      ],
+      "tip": "Toca una imagen recibida para abrirla a pantalla completa y usar zoom.",
+      "followUp": "¿Quieres enviar una foto, un video o una nota de voz?"
+    },
+    "mensajes_organizar": {
+      "label": "organizar conversaciones",
+      "steps": [
+        "Mantén pulsada la conversacion o abre su menu.",
+        "Elige Favorito, Fijar, Archivar o Silenciar.",
+        "Usa los filtros de la bandeja para encontrarla despues.",
+        "Confirma con cuidado antes de eliminar."
+      ],
+      "tip": "Favoritos usa una estrella; Fijar usa una chincheta.",
+      "followUp": "¿Quieres marcar, archivar, fijar o eliminar un chat?"
+    },
+    "grupos_crear": {
+      "label": "crear un grupo",
+      "steps": [
+        "En Mensajes abre Grupos.",
+        "Toca Nuevo grupo.",
+        "Selecciona participantes.",
+        "Agrega nombre y foto y confirma."
+      ],
+      "tip": "Puedes ajustar administradores y permisos desde la informacion del grupo.",
+      "followUp": "¿Ya elegiste a las personas que formaran el grupo?"
+    },
+    "grupos_gestion": {
+      "label": "administrar un grupo",
+      "steps": [
+        "Abre el grupo y toca su nombre.",
+        "Revisa miembros, administradores y permisos.",
+        "Cambia nombre, imagen o notificaciones si tu rol lo permite.",
+        "Guarda los cambios."
+      ],
+      "tip": "Solo los administradores pueden realizar ciertas acciones sobre otros miembros.",
+      "followUp": "¿Quieres cambiar informacion, permisos o miembros?"
+    },
+    "comunidades_unirse": {
+      "label": "unirse a comunidades",
+      "steps": [
+        "En Mensajes abre Comunidades.",
+        "Busca o explora una comunidad.",
+        "Lee su descripcion y reglas.",
+        "Toca Unirme o Solicitar ingreso."
+      ],
+      "tip": "Las comunidades privadas pueden requerir aprobacion de un moderador.",
+      "followUp": "¿Buscas una comunidad concreta o quieres explorar opciones?"
+    },
+    "comunidades_crear": {
+      "label": "crear una comunidad",
+      "steps": [
+        "Abre Comunidades desde Mensajes.",
+        "Toca Nueva comunidad.",
+        "Completa nombre, descripcion, imagen, privacidad y reglas.",
+        "Crea el espacio e invita miembros."
+      ],
+      "tip": "Define reglas claras y al menos un moderador antes de invitar a muchas personas.",
+      "followUp": "¿La comunidad sera publica, privada o por invitacion?"
+    },
+    "voz_salas": {
+      "label": "salas de voz",
+      "steps": [
+        "En Mensajes abre Voz.",
+        "Selecciona una sala o crea una nueva.",
+        "Concede permiso de Microfono.",
+        "Entra y revisa si estas silenciado."
+      ],
+      "tip": "Web y Android deben usar la misma cuenta de servidor y la misma sala para escucharse.",
+      "followUp": "¿Falla la entrada, el microfono o el audio de otros participantes?"
+    },
+    "notificaciones": {
+      "label": "notificaciones",
+      "steps": [
+        "Abre Ajustes de Conectate y revisa Notificaciones.",
+        "En Android permite las notificaciones de la aplicacion.",
+        "Comprueba que el ahorro de bateria no la limite.",
+        "Revisa si la conversacion esta silenciada."
+      ],
+      "tip": "Las opciones del sistema pueden bloquear avisos aunque esten activos dentro de Conectate.",
+      "followUp": "¿Faltan avisos de mensajes, llamadas o actividad social?"
+    },
+    "privacidad_seguridad": {
+      "label": "privacidad y seguridad",
+      "steps": [
+        "Abre Perfil y entra en Ajustes y Privacidad.",
+        "Revisa visibilidad, sesiones y permisos.",
+        "Usa una contrasena unica y no compartas codigos.",
+        "Bloquea y reporta actividad sospechosa."
+      ],
+      "tip": "Conectate nunca deberia pedir tu contrasena dentro de una conversacion.",
+      "followUp": "¿Quieres proteger el perfil, una sesion o una conversacion?"
+    },
+    "reportes_bloqueo": {
+      "label": "bloquear o reportar",
+      "steps": [
+        "Abre el perfil, mensaje o publicacion.",
+        "Entra en el menu de opciones.",
+        "Elige Bloquear o Reportar.",
+        "Selecciona el motivo y confirma."
+      ],
+      "tip": "Si existe acoso, evita responder y conserva evidencia antes de bloquear.",
+      "followUp": "¿El problema esta en un perfil, chat, comentario o publicacion?"
+    },
+    "recuperar_cuenta": {
+      "label": "recuperar la cuenta",
+      "steps": [
+        "En Inicio de sesion toca Recuperar contrasena.",
+        "Escribe el correo asociado.",
+        "Revisa la bandeja y la carpeta de spam.",
+        "Abre el enlace o codigo y establece una nueva contrasena."
+      ],
+      "tip": "Nunca compartas el codigo de recuperacion con otra persona.",
+      "followUp": "¿No llega el correo o no recuerdas la cuenta utilizada?"
+    },
+    "problemas_carga": {
+      "label": "problemas de carga",
+      "steps": [
+        "Comprueba Wi-Fi o datos moviles.",
+        "Vuelve a la pantalla anterior y entra otra vez.",
+        "Verifica espacio libre y actualizaciones.",
+        "Si se repite, reporta la pantalla y la accion exactas."
+      ],
+      "tip": "Evita borrar datos de la aplicacion antes de identificar el problema.",
+      "followUp": "¿Que pantalla queda cargando y que hiciste justo antes?"
+    },
+    "permisos_android": {
+      "label": "permisos de Android",
+      "steps": [
+        "Abre Ajustes de Android.",
+        "Entra en Aplicaciones y selecciona Conectate.",
+        "Abre Permisos.",
+        "Activa Camara, Microfono, Fotos o Notificaciones segun la funcion."
+      ],
+      "tip": "Concede solo los permisos que necesites y vuelve a la aplicacion.",
+      "followUp": "¿Que permiso necesitas activar?"
+    },
+    "ayuda_general": {
+      "label": "orientacion general",
+      "steps": [
+        "Dime que resultado quieres conseguir, no hace falta conocer el nombre de la funcion.",
+        "Indica si estas en Mensajes, Videos, Social o Perfil.",
+        "Describe que ves o que error aparece.",
+        "Seguimos desde ese punto con una instruccion concreta."
+      ],
+      "tip": "No compartas contrasenas, codigos de acceso ni datos privados al pedir ayuda.",
+      "followUp": "¿Que intentas hacer y en que pantalla estas?"
+    },
+    "perfil_privacidad": {
+      "label": "privacidad del perfil",
+      "steps": [
+        "Abre Perfil y entra en Ajustes.",
+        "Selecciona Privacidad.",
+        "Revisa por separado la visibilidad de la cuenta y del contenido.",
+        "Guarda el cambio y comprueba el perfil desde la vista disponible."
+      ],
+      "tip": "Bloquear a una persona y hacer privada la cuenta son acciones diferentes.",
+      "followUp": "¿Quieres ocultar el perfil, limitar una publicacion o bloquear a alguien?"
+    },
+    "publicaciones_eliminar": {
+      "label": "eliminar una publicacion",
+      "steps": [
+        "Abre tu Perfil y localiza la publicacion.",
+        "Entra en el menu de opciones de esa publicacion.",
+        "Elige Eliminar si aparece para tu cuenta.",
+        "Revisa el aviso y confirma solo si deseas borrarla definitivamente."
+      ],
+      "tip": "Reportar contenido de otra persona no es lo mismo que eliminar una publicacion propia.",
+      "followUp": "¿La publicacion es tuya o quieres reportar contenido de otra cuenta?"
+    },
+    "apariencia_configuracion": {
+      "label": "apariencia y configuracion",
+      "steps": [
+        "Abre Perfil y entra en Ajustes.",
+        "Busca Apariencia o Tema entre las opciones disponibles.",
+        "Elige la preferencia deseada y vuelve a la pantalla anterior.",
+        "Si no cambia, revisa tambien el tema o ahorro de bateria de Android."
+      ],
+      "tip": "Algunas versiones pueden seguir automaticamente el tema claro u oscuro del sistema.",
+      "followUp": "¿Quieres cambiar el tema, el idioma u otra preferencia?"
+    },
+    "amistades_seguidores": {
+      "label": "personas, seguidores y seguidos",
+      "steps": [
+        "Usa la busqueda para localizar el nombre o usuario correcto.",
+        "Abre el perfil y verifica que sea la cuenta esperada.",
+        "Usa Seguir o la accion de conexion disponible.",
+        "Consulta Seguidores y Siguiendo desde tu propio Perfil."
+      ],
+      "tip": "Una cuenta privada puede requerir que la otra persona apruebe la solicitud.",
+      "followUp": "¿Quieres encontrar, seguir, dejar de seguir o revisar una solicitud?"
+    },
+    "novvin_historial": {
+      "label": "el historial de Novvin",
+      "steps": [
+        "Abre Novvin desde Mensajes, Grupos o Comunidades.",
+        "Toca el icono de Historial en la cabecera.",
+        "Selecciona un chat anterior para continuarlo.",
+        "Usa Nuevo chat para comenzar otro tema sin borrar los anteriores."
+      ],
+      "tip": "El historial se guarda por cuenta en el dispositivo.",
+      "followUp": "¿Quieres recuperar, crear o eliminar una conversacion?"
+    }
+  }
+}

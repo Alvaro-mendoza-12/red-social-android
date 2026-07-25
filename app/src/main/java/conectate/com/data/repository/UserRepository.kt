@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Movie
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import conectate.com.core.media.ProfileMediaMutation
+import conectate.com.core.media.ProfileMediaSync
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackProfileResponse
@@ -28,6 +30,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -89,6 +93,12 @@ class UserRepository @Inject constructor(
     private val blockedMentionCacheTtlMs = 30_000L
     private val avatarMaxBytes = 50L * 1024 * 1024
     private val localStateStore = UserLocalStateStore(context)
+
+    private val _profileUpdates = kotlinx.coroutines.flow.MutableSharedFlow<User>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    val profileUpdates: kotlinx.coroutines.flow.SharedFlow<User> = _profileUpdates.asSharedFlow()
 
     private fun shouldUseUbuntuBackend(): Boolean =
         localFallbackApiClient.isConfigured &&
@@ -157,6 +167,25 @@ class UserRepository @Inject constructor(
         }
     }
 
+    private fun JsonObject.stringListValue(vararg keys: String): List<String> {
+        return keys.firstNotNullOfOrNull { key ->
+            (this[key] as? JsonArray)?.mapNotNull { item ->
+                runCatching { item.jsonPrimitive.contentOrNull?.trim() }
+                    .getOrNull()
+                    ?.takeIf(String::isNotBlank)
+            }
+        }.orEmpty()
+    }
+
+    private fun JsonObject.stringMapValue(vararg keys: String): Map<String, String> {
+        return keys.firstNotNullOfOrNull { key ->
+            (this[key] as? JsonObject)?.mapNotNull { (entryKey, item) ->
+                val value = runCatching { item.jsonPrimitive.contentOrNull?.trim() }.getOrNull()
+                if (entryKey.isBlank() || value.isNullOrBlank()) null else entryKey to value
+            }?.toMap()
+        }.orEmpty()
+    }
+
     private fun sanitizeLocalFallbackAssetUrl(value: String?): String? {
         val clean = sanitizeProfileText(value) ?: return null
         return UbuntuStorageUrl.rewrite(clean)
@@ -197,16 +226,46 @@ class UserRepository @Inject constructor(
                 avatar_video_muted = profile.booleanValue("avatar_video_muted", "avatarVideoMuted") ?: true,
                 avatar_duration_ms = profile.intValue("avatar_duration_ms", "avatarDurationMs")?.toLong(),
                 cover_url = sanitizeLocalFallbackAssetUrl(profile.stringValue("cover_url", "coverUrl", "cover_image")),
+                profile_theme = sanitizeProfileText(profile.stringValue("profile_theme", "profileTheme")) ?: "conectate",
+                profile_effect = sanitizeProfileText(profile.stringValue("profile_effect", "profileEffect")) ?: "none",
+                profile_welcome = sanitizeProfileText(profile.stringValue("profile_welcome", "profileWelcome")),
                 country = sanitizeProfileText(profile.stringValue("country")),
                 city = sanitizeProfileText(profile.stringValue("city")),
                 status = sanitizeProfileText(profile.stringValue("status")),
+                interests = profile.stringListValue("interests"),
+                hobbies = profile.stringListValue("hobbies"),
+                linked_games = profile.stringListValue("linked_games", "linkedGames"),
+                game_logo_urls = profile.stringMapValue("game_logo_urls", "gameLogoUrls"),
+                favorite_music_url = sanitizeLocalFallbackAssetUrl(
+                    profile.stringValue("favorite_music_url", "favoriteMusicUrl")
+                ),
+                favorite_book = sanitizeProfileText(profile.stringValue("favorite_book", "favoriteBook")),
+                favorite_sport = sanitizeProfileText(profile.stringValue("favorite_sport", "favoriteSport")),
+                career = sanitizeProfileText(profile.stringValue("career", "profession")),
+                availability_schedule = sanitizeProfileText(
+                    profile.stringValue("availability_schedule", "availabilitySchedule")
+                ),
+                profile_section_order = profile.stringListValue("profile_section_order", "profileSectionOrder"),
+                profile_section_visibility = profile.stringMapValue(
+                    "profile_section_visibility",
+                    "profileSectionVisibility"
+                ),
                 followers_count = profile.intValue("followers_count", "follower_count", "followers") ?: response.stats.followers,
                 following_count = profile.intValue("following_count", "following") ?: response.stats.following,
                 post_count = profile.intValue("post_count", "posts_count", "posts") ?: response.stats.posts,
                 is_private = profile.booleanValue("is_private", "private") ?: false,
-                profile_visibility = sanitizeProfileText(profile.stringValue("profile_visibility")) ?: "everyone",
-                last_seen_visibility = sanitizeProfileText(profile.stringValue("last_seen_visibility")) ?: "everyone",
-                online_status_visibility = sanitizeProfileText(profile.stringValue("online_status_visibility")) ?: "everyone",
+                favorites_public = profile.booleanValue("favorites_public", "favoritesPublic") ?: false,
+                break_mode = sanitizeProfileText(profile.stringValue("break_mode", "breakMode")) ?: "off",
+                profile_visibility = sanitizeProfileText(
+                    profile.stringValue("profile_visibility", "profileVisibility")
+                ) ?: "everyone",
+                last_seen_visibility = sanitizeProfileText(
+                    profile.stringValue("last_seen_visibility", "lastSeenVisibility")
+                ) ?: "everyone",
+                online_status_visibility = sanitizeProfileText(
+                    profile.stringValue("online_status_visibility", "onlineStatusVisibility")
+                ) ?: "everyone",
+                last_name_change = sanitizeProfileText(profile.stringValue("last_name_change", "lastNameChange")),
                 is_admin = profile.booleanValue("is_admin", "admin") ?: false,
                 voice_access_granted = profile.booleanValue("voice_access_granted") ?: false,
                 is_verified = profile.booleanValue("is_verified", "verified") ?: false,
@@ -413,6 +472,9 @@ class UserRepository @Inject constructor(
             request.interests?.let { values ->
                 put("interests", JsonArray(values.map { JsonPrimitive(it) }))
             }
+            request.hobbies?.let { values ->
+                put("hobbies", JsonArray(values.map { JsonPrimitive(it) }))
+            }
             request.linked_games?.let { values ->
                 put("linked_games", JsonArray(values.map { JsonPrimitive(it) }))
             }
@@ -424,6 +486,12 @@ class UserRepository @Inject constructor(
             request.favorite_sport?.let { put("favorite_sport", JsonPrimitive(it)) }
             request.career?.let { put("career", JsonPrimitive(it)) }
             request.availability_schedule?.let { put("availability_schedule", JsonPrimitive(it)) }
+            request.profile_section_order?.let { values ->
+                put("profile_section_order", JsonArray(values.map { JsonPrimitive(it) }))
+            }
+            request.profile_section_visibility?.let { values ->
+                put("profile_section_visibility", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
+            }
             request.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             request.avatar_media_type?.let { put("avatar_media_type", JsonPrimitive(it)) }
             request.avatar_video_muted?.let { put("avatar_video_muted", JsonPrimitive(it)) }
@@ -431,13 +499,89 @@ class UserRepository @Inject constructor(
                 put("avatar_duration_ms", JsonPrimitive(it.coerceIn(0L, PROFILE_AVATAR_MAX_DURATION_MS)))
             }
             request.cover_url?.let { put("cover_url", JsonPrimitive(it)) }
+            if (request.remove_avatar) {
+                put("avatar_url", JsonNull)
+                put("avatar_media_type", JsonNull)
+                put("avatar_duration_ms", JsonNull)
+            }
+            if (request.remove_cover) put("cover_url", JsonNull)
+            request.profile_theme?.let { put("profile_theme", JsonPrimitive(it)) }
+            request.profile_effect?.let { put("profile_effect", JsonPrimitive(it)) }
+            request.profile_welcome?.let { put("profile_welcome", JsonPrimitive(it)) }
             lastNameChange?.let { put("last_name_change", JsonPrimitive(it)) }
             request.is_private?.let { put("is_private", JsonPrimitive(it)) }
+            request.favorites_public?.let { put("favorites_public", JsonPrimitive(it)) }
+            request.break_mode?.let { put("break_mode", JsonPrimitive(it)) }
             request.profile_visibility?.let { put("profile_visibility", JsonPrimitive(it)) }
             request.last_seen_visibility?.let { put("last_seen_visibility", JsonPrimitive(it)) }
             request.online_status_visibility?.let { put("online_status_visibility", JsonPrimitive(it)) }
             request.balance?.let { put("balance", JsonPrimitive(it)) }
         }
+    }
+
+    private fun profileUpdateMismatch(request: UpdateProfileRequest, user: User): String? {
+        fun sameText(expected: String, actual: String?): Boolean =
+            expected.trim() == actual.orEmpty().trim()
+
+        fun sameList(expected: List<String>, actual: List<String>): Boolean =
+            expected.map(String::trim) == actual.map(String::trim)
+
+        fun sameUrl(expected: String, actual: String?): Boolean =
+            ProfileMediaSync.sameReference(expected, actual) || sameText(expected, actual)
+
+        if (request.display_name?.let { !sameText(it, user.display_name ?: user.full_name) } == true) return "display_name"
+        if (request.bio?.let { !sameText(it, user.bio) } == true) return "bio"
+        if (request.country?.let { !sameText(it, user.country) } == true) return "country"
+        if (request.city?.let { !sameText(it, user.city) } == true) return "city"
+        if (request.status?.let { !sameText(it, user.status) } == true) return "status"
+        if (request.interests?.let { !sameList(it, user.interests) } == true) return "interests"
+        if (request.hobbies?.let { !sameList(it, user.hobbies) } == true) return "hobbies"
+        if (request.linked_games?.let { !sameList(it, user.linked_games) } == true) return "linked_games"
+        if (request.game_logo_urls?.let { it != user.game_logo_urls } == true) return "game_logo_urls"
+        if (request.favorite_music_url?.let { !sameUrl(it, user.favorite_music_url) } == true) return "favorite_music_url"
+        if (request.favorite_book?.let { !sameText(it, user.favorite_book) } == true) return "favorite_book"
+        if (request.favorite_sport?.let { !sameText(it, user.favorite_sport) } == true) return "favorite_sport"
+        if (request.career?.let { !sameText(it, user.career) } == true) return "career"
+        if (request.availability_schedule?.let { !sameText(it, user.availability_schedule) } == true) {
+            return "availability_schedule"
+        }
+        if (request.profile_section_order?.let { !sameList(it, user.profile_section_order) } == true) {
+            return "profile_section_order"
+        }
+        if (request.profile_section_visibility?.let { it != user.profile_section_visibility } == true) {
+            return "profile_section_visibility"
+        }
+        ProfileMediaSync.confirmationFailure(
+            mutation = ProfileMediaMutation(
+                avatarUrl = request.avatar_url,
+                coverUrl = request.cover_url,
+                removeAvatar = request.remove_avatar,
+                removeCover = request.remove_cover
+            ),
+            actualAvatarUrl = user.avatar_url,
+            actualCoverUrl = user.cover_url
+        )?.let { return it.field.name.lowercase() + "_url" }
+        if (request.avatar_media_type?.let { !sameText(it, user.avatar_media_type) } == true) return "avatar_media_type"
+        if (request.avatar_video_muted != null && request.avatar_video_muted != user.avatar_video_muted) {
+            return "avatar_video_muted"
+        }
+        if (request.avatar_duration_ms != null && request.avatar_duration_ms != user.avatar_duration_ms) {
+            return "avatar_duration_ms"
+        }
+        if (request.profile_theme?.let { !sameText(it, user.profile_theme) } == true) return "profile_theme"
+        if (request.profile_effect?.let { !sameText(it, user.profile_effect) } == true) return "profile_effect"
+        if (request.profile_welcome?.let { !sameText(it, user.profile_welcome) } == true) return "profile_welcome"
+        if (request.is_private != null && request.is_private != user.is_private) return "is_private"
+        if (request.favorites_public != null && request.favorites_public != user.favorites_public) return "favorites_public"
+        if (request.break_mode?.let { !sameText(it, user.break_mode) } == true) return "break_mode"
+        if (request.profile_visibility?.let { !sameText(it, user.profile_visibility) } == true) return "profile_visibility"
+        if (request.last_seen_visibility?.let { !sameText(it, user.last_seen_visibility) } == true) {
+            return "last_seen_visibility"
+        }
+        if (request.online_status_visibility?.let { !sameText(it, user.online_status_visibility) } == true) {
+            return "online_status_visibility"
+        }
+        return null
     }
 
     private fun extractMissingProfilesColumn(errorBody: String): String? {
@@ -593,14 +737,25 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // GET USER BY ID
     // ─────────────────────────────────────────────
-    suspend fun getUserById(userId: String): Result<User?> {
+    suspend fun getUserById(userId: String, forceNetwork: Boolean = true): Result<User?> {
         TestRuntimeOverrides.currentUser(context)
             ?.takeIf { normalizePrivacyUserId(it.id) == normalizePrivacyUserId(userId) }
             ?.let { return Result.success(it) }
         return try {
             var normalizedUserId = normalizePrivacyUserId(userId)
-            var token = authService.getAccessTokenAwait()
             var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+            if (!forceNetwork) {
+                if (normalizedUserId == currentUserId) {
+                    getLocalProfile()
+                        ?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }
+                        ?.let { return Result.success(it) }
+                }
+                userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
+                    return Result.success(applyLocalUserOverrides(cachedUser))
+                }
+            }
+
+            var token = authService.getAccessTokenAwait()
             var remoteLookupWasEmpty = false
             var remoteFailure: Throwable? = null
 
@@ -612,11 +767,11 @@ class UserRepository @Inject constructor(
                 val localResult = loadCurrentLocalFallbackProfile()
                 localResult.onSuccess { localUser -> return Result.success(localUser) }
 
-                userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
-                    return Result.success(applyLocalUserOverrides(cachedUser))
-                }
                 getLocalProfile()?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }?.let { localUser ->
                     return Result.success(localUser)
+                }
+                userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
+                    return Result.success(applyLocalUserOverrides(cachedUser))
                 }
 
                 return Result.failure(
@@ -666,17 +821,17 @@ class UserRepository @Inject constructor(
                     }
             }
 
-            var cachedEntity = userDao.getUser(normalizedUserId)
-            if (cachedEntity != null) {
-                android.util.Log.d("UserRepository", "Returning cached profile from DAO")
-                return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
-            }
-
             if (normalizedUserId == currentUserId) {
                 val cachedUser = getLocalProfile()
                 if (cachedUser != null) {
                     return Result.success(cachedUser)
                 }
+            }
+
+            var cachedEntity = userDao.getUser(normalizedUserId)
+            if (cachedEntity != null) {
+                android.util.Log.d("UserRepository", "Returning cached profile from DAO")
+                return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
             }
 
             if (remoteLookupWasEmpty && normalizedUserId != currentUserId) {
@@ -689,6 +844,10 @@ class UserRepository @Inject constructor(
         } catch (e: Exception) {
              try {
                 var normalizedUserId = normalizePrivacyUserId(userId)
+                val currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+                if (normalizedUserId == currentUserId) {
+                    getLocalProfile()?.let { return Result.success(it) }
+                }
                 var cachedEntity = userDao.getUser(normalizedUserId)
                 if (cachedEntity != null) {
                     return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
@@ -1358,12 +1517,30 @@ class UserRepository @Inject constructor(
                     country = request.country,
                     city = request.city,
                     status = request.status,
+                    interests = request.interests,
+                    hobbies = request.hobbies,
+                    linkedGames = request.linked_games,
+                    gameLogoUrls = request.game_logo_urls,
+                    favoriteMusicUrl = request.favorite_music_url,
+                    favoriteBook = request.favorite_book,
+                    favoriteSport = request.favorite_sport,
+                    career = request.career,
+                    availabilitySchedule = request.availability_schedule,
+                    profileSectionOrder = request.profile_section_order,
+                    profileSectionVisibility = request.profile_section_visibility,
                     avatarUrl = request.avatar_url,
                     avatarMediaType = request.avatar_media_type,
                     avatarVideoMuted = request.avatar_video_muted,
                     avatarDurationMs = request.avatar_duration_ms,
                     coverUrl = request.cover_url,
+                    removeAvatar = request.remove_avatar,
+                    removeCover = request.remove_cover,
+                    profileTheme = request.profile_theme,
+                    profileEffect = request.profile_effect,
+                    profileWelcome = request.profile_welcome,
                     isPrivate = request.is_private,
+                    favoritesPublic = request.favorites_public,
+                    breakMode = request.break_mode,
                     profileVisibility = request.profile_visibility,
                     lastSeenVisibility = request.last_seen_visibility,
                     onlineStatusVisibility = request.online_status_visibility
@@ -1375,10 +1552,15 @@ class UserRepository @Inject constructor(
                         fallbackId = normalizedUserId,
                         fallbackEmail = authService.getCurrentUserEmail()
                     )
-                    if (updatedUser != null) {
-                        userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
-                        saveProfileLocally(updatedUser)
+                    if (updatedUser == null) {
+                        return Result.failure(Exception("El servidor no devolvió el perfil actualizado"))
                     }
+                    profileUpdateMismatch(request, updatedUser)?.let { mismatch ->
+                        return Result.failure(Exception("El servidor no confirmó el campo actualizado: $mismatch"))
+                    }
+                    userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
+                    saveProfileLocally(updatedUser)
+                    _profileUpdates.emit(updatedUser)
                     return Result.success(Unit)
                 }
 
@@ -1449,20 +1631,14 @@ class UserRepository @Inject constructor(
             var response = submitPatch(payloadFields)
             var responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
 
-            while (!response.status.isSuccess()) {
-                val missingColumn = extractMissingProfilesColumn(responseBody) ?: break
-                if (payloadFields.remove(missingColumn) == null) {
-                    break
+            if (!response.status.isSuccess()) {
+                extractMissingProfilesColumn(responseBody)?.let { missingColumn ->
+                    if (payloadFields.containsKey(missingColumn)) {
+                        return Result.failure(
+                            Exception("El servidor no tiene la columna de perfil requerida: $missingColumn")
+                        )
+                    }
                 }
-                android.util.Log.w(
-                    "UserRepository",
-                    "Profiles column '$missingColumn' is missing remotely. Retrying update without it."
-                )
-                if (payloadFields.isEmpty()) {
-                    return Result.success(Unit)
-                }
-                response = submitPatch(payloadFields)
-                responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
             }
 
             if (response.status.isSuccess()) {
@@ -1484,10 +1660,16 @@ class UserRepository @Inject constructor(
                     }
 
                 if (updatedUser != null) {
+                    profileUpdateMismatch(request, updatedUser)?.let { mismatch ->
+                        return Result.failure(Exception("El servidor no confirmó el campo actualizado: $mismatch"))
+                    }
                     userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
                     if (updatedUser.id == authService.getCurrentUserId()) {
                         saveProfileLocally(updatedUser)
                     }
+                    _profileUpdates.emit(updatedUser)
+                } else {
+                    return Result.failure(Exception("El servidor respondió sin una fila de perfil actualizada"))
                 }
                 
                 // ✅ SYNC METADATA TO PREVENT RESET ON RE-LOGIN
@@ -1639,6 +1821,11 @@ class UserRepository @Inject constructor(
         }
     }
 
+    suspend fun deleteUploadedProfileMedia(url: String): Result<Boolean> {
+        val result = storageService.deleteFileByPublicUrl(url)
+        return if (result.isSuccess) Result.success(true) else Result.failure(result.exceptionOrNull() ?: Exception("Unknown error"))
+    }
+
     // ─────────────────────────────────────────────
     // UPLOAD COVER IMAGE
     // ─────────────────────────────────────────────
@@ -1694,7 +1881,14 @@ class UserRepository @Inject constructor(
             )
 
             if (upload.isSuccess) {
-                Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucket, fileName)).orEmpty())
+                val stored = upload.getOrThrow()
+                val storedPath = ProfileMediaSync.uploadedObjectPath(
+                    bucket = bucket,
+                    requestedPath = fileName,
+                    responseKey = stored.Key,
+                    responseName = stored.Name
+                )
+                Result.success(UbuntuStorageUrl.rewrite(storageService.getPublicUrl(bucket, storedPath)).orEmpty())
             } else {
                 Result.failure(upload.exceptionOrNull() ?: Exception("Upload failed"))
             }
@@ -1766,9 +1960,16 @@ class UserRepository @Inject constructor(
             mimeType
         )
         return if (upload.isSuccess) {
+            val stored = upload.getOrThrow()
+            val storedPath = ProfileMediaSync.uploadedObjectPath(
+                bucket = "avatars",
+                requestedPath = fileName,
+                responseKey = stored.Key,
+                responseName = stored.Name
+            )
             Result.success(
                 ProfileAvatarUpload(
-                    url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("avatars", fileName)).orEmpty(),
+                    url = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("avatars", storedPath)).orEmpty(),
                     mediaType = mediaType,
                     durationMs = durationMs
                 )

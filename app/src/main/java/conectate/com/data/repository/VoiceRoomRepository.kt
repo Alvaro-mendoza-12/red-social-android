@@ -111,7 +111,11 @@ class VoiceRoomRepository @Inject constructor(
     private var roomChannel: RealtimeChannel? = null
     private var socket: Socket? = null
     private var audioFocusRequest: AudioFocusRequest? = null
+    @Volatile
+    private var desiredSpeakerOn: Boolean = true
     private var audioRecoveryJob: Job? = null
+    private var mediaConnectionTimeoutJob: Job? = null
+    private var socketEndpointRecoveryJob: Job? = null
     private val pendingSocketRoomEvents = mutableListOf<PendingSocketRoomEvent>()
     private var pendingConnectMetricName: String? = null
     private var pendingConnectStartedAtMs: Long? = null
@@ -202,7 +206,8 @@ class VoiceRoomRepository @Inject constructor(
             readableId = normalizedRoom?.readableId,
             participantCount = participantCount,
             isMuted = isSelfMuted(participants),
-            isConnected = !resolvedRoomId.isNullOrBlank(),
+            isConnected = connectionState == VoiceConnectionState.CONNECTED ||
+                connectionState == VoiceConnectionState.RECOVERING_AUDIO,
             videoMode = videoMode,
             connectionState = connectionState
         )
@@ -373,7 +378,7 @@ class VoiceRoomRepository @Inject constructor(
                 if (forceMicUnmute) {
                     audioManager.isMicrophoneMute = false
                 }
-                forceSpeakerOutput(audioManager)
+                routeVoiceOutput(audioManager, desiredSpeakerOn)
                 return
             }
 
@@ -405,7 +410,7 @@ class VoiceRoomRepository @Inject constructor(
             if (forceMicUnmute) {
                 audioManager.isMicrophoneMute = false
             }
-            forceSpeakerOutput(audioManager)
+            routeVoiceOutput(audioManager, desiredSpeakerOn)
             isAudioSessionPrepared = true
         } catch (e: Exception) {
             android.util.Log.w("VoiceRoomRepository", "Failed to prepare voice audio session", e)
@@ -504,19 +509,33 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
-    private fun forceSpeakerOutput(audioManager: AudioManager) {
+    private fun routeVoiceOutput(audioManager: AudioManager, speakerOn: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val speaker = audioManager.availableCommunicationDevices.firstOrNull {
-                it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            val preferredDeviceTypes = if (speakerOn) {
+                listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+            } else {
+                listOf(
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                )
             }
-            if (speaker != null) {
-                audioManager.setCommunicationDevice(speaker)
+            val targetDevice = preferredDeviceTypes.firstNotNullOfOrNull { type ->
+                audioManager.availableCommunicationDevices.firstOrNull { it.type == type }
+            }
+            if (targetDevice != null) {
+                audioManager.setCommunicationDevice(targetDevice)
+            } else if (!speakerOn) {
+                audioManager.clearCommunicationDevice()
             }
             return
         }
         @Suppress("DEPRECATION")
         run {
-            audioManager.isSpeakerphoneOn = true
+            audioManager.isSpeakerphoneOn = speakerOn
         }
     }
     val currentVideoMode = _currentVideoMode.asStateFlow()
@@ -681,7 +700,9 @@ class VoiceRoomRepository @Inject constructor(
 
             delay(900)
             if (_currentVideoMode.value != VideoMode.NONE) {
-                webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+                // A second offer after the initial capture transition repairs
+                // peers that joined while the first offer was in flight.
+                webRTCManager?.setVideoSendEnabled(true, renegotiate = true)
                 emitCurrentMediaState()
             }
         }
@@ -1083,7 +1104,7 @@ class VoiceRoomRepository @Inject constructor(
                 
                 webRTCManager?.ensureLocalTracks() // v7.2.5: Recreate tracks if disposed
                 webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-                webRTCManager?.setCurrentUser(userId, "")
+                // Removed setCurrentUser with empty socketId to avoid race condition with isPolite
 
                 prepareVoiceAudioSession(forceMicUnmute = true)
                 android.util.Log.d("VoiceRoomRepository", "✅ Audio mode set to COMM + Focus Requested")
@@ -1194,24 +1215,26 @@ class VoiceRoomRepository @Inject constructor(
                 transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
                 attachBearerToken(authService.getAccessToken())
             }
-            android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $SIGNALING_URL")
-            socket = IO.socket(SIGNALING_URL, options)
+            val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
+            val signalingEndpoint = SIGNALING_URL
+            android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $signalingEndpoint")
+            val createdSocket = IO.socket(signalingEndpoint, options)
+            socket = createdSocket
 
-            socket?.on(Socket.EVENT_CONNECT) {
-                var sid = socket?.id() ?: ""
+            createdSocket.on(Socket.EVENT_CONNECT) {
+                if (socket !== createdSocket) return@on
+                var sid = createdSocket.id() ?: ""
                 android.util.Log.w("VoiceRoomRepository", "✅ SIGNALING CONNECTED: $sid. Joining room: $roomId")
                 reconnectFailureCount = 0
-                updateConnectionState(VoiceConnectionState.CONNECTED)
+                updateConnectionState(VoiceConnectionState.CONNECTING)
 
                 // IDENTITY DIAGNOSTIC: Verify userId matches current authenticated user
                 val authCurrentId = authService.getCurrentUserId().orEmpty()
-                val authToken = authService.getAccessToken().orEmpty()
                 android.util.Log.w("IDENTITY", "=== VOICE JOIN-ROOM IDENTITY CHECK ===")
                 android.util.Log.w("IDENTITY", "  socketId       = $sid")
                 android.util.Log.w("IDENTITY", "  roomId         = $roomId")
                 android.util.Log.w("IDENTITY", "  claimedUserId  = ${userId.trim()} (param passed to connectSocket)")
                 android.util.Log.w("IDENTITY", "  authCurrentId  = $authCurrentId (from authService.getCurrentUserId)")
-                android.util.Log.w("IDENTITY", "  tokenPrefix    = ${authToken.take(20).ifBlank { "EMPTY" }}...")
                 if (userId.trim() != authCurrentId && authCurrentId.isNotBlank()) {
                     android.util.Log.e("IDENTITY", "⚠️ VOICE MISMATCH! claimedUserId != authCurrentId. Possible stale session. Clear app data and re-login!")
                 }
@@ -1219,7 +1242,7 @@ class VoiceRoomRepository @Inject constructor(
                 // *** CRITICAL: Emit join-room FIRST before any WebRTC/audio setup ***
                 // If WebRTC setup throws, join-room must have already been sent,
                 // otherwise the server rejects ALL subsequent events (media-status, chat, etc.)
-                socket?.emit("join-room", org.json.JSONObject().apply {
+                createdSocket.emit("join-room", org.json.JSONObject().apply {
                     put("roomId", roomId.trim())
                     put("userId", userId.trim())
                     put("name", name)
@@ -1229,16 +1252,6 @@ class VoiceRoomRepository @Inject constructor(
 
                 // Now do WebRTC/audio setup in a protected block
                 try {
-                    pendingConnectStartedAtMs?.let { startedAt ->
-                        appMetrics.recordLatency(
-                            metric = pendingConnectMetricName ?: "voice_room_connect",
-                            durationMs = System.currentTimeMillis() - startedAt,
-                            attributes = currentMetricAttributes(roomId = roomId)
-                        )
-                    }
-                    pendingConnectMetricName = null
-                    pendingConnectStartedAtMs = null
-
                     webRTCManager?.setCurrentUser(userId, sid)
                     webRTCManager?.refreshManagedIceServers(force = true)
                     webRTCManager?.ensureLocalTracks()
@@ -1275,17 +1288,39 @@ class VoiceRoomRepository @Inject constructor(
                     }
                 }
 
-                scope.launch {
-                    delay(275)
-                    flushPendingRoomSocketEvents(roomId)
-                    restoreActiveSession("socket_connect")
-                }
             }
 
-            socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            createdSocket.on("room-joined") { args ->
+                if (socket !== createdSocket) return@on
+                val data = extractJsonPayload(args) ?: return@on
+                if (!data.optString("roomId").trim().equals(roomId, ignoreCase = true)) return@on
+                pendingConnectStartedAtMs?.let { startedAt ->
+                    appMetrics.recordLatency(
+                        metric = pendingConnectMetricName ?: "voice_room_connect",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = currentMetricAttributes(roomId = roomId)
+                    )
+                }
+                pendingConnectMetricName = null
+                pendingConnectStartedAtMs = null
+                updateConnectionState(VoiceConnectionState.CONNECTED)
+                flushPendingRoomSocketEvents(roomId)
+                restoreActiveSession("room_joined")
+            }
+
+            createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
+                if (socket !== createdSocket) return@on
                 val errorMessage = args.firstOrNull()?.toString().orEmpty().ifBlank { "Socket connect error" }
                 android.util.Log.e("VoiceRoomRepository", "❌ Socket connect error: $errorMessage")
-                scope.launch { conectate.com.data.localfallback.RuntimeBackendEndpoint.refreshAfterEndpointFailure() }
+                recoverSocketAfterEndpointFailure(
+                    failedSocket = createdSocket,
+                    failedBaseUrl = endpointBaseUrl,
+                    failedSignalingEndpoint = signalingEndpoint,
+                    roomId = roomId,
+                    userId = userId,
+                    name = name,
+                    avatarUrl = avatarUrl
+                )
                 reconnectFailureCount += 1
                 updateConnectionState(VoiceConnectionState.RECONNECTING)
                 var error = IllegalStateException(errorMessage)
@@ -1373,6 +1408,7 @@ class VoiceRoomRepository @Inject constructor(
                     .toSet()
                 val selfParticipant = current.firstOrNull { it.id == selfId }
                 val remoteParticipants = mutableListOf<conectate.com.data.model.VoiceParticipant>()
+                val remoteSocketIds = mutableSetOf<String>()
                 val rebuiltSharingStates = mutableMapOf<String, Pair<Boolean, Boolean>>()
                 val pendingNewSockets = mutableListOf<Pair<String, String>>()
 
@@ -1384,6 +1420,7 @@ class VoiceRoomRepository @Inject constructor(
                     val participantName = p.optString("name", "Invitado")
 
                     if (uid != selfId) {
+                        remoteSocketIds += sid
                         remoteParticipants += conectate.com.data.model.VoiceParticipant(
                             id = uid,
                             name = participantName,
@@ -1412,6 +1449,12 @@ class VoiceRoomRepository @Inject constructor(
                     )
                 }
                 refreshParticipantAliases()
+                current
+                    .asSequence()
+                    .filter { participant -> participant.id != selfId }
+                    .map { participant -> participant.socketId.trim() }
+                    .filter { socketId -> socketId.isNotBlank() && socketId !in remoteSocketIds }
+                    .forEach { staleSocketId -> webRTCManager?.onUserLeft(staleSocketId) }
                 pendingNewSockets.forEach { (sid, uid) ->
                     webRTCManager?.onUserJoined(sid, uid)
                 }
@@ -1599,12 +1642,11 @@ class VoiceRoomRepository @Inject constructor(
 
             socket?.io()?.on(Manager.EVENT_RECONNECT) {
                 reconnectFailureCount = 0
-                updateConnectionState(VoiceConnectionState.CONNECTED)
+                updateConnectionState(VoiceConnectionState.RECONNECTING)
                 appMetrics.incrementCounter(
                     metric = "voice_socket_reconnect_success",
                     attributes = currentMetricAttributes(roomId = roomId)
                 )
-                restoreActiveSession("socket_reconnect")
             }
 
             socket?.io()?.on(Manager.EVENT_RECONNECT_ERROR) { args ->
@@ -1638,6 +1680,81 @@ class VoiceRoomRepository @Inject constructor(
                 throwable = e,
                 extra = currentMetricAttributes(roomId = roomId)
             )
+        }
+    }
+
+    private fun recoverSocketAfterEndpointFailure(
+        failedSocket: Socket,
+        failedBaseUrl: String,
+        failedSignalingEndpoint: String,
+        roomId: String,
+        userId: String,
+        name: String,
+        avatarUrl: String?
+    ) {
+        if (socketEndpointRecoveryJob?.isActive == true) return
+        socketEndpointRecoveryJob = scope.launch {
+            try {
+                val refreshed = conectate.com.data.localfallback.RuntimeBackendEndpoint
+                    .refreshAfterEndpointFailure(failedBaseUrl)
+                if (!refreshed || socket !== failedSocket || !matchesActiveRoom(roomId)) return@launch
+                val refreshedEndpoint = SIGNALING_URL
+                if (refreshedEndpoint == failedSignalingEndpoint) return@launch
+                android.util.Log.w(
+                    "VoiceRoomRepository",
+                    "Rebuilding voice socket after backend endpoint changed."
+                )
+                setupSocketSignaling(roomId, userId, name, avatarUrl)
+            } finally {
+                socketEndpointRecoveryJob = null
+            }
+        }
+    }
+
+    private fun updateMediaConnectionState(
+        states: Map<String, org.webrtc.PeerConnection.IceConnectionState>
+    ) {
+        if (socket?.connected() != true) return
+        val selfId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        val hasRemoteParticipant = _currentParticipants.value.any { participant ->
+            participant.id.trim().lowercase() != selfId
+        }
+        if (!hasRemoteParticipant) {
+            mediaConnectionTimeoutJob?.cancel()
+            return
+        }
+
+        val mediaConnected = states.values.any { state ->
+            state == org.webrtc.PeerConnection.IceConnectionState.CONNECTED ||
+                state == org.webrtc.PeerConnection.IceConnectionState.COMPLETED
+        }
+        if (mediaConnected) {
+            mediaConnectionTimeoutJob?.cancel()
+            mediaConnectionTimeoutJob = null
+            updateConnectionState(VoiceConnectionState.CONNECTED)
+            return
+        }
+
+        if (states.isNotEmpty()) {
+            val failed = states.values.any { it == org.webrtc.PeerConnection.IceConnectionState.FAILED }
+            updateConnectionState(
+                if (failed) VoiceConnectionState.RECOVERING_AUDIO else VoiceConnectionState.CONNECTING
+            )
+        }
+        if (mediaConnectionTimeoutJob?.isActive == true) return
+        mediaConnectionTimeoutJob = scope.launch {
+            delay(20_000)
+            val latestStates = _peerConnectionStates.value.values
+            val connected = latestStates.any { state ->
+                state == org.webrtc.PeerConnection.IceConnectionState.CONNECTED ||
+                    state == org.webrtc.PeerConnection.IceConnectionState.COMPLETED
+            }
+            if (!connected && socket?.connected() == true && activeRoomId != null) {
+                updateConnectionState(
+                    VoiceConnectionState.ERROR,
+                    "La sala conectó, pero el audio no pudo atravesar la red. Intenta reconectar."
+                )
+            }
         }
     }
 
@@ -1698,7 +1815,9 @@ class VoiceRoomRepository @Inject constructor(
         
         scope.launch {
             webRTCManager?.peerConnectionStates?.collect { states ->
-                _peerConnectionStates.value = rekeyWithCurrentParticipants(states)
+                val mappedStates = rekeyWithCurrentParticipants(states)
+                _peerConnectionStates.value = mappedStates
+                updateMediaConnectionState(mappedStates)
             }
         }
         
@@ -1741,16 +1860,44 @@ class VoiceRoomRepository @Inject constructor(
             intent = intent,
             targetWidth = performanceProfile.voiceScreenWidth,
             targetHeight = performanceProfile.voiceScreenHeight,
-            targetFps = performanceProfile.voiceScreenFps
+            targetFps = performanceProfile.voiceScreenFps,
+            onProjectionStopped = {
+                if (_currentVideoMode.value == VideoMode.SCREEN) {
+                    _currentVideoMode.value = VideoMode.NONE
+                    webRTCManager?.stopVideo()
+                    updateSharingState(
+                        socketId = currentSocketId(),
+                        userId = authService.getCurrentUserId(),
+                        isCameraSharing = false,
+                        isScreenSharing = false
+                    )
+                    _videoError.value = "La captura de pantalla se detuvo."
+                    broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
+                }
+            },
+            onComplete = { started ->
+                if (started) {
+                    _currentVideoMode.value = VideoMode.SCREEN
+                    webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+                    broadcastCurrentMediaState(
+                        repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
+                        intervalMs = 700
+                    )
+                    reinforceVideoPublishing()
+                    reinforceAudioAfterVideoTransition("screen-share-start")
+                } else {
+                    _currentVideoMode.value = VideoMode.NONE
+                    updateSharingState(
+                        socketId = currentSocketId(),
+                        userId = authService.getCurrentUserId(),
+                        isCameraSharing = false,
+                        isScreenSharing = false
+                    )
+                    _videoError.value = "No se pudo iniciar la captura de pantalla."
+                    broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
+                }
+            }
         )
-        _currentVideoMode.value = VideoMode.SCREEN
-        webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
-        broadcastCurrentMediaState(
-            repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
-            intervalMs = 700
-        )
-        reinforceVideoPublishing()
-        reinforceAudioAfterVideoTransition("screen-share-start")
     }
 
     fun startCameraCapture(isFront: Boolean = true) {
@@ -1767,16 +1914,24 @@ class VoiceRoomRepository @Inject constructor(
             isFront = isFront,
             targetWidth = performanceProfile.voiceCameraWidth,
             targetHeight = performanceProfile.voiceCameraHeight,
-            targetFps = performanceProfile.voiceCameraFps
+            targetFps = performanceProfile.voiceCameraFps,
+            onComplete = { started ->
+                if (started) {
+                    _currentVideoMode.value = VideoMode.CAMERA
+                    webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
+                    broadcastCurrentMediaState(
+                        repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
+                        intervalMs = 700
+                    )
+                    reinforceVideoPublishing()
+                    reinforceAudioAfterVideoTransition("camera-share-start")
+                } else {
+                    _currentVideoMode.value = VideoMode.NONE
+                    _videoError.value = "No se pudo iniciar la cámara."
+                    broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
+                }
+            }
         )
-        _currentVideoMode.value = VideoMode.CAMERA
-        webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
-        broadcastCurrentMediaState(
-            repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
-            intervalMs = 700
-        )
-        reinforceVideoPublishing()
-        reinforceAudioAfterVideoTransition("camera-share-start")
     }
 
     fun stopVideo() {
@@ -1785,8 +1940,8 @@ class VoiceRoomRepository @Inject constructor(
             metric = "voice_video_transition",
             attributes = currentMetricAttributes(reason = "video_stop") + ("targetMode" to "none")
         )
-        webRTCManager?.stopVideo()
         _currentVideoMode.value = VideoMode.NONE
+        webRTCManager?.stopVideo()
         broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
         reinforceAudioAfterVideoTransition("video-stop")
     }
@@ -1799,6 +1954,10 @@ class VoiceRoomRepository @Inject constructor(
             val actualRoomId = roomId ?: activeRoomId
             android.util.Log.w("VoiceRoomRepository", "📍 leaveRoom START: $actualRoomId")
             audioRecoveryJob?.cancel()
+            mediaConnectionTimeoutJob?.cancel()
+            mediaConnectionTimeoutJob = null
+            socketEndpointRecoveryJob?.cancel()
+            socketEndpointRecoveryJob = null
             pendingConnectMetricName = null
             pendingConnectStartedAtMs = null
             reconnectFailureCount = 0
@@ -1898,6 +2057,11 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun toggleSpeaker(on: Boolean) {
+        desiredSpeakerOn = on
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (audioManager != null) {
+            routeVoiceOutput(audioManager, on)
+        }
         webRTCManager?.setSpeakerphoneOn(on)
     }
 
@@ -2029,6 +2193,13 @@ class VoiceRoomRepository @Inject constructor(
     val incomingInvitation = _incomingInvitation.asStateFlow()
 
     suspend fun subscribeToInvitations(userId: String) {
+        if (authService.isLocalFallbackModeEnabled()) {
+            android.util.Log.d(
+                "VoiceRoomRepo",
+                "Skipping legacy Supabase invitations while Ubuntu backend is primary"
+            )
+            return
+        }
         var channelName = "user:$userId"
         android.util.Log.d("VoiceRoomRepo", "=== SUBSCRIBING TO INVITATIONS ===")
         android.util.Log.d("VoiceRoomRepo", "User ID: $userId")
@@ -2320,7 +2491,7 @@ data class VoiceSessionState(
     val connectionError: String? = null
 ) {
     val hasActiveSession: Boolean
-        get() = isConnected
+        get() = !roomId.isNullOrBlank() && connectionState != VoiceConnectionState.IDLE
 }
 
 

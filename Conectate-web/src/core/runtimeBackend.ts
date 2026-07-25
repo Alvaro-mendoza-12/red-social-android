@@ -18,7 +18,9 @@ function readStoredUrl(): string {
   }
 }
 
-let currentUrl = readStoredUrl() || normalize(import.meta.env.VITE_FALLBACK_API_URL)
+const storedUrl = readStoredUrl()
+const configuredUrl = normalize(import.meta.env.VITE_FALLBACK_API_URL)
+let currentUrl = [storedUrl, configuredUrl].find(isAllowed) || ''
 const listeners = new Set<(url: string) => void>()
 
 export function getRuntimeBackendUrl(): string {
@@ -43,6 +45,21 @@ export function rewriteRuntimeStorageUrl(value: string): string {
     return `${backendUrl}${clean.slice(markerIndex)}`
   } catch {
     return clean
+  }
+}
+
+export function runtimeStoragePreviewUrl(value: string, width = 1080, quality = 78): string {
+  const rewritten = rewriteRuntimeStorageUrl(value)
+  const backendUrl = getRuntimeBackendUrl()
+  if (!backendUrl || !rewritten.startsWith(`${backendUrl}/storage/v1/object/public/`)) return rewritten
+  try {
+    const preview = new URL(rewritten)
+    preview.searchParams.set('width', String(Math.min(1920, Math.max(64, Math.round(width)))))
+    preview.searchParams.set('quality', String(Math.min(90, Math.max(40, Math.round(quality)))))
+    preview.searchParams.set('format', 'webp')
+    return preview.toString()
+  } catch {
+    return rewritten
   }
 }
 
@@ -112,4 +129,12 @@ export async function initializeRuntimeBackend(): Promise<string> {
     console.warn('[runtime-backend] se conserva el ultimo endpoint valido', error)
   }
   return currentUrl
+}
+
+/** Re-resolves a rotated tunnel after a request fails and returns only a new URL. */
+export async function refreshRuntimeBackend(failedUrl = ''): Promise<string> {
+  const before = currentUrl
+  if (failedUrl && before && !normalize(failedUrl).startsWith(before)) return ''
+  await initializeRuntimeBackend()
+  return currentUrl && currentUrl !== before ? currentUrl : ''
 }

@@ -23,21 +23,16 @@ sealed class Screen(val route: String) {
     
     object Social : Screen("social")
     object Messages : Screen("messages")
+    object Novvin : Screen("novvin")
     object Chat : Screen("chat/{userId}?initialMessage={initialMessage}&focusMessageId={focusMessageId}") {
         fun createRoute(
             userId: String,
             initialMessage: String? = null,
             focusMessageId: String? = null
         ): String {
-            val base = "chat/$userId"
-            val params = mutableListOf<String>()
-            if (initialMessage != null) {
-                params.add("initialMessage=${android.net.Uri.encode(initialMessage)}")
-            }
-            if (focusMessageId != null) {
-                params.add("focusMessageId=${android.net.Uri.encode(focusMessageId)}")
-            }
-            return if (params.isEmpty()) base else "$base?${params.joinToString("&")}"
+            val initial = initialMessage?.let { android.net.Uri.encode(it) } ?: ""
+            val focus = focusMessageId?.let { android.net.Uri.encode(it) } ?: ""
+            return "chat/$userId?initialMessage=$initial&focusMessageId=$focus"
         }
     }
     
@@ -64,6 +59,7 @@ sealed class Screen(val route: String) {
     object NotificationSettings : Screen("notification_settings")
     object ChatSettings : Screen("chat_settings")
     object StorageSettings : Screen("storage_settings")
+    object OfflineVideos : Screen("offline_videos")
     object LanguageSettings : Screen("language_settings")
     object ThemeSettings : Screen("theme_settings")
     object HelpSettings : Screen("help_settings")
@@ -75,6 +71,7 @@ sealed class Screen(val route: String) {
     }
     
     object SearchUsers : Screen("search_users")
+    object Proximity : Screen("proximity")
     object CreateGroup : Screen("create_group")
     object CreateCommunity : Screen("create_community")
     object CreateVoiceRoom : Screen("create_voice_room")
@@ -102,8 +99,11 @@ sealed class Screen(val route: String) {
         }
     }
     
-    object GroupDetail : Screen("group_detail/{groupId}") {
-        fun createRoute(groupId: String) = "group_detail/$groupId"
+    object GroupDetail : Screen("group_detail/{groupId}?invite={invite}") {
+        fun createRoute(groupId: String, invite: String? = null): String {
+            val base = "group_detail/$groupId"
+            return if (invite.isNullOrBlank()) base else "$base?invite=${android.net.Uri.encode(invite)}"
+        }
     }
     object CommunityDetail : Screen("community_detail/{communityId}") {
         fun createRoute(communityId: String) = "community_detail/$communityId"
@@ -162,6 +162,9 @@ sealed class Screen(val route: String) {
     object LiveViewer : Screen("live_viewer/{streamId}") {
         fun createRoute(streamId: String) = "live_viewer/$streamId"
     }
+
+    object LiveSetup : Screen("live_setup")
+    object LiveDiscovery : Screen("live_discovery")
     
     object LiveHost : Screen("live_host/{liveId}") {
         fun createRoute(liveId: String) = "live_host/$liveId"
@@ -188,7 +191,37 @@ sealed class Screen(val route: String) {
             }
         }
     }
-    object NotificationAccountBridge : Screen("notification_account_bridge")
+    object NotificationAccountBridge : Screen(
+        "notification_account_bridge?destination={destination}&targetAccountId={targetAccountId}" +
+            "&targetAccountLabel={targetAccountLabel}&currentAccountLabel={currentAccountLabel}" +
+            "&contextTitle={contextTitle}&preview={preview}"
+    ) {
+        fun createRoute(
+            destinationRoute: String,
+            targetAccountId: String? = null,
+            targetAccountLabel: String? = null,
+            currentAccountLabel: String? = null,
+            contextTitle: String? = null,
+            preview: String? = null
+        ): String {
+            val destination = destinationRoute.trim().takeIf { it.isNotBlank() }
+                ?: Home.createRoute(startTab = Messages.route)
+            val params = listOfNotNull(
+                "destination=${android.net.Uri.encode(destination.take(2_000))}",
+                targetAccountId?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "targetAccountId=${android.net.Uri.encode(it.take(200))}" },
+                targetAccountLabel?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "targetAccountLabel=${android.net.Uri.encode(it.take(120))}" },
+                currentAccountLabel?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "currentAccountLabel=${android.net.Uri.encode(it.take(120))}" },
+                contextTitle?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "contextTitle=${android.net.Uri.encode(it.take(180))}" },
+                preview?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "preview=${android.net.Uri.encode(it.take(500))}" }
+            )
+            return "notification_account_bridge?${params.joinToString("&")}"
+        }
+    }
     
     object VideoEditor : Screen("video_editor/{videoUri}") {
         fun createRoute(videoUri: android.net.Uri): String {

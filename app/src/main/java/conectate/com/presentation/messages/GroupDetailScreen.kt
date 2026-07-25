@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,21 +33,25 @@ import conectate.com.presentation.components.CircularProfileImage
 @Composable
 fun GroupDetailScreen(
     groupId: String,
+    inviteToken: String? = null,
     navController: NavController,
     viewModel: GroupDetailViewModel = hiltViewModel()
 ) {
     val group by viewModel.group.collectAsState()
-    val isAdmin by viewModel.isAdmin.collectAsState()
     val members by viewModel.members.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isDeleted by viewModel.isDeleted.collectAsState()
+    val actionMessage by viewModel.actionMessage.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDeletedByOtherAlert by remember { mutableStateOf(false) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
+    var shareLink by remember { mutableStateOf<String?>(null) }
+    var showRestDialog by remember { mutableStateOf(false) }
     
     // Alerta inmediata de borrado
     LaunchedEffect(isDeleted) {
@@ -55,8 +61,15 @@ fun GroupDetailScreen(
     }
     
     // Cargar detalles al iniciar la pantalla
-    LaunchedEffect(groupId) {
-        viewModel.loadGroupDetails(groupId)
+    LaunchedEffect(groupId, inviteToken) {
+        viewModel.loadGroupDetails(groupId, inviteToken)
+    }
+
+    LaunchedEffect(actionMessage) {
+        if (!actionMessage.isNullOrBlank()) {
+            android.widget.Toast.makeText(context, actionMessage, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeActionMessage()
+        }
     }
 
     // Detectar si el grupo ha sido eliminado o el usuario expulsado
@@ -84,7 +97,9 @@ fun GroupDetailScreen(
         it.user_id.trim().lowercase() == normalizedCurrentUserId &&
             normalizedGroupRole(it.role) in setOf("admin", "owner", "creator")
     }
-    val canManageMembers = isAdmin || amICreator || amIAdmin
+    // La UI no debe heredar permisos desde estados viejos.
+    // Solo el creador real o un miembro con rol admin/owner/creator puede gestionar.
+    val canManageMembers = amICreator || amIAdmin
 
     Scaffold(
         topBar = {
@@ -118,6 +133,14 @@ fun GroupDetailScreen(
                                 },
                                 leadingIcon = { Icon(Icons.Default.Edit, null) }
                             )
+                            DropdownMenuItem(
+                                text = { Text("Compartir enlace o QR") },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.createShareLink { shareLink = it }
+                                },
+                                leadingIcon = { Icon(Icons.Default.Share, null) }
+                            )
                             Divider()
 
                             if (amICreator) {
@@ -132,7 +155,35 @@ fun GroupDetailScreen(
                                     }
                                 )
                             }
-                        } else {
+                        }
+                        if (group != null) {
+                            DropdownMenuItem(
+                                text = { Text("Modo descanso") },
+                                onClick = {
+                                    showMenu = false
+                                    showRestDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Default.Bedtime, null) }
+                            )
+                        }
+                        if (group != null && !amICreator) {
+                            if (canManageMembers) Divider()
+                            DropdownMenuItem(
+                                text = { Text("Salir del grupo") },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.leaveGroup {
+                                        navController.navigate(conectate.com.presentation.navigation.Screen.Messages.route) {
+                                            popUpTo(conectate.com.presentation.navigation.Screen.Messages.route) { inclusive = false }
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                }
+                            )
+                        } else if (group == null) {
                             DropdownMenuItem(
                                 text = { Text("Borrar de mi lista") },
                                 onClick = {
@@ -227,7 +278,7 @@ fun GroupDetailScreen(
 
                 // Leave Button (only if not creator)
                 item {
-                    if (group?.creator_id != currentUserId) {
+                    if (group != null && !amICreator) {
                         OutlinedButton(
                             onClick = { 
                                 viewModel.leaveGroup {
@@ -288,6 +339,31 @@ fun GroupDetailScreen(
                     showAddMemberDialog = false
                 }
             }
+        )
+    }
+
+    shareLink?.let { link ->
+        CollectionShareDialog(
+            title = "Compartir grupo",
+            link = link,
+            onDismiss = { shareLink = null }
+        )
+    }
+
+    if (showRestDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestDialog = false },
+            title = { Text("Modo descanso") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Silencia las notificaciones del grupo sin salir ni perder mensajes.")
+                    TextButton(onClick = { showRestDialog = false; viewModel.setRestDuration(8) }) { Text("8 horas") }
+                    TextButton(onClick = { showRestDialog = false; viewModel.setRestDuration(24) }) { Text("24 horas") }
+                    TextButton(onClick = { showRestDialog = false; viewModel.setRestDuration(168) }) { Text("7 días") }
+                    TextButton(onClick = { showRestDialog = false; viewModel.setRestDuration(null) }) { Text("Desactivar") }
+                }
+            },
+            confirmButton = {}
         )
     }
 
@@ -552,6 +628,7 @@ fun GroupMemberItem(
             }
         }
     }
+
 }
 
 private fun normalizedGroupRole(role: String?): String =

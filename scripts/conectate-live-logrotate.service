@@ -1,0 +1,11 @@
+[Unit]
+Description=Rotate Conectate Live PM2 logs
+ConditionPathExists=%h/conectate-live/logs
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/mkdir -p %h/.local/state
+ExecStart=/usr/sbin/logrotate --state %h/.local/state/conectate-live-logrotate.status %h/.config/logrotate/conectate-live.conf
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

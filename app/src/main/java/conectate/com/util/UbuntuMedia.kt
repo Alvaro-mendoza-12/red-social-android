@@ -9,8 +9,16 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 object UbuntuMedia {
     fun resolveUrl(url: String?): String? = UbuntuStorageUrl.rewrite(url)
 
-    fun mediaItem(url: String): MediaItem =
-        MediaItem.fromUri(resolveUrl(url) ?: url)
+    fun mediaItem(url: String): MediaItem {
+        val resolvedUrl = resolveUrl(url) ?: url
+        return MediaItem.Builder()
+            .setUri(resolvedUrl)
+            // Las URLs firmadas o reescritas pueden cambiar aunque el archivo
+            // sea el mismo. Una clave estable permite reutilizar los bytes ya
+            // descargados al abrir el video otra vez.
+            .setCustomCacheKey(UbuntuStorageUrl.stableCacheKey(resolvedUrl))
+            .build()
+    }
 
     fun setDataSource(mediaPlayer: MediaPlayer, url: String) {
         val resolvedUrl = resolveUrl(url) ?: url

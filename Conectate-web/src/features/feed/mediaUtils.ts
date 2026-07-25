@@ -13,7 +13,6 @@ const defaultSingleMediaKeys = [
   'image_url',
   'cover_url',
   'video_url',
-  'thumbnail_url',
 ]
 
 function uniqueUrls(urls: string[]): string[] {
@@ -100,7 +99,11 @@ export function extractMediaUrls(row: GenericRow, extraKeys: string[] = []): str
     urls.push(...parseMediaCandidate(value))
   })
 
-  return uniqueUrls(urls).map(rewriteRuntimeStorageUrl)
+  const primaryUrls = uniqueUrls(urls)
+  if (primaryUrls.length === 0) {
+    primaryUrls.push(...parseMediaCandidate(row.thumbnail_url ?? row.thumbnailUrl))
+  }
+  return primaryUrls.map(rewriteRuntimeStorageUrl)
 }
 
 export function extractMediaEntries(row: GenericRow, extraKeys: string[] = []): MediaEntry[] {

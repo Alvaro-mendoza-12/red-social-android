@@ -98,12 +98,12 @@ export async function createWebLoginPairing(
         action: 'create',
         deviceLabel,
       },
-      'No se pudo crear el QR de Conectate Web en el servidor Ubuntu.',
+      'No se pudo crear el QR de Novvin Web en el servidor Ubuntu.',
     )
   }
 
   if (!client) {
-    throw new Error('No hay backend configurado para crear el QR de Conectate Web.')
+    throw new Error('No hay backend configurado para crear el QR de Novvin Web.')
   }
 
   return invokePairing(
@@ -112,7 +112,7 @@ export async function createWebLoginPairing(
       action: 'create',
       deviceLabel,
     },
-    'No se pudo crear el QR de Conectate Web.',
+    'No se pudo crear el QR de Novvin Web.',
   )
 }
 
@@ -133,7 +133,7 @@ export async function readWebLoginPairingStatus(
   }
 
   if (!client) {
-    throw new Error('No hay backend configurado para revisar el QR de Conectate Web.')
+    throw new Error('No hay backend configurado para revisar el QR de Novvin Web.')
   }
 
   return invokePairing(
@@ -164,7 +164,7 @@ export async function consumeApprovedWebLoginPairing(
   }
 
   if (!client) {
-    throw new Error('No hay backend configurado para completar el QR de Conectate Web.')
+    throw new Error('No hay backend configurado para completar el QR de Novvin Web.')
   }
 
   return invokePairing(

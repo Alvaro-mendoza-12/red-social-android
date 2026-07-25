@@ -1,12 +1,12 @@
 # Operacion y copias del backend Ubuntu
 
 Fecha de creacion: 2026-06-19  
-Fecha de ultima revision: 2026-06-19  
-Estado: implementado y validado en la VM beta
+Fecha de ultima revision: 2026-07-15
+Estado: implementado y validado en la mini PC
 
 ## 1. Alcance
 
-Este documento describe la operacion del backend primario Ubuntu, sus comprobaciones automaticas, las copias de PostgreSQL y storage, la prueba de restauracion y el cambio controlado del endpoint publico. Aplica a la VM actual y sirve como base para la migracion a Ubuntu Server en la mini PC.
+Este documento describe la operacion del backend primario Ubuntu, sus comprobaciones automaticas, las copias de PostgreSQL, storage y Novvin, la prueba de restauracion y el cambio controlado del endpoint publico.
 
 La VM es un entorno beta. Un Cloudflare Quick Tunnel permite pruebas externas sin abrir puertos y sin depender de Supabase, pero su URL cambia al reiniciarse y no ofrece un SLA de produccion. La mini PC debe usar posteriormente un Cloudflare Tunnel administrado con dominio estable o una conectividad publica equivalente.
 
@@ -16,6 +16,7 @@ La VM es un entorno beta. Un Cloudflare Quick Tunnel permite pruebas externas si
 |---|---|---:|---|
 | PostgreSQL 16 | `conectate-local-fallback-db-main` | 5433 | `conectate-fallback-db` |
 | API Ubuntu | `conectate-local-fallback-api-main` | 3001 | PostgreSQL y storage |
+| Novvin IA | `conectate-local-fallback-ai-main` | 3010 interno | bind configurado por `AI_DATA_ROOT` |
 | Realtime | `conectate-local-fallback-realtime-main` | 3002 | JWT y API |
 | Signaling | `conectate-local-fallback-signaling-main` | 3003 interno | memoria y API |
 | Edge Nginx | `conectate-local-fallback-edge-main` | 3080 | configuracion del repositorio |
@@ -27,6 +28,7 @@ La VM es un entorno beta. Un Cloudflare Quick Tunnel permite pruebas externas si
 - Retencion local: siete dias.
 - PostgreSQL: `pg_dump` custom comprimido, sin propietarios ni privilegios del origen.
 - Storage: `tar.gz` completo de `/data/storage`.
+- Novvin: `ai-chatbot-data.tar.gz` completo de `/data/ai`, incluido en hashes y verificacion.
 - Integridad: SHA-256, `pg_restore --list` y lectura del indice del tar.
 - Atomicidad: la copia sale de `.partial-*` solo despues de superar las verificaciones.
 - Ultima copia valida: `~/conectate-backups/latest`.
@@ -65,7 +67,7 @@ journalctl -u conectate-backup.service -n 100 --no-pager
 ls -lah ~/conectate-backups/latest/
 ```
 
-Resultados esperados: `HEALTH_OK`, `BACKUP_OK`, `BACKUP_VERIFIED` y los cinco servicios Docker saludables.
+Resultados esperados: `HEALTH_OK`, `BACKUP_OK`, `BACKUP_VERIFIED` y todos los servicios Docker saludables, incluida la IA.
 
 ## 6. Ejecucion manual
 

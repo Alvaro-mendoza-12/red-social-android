@@ -41,6 +41,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import conectate.com.presentation.navigation.Screen
@@ -57,6 +58,8 @@ import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.video.RealPlaybackViewTracker
 import conectate.com.util.AudioRecorder
 import conectate.com.util.UbuntuMedia
+import conectate.com.util.VideoCache
+import conectate.com.util.VideoPerformanceProfiles
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -692,7 +695,24 @@ fun VideoPlayerScreen(
     }
 
     val exoPlayer = remember(context) {
-        ExoPlayer.Builder(context).build().apply {
+        val performanceProfile = VideoPerformanceProfiles.detect(context)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                performanceProfile.minBufferMs,
+                performanceProfile.maxBufferMs,
+                performanceProfile.playBufferMs,
+                performanceProfile.rebufferMs
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    VideoCache.getCacheDataSourceFactory(context)
+                )
+            )
+            .build().apply {
             playWhenReady = false
         }
     }
@@ -1092,7 +1112,7 @@ fun VideoPlayerScreen(
                                                     onExternalShare = {
                                                         val sendIntent = android.content.Intent().apply {
                                                             action = android.content.Intent.ACTION_SEND
-                                                            putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Conéctate!\nhttps://conectate.com/video/${state.video.id}\n\nO abre directamente en la app:\nconectate://video/${state.video.id}\n\n${state.video.title}")
+                                                            putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Novvin!\nhttps://conectate.com/video/${state.video.id}\n\nO abre directamente en la app:\nconectate://video/${state.video.id}\n\n${state.video.title}")
                                                             type = "text/plain"
                                                         }
                                                         val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir video")

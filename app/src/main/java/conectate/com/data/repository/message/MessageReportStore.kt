@@ -10,12 +10,13 @@ import conectate.com.core.security.GuardedAction
 import conectate.com.core.security.GuardOutcome
 import conectate.com.core.security.InputSecurityPolicy
 import conectate.com.core.security.OperationGuard
-import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.Report
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.util.uploadReportEvidence
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -28,13 +29,13 @@ import io.ktor.http.isSuccess
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.util.UUID
 
 internal class MessageReportStore(
     private val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val storageService: StorageService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
     private val userRepository: UserRepository,
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
@@ -54,6 +55,8 @@ internal class MessageReportStore(
         uri: Uri?
     ): Result<Unit> {
         var auditUserId: String? = null
+        var uploadedEvidenceKey: String? = null
+        var reportPersisted = false
         val startedAt = System.currentTimeMillis()
         return try {
             val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user logged in"))
@@ -92,23 +95,63 @@ internal class MessageReportStore(
 
             var evidenceUrl: String? = null
             if (uri != null) {
-                try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val fileName = "reports/$currentUserId/${UUID.randomUUID()}.jpg"
-                        val uploadResult = storageService.uploadFile("avatars", fileName, bytes, "image/jpeg")
-                        if (uploadResult.isSuccess) {
-                            evidenceUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("avatars", fileName))
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageReportStore", "Evidence upload failed", e)
-                }
+                val uploadedEvidence = uploadReportEvidence(
+                    context = context,
+                    storageService = storageService,
+                    userId = cleanUserId,
+                    sourceUri = uri
+                ).getOrElse { error -> return Result.failure(error) }
+                uploadedEvidenceKey = uploadedEvidence.objectKey
+                evidenceUrl = uploadedEvidence.publicUrl
             }
 
             val currentUser = userRepository.getUserById(cleanUserId).getOrNull()
             val reporterName = currentUser?.username ?: currentUser?.display_name ?: "Usuario"
-            android.util.Log.d("MessageReportStore", "submitReport SENDING for target=$cleanTargetId")
+            android.util.Log.d("MessageReportStore", "Submitting moderated user report")
+
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                val result = localFallbackApiClient.submitUserReport(
+                    accessToken = token,
+                    reportedUserId = cleanTargetId,
+                    reportedUserName = sanitizedName,
+                    reason = sanitizedReason,
+                    description = sanitizedDescription,
+                    evidenceUrl = evidenceUrl
+                )
+                if (result.isSuccess) {
+                    reportPersisted = true
+                    runCatching {
+                        operationGuard.audit(
+                            action = GuardedAction.REPORT_SUBMISSION,
+                            actorId = cleanUserId,
+                            scopeId = cleanTargetId,
+                            outcome = GuardOutcome.SUCCESS
+                        )
+                    }
+                    appMetrics.incrementCounter("report_submit_success", attributes = mapOf("backend" to "ubuntu"))
+                    appMetrics.recordLatency(
+                        metric = "report_submit",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = mapOf("backend" to "ubuntu")
+                    )
+                } else {
+                    runCatching {
+                        operationGuard.audit(
+                            action = GuardedAction.REPORT_SUBMISSION,
+                            actorId = cleanUserId,
+                            scopeId = cleanTargetId,
+                            outcome = GuardOutcome.FAILED,
+                            attributes = mapOf("backend" to "ubuntu")
+                        )
+                    }
+                    appMetrics.recordFailure(
+                        metric = "report_submit",
+                        throwable = result.exceptionOrNull(),
+                        attributes = mapOf("backend" to "ubuntu")
+                    )
+                }
+                return result
+            }
 
             var payload = mutableMapOf<String, String?>()
             payload["reporter_id"] = cleanUserId
@@ -162,11 +205,8 @@ internal class MessageReportStore(
             }
 
             if (response.status.isSuccess()) {
-                val responseBody = runCatching { response.bodyAsText() }.getOrDefault("")
-                android.util.Log.d(
-                    "MessageReportStore",
-                    "submitReport SUCCESS (${if (usedLegacyPath) "legacy" else "rpc"}). Server returned: $responseBody"
-                )
+                reportPersisted = true
+                android.util.Log.d("MessageReportStore", "Report persisted (${if (usedLegacyPath) "legacy" else "rpc"})")
                 runCatching {
                     operationGuard.audit(
                         action = GuardedAction.REPORT_SUBMISSION,
@@ -215,6 +255,14 @@ internal class MessageReportStore(
             }
             appMetrics.recordFailure("report_submit", e)
             Result.failure(e)
+        } finally {
+            if (!reportPersisted) {
+                uploadedEvidenceKey?.let { key ->
+                    storageService.deleteFile("report-evidence", key).onFailure { cleanupError ->
+                        android.util.Log.w("MessageReportStore", "Could not clean report evidence", cleanupError)
+                    }
+                }
+            }
         }
     }
 
@@ -276,7 +324,7 @@ internal class MessageReportStore(
         return try {
             android.util.Log.d(
                 "MessageReportStore",
-                "$logLabel: Fetching ${if (reporterId == null) "all reports (Admin)" else "reports for $reporterId"}"
+                "$logLabel: Fetching ${if (reporterId == null) "admin reports" else "current-user reports"}"
             )
 
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
@@ -289,7 +337,6 @@ internal class MessageReportStore(
 
             if (response.status.isSuccess()) {
                 val rawJson = response.bodyAsText()
-                android.util.Log.d("MessageReportStore", "$logLabel RAW JSON: $rawJson")
 
                 try {
                     val reports = json.decodeFromString<List<Report>>(rawJson)

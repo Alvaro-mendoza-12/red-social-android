@@ -164,14 +164,8 @@ class AuthService @Inject constructor(
         )
         SecurePrefsState(prefs = prefs, initializationError = null)
     } catch (error: Throwable) {
-        Log.e("AuthService", "CRITICAL: Secure storage failed, falling back to insecure storage", error)
-        try {
-            // Fallback to normal shared prefs so the app at least opens
-            val fallbackPrefs = context.getSharedPreferences("auth_cache_fallback", Context.MODE_PRIVATE)
-            SecurePrefsState(prefs = fallbackPrefs, initializationError = error)
-        } catch (e: Throwable) {
-            SecurePrefsState(prefs = null, initializationError = e)
-        }
+        Log.e("AuthService", "CRITICAL: Encrypted session storage is unavailable", error)
+        SecurePrefsState(prefs = null, initializationError = error)
     }
 
     private fun setForcedLogout(enabled: Boolean) {
@@ -188,7 +182,7 @@ class AuthService @Inject constructor(
         return extractJwtClaim(access, "provider") == "local-fallback"
     }
 
-    fun importLocalFallbackStoredSession(
+    suspend fun importLocalFallbackStoredSession(
         accessToken: String,
         refreshToken: String,
         email: String,
@@ -249,6 +243,12 @@ class AuthService @Inject constructor(
             ?.remove(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT)
             ?.apply()
         _currentSession.value = null
+        if (isLocalFallbackModeEnabled()) {
+            authScope.launch {
+                runCatching { supabaseConfig.client.auth.clearSession() }
+                    .onFailure { Log.w("AuthService", "Could not clear compatibility session", it) }
+            }
+        }
     }
 
     private fun extractJwtClaim(accessToken: String, claim: String): String? {
@@ -329,19 +329,24 @@ class AuthService @Inject constructor(
     }
 
     init {
-        // CRITICAL: When Ubuntu is the primary backend, skip all Supabase initialization
+        // Ubuntu owns authentication, but the legacy PostgREST SDK facade still needs the JWT.
         if (isLocalFallbackModeEnabled()) {
             val localSession = recoverPersistedLocalFallbackSession()
             if (localSession != null) {
                 _currentSession.value = localSession
-                Log.d("AuthService", "✅ Ubuntu backend: Local fallback session recovered at startup")
+                authScope.launch {
+                    runCatching { syncLocalFallbackCompatibilitySession(localSession.accessToken) }
+                        .onFailure { Log.e("AuthService", "Ubuntu compatibility session sync failed", it) }
+                    _isInitializing.value = false
+                }
+                Log.d("AuthService", "Ubuntu backend: Local session recovered at startup")
             } else {
                 _currentSession.value = null
                 clearPersistedSessionSnapshot()
-                Log.d("AuthService", "✅ Ubuntu backend: No local session, ready for login")
+                _isInitializing.value = false
+                Log.d("AuthService", "Ubuntu backend: No local session, ready for login")
             }
-            _isInitializing.value = false
-            Log.d("AuthService", "✅ Ubuntu backend: Auth initialization complete (Supabase skipped)")
+            Log.d("AuthService", "Ubuntu backend: Auth initialization started")
         } else {
             // Original Supabase initialization flow (only when NOT using Ubuntu)
             val runtimeSessionOverride = TestRuntimeOverrides.currentSession(context)
@@ -433,7 +438,7 @@ class AuthService @Inject constructor(
                             if (isUsableSession(status.session)) {
                                 _currentSession.value = mapSession(status.session)
                                 persistSessionSnapshot(status.session)
-                                Log.d("AuthService", "SDK Session Active: ${status.session.user?.email}")
+                                Log.d("AuthService", "SDK session active")
                             } else {
                                 _currentSession.value = null
                                 clearPersistedSessionSnapshot()
@@ -623,7 +628,11 @@ class AuthService @Inject constructor(
                 Log.w("AuthService", "NUCLEAR CLEAR: Wiping all local data for privacy...")
                 database.clearAllTables()
                 
-                supabaseConfig.client.auth.signOut()
+                if (isLocalFallbackModeEnabled()) {
+                    supabaseConfig.client.auth.clearSession()
+                } else {
+                    supabaseConfig.client.auth.signOut()
+                }
                 Log.d("AuthService", "SignOut successful and local data purged")
             } catch (e: Exception) {
                 Log.e("AuthService", "SignOut error", e)
@@ -728,11 +737,17 @@ class AuthService @Inject constructor(
     ): Result<Unit> {
         return try {
             if (isLocalFallbackSession() || isLocalFallbackModeEnabled()) {
-                authPrefsOrNull?.edit()
-                    ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, displayName ?: fullName)
-                    ?.putString(KEY_LOCAL_FALLBACK_AVATAR_URL, avatarUrl)
-                    ?.putString(KEY_LOCAL_FALLBACK_COUNTRY, country)
-                    ?.apply()
+                authPrefsOrNull?.edit()?.apply {
+                    (displayName ?: fullName)?.let {
+                        putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, it)
+                    }
+                    avatarUrl?.let {
+                        putString(KEY_LOCAL_FALLBACK_AVATAR_URL, it)
+                    }
+                    country?.let {
+                        putString(KEY_LOCAL_FALLBACK_COUNTRY, it)
+                    }
+                }?.apply()
                 val recovered = recoverPersistedLocalFallbackSession()
                 if (recovered != null) {
                     _currentSession.value = recovered
@@ -1162,7 +1177,7 @@ class AuthService @Inject constructor(
         ) && !prefs.getString(KEY_LOCAL_FALLBACK_EMAIL, null).isNullOrBlank()
     }
 
-    private fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
+    private suspend fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
         val user = response.user
         val accessToken = response.accessToken.trim()
         val localUserId = user.id.trim().lowercase()
@@ -1185,6 +1200,26 @@ class AuthService @Inject constructor(
             ?.apply()
 
         _currentSession.value = mapLocalFallbackSession(response)
+        syncLocalFallbackCompatibilitySession(accessToken)
+    }
+
+    private suspend fun syncLocalFallbackCompatibilitySession(accessToken: String) {
+        val token = accessToken.trim()
+        if (!isLocalFallbackModeEnabled() || token.isBlank()) return
+
+        val expiresAtSeconds = extractJwtClaim(token, "exp")?.toLongOrNull()
+        val nowSeconds = System.currentTimeMillis() / 1_000L
+        val expiresInSeconds = (expiresAtSeconds?.minus(nowSeconds) ?: 7 * 24 * 60 * 60L)
+            .coerceAtLeast(60L)
+        val compatibilitySession = UserSession(
+            accessToken = token,
+            refreshToken = token,
+            expiresIn = expiresInSeconds,
+            tokenType = "Bearer",
+            user = null,
+            type = "local-fallback"
+        )
+        supabaseConfig.client.auth.importSession(compatibilitySession, autoRefresh = false)
     }
 
     private fun mapLocalFallbackSession(response: LocalFallbackAuthResponse): AuthResponse {

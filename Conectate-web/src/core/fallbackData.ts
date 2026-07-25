@@ -113,6 +113,68 @@ export type FallbackNotificationsResponse = {
   unreadCount: number
 }
 
+export type FallbackLiveStream = GenericRow & {
+  id: string
+  host_user_id?: string
+  host_name?: string
+  host_avatar_url?: string | null
+  title?: string
+  source?: 'camera' | 'screen' | string
+  hashtags?: string[]
+  viewer_count?: number
+  peak_viewer_count?: number
+  total_comments?: number
+  total_reactions?: number
+  is_active?: boolean
+  started_at?: string | null
+  ended_at?: string | null
+}
+
+export type FallbackLiveComment = GenericRow & {
+  id: string
+  live_id?: string
+  user_id?: string
+  user_name?: string
+  avatar_url?: string | null
+  content?: string
+  created_at?: string
+}
+
+export type FallbackNearbyProfile = {
+  user_id: string
+  display_name: string
+  avatar_url: string | null
+  city: string | null
+  country: string | null
+  interests: string[]
+  distance_km: number
+}
+
+export type FallbackRandomSession = {
+  id: string
+  status: 'active' | 'ended' | string
+  own_reveal_level: number
+  peer_reveal_level: number
+  peer: {
+    alias: string
+    display_name: string
+    avatar_url: string | null
+    interests: string[]
+    hobbies: string[]
+    user_id: string | null
+  }
+  created_at: string
+  updated_at: string
+}
+
+export type FallbackRandomMessage = {
+  id: string
+  client_message_id: string
+  sender: 'me' | 'peer'
+  content: string
+  created_at: string
+}
+
 export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse> {
   return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
 }
@@ -125,6 +187,18 @@ export async function updateFallbackProfileMe(input: {
   status?: string | null
   avatarUrl?: string | null
   coverUrl?: string | null
+  username?: string | null
+  interests?: string[]
+  hobbies?: string[]
+  linkedGames?: string[]
+  gameLogoUrls?: Record<string, string>
+  favoriteMusicUrl?: string | null
+  favoriteBook?: string | null
+  favoriteSport?: string | null
+  career?: string | null
+  availabilitySchedule?: string | null
+  profileSectionOrder?: string[]
+  profileSectionVisibility?: Record<string, 'everyone' | 'followers' | 'only_me'>
   isPrivate?: boolean | null
   profileVisibility?: string | null
   lastSeenVisibility?: string | null
@@ -261,6 +335,167 @@ export async function loadFallbackMessagesInbox(tab: string): Promise<FallbackIn
 export async function loadFallbackChat(chatId: string): Promise<FallbackChatResponse> {
   return fallbackApiJson<FallbackChatResponse>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
+  )
+}
+
+export async function loadFallbackLiveStreams(limit = 60): Promise<{ items: FallbackLiveStream[] }> {
+  return fallbackApiJson<{ items: FallbackLiveStream[] }>(
+    `/v1/data/live?limit=${encodeURIComponent(String(limit))}`,
+  )
+}
+
+export async function loadFallbackLiveStream(liveId: string): Promise<{ stream: FallbackLiveStream }> {
+  return fallbackApiJson<{ stream: FallbackLiveStream }>(
+    `/v1/data/live/${encodeURIComponent(liveId)}`,
+  )
+}
+
+export async function createFallbackLiveStream(input: {
+  id?: string
+  title: string
+  source: 'camera' | 'screen'
+  hashtags?: string[]
+}): Promise<{ stream: FallbackLiveStream }> {
+  return fallbackApiJson<{ stream: FallbackLiveStream }>('/v1/data/live', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateFallbackLiveState(
+  liveId: string,
+  input: {
+    isActive?: boolean
+    viewerCount?: number
+    peakViewerCount?: number
+    totalComments?: number
+    totalReactions?: number
+  },
+): Promise<{ stream: FallbackLiveStream }> {
+  return fallbackApiJson<{ stream: FallbackLiveStream }>(
+    `/v1/data/live/${encodeURIComponent(liveId)}/state`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function loadFallbackLiveComments(
+  liveId: string,
+  limit = 100,
+): Promise<{ items: FallbackLiveComment[] }> {
+  return fallbackApiJson<{ items: FallbackLiveComment[] }>(
+    `/v1/data/live/${encodeURIComponent(liveId)}/comments?limit=${encodeURIComponent(String(limit))}`,
+  )
+}
+
+export async function sendFallbackLiveComment(
+  liveId: string,
+  content: string,
+): Promise<{ comment: FallbackLiveComment }> {
+  return fallbackApiJson<{ comment: FallbackLiveComment }>(
+    `/v1/data/live/${encodeURIComponent(liveId)}/comments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    },
+  )
+}
+
+export async function enableFallbackProximity(input: {
+  latitude: number
+  longitude: number
+  radiusKm: number
+  gender: string
+  lookingFor: string
+  randomEnabled?: boolean
+}): Promise<{ enabled: boolean; radius_km: number; expires_in_minutes: number }> {
+  return fallbackApiJson('/v1/data/proximity/presence', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function disableFallbackProximity(): Promise<{ enabled: boolean }> {
+  return fallbackApiJson('/v1/data/proximity/presence', { method: 'DELETE' })
+}
+
+export async function loadFallbackNearbyProfiles(
+  radiusKm: number,
+): Promise<{ items: FallbackNearbyProfile[]; radius_km: number }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/nearby?radiusKm=${encodeURIComponent(String(radiusKm))}`,
+  )
+}
+
+export async function matchFallbackRandomChat(input: {
+  gender: string
+  lookingFor: string
+}): Promise<{ status: 'waiting' | 'matched'; session?: FallbackRandomSession }> {
+  return fallbackApiJson('/v1/data/proximity/random/match', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function loadFallbackRandomChatStatus(): Promise<{
+  status: 'idle' | 'waiting' | 'matched'
+  session?: FallbackRandomSession
+}> {
+  return fallbackApiJson('/v1/data/proximity/random/status')
+}
+
+export async function cancelFallbackRandomChatMatch(): Promise<{ status: 'idle' }> {
+  return fallbackApiJson('/v1/data/proximity/random/queue', { method: 'DELETE' })
+}
+
+export async function loadFallbackRandomSession(
+  sessionId: string,
+): Promise<{ session: FallbackRandomSession }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}`,
+  )
+}
+
+export async function loadFallbackRandomMessages(
+  sessionId: string,
+): Promise<{ items: FallbackRandomMessage[] }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}/messages`,
+  )
+}
+
+export async function sendFallbackRandomMessage(
+  sessionId: string,
+  input: { content: string; clientMessageId: string },
+): Promise<{ message: FallbackRandomMessage }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function revealFallbackRandomProfile(
+  sessionId: string,
+  level: number,
+): Promise<{ session: FallbackRandomSession }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}/reveal`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ level }),
+    },
+  )
+}
+
+export async function endFallbackRandomSession(sessionId: string): Promise<{ status: 'ended' }> {
+  return fallbackApiJson(
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' },
   )
 }
 

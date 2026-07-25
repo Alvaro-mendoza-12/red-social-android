@@ -2,6 +2,11 @@
 !Conectate-web
 !Conectate-web/**
 
+# Nunca incluir secretos ni metadatos locales reintroducidos por la regla anterior.
+Conectate-web/.env
+Conectate-web/.env.*
+Conectate-web/.vercel/
+
 Conectate-web/node_modules/
 Conectate-web/dist/
 Conectate-web/tmp/

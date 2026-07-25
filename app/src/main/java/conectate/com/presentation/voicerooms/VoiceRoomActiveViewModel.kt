@@ -25,7 +25,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val authService: AuthService
 ) : ViewModel() {
     private companion object {
-        const val REACTION_VISIBLE_MS = 2_600L
+        const val REACTION_VISIBLE_MS = 4_500L
         const val LOCAL_ECHO_WINDOW_MS = 3_000L
     }
 
@@ -230,6 +230,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
                     ?: seed?.fullName
                     ?: seed?.email?.substringBefore("@")
                     ?: "Usuario"
+                voiceRoomRepository.toggleSpeaker(_isSpeaker.value)
                 voiceRoomRepository.joinRoom(
                     roomId = resolvedRoom.id,
                     userId = userId,

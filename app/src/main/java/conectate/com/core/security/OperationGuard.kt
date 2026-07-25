@@ -63,14 +63,15 @@ class OperationGuard @Inject constructor(
     suspend fun acquire(
         action: GuardedAction,
         actorId: String,
-        scopeId: String? = null
+        scopeId: String? = null,
+        enforceMinInterval: Boolean = true
     ): GuardDecision {
         val nowMs = System.currentTimeMillis()
         val key = buildBucketKey(action, actorId, scopeId)
         val bucket = buckets.computeIfAbsent(key) { RateBucket() }
 
         val decision = synchronized(bucket) {
-            evaluateBucket(bucket, action, nowMs)
+            evaluateBucket(bucket, action, nowMs, enforceMinInterval)
         }
 
         if (!decision.allowed) {
@@ -131,7 +132,8 @@ class OperationGuard @Inject constructor(
     private fun evaluateBucket(
         bucket: RateBucket,
         action: GuardedAction,
-        nowMs: Long
+        nowMs: Long,
+        enforceMinInterval: Boolean
     ): GuardDecision {
         while (bucket.acceptedAtMs.isNotEmpty()) {
             var oldest = bucket.acceptedAtMs.first()
@@ -142,7 +144,7 @@ class OperationGuard @Inject constructor(
             }
         }
 
-        if (action.minIntervalMs > 0 && bucket.lastAcceptedAtMs > 0) {
+        if (enforceMinInterval && action.minIntervalMs > 0 && bucket.lastAcceptedAtMs > 0) {
             val elapsed = nowMs - bucket.lastAcceptedAtMs
             if (elapsed < action.minIntervalMs) {
                 return GuardDecision(

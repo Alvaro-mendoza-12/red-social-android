@@ -5,9 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,7 +32,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.imageLoader
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Post
 import conectate.com.data.model.Badge
 import conectate.com.presentation.common.ConnectivityViewModel
@@ -37,6 +42,10 @@ import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.components.VideoThumbnail
+import conectate.com.presentation.components.ProfileAmbientBackground
+import conectate.com.presentation.components.ProfileWelcomeBanner
+import conectate.com.presentation.components.CommentAudioPlayer
+import conectate.com.presentation.theme.profileThemeColors
 import conectate.com.data.repository.FriendStatus
 import kotlinx.coroutines.launch
 
@@ -48,6 +57,85 @@ fun StatItem(number: Int, label: String, onClick: () -> Unit) {
     ) {
         Text(text = number.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(text = label, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+    }
+}
+
+@Composable
+private fun ProfileDetailsSections(user: conectate.com.data.model.User) {
+    val rows = mapOf(
+        "career" to ("Profesión o carrera" to user.career.orEmpty()),
+        "sports" to ("Deporte" to user.favorite_sport.orEmpty()),
+        "books" to ("Libro" to user.favorite_book.orEmpty()),
+        "hobbies" to ("Hobbies" to user.hobbies.joinToString(" · ")),
+        "interests" to ("Intereses" to user.interests.joinToString(" · ")),
+        "games" to ("Videojuegos" to user.linked_games.joinToString(" · ")),
+        "availability" to ("Disponibilidad" to user.availability_schedule.orEmpty()),
+    )
+    val musicUrl = user.favorite_music_url?.takeIf(String::isNotBlank)
+    val defaultOrder = listOf("music", "interests", "hobbies", "career", "games", "sports", "books", "availability")
+    val order = (user.profile_section_order + defaultOrder).distinct()
+    if (rows.values.none { it.second.isNotBlank() } && musicUrl == null) return
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            order.forEach { section ->
+                if (section == "music") {
+                    musicUrl?.let { url ->
+                        Text(
+                            "Música de entrada",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        CommentAudioPlayer(audioUrl = url, modifier = Modifier.fillMaxWidth())
+                    }
+                } else if (section == "games" && user.linked_games.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Videojuegos", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            user.linked_games.forEach { game ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val logoUrl = user.game_logo_urls.entries
+                                        .firstOrNull { it.key.equals(game, ignoreCase = true) }
+                                        ?.value
+                                    if (!logoUrl.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = UbuntuStorageUrl.rewrite(logoUrl) ?: logoUrl,
+                                            contentDescription = game,
+                                            modifier = Modifier.size(28.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.SportsEsports,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(24.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(game, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rows[section]?.takeIf { it.second.isNotBlank() }?.let { (label, value) ->
+                        Column {
+                            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(value, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -67,6 +155,7 @@ fun ProfileScreen(
     val userPosts by viewModel.userPosts.collectAsState()
     val sharedPosts by viewModel.sharedPosts.collectAsState()
     val sharedVideos by viewModel.sharedVideos.collectAsState()
+    val favoriteVideos by viewModel.favoriteVideos.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     var showCreatePostDialog by remember { mutableStateOf(false) }
@@ -75,6 +164,8 @@ fun ProfileScreen(
     // Comments Sheet State
     var showCommentsSheet by remember { mutableStateOf(false) }
     var postToComment by remember { mutableStateOf<Post?>(null) }
+    var postToReport by remember { mutableStateOf<Post?>(null) }
+    var commentToReport by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     
     // Edit Post State
     var showEditPostDialog by remember { mutableStateOf(false) }
@@ -120,6 +211,9 @@ fun ProfileScreen(
                         }
                     )
                 },
+                onReportComment = { comment ->
+                    commentToReport = comment
+                },
                 onNavigateToProfile = { targetUserId: String ->
                     showCommentsSheet = false
                     if (targetUserId != viewModel.currentUserId) {
@@ -135,9 +229,76 @@ fun ProfileScreen(
                     }
                 },
                 isLoading = false,
-                isPostOwner = postToComment?.userId == viewModel.currentUserId
+                isPostOwner = postToComment?.userId
+                    ?.trim()
+                    ?.equals(viewModel.currentUserId?.trim(), ignoreCase = true) == true,
+                showReportAction = true
             )
         }
+    }
+
+    postToReport?.let { reportPost ->
+        conectate.com.presentation.components.ContentReportDialog(
+            title = "Reportar publicación",
+            subjectText = reportPost.userName,
+            reasonOptions = listOf(
+                "Spam",
+                "Acoso",
+                "Violencia",
+                "Desinformación",
+                "Contenido sexual",
+                "Otro"
+            ),
+            attachEvidenceEnabled = true,
+            onDismiss = { postToReport = null },
+            onSubmit = { reason, details, evidenceUri ->
+                viewModel.reportPost(
+                    post = reportPost,
+                    reason = reason,
+                    details = details,
+                    evidenceUri = evidenceUri,
+                    onSuccess = {
+                        android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onError = {
+                        android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                )
+                postToReport = null
+            }
+        )
+    }
+
+    commentToReport?.let { reportComment ->
+        conectate.com.presentation.components.ContentReportDialog(
+            title = "Reportar comentario",
+            subjectText = reportComment.userName ?: "Usuario",
+            reasonOptions = listOf(
+                "Spam",
+                "Acoso",
+                "Violencia",
+                "Desinformación",
+                "Contenido sexual",
+                "Otro"
+            ),
+            attachEvidenceEnabled = true,
+            onDismiss = { commentToReport = null },
+            onSubmit = { reason, details, evidenceUri ->
+                viewModel.reportComment(
+                    comment = reportComment,
+                    reason = reason,
+                    details = details,
+                    evidenceUri = evidenceUri,
+                    onSuccess = {
+                        android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onError = {
+                        android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                )
+                commentToReport = null
+            }
+        )
     }
 
     if (isPosting) {
@@ -163,7 +324,10 @@ fun ProfileScreen(
     DisposableEffect(lifecycleOwner, userId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.loadUserProfile(userId)
+                // Reload from local database without forcing network.
+                // This ensures optimistic updates from EditProfileScreen are immediately reflected
+                // without triggering a stale network fetch.
+                viewModel.loadUserProfile(userId, forceNetwork = false)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -287,26 +451,55 @@ fun ProfileScreen(
                 is ProfileUiState.Success -> {
                     val user = state.user
                     val isOwnProfile = viewModel.currentUserId == user.id
+                    val rewrittenAvatarUrl = remember(user.avatar_url) {
+                        UbuntuStorageUrl.rewrite(user.avatar_url)
+                    }
+                    val rewrittenCoverUrl = remember(user.cover_url) {
+                        UbuntuStorageUrl.rewrite(user.cover_url)
+                    }
+                    val profileColors = profileThemeColors(
+                        rawTheme = user.profile_theme,
+                        dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                    )
 
-                    LaunchedEffect(user.avatar_url, user.cover_url) {
+                    LaunchedEffect(rewrittenAvatarUrl, rewrittenCoverUrl) {
                         val imageLoader = context.imageLoader
-                        user.avatar_url?.takeIf { it.isNotBlank() }?.let { avatarUrl ->
+                        rewrittenAvatarUrl?.takeIf { it.isNotBlank() }?.let { avatarUrl ->
                             imageLoader.enqueue(
                                 ImageRequest.Builder(context)
                                     .data(avatarUrl)
-                                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
-                                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
+                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
+                                    .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
                                     .build()
                             )
                         }
-                        user.cover_url?.takeIf { it.isNotBlank() }?.let { coverUrl ->
+                        rewrittenCoverUrl?.takeIf { it.isNotBlank() }?.let { coverUrl ->
                             imageLoader.enqueue(
                                 ImageRequest.Builder(context)
                                     .data(coverUrl)
-                                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
-                                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                    .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
                                     .build()
                             )
+                        }
+                    }
+                    val coverRequest = remember(rewrittenCoverUrl, user.cover_url) {
+                        rewrittenCoverUrl?.let { coverUrl ->
+                            ImageRequest.Builder(context)
+                                .data(coverUrl)
+                                .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(false)
+                                .build()
                         }
                     }
                     
@@ -315,20 +508,21 @@ fun ProfileScreen(
                     ) {
                         // 1. Cover item
                         item {
-                            Box(
+                            ProfileAmbientBackground(
+                                themeId = user.profile_theme,
+                                effectId = user.profile_effect,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer)
                                     .clickable {
-                                        user.cover_url?.let {
+                                        rewrittenCoverUrl?.let {
                                             (mainNavController ?: navController).navigate(Screen.FullScreenImage.createRoute(it))
                                         }
                                     }
                             ) {
                                 if (!user.cover_url.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = user.cover_url,
+                                        model = coverRequest,
                                         contentDescription = "Portada",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
@@ -349,7 +543,7 @@ fun ProfileScreen(
                                     val nameToDisplay = user.display_name ?: user.full_name ?: user.username ?: "Usuario"
                                     Box(
                                         modifier = Modifier.clickable {
-                                            user.avatar_url?.let {
+                                            rewrittenAvatarUrl?.let {
                                                 val route = if (user.isProfileAvatarVideo) {
                                                     Screen.FullScreenVideo.createRoute(it)
                                                 } else {
@@ -359,12 +553,19 @@ fun ProfileScreen(
                                             }
                                         }
                                     ) {
+                                        val profileFrameColor = when (user.profile_frame.lowercase()) {
+                                            "gold" -> Color(0xFFFFC107)
+                                            "neon" -> Color(0xFF00E5FF)
+                                            "ruby" -> Color(0xFFE53935)
+                                            "ocean" -> Color(0xFF1976D2)
+                                            else -> profileColors.accent
+                                        }
                                         CircularProfileImage(
-                                            imageUrl = user.avatar_url ?: "",
+                                            imageUrl = rewrittenAvatarUrl,
                                             size = 110.dp,
                                             showBorder = true,
-                                            borderWidth = 4.dp,
-                                            borderColor = MaterialTheme.colorScheme.surface,
+                                            borderWidth = if (user.profile_frame.isBlank()) 4.dp else 6.dp,
+                                            borderColor = profileFrameColor,
                                             isVerified = user.is_verified,
                                             mediaType = user.avatar_media_type,
                                             muted = user.avatar_video_muted,
@@ -390,7 +591,11 @@ fun ProfileScreen(
                                                 Icon(Icons.Default.CheckCircle, "Verificado", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
                                             }
                                         }
-                                        Text(text = "@${user.username ?: "usuario"}", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                                        Text(
+                                            text = "@${user.username ?: "usuario"}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = profileColors.accent
+                                        )
                                         
                                         Spacer(modifier = Modifier.height(8.dp))
                                         
@@ -513,6 +718,29 @@ fun ProfileScreen(
                                         }
                                     }
                                 }
+
+                                if (isOwnProfile) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    FilledTonalButton(
+                                        onClick = { navController.navigate(Screen.CustomizeApp.route) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Palette, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Personalizar perfil")
+                                    }
+                                }
+
+                                user.profile_welcome
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { welcome ->
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        ProfileWelcomeBanner(
+                                            message = welcome,
+                                            themeId = user.profile_theme
+                                        )
+                                    }
                                 
                                 // Bio & Stats
                                 if (!user.bio.isNullOrBlank()) {
@@ -535,6 +763,8 @@ fun ProfileScreen(
                                         Text(text = location, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                                     }
                                 }
+
+                                ProfileDetailsSections(user)
                                 
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -557,7 +787,14 @@ fun ProfileScreen(
                                 shadowElevation = 1.dp
                             ) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
-                                    val tabs = listOf("Mis Videos", "Publicaciones", "Compartidos")
+                                    val showFavorites = userId == null ||
+                                        userId == viewModel.currentUserId ||
+                                        user.favorites_public
+                                    val tabs = if (showFavorites) {
+                                        listOf("Videos", "Publicaciones", "Compartidos", "Favoritos")
+                                    } else {
+                                        listOf("Videos", "Publicaciones", "Compartidos")
+                                    }
                                     tabs.forEachIndexed { index, title ->
                                         Box(
                                             modifier = Modifier
@@ -567,12 +804,20 @@ fun ProfileScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text(
-                                                    text = title,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray,
-                                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
-                                                )
+                                                if (index == 3) {
+                                                    Icon(
+                                                        imageVector = if (selectedTab == index) Icons.Default.Star else Icons.Default.StarBorder,
+                                                        contentDescription = "Favoritos",
+                                                        tint = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = title,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray,
+                                                        fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
                                                 if (selectedTab == index) {
                                                     Spacer(modifier = Modifier.height(4.dp))
                                                     Box(modifier = Modifier.width(24.dp).height(2.dp).background(MaterialTheme.colorScheme.primary))
@@ -675,7 +920,9 @@ fun ProfileScreen(
                                             },
                                             onSendToFriend = {
                                                 postToShare = post
-                                            }
+                                            },
+                                            onReportClick = { postToReport = post },
+                                            showReportAction = true
                                         )
                                     }
                                 }
@@ -731,13 +978,51 @@ fun ProfileScreen(
                                                 onUserClick = { 
                                                     if (it != viewModel.currentUserId) navController.navigate(Screen.UserProfile.createRoute(it))
                                                 },
+                                                isOwner = post.userId == viewModel.currentUserId,
+                                                showOwnerActions = false,
                                                 onPostClick = {
                                                     navController.navigate(Screen.PostDetail.createRoute(post.id))
                                                 },
                                                 onSendToFriend = {
                                                     postToShare = post
-                                                }
+                                                },
+                                                onReportClick = { postToReport = post },
+                                                showReportAction = true
                                             )
+                                        }
+                                    }
+                                }
+                            }
+                            3 -> {
+                                if (favoriteVideos.isEmpty()) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("No hay videos favoritos aún", color = Color.Gray)
+                                        }
+                                    }
+                                } else {
+                                    val rows = favoriteVideos.chunked(3)
+                                    items(rows) { rowVideos ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            rowVideos.forEach { video ->
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    VideoThumbnail(
+                                                        video = video,
+                                                        videoRepository = viewModel.videoRepository,
+                                                        onClick = {
+                                                            (mainNavController ?: navController)
+                                                                .navigate(Screen.VideoPlayer.createRoute(video.id))
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                            repeat(3 - rowVideos.size) { Spacer(modifier = Modifier.weight(1f)) }
                                         }
                                     }
                                 }

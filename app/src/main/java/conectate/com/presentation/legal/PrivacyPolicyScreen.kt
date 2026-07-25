@@ -72,7 +72,7 @@ fun PrivacyPolicyScreen(
         ) {
             item {
                 Text(
-                    text = "Lee cuidadosamente estas políticas de privacidad y normas de la comunidad antes de usar Conéctate.",
+                    text = "Lee cuidadosamente estas políticas de privacidad y normas de la comunidad antes de usar Novvin.",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }

@@ -30,10 +30,10 @@ object VideoPerformanceProfiles {
         return when (AppPerformanceProfiles.detect(context).tier) {
             AppDeviceTier.LOW -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.LOW,
-                minBufferMs = 1_000,
-                maxBufferMs = 10_000,
-                playBufferMs = 350,
-                rebufferMs = 700,
+                minBufferMs = 8_000,
+                maxBufferMs = 45_000,
+                playBufferMs = 1_200,
+                rebufferMs = 3_500,
                 feedBeyondBoundsPageCount = 1,
                 cacheSizeBytes = 128L * 1024L * 1024L,
                 editorOverlayLimit = 4,
@@ -47,10 +47,10 @@ object VideoPerformanceProfiles {
 
             AppDeviceTier.HIGH -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.HIGH,
-                minBufferMs = 500,
-                maxBufferMs = 20_000,
-                playBufferMs = 150,
-                rebufferMs = 350,
+                minBufferMs = 5_000,
+                maxBufferMs = 30_000,
+                playBufferMs = 800,
+                rebufferMs = 2_500,
                 feedBeyondBoundsPageCount = 3,
                 cacheSizeBytes = 512L * 1024L * 1024L,
                 editorOverlayLimit = 16,
@@ -64,10 +64,10 @@ object VideoPerformanceProfiles {
 
             AppDeviceTier.BALANCED -> VideoPerformanceProfile(
                 tier = VideoDeviceTier.BALANCED,
-                minBufferMs = 800,
-                maxBufferMs = 15_000,
-                playBufferMs = 250,
-                rebufferMs = 500,
+                minBufferMs = 6_000,
+                maxBufferMs = 35_000,
+                playBufferMs = 1_000,
+                rebufferMs = 3_000,
                 feedBeyondBoundsPageCount = 2,
                 cacheSizeBytes = 256L * 1024L * 1024L,
                 editorOverlayLimit = 8,

@@ -2,6 +2,7 @@ package conectate.com.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import conectate.com.BuildConfig
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.messaging.MessageStatusNormalizer
@@ -60,6 +61,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -94,6 +96,8 @@ class MessageRepository @Inject constructor(
 ) : ChatSyncDataSource {
     companion object {
         private const val MAX_FORWARD_TARGETS_PER_BATCH = 20
+        private const val MAX_PENDING_CHAT_MEDIA_BYTES = 100L * 1024L * 1024L
+        private const val MIN_PENDING_MEDIA_FREE_BYTES = 32L * 1024L * 1024L
     }
 
     private val scope = newSafeScope("MessageRepository", Dispatchers.IO)
@@ -143,6 +147,7 @@ class MessageRepository @Inject constructor(
         supabaseConfig = supabaseConfig,
         authService = authService,
         storageService = storageService,
+        localFallbackApiClient = localFallbackApiClient,
         userRepository = userRepository,
         moderationService = moderationService,
         appMetrics = appMetrics,
@@ -1544,11 +1549,35 @@ class MessageRepository @Inject constructor(
         token: String
     ): Boolean {
         return try {
-            val pendingMessage = pending.toDomain().copy(
+            var pendingMessage = pending.toDomain().copy(
                 chat_id = pending.chat_id.trim().lowercase(),
                 sender_id = pending.sender_id.trim().lowercase(),
                 status = "sending"
             )
+            val localMediaUri = pendingChatMediaUri(pendingMessage.media_url)
+            if (localMediaUri != null) {
+                val upload = uploadChatMedia(
+                    cleanChatId = pendingMessage.chat_id,
+                    mediaUri = localMediaUri,
+                    mediaType = pendingMessage.content_type
+                ).getOrElse { error ->
+                    android.util.Log.w("MessageRepository", "Pending media upload still unavailable for ${pending.id}", error)
+                    return false
+                }
+                pendingMessage = pendingMessage.copy(
+                    media_url = upload.url,
+                    media_size = upload.sizeBytes
+                )
+                messageDao.insertMessage(
+                    conectate.com.data.local.entity.MessageEntity.fromDomain(
+                        msg = pendingMessage,
+                        isSynced = false,
+                        pendingAction = "send"
+                    )
+                )
+                updateMessageInFlow(pending.chat_id, pendingMessage)
+                deletePendingChatMedia(localMediaUri)
+            }
             val serverResult = sendMessageToBackend(token = token, msg = pendingMessage)
             val isDuplicate = serverResult.statusCode == 409 ||
                 (serverResult.errorBody?.contains("23505") == true)
@@ -2123,12 +2152,14 @@ class MessageRepository @Inject constructor(
         existingMediaUrl: String? = null,
         isForwarded: Boolean = false,
         forwardedFromMessageId: String? = null,
-        forwardedFromUserId: String? = null
+        forwardedFromUserId: String? = null,
+        allowRapidMediaBatch: Boolean = false
     ): Result<Message> {
         // Fix: Define ID outside try block so it's visible in catch block
         var id = messageId ?: UUID.randomUUID().toString()
         var cleanId = chatId.trim().lowercase()
         var auditUserId: String? = null
+        var queuedMessage: Message? = null
         val startedAt = System.currentTimeMillis()
         
         return try {
@@ -2138,15 +2169,14 @@ class MessageRepository @Inject constructor(
             val guardDecision = operationGuard.acquire(
                 action = GuardedAction.DIRECT_MESSAGE_SEND,
                 actorId = userId,
-                scopeId = cleanId
+                scopeId = cleanId,
+                enforceMinInterval = !allowRapidMediaBatch
             )
             if (!guardDecision.allowed) {
                 val retryAfterSeconds = InputSecurityPolicy.retryAfterSeconds(guardDecision.retryAfterMs)
                 return Result.failure(Exception("Estas enviando mensajes muy rapido. Intenta en ${retryAfterSeconds}s."))
             }
 
-            var token = authService.ensureValidAccessToken()
-                .getOrElse { return Result.failure(it) }
             val baseSanitizedContent = if (mediaType == "text") {
                 InputSecurityPolicy.sanitizeMessageText(content)
             } else {
@@ -2198,27 +2228,18 @@ class MessageRepository @Inject constructor(
 
             var mediaUrl: String? = existingMediaUrl
             var uploadedMediaSize = 0L
+            var pendingMediaUri: Uri? = null
             if (mediaUri != null) {
-                var bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
-                    ?: return Result.failure(Exception("No se pudo leer el archivo"))
-
-                val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, bytes)
-                var filename = "$cleanId/${System.currentTimeMillis()}$extension"
-                var path = "chat-media/$filename"
-                var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
-                if (upload.isSuccess) {
-                    mediaUrl = if (shouldUseUbuntuBackend()) {
-                        UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", filename))
-                    } else {
-                        path
-                    }
-                    uploadedMediaSize = bytes.size.toLong()
-                    android.util.Log.d("MessageRepository", "✅ Media uploaded ($mimeType): $mediaUrl")
-                } else {
-                    var reason = upload.exceptionOrNull()?.message ?: "No se pudo subir multimedia"
-                    android.util.Log.e("MessageRepository", "❌ Media upload failed: $reason")
-                    return Result.failure(Exception(reason))
+                val pendingMedia = persistPendingChatMedia(
+                    sourceUri = mediaUri,
+                    messageId = id,
+                    mediaType = mediaType
+                ).getOrElse { error ->
+                    return Result.failure(error)
                 }
+                pendingMediaUri = pendingMedia.uri
+                mediaUrl = pendingMedia.uri.toString()
+                uploadedMediaSize = pendingMedia.sizeBytes
             }
 
             var msg = Message(
@@ -2245,24 +2266,67 @@ class MessageRepository @Inject constructor(
                     _activeChatMessages[cleanId]?.value?.find { it.id == replyToId }
                 } else null
             )
+            queuedMessage = msg
             
             android.util.Log.d("MessageRepository", "📦 Message object created: id=$id, chat_id=$cleanId, sender_id=$userId")
 
             // --- 1. PERSISTENCE OPTIMISTIC (IMMEDIATE SAVE) ---
             // Save to Room FIRST to prevent data loss if server call fails or app is killed.
-            scope.launch {
-                try {
-                    val optimisticEntity = conectate.com.data.local.entity.MessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send")
-                    messageDao.insertMessage(optimisticEntity)
-                    android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "❌ Failed to save optimistic message", e)
-                }
+            try {
+                val optimisticEntity = conectate.com.data.local.entity.MessageEntity.fromDomain(
+                    msg,
+                    isSynced = false,
+                    pendingAction = "send"
+                )
+                messageDao.insertMessage(optimisticEntity)
+                android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
+            } catch (error: Exception) {
+                pendingMediaUri?.let(::deletePendingChatMedia)
+                return Result.failure(IllegalStateException("No se pudo guardar el mensaje en el dispositivo", error))
             }
 
             // --- 2. UPDATE MEMORY (FLOW) ---
             addMessageToFlow(cleanId, msg)
             android.util.Log.d("MessageRepository", "🔄 Optimistic update applied to flow")
+
+            val token = authService.ensureValidAccessToken().getOrElse { error ->
+                android.util.Log.w("MessageRepository", "Message queued until the session can reconnect", error)
+                runCatching {
+                    operationGuard.audit(
+                        action = GuardedAction.DIRECT_MESSAGE_SEND,
+                        actorId = userId,
+                        scopeId = cleanId,
+                        outcome = GuardOutcome.QUEUED,
+                        attributes = mapOf("message_id" to msg.id, "reason" to "token_unavailable")
+                    )
+                }
+                return Result.success(msg)
+            }
+
+            if (pendingMediaUri != null) {
+                val mediaUpload = uploadChatMedia(cleanId, pendingMediaUri, mediaType)
+                    .getOrElse { error ->
+                        val reason = error.message ?: "No se pudo subir multimedia"
+                        android.util.Log.w("MessageRepository", "Media upload queued: $reason", error)
+                        if (isRetryableNetworkFailure(error.message)) {
+                            return Result.success(msg)
+                        }
+                        messageDao.updateSyncStatus(id, "failed", false, "send")
+                        return Result.failure(Exception(reason))
+                    }
+                msg = msg.copy(media_url = mediaUpload.url, media_size = mediaUpload.sizeBytes)
+                queuedMessage = msg
+                messageDao.insertMessage(
+                    conectate.com.data.local.entity.MessageEntity.fromDomain(
+                        msg = msg,
+                        isSynced = false,
+                        pendingAction = "send"
+                    )
+                )
+                addMessageToFlow(cleanId, msg)
+                deletePendingChatMedia(pendingMediaUri)
+                android.util.Log.d("MessageRepository", "✅ Media uploaded (${mediaUpload.contentType}): ${mediaUpload.url}")
+            }
 
             // --- 3. SEND TO SERVER ---
             android.util.Log.d("MessageRepository", "📡 Sending message to backend (secure RPC with fallback)...")
@@ -2280,23 +2344,35 @@ class MessageRepository @Inject constructor(
                 )
                 
                 android.util.Log.d("MessageRepository", "✅ Message sent successfully: ${returnedMsg.id}")
-                
-                 // Update Memory Corrected
+
+                // Persist the acknowledged state before returning so an immediate process death
+                // cannot restore an already accepted message as still pending.
+                try {
+                    val entity = conectate.com.data.local.entity.MessageEntity.fromDomain(
+                        returnedMsg,
+                        isSynced = true
+                    )
+                    messageDao.insertMessage(entity)
+                    android.util.Log.d("MessageRepository", "✅ Room Updated to SENT: ${returnedMsg.id}")
+                } catch (error: Exception) {
+                    android.util.Log.e("MessageRepository", "❌ Failed to cache acknowledged message", error)
+                }
+
                 addMessageToFlow(cleanId, returnedMsg)
-                
-                // Update Room (Mark as Synced, Status Sent)
+
                 scope.launch {
                     try {
-                        var entity = conectate.com.data.local.entity.MessageEntity.fromDomain(returnedMsg, isSynced = true)
-                        messageDao.insertMessage(entity) // Should REPLACE the optimistic one due to Primary Key Match
-                        android.util.Log.d("MessageRepository", "✅ Room Updated to SENT: ${returnedMsg.id}")
-
-                        // Update Chat Metadata
-                         var preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
-                        updateChatLastMessageInternal(cleanId, preview, returnedMsg.created_at, returnedMsg.id, userId, token)
-                        
-                    } catch (e: Exception) {
-                        android.util.Log.e("MessageRepository", "❌ Failed to update Room after success", e)
+                        val preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
+                        updateChatLastMessageInternal(
+                            cleanId,
+                            preview,
+                            returnedMsg.created_at,
+                            returnedMsg.id,
+                            userId,
+                            token
+                        )
+                    } catch (error: Exception) {
+                        android.util.Log.e("MessageRepository", "Failed to update chat metadata after send", error)
                     }
                 }
 
@@ -2345,12 +2421,22 @@ class MessageRepository @Inject constructor(
                     "❌ Send FAILED: HTTP ${serverSendResult.statusCode} - $errorBody"
                 )
                 
-                // Update Room to FAILED status
-                scope.launch {
-                    try {
-                        messageDao.updateSyncStatus(id, "failed", false, "send")
-                    } catch(e: Exception) { }
+                if (isRetryableBackendFailure(serverSendResult.statusCode, errorBody)) {
+                    messageDao.updateSyncStatus(id, "sending", false, "send")
+                    runCatching {
+                        operationGuard.audit(
+                            action = GuardedAction.DIRECT_MESSAGE_SEND,
+                            actorId = userId,
+                            scopeId = cleanId,
+                            outcome = GuardOutcome.QUEUED,
+                            attributes = mapOf("message_id" to id, "reason" to "network_unavailable")
+                        )
+                    }
+                    return Result.success(msg)
                 }
+
+                // A server-side validation or permission error remains visible for manual retry.
+                messageDao.updateSyncStatus(id, "failed", false, "send")
 
                 runCatching {
                     operationGuard.audit(
@@ -2373,12 +2459,13 @@ class MessageRepository @Inject constructor(
             }
         } catch (e: Exception) { 
             android.util.Log.e("MessageRepository", "❌❌ EXCEPTION in sendMessage", e)
-             // Update Room to FAILED status
-             scope.launch {
-                try {
-                    messageDao.updateSyncStatus(id, "failed", false, "send")
-                } catch(e2: Exception) { }
+            val pending = queuedMessage
+            if (pending != null && isRetryableNetworkFailure(e.message)) {
+                runCatching { messageDao.updateSyncStatus(id, "sending", false, "send") }
+                return Result.success(pending)
             }
+             // Update Room to FAILED status
+            runCatching { messageDao.updateSyncStatus(id, "failed", false, "send") }
             var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
                 runCatching {
@@ -2410,28 +2497,18 @@ class MessageRepository @Inject constructor(
             if (cleanChatId.isBlank()) {
                 Result.failure(Exception("Chat inválido"))
             } else {
-                var bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
-                    ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
-
-                val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, bytes)
-                var filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
-                var upload = storageService.uploadFile("chat-media", filename, bytes, mimeType)
-                if (upload.isSuccess) {
-                    Result.success(
-                        if (shouldUseUbuntuBackend()) {
-                            UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", filename)).orEmpty()
-                        } else {
-                            "chat-media/$filename"
-                        }
-                    )
-                } else {
-                    Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir multimedia"))
-                }
+                uploadChatMedia(cleanChatId, mediaUri, mediaType).map { it.url }
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    private data class ChatMediaUpload(
+        val url: String,
+        val sizeBytes: Long,
+        val contentType: String
+    )
 
     private data class BackendSendResult(
         val isSuccess: Boolean,
@@ -2595,6 +2672,12 @@ class MessageRepository @Inject constructor(
             }
         } catch (e: Exception) { 
              android.util.Log.e("MessageRepository", "Error updating last message", e)
+        }
+    }
+
+    fun markChatAsReadInBackground(chatId: String) {
+        scope.launch {
+            markChatAsRead(chatId)
         }
     }
 
@@ -4223,6 +4306,196 @@ class MessageRepository @Inject constructor(
             inferredMime = inferredMime
         )
         return resolved.mimeType to resolved.extensionWithDot
+    }
+
+    private suspend fun uploadChatMedia(
+        cleanChatId: String,
+        mediaUri: Uri,
+        mediaType: String
+    ): Result<ChatMediaUpload> = withContext(Dispatchers.IO) {
+        try {
+            val headerBytes = readUriHeaderBytes(mediaUri)
+                ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
+            val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, headerBytes)
+            val filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
+            val sizeBytes = queryUriSizeBytes(mediaUri)
+            val upload = if (sizeBytes > 0L && shouldStreamChatMediaUpload(mimeType, sizeBytes)) {
+                storageService.uploadFileFromUri(
+                    bucketName = "chat-media",
+                    fileName = filename,
+                    sourceUri = mediaUri,
+                    sizeBytes = sizeBytes,
+                    contentType = mimeType,
+                    allowOverwrite = true,
+                    onProgress = {}
+                )
+            } else {
+                val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                    ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
+                storageService.uploadFile("chat-media", filename, bytes, mimeType)
+            }
+
+            if (upload.isFailure) {
+                return@withContext Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir multimedia"))
+            }
+
+            val remoteKey = upload.getOrThrow().Key ?: filename
+            val url = if (shouldUseUbuntuBackend()) {
+                UbuntuStorageUrl.rewrite(storageService.getPublicUrl("chat-media", remoteKey)).orEmpty()
+            } else {
+                "chat-media/$filename"
+            }
+            val uploadedSize = sizeBytes.takeIf { it > 0L } ?: upload.getOrThrow().Size?.toLong() ?: 0L
+            Result.success(ChatMediaUpload(url = url, sizeBytes = uploadedSize, contentType = mimeType))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private fun shouldStreamChatMediaUpload(contentType: String, sizeBytes: Long): Boolean {
+        if (sizeBytes >= 2L * 1024 * 1024) return true
+        val canonical = contentType.substringBefore(";").trim().lowercase()
+        return canonical.startsWith("video/") ||
+            canonical.startsWith("audio/") ||
+            canonical == "application/pdf" ||
+            canonical == "application/zip" ||
+            canonical.startsWith("application/vnd.openxmlformats")
+    }
+
+    private fun readUriHeaderBytes(uri: Uri, maxBytes: Int = 512): ByteArray? {
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buffer = ByteArray(maxBytes)
+            val read = stream.read(buffer)
+            if (read > 0) buffer.copyOf(read) else null
+        }
+    }
+
+    private fun queryUriSizeBytes(uri: Uri): Long {
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0 && cursor.moveToFirst()) {
+                    val value = cursor.getLong(index)
+                    if (value > 0L) return value
+                }
+            }
+        }
+        runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                if (descriptor.length > 0L) return descriptor.length
+            }
+        }
+        return 0L
+    }
+
+    private data class PendingChatMedia(
+        val uri: Uri,
+        val sizeBytes: Long
+    )
+
+    private suspend fun persistPendingChatMedia(
+        sourceUri: Uri,
+        messageId: String,
+        mediaType: String
+    ): Result<PendingChatMedia> = withContext(Dispatchers.IO) {
+        runCatching {
+            val accountId = authService.getCurrentUserId()
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+                ?: error("No hay una cuenta activa")
+            val headerBytes = readUriHeaderBytes(sourceUri) ?: error("No se pudo leer el archivo")
+            val (_, extension) = resolveMediaUploadMeta(mediaType, sourceUri, headerBytes)
+            val directory = File(
+                context.filesDir,
+                "pending-message-media/${safePendingPathPart(accountId)}"
+            ).apply { mkdirs() }
+            val baseName = safePendingPathPart(messageId).ifBlank { UUID.randomUUID().toString() }
+            val finalFile = File(directory, "$baseName$extension")
+            val partialFile = File(directory, "$baseName$extension.part")
+            partialFile.delete()
+
+            val declaredSize = queryUriSizeBytes(sourceUri)
+            require(declaredSize <= 0L || declaredSize <= MAX_PENDING_CHAT_MEDIA_BYTES) {
+                "El archivo supera el límite de 100 MB"
+            }
+            val availableBytes = android.os.StatFs(directory.absolutePath).availableBytes
+            require(declaredSize <= 0L || availableBytes >= declaredSize + MIN_PENDING_MEDIA_FREE_BYTES) {
+                "No hay espacio suficiente para guardar el mensaje"
+            }
+
+            var copied = 0L
+            try {
+                context.contentResolver.openInputStream(sourceUri)?.buffered()?.use { input ->
+                    partialFile.outputStream().buffered().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            copied += read
+                            require(copied <= MAX_PENDING_CHAT_MEDIA_BYTES) {
+                                "El archivo supera el límite de 100 MB"
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                        output.flush()
+                    }
+                } ?: error("No se pudo abrir el archivo")
+                require(copied > 0L) { "El archivo está vacío" }
+                if (!partialFile.renameTo(finalFile)) {
+                    partialFile.copyTo(finalFile, overwrite = true)
+                    partialFile.delete()
+                }
+                PendingChatMedia(Uri.fromFile(finalFile), copied)
+            } catch (error: Exception) {
+                partialFile.delete()
+                finalFile.delete()
+                throw error
+            }
+        }
+    }
+
+    private fun pendingChatMediaUri(value: String?): Uri? {
+        val uri = value?.trim()?.takeIf { it.isNotBlank() }?.let(Uri::parse) ?: return null
+        if (!uri.scheme.equals("file", ignoreCase = true)) return null
+        val path = uri.path ?: return null
+        val root = File(context.filesDir, "pending-message-media").canonicalFile
+        val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return null
+        return if (file.isFile && file.path.startsWith(root.path + File.separator)) Uri.fromFile(file) else null
+    }
+
+    private fun deletePendingChatMedia(uri: Uri) {
+        pendingChatMediaUri(uri.toString())?.path?.let { path -> runCatching { File(path).delete() } }
+    }
+
+    private fun safePendingPathPart(value: String): String = value
+        .trim()
+        .lowercase()
+        .replace(Regex("[^a-z0-9._-]"), "_")
+        .take(100)
+
+    private fun isRetryableNetworkFailure(message: String?): Boolean {
+        val normalized = message?.trim()?.lowercase().orEmpty()
+        if (normalized.isBlank()) return false
+        return transientNetworkRetryCodes.any(normalized::contains) ||
+            normalized.contains("unable to resolve") ||
+            normalized.contains("unknown host") ||
+            normalized.contains("failed to connect") ||
+            normalized.contains("socket") ||
+            normalized.contains("broken pipe") ||
+            normalized.contains("connection reset")
+    }
+
+    private fun isRetryableBackendFailure(statusCode: Int, body: String?): Boolean {
+        val normalized = body?.trim()?.lowercase().orEmpty()
+        val terminalHints = listOf(
+            "http 400", "http 401", "http 403", "http 404",
+            "unauthorized", "forbidden", "not a participant", "blocked",
+            "invalid message", "validation"
+        )
+        if (terminalHints.any(normalized::contains)) return false
+        return statusCode == 0 || statusCode == 408 || statusCode == 425 || statusCode == 429 ||
+            statusCode in 500..599 || isRetryableNetworkFailure(normalized)
     }
 
     private fun buildPreviewForContentType(contentType: String, fallbackContent: String): String {
