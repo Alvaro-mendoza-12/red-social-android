@@ -38,6 +38,7 @@ app/local.properties
 **/build/
 **/captures/
 **/outputs/
+/assets/novvin-promo/*.avi
 *.log
 build*.txt
 last_build_log.txt
