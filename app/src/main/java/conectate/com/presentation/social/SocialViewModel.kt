@@ -10,6 +10,8 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PostMutationEvent
+import conectate.com.data.local.prefs.FeedPreferences
+import conectate.com.data.local.prefs.SocialFeedMode
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +26,7 @@ class SocialViewModel @Inject constructor(
     private val postRepository: PostRepository,
     private val feedRankingEngine: FeedRankingEngine,
     private val feedSignalTracker: FeedSignalTracker,
+    private val feedPreferences: FeedPreferences,
     private val appMetrics: AppMetrics,
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
@@ -60,6 +63,9 @@ class SocialViewModel @Inject constructor(
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts.asStateFlow()
+    val feedMode: StateFlow<SocialFeedMode> = feedPreferences.mode
+    val mutedCreatorIds: StateFlow<Set<String>> = feedPreferences.mutedCreatorIds
+    val mutedTerms: StateFlow<Set<String>> = feedPreferences.mutedTerms
     val activeStreams = liveRepository.activeStreams
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -123,18 +129,33 @@ class SocialViewModel @Inject constructor(
             val startedAt = System.currentTimeMillis()
             _isRefreshing.value = true
             try {
-                postRepository.getGlobalPosts(limit = 60).collect { globalPosts ->
-                    val ranked = rankPosts(globalPosts)
+                val selectedMode = feedMode.value
+                postRepository.getGlobalPosts(
+                    limit = 60,
+                    mode = selectedMode.apiValue
+                ).collect { globalPosts ->
+                    val visiblePosts = applyFeedControls(globalPosts)
+                    val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
+                        rankPosts(visiblePosts)
+                    } else {
+                        visiblePosts.sortedByDescending { it.createdAt }
+                    }
                     _posts.value = ranked
                     _isRefreshing.value = false
                     appMetrics.incrementCounter(
                         metric = "feed_load_success",
-                        attributes = mapOf("count" to ranked.size.toString())
+                        attributes = mapOf(
+                            "count" to ranked.size.toString(),
+                            "mode" to selectedMode.apiValue
+                        )
                     )
                     appMetrics.recordLatency(
                         metric = "feed_load",
                         durationMs = System.currentTimeMillis() - startedAt,
-                        attributes = mapOf("count" to ranked.size.toString())
+                        attributes = mapOf(
+                            "count" to ranked.size.toString(),
+                            "mode" to selectedMode.apiValue
+                        )
                     )
                 }
             } catch (e: Exception) {
@@ -178,6 +199,49 @@ class SocialViewModel @Inject constructor(
 
     fun recordPostImpression(post: Post) {
         feedSignalTracker.recordInteraction(post, FeedInteractionAction.IMPRESSION)
+    }
+
+    fun selectFeedMode(mode: SocialFeedMode) {
+        if (feedMode.value == mode) return
+        feedPreferences.setMode(mode)
+        loadPosts()
+    }
+
+    fun explainPost(post: Post): List<String> = feedRankingEngine.explainPost(
+        post = post,
+        currentUserId = authService.getCurrentUserId(),
+        friendIds = _friends.value.map { it.id }.toSet(),
+        signalSnapshot = feedSignalTracker.snapshot(),
+        interestTerms = profileInterestTerms()
+    )
+
+    fun hideCreator(post: Post) {
+        feedPreferences.muteCreator(post.userId)
+        _posts.value = applyFeedControls(_posts.value)
+    }
+
+    fun muteTopic(term: String) {
+        feedPreferences.muteTerm(term)
+        _posts.value = applyFeedControls(_posts.value)
+    }
+
+    fun unmuteTopic(term: String) {
+        feedPreferences.unmuteTerm(term)
+        loadPosts()
+    }
+
+    fun clearHiddenCreators() {
+        feedPreferences.clearMutedCreators()
+        loadPosts()
+    }
+
+    private fun applyFeedControls(posts: List<Post>): List<Post> {
+        val mutedCreators = feedPreferences.mutedCreatorIds.value
+        val mutedWords = feedPreferences.mutedTerms.value
+        return posts.filter { post ->
+            post.userId.trim().lowercase() !in mutedCreators &&
+                mutedWords.none { word -> post.content.contains(word, ignoreCase = true) }
+        }
     }
 
     fun recordPostOpen(post: Post) {

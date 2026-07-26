@@ -25,6 +25,7 @@ import conectate.com.data.model.Report
 import conectate.com.data.model.VideoReport
 import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminUser
+import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.presentation.components.FullScreenImageDialog
 import coil.compose.AsyncImage
 
@@ -43,6 +44,7 @@ fun AdminPanelScreen(
     val userReports by viewModel.userReports.collectAsState()
     val videoReports by viewModel.videoReports.collectAsState()
     val stats by viewModel.stats.collectAsState()
+    val systemHealth by viewModel.systemHealth.collectAsState()
     val users by viewModel.users.collectAsState()
     val catalog by viewModel.catalog.collectAsState()
     val selectedUser by viewModel.selectedUser.collectAsState()
@@ -242,7 +244,7 @@ fun AdminPanelScreen(
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (selectedTabIndex) {
                     0 -> {
-                        item { AdminSummary(stats) }
+                        item { AdminSummary(stats, systemHealth) }
                     }
                     1 -> {
                         item {
@@ -314,14 +316,103 @@ fun AdminPanelScreen(
 }
 
 @Composable
-private fun AdminSummary(stats: conectate.com.data.localfallback.AdminDashboardStats) {
+private fun AdminSummary(
+    stats: conectate.com.data.localfallback.AdminDashboardStats,
+    systemHealth: SystemHealthResponse?
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SystemHealthPanel(systemHealth)
+        Spacer(Modifier.height(8.dp))
         Text("Estado de moderación", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         AdminMetric("Usuarios", stats.totalUsers, Icons.Default.People)
         AdminMetric("Videos publicados", stats.totalVideos, Icons.Default.VideoLibrary)
         AdminMetric("Cuentas suspendidas", stats.suspendedUsers, Icons.Default.Block)
         AdminMetric("Reportes de usuarios pendientes", stats.pendingUserReports, Icons.Default.Report)
         AdminMetric("Reportes de videos pendientes", stats.pendingVideoReports, Icons.Default.Flag)
+    }
+}
+
+@Composable
+private fun SystemHealthPanel(health: SystemHealthResponse?) {
+    val labels = linkedMapOf(
+        "api" to "API",
+        "database" to "Base de datos",
+        "storage" to "Almacenamiento",
+        "realtime" to "Mensajes en tiempo real",
+        "voice" to "Voz y llamadas",
+        "live" to "Directos",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "Salud de Novvin",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        if (health == null) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "No se pudo comprobar el estado de los servicios. Pulsa actualizar para intentarlo otra vez.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            return@Column
+        }
+
+        val overallColor = if (health.ok) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.error
+        Text(
+            if (health.ok) "Todos los servicios responden correctamente."
+            else "Uno o más servicios necesitan atención.",
+            color = overallColor,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            "Servidor ${health.release.release} · commit ${health.release.commit.take(12)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        labels.forEach { (key, label) ->
+            val component = health.components[key]
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (component?.ok == true) Icons.Default.CheckCircle
+                        else Icons.Default.Error,
+                        contentDescription = null,
+                        tint = if (component?.ok == true) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(label, fontWeight = FontWeight.SemiBold)
+                        if (!component?.message.isNullOrBlank()) {
+                            Text(
+                                component?.message.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        when {
+                            component == null -> "Sin datos"
+                            component.ok -> "${component.latencyMs} ms"
+                            component.status == "turn_not_configured" -> "Sin TURN"
+                            component.status == "timeout" -> "Sin respuesta"
+                            else -> "No disponible"
+                        },
+                        color = if (component?.ok == true) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
     }
 }
 

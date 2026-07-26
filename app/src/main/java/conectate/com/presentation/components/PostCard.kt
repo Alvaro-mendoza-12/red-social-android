@@ -57,6 +57,7 @@ fun PostCard(
     onUrlClick: (String) -> Unit = {},
     onPostClick: () -> Unit = {},
     onSendToFriend: () -> Unit = {},
+    onWhyThisPost: () -> Unit = {},
     onReportClick: () -> Unit = {},
     showOwnerActions: Boolean = true,
     showReportAction: Boolean = false
@@ -254,6 +255,16 @@ fun PostCard(
                                     colors = MenuDefaults.itemColors(textColor = Color.Red)
                                 )
                             } else {
+                                DropdownMenuItem(
+                                    text = { Text("¿Por qué veo esto?") },
+                                    onClick = {
+                                        onWhyThisPost()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Info, contentDescription = null)
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Reportar") },
                                     onClick = {

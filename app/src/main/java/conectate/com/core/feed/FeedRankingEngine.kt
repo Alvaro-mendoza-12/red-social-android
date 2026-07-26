@@ -14,6 +14,14 @@ interface FeedRankingEngine {
         signalSnapshot: FeedSignalSnapshot = FeedSignalSnapshot.EMPTY,
         interestTerms: Set<String> = emptySet()
     ): List<Post>
+
+    fun explainPost(
+        post: Post,
+        currentUserId: String?,
+        friendIds: Set<String> = emptySet(),
+        signalSnapshot: FeedSignalSnapshot = FeedSignalSnapshot.EMPTY,
+        interestTerms: Set<String> = emptySet()
+    ): List<String>
 }
 
 @Singleton
@@ -76,6 +84,48 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
         return diversifyByAuthor(sorted)
     }
 
+    override fun explainPost(
+        post: Post,
+        currentUserId: String?,
+        friendIds: Set<String>,
+        signalSnapshot: FeedSignalSnapshot,
+        interestTerms: Set<String>
+    ): List<String> {
+        val reasons = mutableListOf<String>()
+        when {
+            currentUserId != null && post.userId == currentUserId ->
+                reasons += "Es una publicación tuya."
+            post.userId in friendIds ->
+                reasons += "La publicó una de tus conexiones."
+        }
+
+        val normalizedContent = post.content.lowercase()
+        interestTerms.firstOrNull { term ->
+            val normalized = term.trim().lowercase()
+            normalized.length >= 2 && normalizedContent.contains(normalized)
+        }?.let { reasons += "Coincide con uno de tus intereses: $it." }
+
+        if ((signalSnapshot.authorAffinity[post.userId] ?: 0.0) >= 0.8) {
+            reasons += "Has interactuado con contenido de esta cuenta."
+        }
+        val mediaType = inferMediaType(post)
+        if ((signalSnapshot.mediaAffinity[mediaType] ?: 0.0) >= 0.6) {
+            reasons += "Sueles interactuar con publicaciones de tipo ${mediaLabel(mediaType)}."
+        }
+        val engagement = post.likeCount + (post.commentCount * 2) + (post.shareCount * 3)
+        if (engagement >= 25) {
+            reasons += "Está generando conversación en Novvin."
+        }
+        val ageHours = ageHours(post.createdAt, System.currentTimeMillis())
+        if (ageHours <= 12.0) {
+            reasons += "Es una publicación reciente."
+        }
+        if (reasons.isEmpty()) {
+            reasons += "Forma parte de contenido público que puedes descubrir."
+        }
+        return reasons.distinct().take(3)
+    }
+
     private fun ageHours(createdAt: String, nowMs: Long): Double {
         val createdMs = parseToEpochMs(createdAt) ?: return 72.0
         val diff = (nowMs - createdMs).coerceAtLeast(0L)
@@ -103,6 +153,14 @@ class DefaultFeedRankingEngine @Inject constructor() : FeedRankingEngine {
                 normalized.contains(".png") || normalized.contains(".webp") -> "image"
             else -> "media"
         }
+    }
+
+    private fun mediaLabel(type: String): String = when (type) {
+        "video" -> "vídeo"
+        "audio" -> "audio"
+        "image" -> "imagen"
+        "text" -> "texto"
+        else -> "multimedia"
     }
 
     private fun interestScore(post: Post, interestTerms: Set<String>): Double {

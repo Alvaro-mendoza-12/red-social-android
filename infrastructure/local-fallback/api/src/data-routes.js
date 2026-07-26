@@ -1749,6 +1749,31 @@ async function localFollows(pool, limit = 10_000) {
   return rows.map(normalizeImportedRow)
 }
 
+function normalizeFeedMode(value) {
+  const mode = String(value || '').trim().toLowerCase()
+  return ['discover', 'following'].includes(mode) ? mode : 'all'
+}
+
+function feedPostVisible(row, {
+  identityIds = new Set(),
+  followingIds = new Set(),
+  mode = 'all',
+  requestedUserId = '',
+} = {}) {
+  const ownerId = postOwnerId(row)
+  const isMine = Boolean(ownerId && identityIds.has(ownerId))
+  const isFollowing = Boolean(ownerId && followingIds.has(ownerId))
+  const visibility = textOf(row, ['visibility'], 'public').toLowerCase()
+  if (requestedUserId && ownerId !== requestedUserId) return false
+  if (!isMine && visibility === 'private') return false
+  if (!isMine && visibility === 'followers' && !isFollowing) return false
+  if (!isMine && visibility !== 'public' && visibility !== '' && visibility !== 'followers') return false
+  if (requestedUserId) return true
+  if (mode === 'following') return isMine || isFollowing
+  if (mode === 'discover') return isMine || !isFollowing
+  return true
+}
+
 async function localReports(pool, limit = 10_000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
   const { rows } = await pool.query(
@@ -5128,7 +5153,18 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 60, 200))
       const offset = Math.max(0, Number(req.query.offset) || 0)
       const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
-      const [importedProfiles, localProfiles, importedPosts, fallbackPosts, likes, reactions, comments] = await Promise.all([
+      const mode = normalizeFeedMode(req.query.mode)
+      const [
+        importedProfiles,
+        localProfiles,
+        importedPosts,
+        fallbackPosts,
+        likes,
+        reactions,
+        comments,
+        importedFollows,
+        fallbackFollows,
+      ] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
         fallbackUserProfileRows(pool, 5000),
         importedRows(pool, 'posts', 5000),
@@ -5136,14 +5172,20 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         importedRows(pool, 'post_likes', 10_000),
         importedRows(pool, 'post_reactions', 10_000),
         importedRows(pool, 'post_comments', 10_000),
+        importedRows(pool, 'follows', 20_000),
+        localFollows(pool, 20_000),
       ])
-      const posts = [...importedPosts, ...fallbackPosts].filter((row) => {
-        const ownerId = postOwnerId(row)
-        const isMine = ownerId && identity.ids.has(ownerId)
-        const visibility = textOf(row, ['visibility'], 'public').toLowerCase()
-        if (requestedUserId && ownerId !== requestedUserId) return false
-        return isMine || visibility === 'public' || visibility === ''
-      })
+      const followingIds = cleanSet(
+        [...importedFollows, ...fallbackFollows]
+          .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
+          .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
+      )
+      const posts = [...importedPosts, ...fallbackPosts].filter((row) => feedPostVisible(row, {
+        identityIds: identity.ids,
+        followingIds,
+        mode,
+        requestedUserId,
+      }))
       const postIds = posts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const [fallbackLikes, fallbackComments] = await Promise.all([
         localPostReactions(pool, postIds, 10_000),
@@ -9834,7 +9876,9 @@ module.exports = {
   currentUserOwnsStorageObjects,
   currentUserMayReferenceMessageMedia,
   ensureLocalDataTables,
+  feedPostVisible,
   invalidateImportedDataCache,
+  normalizeFeedMode,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   parsePublicStorageObjectUrl,

@@ -5,8 +5,10 @@ const {
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
   currentUserOwnsStorageObjects,
+  feedPostVisible,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
+  normalizeFeedMode,
   parsePublicStorageObjectUrl,
   profileClearFields,
   profileForViewer,
@@ -25,6 +27,44 @@ const localIdentity = userIdentity({
 })
 assert.strictEqual(localIdentity.localUserId, '11111111-1111-4111-8111-111111111111')
 assert.strictEqual(localIdentity.preferredUserId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+assert.strictEqual(normalizeFeedMode('FOLLOWING'), 'following')
+assert.strictEqual(normalizeFeedMode('unknown'), 'all')
+assert.strictEqual(
+  feedPostVisible(
+    { user_id: 'followed-user', visibility: 'followers' },
+    {
+      identityIds: new Set(['me']),
+      followingIds: new Set(['followed-user']),
+      mode: 'following',
+    },
+  ),
+  true,
+  'followers-only posts must be visible in the Following feed',
+)
+assert.strictEqual(
+  feedPostVisible(
+    { user_id: 'followed-user', visibility: 'public' },
+    {
+      identityIds: new Set(['me']),
+      followingIds: new Set(['followed-user']),
+      mode: 'discover',
+    },
+  ),
+  false,
+  'Discover must not duplicate creators already present in Following',
+)
+assert.strictEqual(
+  feedPostVisible(
+    { user_id: 'stranger', visibility: 'private' },
+    {
+      identityIds: new Set(['me']),
+      followingIds: new Set(),
+      mode: 'discover',
+    },
+  ),
+  false,
+  'private posts must never leak into Discover',
+)
 
 const removedAvatarProfile = buildProfileForUser(
   { id: 'owner-1', email: 'owner@example.test', display_name: 'Owner' },

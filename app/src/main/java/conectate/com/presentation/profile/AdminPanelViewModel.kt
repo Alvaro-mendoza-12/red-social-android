@@ -6,6 +6,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.AdminDashboardStats
 import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminUser
+import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,6 +81,9 @@ class AdminPanelViewModel @Inject constructor(
     private val _stats = MutableStateFlow(AdminDashboardStats())
     val stats: StateFlow<AdminDashboardStats> = _stats.asStateFlow()
 
+    private val _systemHealth = MutableStateFlow<SystemHealthResponse?>(null)
+    val systemHealth: StateFlow<SystemHealthResponse?> = _systemHealth.asStateFlow()
+
     private val _users = MutableStateFlow<List<AdminUser>>(emptyList())
     val users: StateFlow<List<AdminUser>> = _users.asStateFlow()
 
@@ -122,6 +126,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
                     loadReports(token)
+                    loadSystemHealth()
                 } else {
                     _isAdmin.value = false
                     _errorMessage.value = adminError(
@@ -290,6 +295,15 @@ class AdminPanelViewModel @Inject constructor(
 
     fun updateUserVerification(userId: String, verified: Boolean) {
         updateUserDecorations(userId, verified = verified)
+    }
+
+    private suspend fun loadSystemHealth() {
+        localFallbackApiClient.loadSystemHealth()
+            .onSuccess { _systemHealth.value = it }
+            .onFailure {
+                Log.w(TAG, "No se pudo cargar el estado de servicios", it)
+                _systemHealth.value = null
+            }
     }
 
     fun updateUserBadge(userId: String, badgeId: String, enabled: Boolean) {

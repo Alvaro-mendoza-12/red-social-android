@@ -1,0 +1,84 @@
+# Implementación del benchmark funcional de Novvin
+
+Fecha: 26 de julio de 2026  
+Documento analizado: `Benchmark_funcional_y_hoja_de_ruta_Novvin.pdf` (21 páginas)
+
+## Criterio aplicado
+
+El documento se trató como una hoja de ruta de producto, no como una orden para
+activar treinta funciones simultáneamente. Cada función se implementará con
+contrato, estados de error, pruebas y despliegue verificable. No se eliminó
+ninguna funcionalidad existente: cuando dos capacidades se solapen se
+integrarán en una sola experiencia conservando sus datos y permisos.
+
+Antes de comenzar se creó y verificó el respaldo local
+`backups/pre-roadmap-20260726-2b2c81d` y el respaldo del servidor
+`/home/alvaro/conectate-backups/20260726T191221Z`.
+
+## Incremento implementado
+
+### Fase 0 — estabilidad y trazabilidad
+
+- **B26, pruebas de contrato:** la CI valida sintaxis y contratos del backend,
+  salud del sistema, feed, administración y seguridad. Los endpoints nuevos
+  tienen pruebas independientes.
+- **B27, identidad de versión:** Android muestra versión, código, commit y
+  entorno. Cada solicitud envía esos mismos datos junto con un identificador de
+  petición para correlacionar errores entre aplicación y servidor.
+- **B29, panel de salud:** el servidor expone el estado independiente de API,
+  base de datos, almacenamiento, tiempo real, voz y directos. El panel de
+  administración lo presenta con estados y mensajes comprensibles.
+- El despliegue registra el commit activo en el servidor y `/ready` publica las
+  capacidades compatibles. Los errores HTTP incluyen un `requestId` sin
+  exponer tokens ni contenido privado.
+
+### Fase 1 — control del feed
+
+- **B01, Seguidos/Descubrir:** hay dos vistas independientes y la elección
+  predeterminada persiste en el dispositivo. `Seguidos` es cronológico y
+  `Descubrir` excluye la repetición de cuentas ya seguidas. El servidor conserva
+  el modo heredado para pantallas de perfil y clientes anteriores.
+- **B02, “¿Por qué veo esto?”:** una publicación recomendada muestra entre una
+  y tres razones basadas en conexión, intereses, afinidad, tipo de contenido,
+  conversación o actualidad. Desde el mismo panel se puede pedir ver menos de
+  una cuenta o silenciar un tema.
+- **B03, temas bloqueados:** palabras, temas y cuentas ocultas se guardan de
+  forma persistente. La persona puede revisar y revertir sus preferencias desde
+  el selector del feed.
+
+## Estado del backlog B01–B30
+
+| ID | Estado | Decisión |
+|---|---|---|
+| B01 | Implementado en este incremento | Dos feeds, preferencia persistente y compatibilidad API |
+| B02 | Implementado en este incremento | Motivos comprensibles y controles inmediatos |
+| B03 | Implementado en este incremento | Temas/cuentas silenciados y reversibles |
+| B04 | Próximo bloque | Colecciones, etiquetas, notas y búsqueda sincronizadas |
+| B05 | Planificado | Resumen configurable sin sustituir notificaciones urgentes |
+| B06 | Próximo bloque | Unificar motivos existentes con regla y evidencia visible |
+| B07 | Próximo bloque | Apelación, estados y auditoría con revisión humana |
+| B08–B13 | Fase 2 | Ampliar comunidades existentes con roles, canales y eventos |
+| B14 | Fase 3 | Añadir modo escenario sin reemplazar las salas casuales |
+| B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
+| B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
+| B18–B20 | Fase 3 | Moderación en vivo, repeticiones y remix con atribución |
+| B21–B25 | Fase 4 | IA aislada, opcional, auditable y con borrado |
+| B26 | Implementado en este incremento | Contratos en CI |
+| B27 | Implementado en este incremento | Versión/commit/entorno visibles |
+| B28 | Parcial | CI y artefactos internos listos; activación porcentual requiere Play Console |
+| B29 | Implementado en este incremento | Salud API/DB/storage/realtime/voz/live |
+| B30 | Planificado | Exportación de perfil, posts y futuras colecciones |
+
+## Verificación de este incremento
+
+- Backend: comprobación sintáctica y pruebas de salud, feed, administración y
+  seguridad.
+- Android: compilación Kotlin, pruebas unitarias, lint, Debug y Release.
+- Servidor: despliegue con respaldo previo y comprobación pública de `/ready` y
+  `/v1/system/health`.
+- Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
+  física entre dos teléfonos y redes distintas antes de declararse totalmente
+  verificados.
+
+Los resultados finales de compilación y servidor se completan en este documento
+al cerrar el incremento.

@@ -38,12 +38,9 @@ jobs:
 
       - name: Prepare CI secrets file
         shell: bash
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          echo "SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}" > secrets.properties
-          echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}" >> secrets.properties
+          echo "FALLBACK_API_URL=https://api.example.invalid" > secrets.properties
+          echo "SIGNALING_URL=https://voice.example.invalid" >> secrets.properties
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew

@@ -101,6 +101,32 @@ class FeedRankingEngineTest {
         assertEquals("matching", ranked.first().id)
     }
 
+    @Test
+    fun `explanation exposes understandable ranking reasons`() {
+        val matching = post(
+            id = "matching",
+            userId = "u2",
+            createdAt = Instant.now().minusSeconds(120),
+            likeCount = 30,
+            content = "Consejos de fotografía nocturna"
+        )
+
+        val reasons = engine.explainPost(
+            post = matching,
+            currentUserId = "viewer",
+            signalSnapshot = FeedSignalSnapshot(
+                authorAffinity = mapOf("u2" to 2.0),
+                mediaAffinity = emptyMap(),
+                seenPostIds = emptySet()
+            ),
+            interestTerms = setOf("fotografía")
+        )
+
+        assertEquals(true, reasons.any { it.contains("fotografía") })
+        assertEquals(true, reasons.any { it.contains("interactuado") })
+        assertEquals(true, reasons.size <= 3)
+    }
+
     private fun post(
         id: String,
         userId: String,

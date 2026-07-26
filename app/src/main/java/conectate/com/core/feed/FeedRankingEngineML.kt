@@ -11,6 +11,7 @@ import kotlin.math.ln
 class FeedRankingEngineML @Inject constructor(
     private val crashlytics: FirebaseCrashlytics
 ) : FeedRankingEngine {
+    private val explanationEngine = DefaultFeedRankingEngine()
 
     override fun rankPosts(
         posts: List<Post>,
@@ -46,6 +47,20 @@ class FeedRankingEngineML @Inject constructor(
             posts
         }
     }
+
+    override fun explainPost(
+        post: Post,
+        currentUserId: String?,
+        friendIds: Set<String>,
+        signalSnapshot: FeedSignalSnapshot,
+        interestTerms: Set<String>
+    ): List<String> = explanationEngine.explainPost(
+        post = post,
+        currentUserId = currentUserId,
+        friendIds = friendIds,
+        signalSnapshot = signalSnapshot,
+        interestTerms = interestTerms
+    )
 
     private fun computeScore(
         post: Post,

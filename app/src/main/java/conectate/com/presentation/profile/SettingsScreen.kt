@@ -1,5 +1,6 @@
 package conectate.com.presentation.profile
 
+import conectate.com.BuildConfig
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
@@ -661,6 +662,28 @@ fun SettingsScreen(
 
                 Divider()
             }
+
+            SettingsSection(title = "Información de la versión") {
+                Text(
+                    "Novvin ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Text(
+                    "Compilación ${BuildConfig.BUILD_COMMIT.take(12)} · " +
+                        if (BuildConfig.BUILD_ENVIRONMENT == "production") "Producción" else "Desarrollo",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Text(
+                    "Incluye esta información cuando contactes a soporte; permite identificar exactamente qué versión está instalada.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Divider()
 
             // Section: General
             SettingsSection(title = "General") {

@@ -106,9 +106,15 @@ class PostRepository @Inject constructor(
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
 
-    fun getGlobalPosts(offset: Int = 0, limit: Int = 20): Flow<List<Post>> = flow {
+    fun getGlobalPosts(
+        offset: Int = 0,
+        limit: Int = 20,
+        mode: String = "discover"
+    ): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
-        val cacheKey = "posts:global:offset=$offset:limit=$limit"
+        val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
+            ?: "discover"
+        val cacheKey = "posts:$normalizedMode:offset=$offset:limit=$limit"
         
         try {
             if (supabaseConfig.isLocalFallbackPrimary) {
@@ -121,7 +127,12 @@ class PostRepository @Inject constructor(
                     emit(emptyList())
                     return@flow
                 }
-                val result = localFallbackApiClient.loadFeed(accessToken, limit, offset)
+                val result = localFallbackApiClient.loadFeed(
+                    accessToken = accessToken,
+                    limit = limit,
+                    offset = offset,
+                    mode = normalizedMode
+                )
                 if (result.isFailure) {
                     val error = result.exceptionOrNull()
                     android.util.Log.e("PostRepository", "Error fetching Ubuntu feed", error)

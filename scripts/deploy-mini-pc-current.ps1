@@ -20,6 +20,8 @@ foreach ($path in @($fallbackSource, $signalingSource, $auditScript, $KeyPath)) 
 
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $release = "conectate-mini-pc-$stamp"
+$commit = (& git -C $repoRoot rev-parse --short=12 HEAD 2>$null).Trim()
+if ([string]::IsNullOrWhiteSpace($commit)) { $commit = "unknown" }
 $target = "$User@$HostName"
 $ssh = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=accept-new")
 $scp = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=accept-new")
@@ -85,6 +87,7 @@ rm -f /tmp/local-fallback-source.tar.gz /tmp/signaling-source.tar.gz
 chmod +x ~/audit-mini-pc-drift.sh ~/conectate-local-fallback/scripts/*.sh
 cat > ~/conectate-local-fallback/.conectate-release <<'EOF'
 release=$release
+commit=$commit
 deployed_at_utc=$((Get-Date).ToUniversalTime().ToString("o"))
 source=deploy-mini-pc-current.ps1
 host=$HostName

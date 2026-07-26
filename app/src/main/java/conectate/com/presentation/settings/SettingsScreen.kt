@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import conectate.com.BuildConfig
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 
@@ -211,7 +212,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Info,
                     title = "Acerca de",
-                    subtitle = "Versión 1.0.0, políticas",
+                    subtitle = "Versión ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}), políticas",
                     onClick = { navController.navigate(Screen.AboutSettings.route) }
                 )
             }

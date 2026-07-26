@@ -12,6 +12,7 @@ const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
 const { canonicalStorageResponseMiddleware } = require('./storage-url-canonicalization')
+const { collectSystemHealth, loadReleaseMetadata } = require('./system-health')
 const {
   boundedInteger,
   createRateLimitMiddleware,
@@ -45,6 +46,9 @@ const supabaseAdminKey = legacySupabaseImportEnabled
   : ''
 const adminSyncToken = String(process.env.ADMIN_SYNC_TOKEN || '').trim()
 const passwordResetDelivery = String(process.env.PASSWORD_RESET_DELIVERY || 'console').trim().toLowerCase()
+const storageRoot = process.env.STORAGE_ROOT || require('path').join(process.cwd(), 'storage-data')
+const realtimeInternalUrl = String(process.env.REALTIME_INTERNAL_URL || '').trim()
+const signalingInternalUrl = String(process.env.SIGNALING_INTERNAL_URL || '').trim()
 const passwordResetTokenTtlMinutes = Math.max(
   10,
   Math.min(Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 30), 24 * 60),
@@ -86,6 +90,15 @@ app.set('trust proxy', (address) => isTrustedProxyAddress(address))
 app.use(helmet())
 app.use(cors({ origin: corsOrigin === '*' ? true : corsOrigin }))
 app.use(express.json({ limit: '1mb' }))
+app.use((req, res, next) => {
+  const supplied = String(req.headers['x-request-id'] || '').trim()
+  const requestId = /^[a-zA-Z0-9._:-]{8,80}$/.test(supplied)
+    ? supplied
+    : crypto.randomUUID()
+  req.requestId = requestId
+  res.set('x-request-id', requestId)
+  next()
+})
 app.use(canonicalStorageResponseMiddleware)
 
 const authIpKey = (req) => `ip:${requestIpAddress(req)}`
@@ -966,19 +979,38 @@ app.get('/health', (_req, res) => {
 app.get('/ready', async (_req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT NOW() AS now')
+    const release = await loadReleaseMetadata()
     res.json({
       ok: true,
       service: serviceName,
       version,
+      release,
       capabilities: [
         'admin_users_v1',
         'hard_delete_suspended_users_v1',
         'image_variants_v1',
         'profile_ranking_v1',
+        'system_health_v1',
+        'feed_modes_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),
     })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/v1/system/health', async (_req, res, next) => {
+  try {
+    res.json(await collectSystemHealth({
+      pool,
+      storageRoot,
+      realtimeUrl: realtimeInternalUrl,
+      signalingUrl: signalingInternalUrl,
+      service: serviceName,
+      version,
+    }))
   } catch (error) {
     next(error)
   }
@@ -1949,6 +1981,7 @@ app.use((req, res) => {
 
 app.use((error, _req, res, _next) => {
   console.error('[api] request failed', {
+    requestId: _req.requestId,
     code: String(error?.code || 'INTERNAL_ERROR'),
     message: String(error?.message || 'Unexpected request error').slice(0, 240),
   })
@@ -1957,7 +1990,7 @@ app.use((error, _req, res, _next) => {
   const publicCode = safeStatus < 500
     ? String(error?.message || 'REQUEST_REJECTED').replace(/[^A-Z0-9_]/gi, '_').slice(0, 80)
     : 'INTERNAL_ERROR'
-  res.status(safeStatus).json({ error: publicCode })
+  res.status(safeStatus).json({ error: publicCode, requestId: _req.requestId })
 })
 
 if (process.env.ROUTE_CHECK_ONLY === '1') {

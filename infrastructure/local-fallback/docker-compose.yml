@@ -32,6 +32,7 @@ services:
       STORAGE_ROOT: /data/storage
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
+      SIGNALING_INTERNAL_URL: http://signaling:3003
       AI_INTERNAL_URL: http://ai-chatbot:3010
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-3000}
       AI_CHAT_REQUEST_TIMEOUT_MS: ${AI_CHAT_REQUEST_TIMEOUT_MS:-3000}
@@ -40,6 +41,7 @@ services:
     volumes:
       - ./imports:/imports:ro
       - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - ./.conectate-release:/run/novvin-release:ro
       - conectate-fallback-storage:/data/storage
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -20,6 +20,18 @@ if (keystorePropertiesFile.exists()) {
 fun Properties.getNonBlank(key: String): String? = getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
 fun String.asBuildConfigString(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+val buildCommit = providers.environmentVariable("NOVVIN_BUILD_COMMIT").orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: runCatching {
+        val process = ProcessBuilder("git", "rev-parse", "--short=12", "HEAD")
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        val value = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        if (process.waitFor() == 0 && value.matches(Regex("[0-9a-fA-F]{7,40}"))) value else "unknown"
+    }.getOrDefault("unknown")
+
 val releaseStoreFile = keystoreProperties.getNonBlank("storeFile")?.let { rootProject.file(it) }
 val hasReleaseSigning =
     keystorePropertiesFile.exists() &&
@@ -39,6 +51,7 @@ android {
         targetSdk = 35
         versionCode = 47
         versionName = "3.0.7"
+        buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
@@ -123,12 +136,14 @@ android {
             isMinifyEnabled = false
             isDebuggable = true
             versionNameSuffix = "-debug"
+            buildConfigField("String", "BUILD_ENVIRONMENT", "\"development\"")
         }
 
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
+            buildConfigField("String", "BUILD_ENVIRONMENT", "\"production\"")
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

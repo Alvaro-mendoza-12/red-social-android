@@ -1,5 +1,6 @@
 package conectate.com.data.localfallback
 
+import conectate.com.BuildConfig
 import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.GroupMessage
@@ -60,6 +61,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -390,6 +392,33 @@ data class LocalFallbackFeedResponse(
 data class LocalFallbackPostDetailResponse(
     val post: Post,
     val comments: List<Comment> = emptyList()
+)
+
+@Serializable
+data class SystemHealthComponent(
+    val ok: Boolean = false,
+    val status: String = "unknown",
+    val latencyMs: Long = 0,
+    val message: String? = null
+)
+
+@Serializable
+data class SystemReleaseInfo(
+    val release: String = "unknown",
+    val commit: String = "unknown",
+    val deployedAtUtc: String? = null,
+    val environment: String = "unknown"
+)
+
+@Serializable
+data class SystemHealthResponse(
+    val ok: Boolean = false,
+    val status: String = "unknown",
+    val service: String = "",
+    val version: String = "",
+    val generatedAt: String = "",
+    val release: SystemReleaseInfo = SystemReleaseInfo(),
+    val components: Map<String, SystemHealthComponent> = emptyMap()
 )
 
 data class LocalFallbackPostReactionsResponse(
@@ -1736,13 +1765,17 @@ class LocalFallbackApiClient @Inject constructor(
         accessToken: String,
         limit: Int = 60,
         offset: Int = 0,
-        userId: String? = null
+        userId: String? = null,
+        mode: String? = null
     ): Result<LocalFallbackFeedResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val query = buildString {
             append("$baseUrl/v1/data/feed?limit=$limit&offset=$offset")
             userId?.trim()?.takeIf { it.isNotBlank() }?.let {
                 append("&userId=${urlEncode(it)}")
+            }
+            mode?.trim()?.lowercase()?.takeIf { it in setOf("discover", "following") }?.let {
+                append("&mode=${urlEncode(it)}")
             }
         }
         return requestJson<LocalFallbackRawFeedResponse>(query, accessToken)
@@ -3777,6 +3810,11 @@ class LocalFallbackApiClient @Inject constructor(
     private fun io.ktor.client.request.HttpRequestBuilder.localHeaders(accessToken: String? = null) {
         headers {
             append(UbuntuStorageUrl.NGROK_SKIP_BROWSER_WARNING, "1")
+            append("X-Novvin-App-Version", BuildConfig.VERSION_NAME)
+            append("X-Novvin-Version-Code", BuildConfig.VERSION_CODE.toString())
+            append("X-Novvin-Build-Commit", BuildConfig.BUILD_COMMIT)
+            append("X-Novvin-Environment", BuildConfig.BUILD_ENVIRONMENT)
+            append("X-Request-ID", UUID.randomUUID().toString())
             accessToken?.trim()?.takeIf { it.isNotBlank() }?.let {
                 append(HttpHeaders.Authorization, "Bearer $it")
             }
@@ -4667,6 +4705,20 @@ class LocalFallbackApiClient @Inject constructor(
                 )
             }
         )
+    }
+
+    suspend fun loadSystemHealth(): Result<SystemHealthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/system/health") {
+                localHeaders()
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                throw toException(response, decodeError(body))
+            }
+            json.decodeFromString<SystemHealthResponse>(body)
+        }
     }
 
     suspend fun adminGetCatalog(accessToken: String): Result<AdminCatalog> {

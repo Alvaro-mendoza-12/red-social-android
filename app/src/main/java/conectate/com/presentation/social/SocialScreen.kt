@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.Post
+import conectate.com.data.local.prefs.SocialFeedMode
 import conectate.com.presentation.common.ConnectivityViewModel
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.components.PostCard
@@ -132,6 +133,7 @@ fun SocialScreen(
     sharedUri: String? = null
 ) {
     val posts by viewModel.posts.collectAsState()
+    val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
@@ -146,6 +148,8 @@ fun SocialScreen(
     val reactionUsers by viewModel.reactionUsers.collectAsState()
     val reactionsLoading by viewModel.reactionsLoading.collectAsState()
     val reactionsError by viewModel.reactionsError.collectAsState()
+    val mutedCreatorIds by viewModel.mutedCreatorIds.collectAsState()
+    val mutedTerms by viewModel.mutedTerms.collectAsState()
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
@@ -177,6 +181,10 @@ fun SocialScreen(
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var reactionPost by remember { mutableStateOf<Post?>(null) }
+    var explanationPost by remember { mutableStateOf<Post?>(null) }
+    var showFeedPreferences by remember { mutableStateOf(false) }
+    var topicPost by remember { mutableStateOf<Post?>(null) }
+    var topicText by remember { mutableStateOf("") }
     var challengesUnlocked by remember { mutableStateOf(false) }
     var showDrawingCanvas by remember { mutableStateOf(false) }
     var showTextChallengeEntry by remember { mutableStateOf(false) }
@@ -239,7 +247,7 @@ fun SocialScreen(
         snapshotFlow {
             socialListState.layoutInfo.visibleItemsInfo
                 .mapNotNull { it.key as? String }
-                .filterNot { it == "active-lives" }
+                .filterNot { it == "active-lives" || it == "feed-modes" }
                 .toSet()
         }
             .distinctUntilChanged()
@@ -381,6 +389,126 @@ fun SocialScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    explanationPost?.let { selectedPost ->
+        val reasons = remember(selectedPost, posts) { viewModel.explainPost(selectedPost) }
+        ModalBottomSheet(onDismissRequest = { explanationPost = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("¿Por qué ves esta publicación?", style = MaterialTheme.typography.titleLarge)
+                reasons.forEach { reason ->
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text("•", modifier = Modifier.padding(end = 8.dp))
+                        Text(reason, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                FilledTonalButton(
+                    onClick = {
+                        viewModel.hideCreator(selectedPost)
+                        explanationPost = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Ver menos de ${selectedPost.userName}")
+                }
+                OutlinedButton(
+                    onClick = {
+                        topicPost = selectedPost
+                        topicText = Regex("""#[\p{L}\p{N}_-]+""")
+                            .find(selectedPost.content)
+                            ?.value
+                            ?.removePrefix("#")
+                            .orEmpty()
+                        explanationPost = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Silenciar una palabra o tema")
+                }
+                Text(
+                    "Puedes restaurar estas preferencias desde el botón de ajustes junto a Descubrir y Seguidos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (topicPost != null) {
+        AlertDialog(
+            onDismissRequest = { topicPost = null },
+            title = { Text("Silenciar palabra o tema") },
+            text = {
+                OutlinedTextField(
+                    value = topicText,
+                    onValueChange = { topicText = it.take(60) },
+                    label = { Text("Palabra o tema") },
+                    supportingText = { Text("No se mostrarán publicaciones que contengan este texto.") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = topicText.trim().length >= 2,
+                    onClick = {
+                        viewModel.muteTopic(topicText)
+                        topicPost = null
+                        topicText = ""
+                    }
+                ) { Text("Silenciar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { topicPost = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showFeedPreferences) {
+        ModalBottomSheet(onDismissRequest = { showFeedPreferences = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Preferencias del feed", style = MaterialTheme.typography.titleLarge)
+                Text("Palabras y temas silenciados", fontWeight = FontWeight.SemiBold)
+                if (mutedTerms.isEmpty()) {
+                    Text("No has silenciado temas.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    mutedTerms.sorted().forEach { term ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(term, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { viewModel.unmuteTopic(term) }) {
+                                Text("Mostrar")
+                            }
+                        }
+                    }
+                }
+                if (mutedCreatorIds.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { viewModel.clearHiddenCreators() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Volver a mostrar cuentas ocultas (${mutedCreatorIds.size})")
+                    }
+                }
+                TextButton(
+                    onClick = { showFeedPreferences = false },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("Cerrar") }
             }
         }
     }
@@ -1177,11 +1305,30 @@ fun SocialScreen(
                     when (pageIndex) {
                         0 -> {
                             if (posts.isEmpty() && activeStreams.isEmpty() && !isRefreshing) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    if (isConnected) {
-                                        Text("No hay publicaciones recientes", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    } else {
-                                        Column(
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    SocialFeedModeSelector(
+                                        selected = feedMode,
+                                        onSelected = { mode ->
+                                            viewModel.selectFeedMode(mode)
+                                            coroutineScope.launch { socialListState.scrollToItem(0) }
+                                        },
+                                        onOpenSettings = { showFeedPreferences = true }
+                                    )
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isConnected) {
+                                            Text(
+                                                if (feedMode == SocialFeedMode.FOLLOWING)
+                                                    "Sigue personas para ver sus publicaciones aquí."
+                                                else "No hay publicaciones recientes para descubrir.",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(horizontal = 32.dp)
+                                            )
+                                        } else {
+                                            Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             verticalArrangement = Arrangement.spacedBy(12.dp),
                                             modifier = Modifier.padding(horizontal = 32.dp)
@@ -1196,6 +1343,7 @@ fun SocialScreen(
                                                 connectivityViewModel.retrySync("social_empty_retry")
                                                 viewModel.loadPosts()
                                             }) { Text("Reintentar") }
+                                            }
                                         }
                                     }
                                 }
@@ -1206,6 +1354,16 @@ fun SocialScreen(
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    item(key = "feed-modes") {
+                                        SocialFeedModeSelector(
+                                            selected = feedMode,
+                                            onSelected = { mode ->
+                                                viewModel.selectFeedMode(mode)
+                                                coroutineScope.launch { socialListState.scrollToItem(0) }
+                                            },
+                                            onOpenSettings = { showFeedPreferences = true }
+                                        )
+                                    }
                                     if (activeStreams.isNotEmpty()) {
                                         item(key = "active-lives") {
                                             conectate.com.presentation.live.LiveStreamsCarousel(
@@ -1240,6 +1398,7 @@ fun SocialScreen(
                                                 showInternalShareDialog = true
                                             },
                                             onReportClick = { postToReport = post },
+                                            onWhyThisPost = { explanationPost = post },
                                             showReportAction = true,
                                             isOwner = post.userId == viewModel.currentUserId,
                                             onDeleteClick = { viewModel.deletePost(post.id) },
@@ -1411,6 +1570,43 @@ fun SocialScreen(
                 navController.navigate(route)
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SocialFeedModeSelector(
+    selected: SocialFeedMode,
+    onSelected: (SocialFeedMode) -> Unit,
+    onOpenSettings: () -> Unit = {}
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = selected == SocialFeedMode.DISCOVER,
+            onClick = { onSelected(SocialFeedMode.DISCOVER) },
+            label = { Text("Descubrir") },
+            leadingIcon = if (selected == SocialFeedMode.DISCOVER) {
+                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            } else null,
+            modifier = Modifier.weight(1f)
+        )
+        FilterChip(
+            selected = selected == SocialFeedMode.FOLLOWING,
+            onClick = { onSelected(SocialFeedMode.FOLLOWING) },
+            label = { Text("Seguidos") },
+            leadingIcon = if (selected == SocialFeedMode.FOLLOWING) {
+                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            } else null,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = onOpenSettings) {
+            Icon(Icons.Default.Settings, contentDescription = "Preferencias del feed")
+        }
     }
 }
 @Composable
