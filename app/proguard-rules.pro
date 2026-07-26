@@ -64,6 +64,10 @@
 -keep class * implements org.webrtc.** { *; }
 -keepclassmembers class org.webrtc.** { *; }
 -keepclassmembers enum org.webrtc.** { *; }
+# WebRTC's native library loads JNI Zero bootstrap classes by their original
+# names. R8 cannot infer those native references and otherwise removes JniInit.
+-keep class org.jni_zero.** { *; }
+-keepnames class org.jni_zero.**
 -keepclassmembers class * {
     native <methods>;
 }
