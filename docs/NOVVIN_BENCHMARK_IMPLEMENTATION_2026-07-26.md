@@ -72,13 +72,21 @@ Antes de comenzar se creó y verificó el respaldo local
 ## Verificación de este incremento
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
-  seguridad.
-- Android: compilación Kotlin, pruebas unitarias, lint, Debug y Release.
-- Servidor: despliegue con respaldo previo y comprobación pública de `/ready` y
-  `/v1/system/health`.
+  seguridad, todas aprobadas.
+- Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin y
+  Android Lint aprobados.
+- Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
+  `1DA0E1FAE24EF4C1D74C65B78A5CC8A5185071349873AD968691EF3108F8FBC8`.
+- Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
+  SHA-256
+  `86839157C2918E5B8E488237F4006BCBCD824739F569CA9C51D63A31061437C7`.
+  Continúa sin firma porque la clave oficial de Play Store no está disponible
+  en este entorno.
+- Servidor: despliegue `conectate-mini-pc-20260726T203100Z`, commit
+  `31fc1e643095`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260726T203107Z`.
+- La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
+  para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
-  verificados.
-
-Los resultados finales de compilación y servidor se completan en este documento
-al cerrar el incremento.
+  verificados. No había ningún dispositivo visible por ADB durante este cierre.
