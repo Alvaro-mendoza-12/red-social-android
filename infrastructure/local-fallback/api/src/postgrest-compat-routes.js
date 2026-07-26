@@ -3970,6 +3970,8 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_post_comment_reactions WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_post_comments WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_post_reactions WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_saved_posts WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_saved_collections WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_shares WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_follows WHERE lower(follower_id) = ANY($1::text[]) OR lower(following_id) = ANY($1::text[])`,
       `DELETE FROM fallback_reports WHERE lower(reporter_id) = ANY($1::text[]) OR lower(reported_user_id) = ANY($1::text[])`,

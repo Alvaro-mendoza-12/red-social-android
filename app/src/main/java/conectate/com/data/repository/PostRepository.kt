@@ -9,6 +9,8 @@ import conectate.com.core.moderation.ModerationVerdict
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.cache.UpstashCacheService
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.SavedCollection
+import conectate.com.data.localfallback.SavedLibraryResponse
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Post
 import conectate.com.data.model.PostReactionUser
@@ -105,6 +107,41 @@ class PostRepository @Inject constructor(
         "FIRE"
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
+
+    suspend fun getSavedLibrary(query: String = ""): Result<SavedLibraryResponse> {
+        val accessToken = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para ver tus guardados."))
+        return localFallbackApiClient.loadSavedLibrary(accessToken, query)
+    }
+
+    suspend fun createSavedCollection(name: String): Result<SavedCollection> {
+        val accessToken = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para crear una colección."))
+        return localFallbackApiClient.createSavedCollection(accessToken, name)
+    }
+
+    suspend fun savePostToCollection(
+        postId: String,
+        collectionId: String,
+        tags: List<String>,
+        note: String
+    ): Result<Unit> {
+        val accessToken = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para guardar publicaciones."))
+        return localFallbackApiClient.savePostToCollection(
+            accessToken = accessToken,
+            collectionId = collectionId,
+            postId = postId,
+            tags = tags,
+            note = note
+        )
+    }
+
+    suspend fun removeSavedPost(postId: String, collectionId: String): Result<Unit> {
+        val accessToken = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para editar tus guardados."))
+        return localFallbackApiClient.removeSavedPost(accessToken, collectionId, postId)
+    }
 
     fun getGlobalPosts(
         offset: Int = 0,

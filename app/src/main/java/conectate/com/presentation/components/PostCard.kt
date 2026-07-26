@@ -58,6 +58,7 @@ fun PostCard(
     onPostClick: () -> Unit = {},
     onSendToFriend: () -> Unit = {},
     onWhyThisPost: () -> Unit = {},
+    onSaveClick: () -> Unit = {},
     onReportClick: () -> Unit = {},
     showOwnerActions: Boolean = true,
     showReportAction: Boolean = false
@@ -280,6 +281,16 @@ fun PostCard(
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text("Guardar en colección") },
+                                onClick = {
+                                    onSaveClick()
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.BookmarkBorder, contentDescription = null)
+                                }
+                            )
                         }
                     }
                 }

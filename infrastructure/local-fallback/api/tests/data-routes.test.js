@@ -9,6 +9,8 @@ const {
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   normalizeFeedMode,
+  normalizeSavedCollectionName,
+  normalizeSavedTags,
   parsePublicStorageObjectUrl,
   profileClearFields,
   profileForViewer,
@@ -29,6 +31,11 @@ assert.strictEqual(localIdentity.localUserId, '11111111-1111-4111-8111-111111111
 assert.strictEqual(localIdentity.preferredUserId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 assert.strictEqual(normalizeFeedMode('FOLLOWING'), 'following')
 assert.strictEqual(normalizeFeedMode('unknown'), 'all')
+assert.strictEqual(normalizeSavedCollectionName('  Ciencia   y tecnología  '), 'Ciencia y tecnología')
+assert.deepStrictEqual(
+  normalizeSavedTags([' Ciencia ', 'ciencia', 'Android, WebRTC', 'x']),
+  ['ciencia', 'android', 'webrtc'],
+)
 assert.strictEqual(
   feedPostVisible(
     { user_id: 'followed-user', visibility: 'followers' },

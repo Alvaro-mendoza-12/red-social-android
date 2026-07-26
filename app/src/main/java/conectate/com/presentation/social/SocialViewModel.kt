@@ -12,6 +12,7 @@ import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PostMutationEvent
 import conectate.com.data.local.prefs.FeedPreferences
 import conectate.com.data.local.prefs.SocialFeedMode
+import conectate.com.data.localfallback.SavedLibraryResponse
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,12 @@ class SocialViewModel @Inject constructor(
     val reactionsLoading: StateFlow<Boolean> = _reactionsLoading.asStateFlow()
     private val _reactionsError = MutableStateFlow<String?>(null)
     val reactionsError: StateFlow<String?> = _reactionsError.asStateFlow()
+    private val _savedLibrary = MutableStateFlow(SavedLibraryResponse())
+    val savedLibrary: StateFlow<SavedLibraryResponse> = _savedLibrary.asStateFlow()
+    private val _savedLibraryLoading = MutableStateFlow(false)
+    val savedLibraryLoading: StateFlow<Boolean> = _savedLibraryLoading.asStateFlow()
+    private val _savedLibraryMessage = MutableStateFlow<String?>(null)
+    val savedLibraryMessage: StateFlow<String?> = _savedLibraryMessage.asStateFlow()
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
@@ -233,6 +240,89 @@ class SocialViewModel @Inject constructor(
     fun clearHiddenCreators() {
         feedPreferences.clearMutedCreators()
         loadPosts()
+    }
+
+    fun clearSavedLibraryMessage() {
+        _savedLibraryMessage.value = null
+    }
+
+    fun loadSavedLibrary(query: String = "") {
+        viewModelScope.launch {
+            _savedLibraryLoading.value = true
+            postRepository.getSavedLibrary(query)
+                .onSuccess {
+                    _savedLibrary.value = it
+                    _savedLibraryMessage.value = null
+                }
+                .onFailure {
+                    _savedLibraryMessage.value =
+                        it.toUserFacingMessage("No se pudieron cargar tus guardados.")
+                }
+            _savedLibraryLoading.value = false
+        }
+    }
+
+    fun createSavedCollection(name: String) {
+        val normalized = name.trim()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            _savedLibraryLoading.value = true
+            postRepository.createSavedCollection(normalized)
+                .onSuccess {
+                    _savedLibraryMessage.value = "Colección creada."
+                    loadSavedLibrary()
+                }
+                .onFailure {
+                    _savedLibraryMessage.value =
+                        it.toUserFacingMessage("No se pudo crear la colección.")
+                }
+            _savedLibraryLoading.value = false
+        }
+    }
+
+    fun savePost(
+        post: Post,
+        collectionId: String,
+        tags: String,
+        note: String,
+        onSaved: () -> Unit = {}
+    ) {
+        if (collectionId.isBlank()) return
+        val normalizedTags = tags.split(',')
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+            .distinct()
+            .take(12)
+        viewModelScope.launch {
+            _savedLibraryLoading.value = true
+            postRepository.savePostToCollection(post.id, collectionId, normalizedTags, note.trim())
+                .onSuccess {
+                    _savedLibraryMessage.value = "Publicación guardada."
+                    loadSavedLibrary()
+                    onSaved()
+                }
+                .onFailure {
+                    _savedLibraryMessage.value =
+                        it.toUserFacingMessage("No se pudo guardar la publicación.")
+                }
+            _savedLibraryLoading.value = false
+        }
+    }
+
+    fun removeSavedPost(collectionId: String, postId: String) {
+        viewModelScope.launch {
+            _savedLibraryLoading.value = true
+            postRepository.removeSavedPost(postId, collectionId)
+                .onSuccess {
+                    _savedLibraryMessage.value = "Se quitó de la colección."
+                    loadSavedLibrary()
+                }
+                .onFailure {
+                    _savedLibraryMessage.value =
+                        it.toUserFacingMessage("No se pudo quitar el guardado.")
+                }
+            _savedLibraryLoading.value = false
+        }
     }
 
     private fun applyFeedControls(posts: List<Post>): List<Post> {

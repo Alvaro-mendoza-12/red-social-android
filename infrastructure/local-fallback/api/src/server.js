@@ -992,6 +992,7 @@ app.get('/ready', async (_req, res, next) => {
         'profile_ranking_v1',
         'system_health_v1',
         'feed_modes_v1',
+        'saved_collections_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),

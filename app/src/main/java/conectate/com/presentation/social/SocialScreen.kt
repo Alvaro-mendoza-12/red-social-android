@@ -47,6 +47,12 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,6 +156,9 @@ fun SocialScreen(
     val reactionsError by viewModel.reactionsError.collectAsState()
     val mutedCreatorIds by viewModel.mutedCreatorIds.collectAsState()
     val mutedTerms by viewModel.mutedTerms.collectAsState()
+    val savedLibrary by viewModel.savedLibrary.collectAsState()
+    val savedLibraryLoading by viewModel.savedLibraryLoading.collectAsState()
+    val savedLibraryMessage by viewModel.savedLibraryMessage.collectAsState()
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
@@ -185,6 +194,13 @@ fun SocialScreen(
     var showFeedPreferences by remember { mutableStateOf(false) }
     var topicPost by remember { mutableStateOf<Post?>(null) }
     var topicText by remember { mutableStateOf("") }
+    var postToSave by remember { mutableStateOf<Post?>(null) }
+    var selectedSavedCollectionId by remember { mutableStateOf("") }
+    var savedTags by remember { mutableStateOf("") }
+    var savedNote by remember { mutableStateOf("") }
+    var newCollectionName by remember { mutableStateOf("") }
+    var showSavedLibrary by remember { mutableStateOf(false) }
+    var savedSearch by remember { mutableStateOf("") }
     var challengesUnlocked by remember { mutableStateOf(false) }
     var showDrawingCanvas by remember { mutableStateOf(false) }
     var showTextChallengeEntry by remember { mutableStateOf(false) }
@@ -240,6 +256,13 @@ fun SocialScreen(
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage == 2) {
             challengeViewModel.loadActiveChallenge()
+        }
+    }
+
+    LaunchedEffect(showSavedLibrary, savedSearch) {
+        if (showSavedLibrary) {
+            delay(300)
+            viewModel.loadSavedLibrary(savedSearch)
         }
     }
 
@@ -505,8 +528,259 @@ fun SocialScreen(
                         Text("Volver a mostrar cuentas ocultas (${mutedCreatorIds.size})")
                     }
                 }
+                FilledTonalButton(
+                    onClick = {
+                        showFeedPreferences = false
+                        showSavedLibrary = true
+                        savedSearch = ""
+                        viewModel.clearSavedLibraryMessage()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Bookmarks, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Biblioteca de guardados")
+                }
                 TextButton(
                     onClick = { showFeedPreferences = false },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("Cerrar") }
+            }
+        }
+    }
+
+    postToSave?.let { selectedPost ->
+        LaunchedEffect(selectedPost.id) {
+            selectedSavedCollectionId = ""
+            savedTags = ""
+            savedNote = ""
+            newCollectionName = ""
+            viewModel.clearSavedLibraryMessage()
+            viewModel.loadSavedLibrary()
+        }
+        LaunchedEffect(savedLibrary.collections, selectedPost.id) {
+            if (selectedSavedCollectionId.isBlank()) {
+                selectedSavedCollectionId = savedLibrary.collections
+                    .firstOrNull { it.isDefault }
+                    ?.id
+                    ?: savedLibrary.collections.firstOrNull()?.id.orEmpty()
+            }
+        }
+        ModalBottomSheet(onDismissRequest = { postToSave = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Guardar publicación", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    selectedPost.content.take(120).ifBlank { "Publicación multimedia" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+                if (savedLibraryLoading && savedLibrary.collections.isEmpty()) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    Text("Colección", fontWeight = FontWeight.SemiBold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(savedLibrary.collections, key = { it.id }) { collection ->
+                            FilterChip(
+                                selected = selectedSavedCollectionId == collection.id,
+                                onClick = { selectedSavedCollectionId = collection.id },
+                                label = { Text("${collection.name} (${collection.itemCount})") },
+                                leadingIcon = if (selectedSavedCollectionId == collection.id) {
+                                    { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                                } else null
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newCollectionName,
+                        onValueChange = { newCollectionName = it.take(60) },
+                        label = { Text("Nueva colección") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilledTonalButton(
+                        enabled = newCollectionName.trim().isNotEmpty() && !savedLibraryLoading,
+                        onClick = {
+                            viewModel.createSavedCollection(newCollectionName)
+                            newCollectionName = ""
+                        }
+                    ) {
+                        Text("Crear")
+                    }
+                }
+                OutlinedTextField(
+                    value = savedTags,
+                    onValueChange = { savedTags = it.take(180) },
+                    label = { Text("Etiquetas opcionales") },
+                    supportingText = { Text("Sepáralas con comas: trabajo, recetas, ideas") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = savedNote,
+                    onValueChange = { savedNote = it.take(500) },
+                    label = { Text("Nota privada opcional") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                savedLibraryMessage?.let { message ->
+                    Text(
+                        message,
+                        color = if (message.contains("no se", ignoreCase = true))
+                            MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Button(
+                    enabled = selectedSavedCollectionId.isNotBlank() && !savedLibraryLoading,
+                    onClick = {
+                        viewModel.savePost(
+                            post = selectedPost,
+                            collectionId = selectedSavedCollectionId,
+                            tags = savedTags,
+                            note = savedNote,
+                            onSaved = { postToSave = null }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (savedLibraryLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.BookmarkAdd, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Guardar")
+                    }
+                }
+            }
+        }
+    }
+
+    if (showSavedLibrary) {
+        ModalBottomSheet(onDismissRequest = { showSavedLibrary = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Biblioteca de guardados", style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(
+                    value = savedSearch,
+                    onValueChange = { savedSearch = it.take(100) },
+                    label = { Text("Buscar por autor, texto, etiqueta o nota") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(savedLibrary.collections, key = { it.id }) { collection ->
+                        AssistChip(
+                            onClick = {
+                                savedSearch = collection.name
+                            },
+                            label = { Text("${collection.name} · ${collection.itemCount}") },
+                            leadingIcon = { Icon(Icons.Default.Folder, null, Modifier.size(18.dp)) }
+                        )
+                    }
+                }
+                when {
+                    savedLibraryLoading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    savedLibrary.items.isEmpty() -> Text(
+                        if (savedSearch.isBlank()) "Todavía no has guardado publicaciones."
+                        else "No encontramos guardados que coincidan con la búsqueda.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 20.dp)
+                    )
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(savedLibrary.items, key = { it.id }) { item ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = item.post.available) {
+                                        showSavedLibrary = false
+                                        navController.navigate(Screen.PostDetail.createRoute(item.postId))
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (item.post.available) Icons.Default.Bookmark
+                                        else Icons.Default.HideImage,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(item.post.authorName, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            item.post.content.take(140).ifBlank {
+                                                if (item.post.available) "Publicación multimedia"
+                                                else "Esta publicación fue eliminada o dejó de estar disponible."
+                                            },
+                                            maxLines = 2,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        if (item.tags.isNotEmpty()) {
+                                            Text(
+                                                item.tags.joinToString(" · ") { "#$it" },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        if (item.note.isNotBlank()) {
+                                            Text(
+                                                "Nota: ${item.note}",
+                                                maxLines = 2,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.removeSavedPost(item.collectionId, item.postId)
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.DeleteOutline, "Quitar de la colección")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                savedLibraryMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(
+                    onClick = { showSavedLibrary = false },
                     modifier = Modifier.align(Alignment.End)
                 ) { Text("Cerrar") }
             }
@@ -1399,6 +1673,7 @@ fun SocialScreen(
                                             },
                                             onReportClick = { postToReport = post },
                                             onWhyThisPost = { explanationPost = post },
+                                            onSaveClick = { postToSave = post },
                                             showReportAction = true,
                                             isOwner = post.userId == viewModel.currentUserId,
                                             onDeleteClick = { viewModel.deletePost(post.id) },

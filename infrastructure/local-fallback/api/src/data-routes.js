@@ -1754,6 +1754,18 @@ function normalizeFeedMode(value) {
   return ['discover', 'following'].includes(mode) ? mode : 'all'
 }
 
+function normalizeSavedCollectionName(value) {
+  return cleanText(value, 60).replace(/\s+/g, ' ')
+}
+
+function normalizeSavedTags(value) {
+  return Array.from(new Set(asArray(value)
+    .flatMap((entry) => String(entry || '').split(','))
+    .map((entry) => cleanText(entry, 30).toLowerCase())
+    .filter((entry) => entry.length >= 2)))
+    .slice(0, 12)
+}
+
 function feedPostVisible(row, {
   identityIds = new Set(),
   followingIds = new Set(),
@@ -1772,6 +1784,39 @@ function feedPostVisible(row, {
   if (mode === 'following') return isMine || isFollowing
   if (mode === 'discover') return isMine || !isFollowing
   return true
+}
+
+async function ensureDefaultSavedCollection(pool, identity) {
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_saved_collections(user_id, name, is_default)
+     VALUES ($1, 'Guardados', TRUE)
+     ON CONFLICT DO NOTHING
+     RETURNING id::text, user_id, name, is_default, created_at, updated_at`,
+    [identity.displayUserId],
+  )
+  if (rows[0]) return rows[0]
+  const existing = await pool.query(
+    `SELECT id::text, user_id, name, is_default, created_at, updated_at
+     FROM fallback_saved_collections
+     WHERE lower(user_id) = ANY($1::text[]) AND is_default = TRUE
+     ORDER BY created_at
+     LIMIT 1`,
+    [identity.values],
+  )
+  return existing.rows[0] || null
+}
+
+async function ownedSavedCollection(pool, identity, collectionId) {
+  const normalizedId = normalizeId(collectionId)
+  if (!normalizedId) return null
+  const { rows } = await pool.query(
+    `SELECT id::text, user_id, name, is_default, created_at, updated_at
+     FROM fallback_saved_collections
+     WHERE lower(id::text) = $1 AND lower(user_id) = ANY($2::text[])
+     LIMIT 1`,
+    [normalizedId, identity.values],
+  )
+  return rows[0] || null
 }
 
 async function localReports(pool, limit = 10_000) {
@@ -3476,6 +3521,46 @@ async function ensureLocalDataTables(pool) {
      ON fallback_posts(created_at DESC)`,
   )
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_saved_collections (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_saved_collections_user_name
+     ON fallback_saved_collections(lower(user_id), lower(name))`,
+  )
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_saved_collections_default
+     ON fallback_saved_collections(lower(user_id))
+     WHERE is_default = TRUE`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_saved_posts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      collection_id UUID NOT NULL REFERENCES fallback_saved_collections(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      note TEXT NOT NULL DEFAULT '',
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (collection_id, post_id)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_saved_posts_user
+     ON fallback_saved_posts(lower(user_id), saved_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_saved_posts_post
+     ON fallback_saved_posts(lower(post_id))`,
+  )
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_post_comments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       post_id TEXT NOT NULL,
@@ -5144,6 +5229,286 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
     }
   })
 
+  app.get('/v1/data/saved-collections', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await ensureDefaultSavedCollection(pool, identity)
+      const search = cleanText(req.query.q, 100).toLowerCase()
+      const [
+        collectionsResult,
+        itemsResult,
+        importedProfiles,
+        localProfiles,
+        importedPosts,
+        fallbackPosts,
+        importedFollows,
+        fallbackFollows,
+      ] =
+        await Promise.all([
+          pool.query(
+            `SELECT id::text, user_id, name, is_default, created_at, updated_at
+             FROM fallback_saved_collections
+             WHERE lower(user_id) = ANY($1::text[])
+             ORDER BY is_default DESC, updated_at DESC, lower(name)`,
+            [identity.values],
+          ),
+          pool.query(
+            `SELECT
+                p.id::text,
+                p.collection_id::text,
+                p.post_id,
+                p.tags,
+                p.note,
+                p.saved_at,
+                p.updated_at
+             FROM fallback_saved_posts p
+             JOIN fallback_saved_collections c ON c.id = p.collection_id
+             WHERE lower(c.user_id) = ANY($1::text[])
+             ORDER BY p.saved_at DESC
+             LIMIT 1000`,
+            [identity.values],
+          ),
+          importedRows(pool, 'profiles', 5000),
+          fallbackUserProfileRows(pool, 5000),
+          importedRows(pool, 'posts', 10_000),
+          localPosts(pool, 10_000),
+          importedRows(pool, 'follows', 20_000),
+          localFollows(pool, 20_000),
+        ])
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const followingIds = cleanSet(
+        [...importedFollows, ...fallbackFollows]
+          .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
+          .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
+      )
+      const postsById = new Map(
+        [...importedPosts, ...fallbackPosts]
+          .map((post) => [normalizeId(textOf(post, ['id'], '')), post])
+          .filter(([id]) => Boolean(id)),
+      )
+      const allItems = itemsResult.rows.map((row) => {
+        const postId = normalizeId(row.post_id)
+        const candidatePost = postsById.get(postId)
+        const post = candidatePost && feedPostVisible(candidatePost, {
+          identityIds: identity.ids,
+          followingIds,
+          mode: 'all',
+        })
+          ? candidatePost
+          : null
+        const authorId = post ? postOwnerId(post) : ''
+        const profile = authorId ? profilesById.get(authorId) : null
+        const mediaUrls = post ? normalizePostMediaUrls(post) : []
+        return {
+          id: textOf(row, ['id'], ''),
+          collection_id: textOf(row, ['collection_id'], ''),
+          post_id: postId,
+          tags: asArray(row.tags).map((tag) => String(tag || '')).filter(Boolean),
+          note: textOf(row, ['note'], ''),
+          saved_at: textOf(row, ['saved_at'], ''),
+          updated_at: textOf(row, ['updated_at'], ''),
+          post: post
+            ? {
+              id: postId,
+              author_id: authorId,
+              author_name: textOf(post, ['user_name', 'display_name'], '') || profileName(profile, 'Usuario'),
+              content: textOf(post, ['content', 'caption', 'description'], ''),
+              media_type: textOf(post, ['media_type', 'content_type'], ''),
+              thumbnail_url: mediaUrls[0] || textOf(post, ['media_url', 'thumbnail_url'], ''),
+              created_at: textOf(post, ['created_at', 'updated_at'], ''),
+              available: true,
+            }
+            : {
+              id: postId,
+              author_id: '',
+              author_name: 'Publicación no disponible',
+              content: '',
+              media_type: '',
+              thumbnail_url: '',
+              created_at: '',
+              available: false,
+            },
+        }
+      })
+      const collectionNameById = new Map(
+        collectionsResult.rows.map((collection) => [normalizeId(collection.id), String(collection.name || '')]),
+      )
+      const items = search
+        ? allItems.filter((item) => [
+          collectionNameById.get(normalizeId(item.collection_id)) || '',
+          item.note,
+          item.tags.join(' '),
+          item.post.author_name,
+          item.post.content,
+        ].join(' ').toLowerCase().includes(search))
+        : allItems
+      const counts = new Map()
+      allItems.forEach((item) => {
+        const collectionId = normalizeId(item.collection_id)
+        counts.set(collectionId, (counts.get(collectionId) || 0) + 1)
+      })
+      const collections = collectionsResult.rows.map((row) => ({
+        ...row,
+        item_count: counts.get(normalizeId(row.id)) || 0,
+      }))
+      res.json({ collections, items })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/saved-collections', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const name = normalizeSavedCollectionName(req.body?.name)
+      if (!name) return res.status(400).json({ error: 'COLLECTION_NAME_REQUIRED' })
+      const count = await pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM fallback_saved_collections
+         WHERE lower(user_id) = ANY($1::text[])`,
+        [identity.values],
+      )
+      if (Number(count.rows[0]?.count || 0) >= 50) {
+        return res.status(409).json({ error: 'COLLECTION_LIMIT_REACHED' })
+      }
+      const duplicate = await pool.query(
+        `SELECT 1 FROM fallback_saved_collections
+         WHERE lower(user_id) = ANY($1::text[]) AND lower(name) = lower($2)
+         LIMIT 1`,
+        [identity.values, name],
+      )
+      if (duplicate.rows.length > 0) {
+        return res.status(409).json({ error: 'COLLECTION_NAME_EXISTS' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_saved_collections(user_id, name, is_default)
+         VALUES ($1, $2, FALSE)
+         RETURNING id::text, user_id, name, is_default, created_at, updated_at`,
+        [identity.displayUserId, name],
+      )
+      res.status(201).json({ collection: { ...rows[0], item_count: 0 } })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/saved-collections/:collectionId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const collection = await ownedSavedCollection(pool, identity, req.params.collectionId)
+      if (!collection) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
+      const name = normalizeSavedCollectionName(req.body?.name)
+      if (!name) return res.status(400).json({ error: 'COLLECTION_NAME_REQUIRED' })
+      const duplicate = await pool.query(
+        `SELECT 1 FROM fallback_saved_collections
+         WHERE lower(user_id) = ANY($1::text[])
+           AND lower(name) = lower($2)
+           AND lower(id::text) <> $3
+         LIMIT 1`,
+        [identity.values, name, normalizeId(collection.id)],
+      )
+      if (duplicate.rows.length > 0) {
+        return res.status(409).json({ error: 'COLLECTION_NAME_EXISTS' })
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_saved_collections
+         SET name = $1, updated_at = NOW()
+         WHERE id = $2::uuid
+         RETURNING id::text, user_id, name, is_default, created_at, updated_at`,
+        [name, collection.id],
+      )
+      res.json({ collection: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/saved-collections/:collectionId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const collection = await ownedSavedCollection(pool, identity, req.params.collectionId)
+      if (!collection) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
+      if (collection.is_default) {
+        return res.status(409).json({ error: 'DEFAULT_COLLECTION_CANNOT_BE_DELETED' })
+      }
+      await pool.query('DELETE FROM fallback_saved_collections WHERE id = $1::uuid', [collection.id])
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/saved-collections/:collectionId/items', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const collection = await ownedSavedCollection(pool, identity, req.params.collectionId)
+      if (!collection) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
+      const postId = normalizeId(req.body?.postId || req.body?.post_id)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+      const followRows = await combinedFollows(pool)
+      const followingIds = cleanSet(
+        followRows
+          .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
+          .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
+      )
+      if (!feedPostVisible(existing.post, {
+        identityIds: identity.ids,
+        followingIds,
+        mode: 'all',
+      })) {
+        return res.status(404).json({ error: 'POST_NOT_FOUND' })
+      }
+      const tags = normalizeSavedTags(req.body?.tags)
+      const note = cleanText(req.body?.note, 500)
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_saved_posts(collection_id, user_id, post_id, tags, note)
+         VALUES ($1::uuid, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (collection_id, post_id)
+         DO UPDATE SET tags = EXCLUDED.tags, note = EXCLUDED.note, updated_at = NOW()
+         RETURNING id::text, collection_id::text, post_id, tags, note, saved_at, updated_at`,
+        [collection.id, identity.displayUserId, postId, JSON.stringify(tags), note],
+      )
+      await pool.query(
+        'UPDATE fallback_saved_collections SET updated_at = NOW() WHERE id = $1::uuid',
+        [collection.id],
+      )
+      res.status(201).json({ item: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/saved-collections/:collectionId/items/:postId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const collection = await ownedSavedCollection(pool, identity, req.params.collectionId)
+      if (!collection) return res.status(404).json({ error: 'COLLECTION_NOT_FOUND' })
+      const postId = normalizeId(req.params.postId)
+      const result = await pool.query(
+        `DELETE FROM fallback_saved_posts
+         WHERE collection_id = $1::uuid AND lower(post_id) = $2`,
+        [collection.id, postId],
+      )
+      res.json({ ok: true, deleted: result.rowCount })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/feed', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -5418,6 +5783,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       }
 
       if (existing.post.local_only) {
+        await pool.query('DELETE FROM fallback_saved_posts WHERE lower(post_id) = $1', [postId])
         await pool.query('DELETE FROM fallback_post_reactions WHERE lower(post_id) = $1', [postId])
         await pool.query('DELETE FROM fallback_post_comments WHERE lower(post_id) = $1', [postId])
         await pool.query('DELETE FROM fallback_shares WHERE content_type = $2 AND lower(post_id) = $1', [postId, 'post'])
@@ -5428,6 +5794,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         )
         if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
       } else {
+        await pool.query('DELETE FROM fallback_saved_posts WHERE lower(post_id) = $1', [postId])
         const relatedTables = [
           ['post_comments', 'post_id'],
           ['post_likes', 'post_id'],
@@ -9879,6 +10246,8 @@ module.exports = {
   feedPostVisible,
   invalidateImportedDataCache,
   normalizeFeedMode,
+  normalizeSavedCollectionName,
+  normalizeSavedTags,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   parsePublicStorageObjectUrl,

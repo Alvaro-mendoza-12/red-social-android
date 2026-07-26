@@ -395,6 +395,45 @@ data class LocalFallbackPostDetailResponse(
 )
 
 @Serializable
+data class SavedCollection(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("is_default") val isDefault: Boolean = false,
+    @SerialName("item_count") val itemCount: Int = 0,
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("updated_at") val updatedAt: String = ""
+)
+
+@Serializable
+data class SavedPostSummary(
+    val id: String = "",
+    @SerialName("author_id") val authorId: String = "",
+    @SerialName("author_name") val authorName: String = "Usuario",
+    val content: String = "",
+    @SerialName("media_type") val mediaType: String = "",
+    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+    val available: Boolean = true
+)
+
+@Serializable
+data class SavedPostItem(
+    val id: String = "",
+    @SerialName("collection_id") val collectionId: String = "",
+    @SerialName("post_id") val postId: String = "",
+    val tags: List<String> = emptyList(),
+    val note: String = "",
+    @SerialName("saved_at") val savedAt: String = "",
+    val post: SavedPostSummary = SavedPostSummary()
+)
+
+@Serializable
+data class SavedLibraryResponse(
+    val collections: List<SavedCollection> = emptyList(),
+    val items: List<SavedPostItem> = emptyList()
+)
+
+@Serializable
 data class SystemHealthComponent(
     val ok: Boolean = false,
     val status: String = "unknown",
@@ -800,6 +839,23 @@ private data class LocalFallbackRawPostDetailResponse(
 @Serializable
 private data class LocalFallbackRawPostResponse(
     val post: JsonObject? = null
+)
+
+@Serializable
+private data class SavedCollectionResponse(
+    val collection: SavedCollection
+)
+
+@Serializable
+private data class SavedCollectionRequest(
+    val name: String
+)
+
+@Serializable
+private data class SavePostRequest(
+    val postId: String,
+    val tags: List<String> = emptyList(),
+    val note: String = ""
 )
 
 @Serializable
@@ -1966,6 +2022,73 @@ class LocalFallbackApiClient @Inject constructor(
             }
         } catch (error: Exception) {
             Result.failure(error)
+        }
+    }
+
+    suspend fun loadSavedLibrary(
+        accessToken: String,
+        query: String = ""
+    ): Result<SavedLibraryResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val url = buildString {
+            append("$baseUrl/v1/data/saved-collections")
+            query.trim().takeIf(String::isNotBlank)?.let { append("?q=${urlEncode(it)}") }
+        }
+        return requestJson(url, accessToken)
+    }
+
+    suspend fun createSavedCollection(
+        accessToken: String,
+        name: String
+    ): Result<SavedCollection> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/saved-collections") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(SavedCollectionRequest(name.trim()))
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+            json.decodeFromString<SavedCollectionResponse>(body).collection
+        }
+    }
+
+    suspend fun savePostToCollection(
+        accessToken: String,
+        collectionId: String,
+        postId: String,
+        tags: List<String> = emptyList(),
+        note: String = ""
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/saved-collections/${urlEncode(collectionId)}/items"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(SavePostRequest(postId = postId, tags = tags, note = note))
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+        }
+    }
+
+    suspend fun removeSavedPost(
+        accessToken: String,
+        collectionId: String,
+        postId: String
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.delete(
+                "$baseUrl/v1/data/saved-collections/${urlEncode(collectionId)}/items/${urlEncode(postId)}"
+            ) {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
         }
     }
 

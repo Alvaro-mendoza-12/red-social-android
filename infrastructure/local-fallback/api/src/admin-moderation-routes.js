@@ -47,6 +47,8 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_reports',
   'fallback_room_messages',
   'fallback_scheduled_message_jobs',
+  'fallback_saved_collections',
+  'fallback_saved_posts',
   'fallback_shares',
   'fallback_storage_objects',
   'fallback_user_blocks',
@@ -674,6 +676,8 @@ async function purgeFallbackUserData(client, localUserId, identityValues, relati
   const r = relations
   const counts = {}
   const steps = [
+    ['saved_posts', `DELETE FROM fallback_saved_posts WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
+    ['saved_collections', `DELETE FROM fallback_saved_collections WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
     ['post_comment_reactions', `DELETE FROM fallback_post_comment_reactions WHERE lower(user_id) = ANY($1::text[]) OR lower(comment_id) = ANY($2::text[])`, [identityValues, r.postCommentIds]],
     ['post_comments', `DELETE FROM fallback_post_comments WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
     ['post_reactions', `DELETE FROM fallback_post_reactions WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
