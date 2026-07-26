@@ -61,6 +61,25 @@ Antes de comenzar se creó y verificó el respaldo local
   eliminación completa de una cuenta también borra colecciones e items para no
   dejar registros huérfanos.
 
+### Fase 1.2 — decisiones explicables y apelaciones
+
+- **B06, suspensiones explicables:** cada suspensión administrativa registra una
+  norma del catálogo, explicación redactada para la persona, severidad, resumen
+  de evidencias, responsable, vigencia y plazo de apelación. La pantalla de
+  cuenta suspendida muestra esos datos sin exponer referencias internas o
+  información privada.
+- **B07, apelación con revisión humana:** una cuenta suspendida recibe un token
+  restringido que solo permite consultar su decisión y presentar una apelación;
+  no sirve para acceder al perfil, mensajes ni otros endpoints normales. Solo
+  puede existir una apelación abierta por decisión.
+- El panel administrativo incluye una cola de apelaciones con el contexto de la
+  decisión. El revisor debe escribir un fundamento y puede mantener o revocar
+  la decisión. Si la revoca, la decisión, la apelación y la reactivación de la
+  cuenta se guardan de forma atómica.
+- La reactivación manual también marca como revertida la decisión activa. El
+  borrado completo de cuenta elimina apelaciones y decisiones relacionadas para
+  evitar registros huérfanos.
+
 ## Estado del backlog B01–B30
 
 | ID | Estado | Decisión |
@@ -70,8 +89,8 @@ Antes de comenzar se creó y verificó el respaldo local
 | B03 | Implementado en este incremento | Temas/cuentas silenciados y reversibles |
 | B04 | Implementado en este incremento | Colecciones, etiquetas, notas, búsqueda y privacidad sincronizadas |
 | B05 | Planificado | Resumen configurable sin sustituir notificaciones urgentes |
-| B06 | Próximo bloque | Unificar motivos existentes con regla y evidencia visible |
-| B07 | Próximo bloque | Apelación, estados y auditoría con revisión humana |
+| B06 | Implementado en este incremento | Norma, explicación, evidencia segura, severidad, vigencia y auditoría |
+| B07 | Implementado en este incremento | Token restringido, apelación única, cola humana y reactivación atómica |
 | B08–B13 | Fase 2 | Ampliar comunidades existentes con roles, canales y eventos |
 | B14 | Fase 3 | Añadir modo escenario sin reemplazar las salas casuales |
 | B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
@@ -91,15 +110,15 @@ Antes de comenzar se creó y verificó el respaldo local
 - Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin y
   Android Lint aprobados.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `04102C81E48D76895636ACDC6E67C7CEF7F3678FBF2DB6184B010DB8C114D1DD`.
+  `3151328476264751DB9DDCD42DDC8000BBFEF9025CF5A355F7287B3CCAE5D091`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `E4F3434DB726DC7ACCE490E69D18553EEA735E56EAF572F99F4C01B47270B2F4`.
+  `30BBE933BA3367AE14CEF98C65532C9CF702EEAA82555AFB6C6279137327E1B4`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260726T212847Z`, commit
-  `2433fcd915d9`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260726T212857Z`.
+- Servidor: despliegue `conectate-mini-pc-20260726T222937Z`, commit
+  `adddd5594f70`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260726T222947Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - B04: prueba integral pública aprobada con la cuenta ficticia
@@ -107,6 +126,12 @@ Antes de comenzar se creó y verificó el respaldo local
   quitar y limpiar referencias al borrar una publicación. La autoeliminación
   terminó sin error y una consulta posterior confirmó `0` cuentas con ese
   correo.
+- B06/B07: canario público `20260726b07a` aprobado. Cubrió suspensión con norma
+  y evidencia, bloqueo de login, token exclusivo de apelación, rechazo de ese
+  token en la API normal, consulta de decisión, prevención de apelación
+  duplicada, cola administrativa, revisión humana y reactivación atómica.
+  Después de la prueba PostgreSQL confirmó `users=0`, `moderation=0`,
+  `decisions=0` y `appeals=0` para sus dos cuentas ficticias.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
   verificados. No había ningún dispositivo visible por ADB durante este cierre.
