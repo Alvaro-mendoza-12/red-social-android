@@ -15,7 +15,7 @@ Antes de comenzar se creó y verificó el respaldo local
 `backups/pre-roadmap-20260726-2b2c81d` y el respaldo del servidor
 `/home/alvaro/conectate-backups/20260726T191221Z`.
 
-## Incremento implementado
+## Incrementos implementados
 
 ### Fase 0 — estabilidad y trazabilidad
 
@@ -46,6 +46,21 @@ Antes de comenzar se creó y verificó el respaldo local
   forma persistente. La persona puede revisar y revertir sus preferencias desde
   el selector del feed.
 
+### Fase 1.1 — biblioteca personal
+
+- **B04, colecciones de guardados:** cualquier publicación visible se puede
+  guardar en la colección predeterminada o en una colección creada por la
+  persona. Cada elemento admite etiquetas normalizadas y una nota privada.
+- La biblioteca sincronizada permite buscar por colección, autor, contenido,
+  etiqueta o nota. También permite abrir la publicación y quitarla de la
+  colección sin borrar la publicación original.
+- El servidor vuelve a comprobar permisos al guardar y al leer. Si la
+  publicación fue eliminada, pasó a ser privada o dejó de ser visible, no
+  expone su contenido y muestra un elemento no disponible.
+- La eliminación de una publicación limpia sus referencias guardadas. La
+  eliminación completa de una cuenta también borra colecciones e items para no
+  dejar registros huérfanos.
+
 ## Estado del backlog B01–B30
 
 | ID | Estado | Decisión |
@@ -53,7 +68,7 @@ Antes de comenzar se creó y verificó el respaldo local
 | B01 | Implementado en este incremento | Dos feeds, preferencia persistente y compatibilidad API |
 | B02 | Implementado en este incremento | Motivos comprensibles y controles inmediatos |
 | B03 | Implementado en este incremento | Temas/cuentas silenciados y reversibles |
-| B04 | Próximo bloque | Colecciones, etiquetas, notas y búsqueda sincronizadas |
+| B04 | Implementado en este incremento | Colecciones, etiquetas, notas, búsqueda y privacidad sincronizadas |
 | B05 | Planificado | Resumen configurable sin sustituir notificaciones urgentes |
 | B06 | Próximo bloque | Unificar motivos existentes con regla y evidencia visible |
 | B07 | Próximo bloque | Apelación, estados y auditoría con revisión humana |
@@ -76,17 +91,22 @@ Antes de comenzar se creó y verificó el respaldo local
 - Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin y
   Android Lint aprobados.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `1DA0E1FAE24EF4C1D74C65B78A5CC8A5185071349873AD968691EF3108F8FBC8`.
+  `04102C81E48D76895636ACDC6E67C7CEF7F3678FBF2DB6184B010DB8C114D1DD`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `86839157C2918E5B8E488237F4006BCBCD824739F569CA9C51D63A31061437C7`.
+  `E4F3434DB726DC7ACCE490E69D18553EEA735E56EAF572F99F4C01B47270B2F4`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260726T203100Z`, commit
-  `31fc1e643095`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260726T203107Z`.
+- Servidor: despliegue `conectate-mini-pc-20260726T212847Z`, commit
+  `2433fcd915d9`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260726T212857Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
+- B04: prueba integral pública aprobada con la cuenta ficticia
+  `module-saved.1785101637041@example.local`. Cubrió crear, guardar, buscar,
+  quitar y limpiar referencias al borrar una publicación. La autoeliminación
+  terminó sin error y una consulta posterior confirmó `0` cuentas con ese
+  correo.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
   verificados. No había ningún dispositivo visible por ADB durante este cierre.
