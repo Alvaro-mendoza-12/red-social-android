@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.DefaultDataSource
@@ -55,6 +57,25 @@ object VideoCache {
         } else {
             DefaultDataSource.Factory(context, httpDataSourceFactory)
         }
+    }
+
+    /**
+     * Adelanta únicamente el inicio del video que aparece en un chat. El
+     * reproductor usa la misma cache key, así que al tocarlo no vuelve a
+     * comenzar la descarga desde cero ni consume el archivo completo.
+     */
+    fun preloadStart(context: Context, url: String, byteCount: Long = 2L * 1024L * 1024L) {
+        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return
+        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return
+        val dataSource = getCacheDataSourceFactory(context.applicationContext)
+            .createDataSource() as? CacheDataSource ?: return
+        val dataSpec = DataSpec.Builder()
+            .setUri(resolvedUrl)
+            .setPosition(0)
+            .setLength(byteCount)
+            .setKey(cacheKey)
+            .build()
+        CacheWriter(dataSource, dataSpec, null, null).cache()
     }
 
     fun release() {

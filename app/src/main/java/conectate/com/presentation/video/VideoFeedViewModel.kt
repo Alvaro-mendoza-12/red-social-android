@@ -759,39 +759,34 @@ class VideoFeedViewModel @Inject constructor(
             // Stop and Review
             voiceMessageManager.stopRecordingForReview()
         } else {
-            // Send
-            val currentState = voiceState.value
-            var fileToSend: File? = null
-            var duration = 0L
-            
-            if (currentState == conectate.com.presentation.messages.VoiceState.RECORDING || currentState == conectate.com.presentation.messages.VoiceState.PAUSED) {
-                // Stop and get file
-                val pair = voiceMessageManager.stopAndGetFile()
-                fileToSend = pair.first
-                duration = pair.second
-            } else if (currentState == conectate.com.presentation.messages.VoiceState.REVIEWING) {
-                // Get pre-recorded file
-                fileToSend = voiceMessageManager.getRecordedFile()
-                duration = recordingDuration.value
-                voiceMessageManager.reset()
-            }
-            
-            // Send logic
-            if (fileToSend != null && duration > 800) {
-                 viewModelScope.launch {
-                     videoRepository.sendAudioComment(videoId, fileToSend)
-                         .onSuccess { 
-                             reloadVideo(videoId)
-                             refreshCommentsAfterWrite(videoId)
-                             cancelReply()
-                         }
-                         .onFailure { e ->
-                             android.util.Log.e("VideoFeedVM", "Error sending audio comment", e)
-                         }
-                 }
-            } else {
-                // Ensure reset if validation failed
-                voiceMessageManager.reset()
+            viewModelScope.launch {
+                val currentState = voiceState.value
+                var fileToSend: File? = null
+                var duration = 0L
+
+                if (currentState == conectate.com.presentation.messages.VoiceState.RECORDING || currentState == conectate.com.presentation.messages.VoiceState.PAUSED) {
+                    val pair = voiceMessageManager.stopAndGetFile()
+                    fileToSend = pair.first
+                    duration = pair.second
+                } else if (currentState == conectate.com.presentation.messages.VoiceState.REVIEWING) {
+                    fileToSend = voiceMessageManager.getRecordedFile()
+                    duration = recordingDuration.value
+                    voiceMessageManager.reset()
+                }
+
+                if (fileToSend != null && duration > 800) {
+                    videoRepository.sendAudioComment(videoId, fileToSend)
+                        .onSuccess {
+                            reloadVideo(videoId)
+                            refreshCommentsAfterWrite(videoId)
+                            cancelReply()
+                        }
+                        .onFailure { error ->
+                            android.util.Log.e("VideoFeedVM", "Error sending audio comment", error)
+                        }
+                } else {
+                    voiceMessageManager.reset()
+                }
             }
         }
     }

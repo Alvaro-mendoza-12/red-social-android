@@ -62,7 +62,6 @@ object IntentRouter {
                 val senderId = incomingIntent.getStringExtra("sender_id")
                 val messageId = incomingIntent.getStringExtra("message_id")
                     ?: incomingIntent.getStringExtra("focus_message_id")
-                    ?: incomingIntent.getStringExtra("id")
                 val targetType = incomingIntent.getStringExtra("target_type")?.trim()?.lowercase()
                 val groupId = incomingIntent.getStringExtra("group_id")
                 val communityId = incomingIntent.getStringExtra("community_id")

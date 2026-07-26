@@ -563,9 +563,9 @@ class GroupRepository @Inject constructor(
 
                     // 3. DUPLICATE DETECTION: Check if message already exists in local DB
                     val existingMessage = groupDao.getMessageById(msg.id)
-                    if (existingMessage != null) {
-                        android.util.Log.d("GroupRepository", "♻️ [DUPLICATE] Mensaje ${msg.id} ya existe en DB. Ignorando.")
-                        return@withContext
+                    val isNewMessage = existingMessage == null
+                    if (!isNewMessage) {
+                        android.util.Log.d("GroupRepository", "♻️ [DUPLICATE] Fusionando datos más completos para ${msg.id}.")
                     }
 
                     android.util.Log.d("GroupRepository", "📩 [MSG-VALID] Content='${msg.content.take(50)}...', Sender=${msg.sender_id}, Group=$cleanId")
@@ -578,10 +578,14 @@ class GroupRepository @Inject constructor(
                     }
 
                     // Hydrate reply_to manually since Realtime payload allows it to be null/missing joins
-                    val normalizedMsg = if (msg.reply_to_id != null && msg.reply_to == null) {
-                        val reply = groupDao.getMessageById(msg.reply_to_id)?.toDomain()
-                        msg.copy(reply_to = reply)
-                    } else msg.copy(group_id = cleanId) // Ensure clean ID
+                    val mergedMsg = mergeSyncedGroupMessageWithLocalState(
+                        incoming = msg.copy(group_id = cleanId),
+                        local = existingMessage?.toDomain()
+                    )
+                    val normalizedMsg = if (mergedMsg.reply_to_id != null && mergedMsg.reply_to == null) {
+                        val reply = groupDao.getMessageById(mergedMsg.reply_to_id)?.toDomain()
+                        mergedMsg.copy(reply_to = reply)
+                    } else mergedMsg
 
                     val hydratedMsg = hydrateGroupMessage(normalizedMsg)
 
@@ -598,7 +602,7 @@ class GroupRepository @Inject constructor(
                     var cleanSenderId = msg.sender_id.trim().lowercase()
                     val isMyMessage = cleanSenderId == currentUserId
                     
-                    if (!isMyMessage) {
+                    if (!isMyMessage && isNewMessage) {
                         // CRITICAL FIX: Only increment unread if this GROUP is NOT currently open
                         val isGroupCurrentlyOpen = (cleanId == currentOpenedGroupId)
                         
@@ -1019,12 +1023,19 @@ class GroupRepository @Inject constructor(
             incomingReadAt = incoming.read_at
         )
         return incoming.copy(
+            group_id = incoming.group_id.ifBlank { local.group_id },
+            sender_id = incoming.sender_id.ifBlank { local.sender_id },
+            content = incoming.content.ifBlank { local.content },
+            media_url = incoming.media_url ?: local.media_url,
+            poll_id = incoming.poll_id ?: local.poll_id,
+            created_at = incoming.created_at.ifBlank { local.created_at },
             sender_name = sanitizeMemberSenderName(incoming.sender_name)
                 ?: sanitizeMemberSenderName(local.sender_name)
                 ?: incoming.sender_name,
             sender_image = sanitizeMemberSenderImage(incoming.sender_image)
                 ?: sanitizeMemberSenderImage(local.sender_image)
                 ?: incoming.sender_image,
+            reply_to_id = incoming.reply_to_id ?: local.reply_to_id,
             reply_to = incoming.reply_to ?: local.reply_to,
             is_edited = incoming.is_edited || local.is_edited,
             deleted_for_all = incoming.deleted_for_all || local.deleted_for_all,
@@ -1047,15 +1058,24 @@ class GroupRepository @Inject constructor(
             } else true
         }
         
+        val mergedById = filtered
+            .groupBy { it.id.trim().lowercase() }
+            .values
+            .map { variations ->
+                variations.drop(1).fold(variations.first()) { local, incoming ->
+                    mergeSyncedGroupMessageWithLocalState(incoming, local)
+                }
+            }
+
         // [FIX] Hydrate reply_to relations
-        val msgMap = filtered.associateBy { it.id }
-        val hydrated = filtered.map { msg ->
+        val msgMap = mergedById.associateBy { it.id }
+        val hydrated = mergedById.map { msg ->
             if (msg.reply_to_id != null && msg.reply_to == null) {
                 msg.copy(reply_to = msgMap[msg.reply_to_id])
             } else msg
         }
 
-        return hydrated.distinctBy { it.id }.sortedBy { it.created_at } // Sort by created_at explicitly as backup
+        return hydrated.sortedBy { it.created_at } // Sort by created_at explicitly as backup
     }
 
     private fun updateGroupMessageInFlow(groupId: String, msg: GroupMessage) {

@@ -252,6 +252,9 @@ fun GroupChatScreen(
     }
 
     DisposableEffect(lifecycleOwner, groupId) {
+        viewModel.onScreenVisibilityChanged(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        )
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> viewModel.onScreenVisibilityChanged(true)

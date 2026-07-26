@@ -66,16 +66,17 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
-import okhttp3.OkHttpClient
+import conectate.com.util.UbuntuMedia
+import conectate.com.util.VideoCache
+import conectate.com.util.VideoPerformanceProfiles
 import kotlin.math.min
-import androidx.media3.common.MediaItem as ExoMediaItem
 
 data class MediaItem(
     val id: String,
@@ -547,20 +548,28 @@ private fun VideoViewerItem(
     var isBuffering by remember(item.id, item.url) { mutableStateOf(true) }
 
     val exoPlayer = remember(item.url) {
-        val okHttpClient = OkHttpClient.Builder().build()
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-
+        val performanceProfile = VideoPerformanceProfiles.detect(context)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                performanceProfile.minBufferMs,
+                performanceProfile.maxBufferMs,
+                performanceProfile.playBufferMs,
+                performanceProfile.rebufferMs
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
         ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory)
+                DefaultMediaSourceFactory(VideoCache.getCacheDataSourceFactory(context))
             )
             .build()
             .apply {
                 val path = item.url.substringBefore("?")
                 val hasKnownVideoExtension = listOf(".mp4", ".mkv", ".webm", ".3gp", ".m3u8")
                     .any { path.endsWith(it, ignoreCase = true) }
-                val mediaItem = ExoMediaItem.Builder()
-                    .setUri(item.url)
+                val mediaItem = UbuntuMedia.mediaItem(item.url)
+                    .buildUpon()
                     .apply {
                         if (!hasKnownVideoExtension) setMimeType(MimeTypes.VIDEO_MP4)
                     }

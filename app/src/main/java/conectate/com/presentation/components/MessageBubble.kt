@@ -72,6 +72,34 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.util.VideoCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@Composable
+private fun ChatVideoPreview(
+    url: String?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    LaunchedEffect(url) {
+        val source = url?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            runCatching { VideoCache.preloadStart(context.applicationContext, source) }
+        }
+    }
+    Box(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.VideoLibrary,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.72f),
+            modifier = Modifier.size(38.dp)
+        )
+    }
+}
 
 @Composable
 @androidx.compose.foundation.ExperimentalFoundationApi
@@ -218,19 +246,12 @@ fun VideoMessageBubble(
                          )
                     }
                 } else {
-                    SubcomposeAsyncImage(
-                        model = message.media_url, 
-                        contentDescription = "Video",
-                         modifier = Modifier
+                    ChatVideoPreview(
+                        url = message.media_url,
+                        modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f/9f)
-                            .alpha(0.6f),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        loading = {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            }
-                        }
+                            .alpha(0.6f)
                     )
                     
                     Icon(
@@ -676,24 +697,12 @@ fun MessageBubble(
                     }
                     "video" -> {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
-                            SubcomposeAsyncImage(
-                                model = resolvedUrl ?: message.media_url,
-                                contentDescription = "Video",
+                            ChatVideoPreview(
+                                url = resolvedUrl ?: message.media_url,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f/9f)
-                                    .alpha(0.6f),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                loading = {
-                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                    }
-                                },
-                                error = {
-                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Icon(imageVector = Icons.Default.VideoLibrary, contentDescription = null, tint = Color.Gray)
-                                    }
-                                }
+                                    .alpha(0.6f)
                             )
                             Icon(
                                 imageVector = Icons.Default.PlayCircleOutline,

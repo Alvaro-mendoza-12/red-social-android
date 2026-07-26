@@ -44,6 +44,10 @@ class VoiceMessageManager @Inject constructor(
     private var mediaPlayer: MediaPlayer? = null
     private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var recordedFile: File? = null
+    @Volatile
+    private var isFinalizing = false
+    @Volatile
+    private var isPreviewPrepared = false
 
     fun setScope(coroutineScope: CoroutineScope) {
         // Obsolete but kept for compatibility - now using internal managerScope
@@ -111,26 +115,46 @@ class VoiceMessageManager @Inject constructor(
 
     fun stopRecordingForReview() {
         if (_state.value != VoiceState.RECORDING && _state.value != VoiceState.PAUSED) return
-        
+        if (isFinalizing) return
+
         timerJob?.cancel()
-        val file = audioRecorder.stop() // Returns encoded M4A
-        
-        if (file != null && _duration.value > 500) { // Min duration check
-            recordedFile = file
-            _state.value = VoiceState.REVIEWING
-            preparePreview(file)
-        } else {
-            reset()
+        val finalDuration = _duration.value
+        _state.value = VoiceState.PAUSED
+        isFinalizing = true
+        managerScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    audioRecorder.stop()
+                }
+                if (file != null && finalDuration > 500) {
+                    recordedFile = file
+                    _state.value = VoiceState.REVIEWING
+                    preparePreview(file)
+                } else {
+                    reset()
+                }
+            } finally {
+                isFinalizing = false
+            }
         }
     }
     
     // Immediate stop and return file (drag to send)
-    fun stopAndGetFile(): Pair<File?, Long> {
+    suspend fun stopAndGetFile(): Pair<File?, Long> {
+        if (isFinalizing) return Pair(null, _duration.value)
+        isFinalizing = true
         timerJob?.cancel()
-        val file = audioRecorder.stop()
         val finalDuration = _duration.value
-        reset()
-        return Pair(file, finalDuration)
+        _state.value = VoiceState.PAUSED
+        return try {
+            val file = withContext(Dispatchers.IO) {
+                audioRecorder.stop()
+            }
+            reset()
+            Pair(file, finalDuration)
+        } finally {
+            isFinalizing = false
+        }
     }
 
     fun cancelRecording() {
@@ -144,6 +168,7 @@ class VoiceMessageManager @Inject constructor(
         try {
              mediaPlayer?.release()
              mediaPlayer = null
+             isPreviewPrepared = false
              
              mediaPlayer = MediaPlayer().apply {
                  setAudioAttributes(
@@ -153,13 +178,20 @@ class VoiceMessageManager @Inject constructor(
                          .build()
                  )
                  setDataSource(file.absolutePath)
-                 prepare()
-                 _playbackDurationLabel.value = formatDuration(duration.toLong()) 
+                 setOnPreparedListener { preparedPlayer ->
+                     isPreviewPrepared = true
+                     _playbackDurationLabel.value = formatDuration(preparedPlayer.duration.toLong())
+                 }
                  setOnCompletionListener { 
                      _playbackProgress.value = 1f 
                      _isDraftPlaying.value = false
-                     // Loop or just stop? Let's stop at end.
                  }
+                 setOnErrorListener { _, _, _ ->
+                     isPreviewPrepared = false
+                     _isDraftPlaying.value = false
+                     true
+                 }
+                 prepareAsync()
              }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -169,7 +201,7 @@ class VoiceMessageManager @Inject constructor(
     fun playPreview() {
         if (_state.value != VoiceState.REVIEWING) return
         
-        mediaPlayer?.let { mp ->
+        mediaPlayer?.takeIf { isPreviewPrepared }?.let { mp ->
             if (!mp.isPlaying) {
                 if (mp.currentPosition >= mp.duration) {
                      // If finished, restart but check if duration > 0
@@ -243,6 +275,7 @@ class VoiceMessageManager @Inject constructor(
         
         mediaPlayer?.release()
         mediaPlayer = null
+        isPreviewPrepared = false
         
         recordedFile = null
         _duration.value = 0L

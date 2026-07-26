@@ -377,13 +377,9 @@ class AdminPanelViewModel @Inject constructor(
      *
      * Esta acción es IRREVERSIBLE.
      */
-    fun deleteUserCompletely(userId: String, reason: String, confirmation: String) {
+    fun deleteUserCompletely(userId: String) {
         if (userId.isBlank()) {
             _errorMessage.value = "ID de usuario inválido."
-            return
-        }
-        if (reason.isBlank()) {
-            _errorMessage.value = "Debes escribir el motivo de eliminación."
             return
         }
         viewModelScope.launch {
@@ -403,12 +399,11 @@ class AdminPanelViewModel @Inject constructor(
                 } else {
                     "ELIMINAR ${target.id} ${target.email.trim().lowercase()}"
                 }
-                if (confirmation != expectedConfirmation) error("La confirmación escrita no coincide.")
                 val result = localFallbackApiClient.adminDeleteUser(
                     token,
                     target.id,
-                    reason,
-                    confirmation,
+                    "Eliminación administrativa confirmada desde el panel",
+                    expectedConfirmation,
                     target.email,
                     deleteSuspendedAccount = !target.isTestAccount
                 )

@@ -279,12 +279,12 @@ class MessageRepository @Inject constructor(
         android.util.Log.d("MessageRepository", "Global insert received: ${normalizedMsg.content} for chat $cleanId")
         
         var currentUserId = sessionSnapshot.accountId
+        var wasAlreadyStored = false
         
         // 1. ATOMIC PROCESSING (Room + UI Flow)
         // We lock for the specific chat to ensure Realtime and FCM events happen sequentially.
-        scope.launch {
-            var mutex = getMutexForChat(cleanId)
-            mutex.withLock {
+        var mutex = getMutexForChat(cleanId)
+        mutex.withLock {
                 if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-room:$cleanId")) return@withLock
                 try {
                     val chatRecord = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }?.chat
@@ -298,8 +298,8 @@ class MessageRepository @Inject constructor(
                     val similarMessages = messageDao.getRecentSimilarMessagesAgnostic(cleanId, normalizedMsg.content)
                     val existingReal = similarMessages.firstOrNull { it.id == normalizedMsg.id }
                     if (existingReal != null && existingReal.status != "sending") {
-                        android.util.Log.d("MessageRepository", "♻️ Full duplicate skipped (already processed/synced): ${normalizedMsg.id}")
-                        return@withLock
+                        wasAlreadyStored = true
+                        android.util.Log.d("MessageRepository", "♻️ Merging duplicate/partial message with authoritative payload: ${normalizedMsg.id}")
                     }
                     if (existingReal?.status == "sending") {
                          android.util.Log.d("MessageRepository", "♻️ Updating optimistic message with server-authoritative data: ${normalizedMsg.id}")
@@ -324,11 +324,15 @@ class MessageRepository @Inject constructor(
                     // which caused messages to appear as if 'I' sent them when it was the other person.
                     
                     // HYDRATION: Realtime/FCM payloads lack the 'reply_to' object. We must fetch it locally.
-                    var hydratedMsg = normalizedMsg
-                    if (normalizedMsg.reply_to_id != null && normalizedMsg.reply_to == null) {
-                        val replyMsgEntity = messageDao.getMessageById(normalizedMsg.reply_to_id)
+                    val mergedMsg = mergeIncomingMessageWithLocal(
+                        incoming = normalizedMsg,
+                        local = existingReal?.toDomain()
+                    )
+                    var hydratedMsg = mergedMsg
+                    if (mergedMsg.reply_to_id != null && mergedMsg.reply_to == null) {
+                        val replyMsgEntity = messageDao.getMessageById(mergedMsg.reply_to_id)
                         if (replyMsgEntity != null) {
-                            hydratedMsg = normalizedMsg.copy(reply_to = replyMsgEntity.toDomain())
+                            hydratedMsg = mergedMsg.copy(reply_to = replyMsgEntity.toDomain())
                             android.util.Log.d("MessageRepository", "💧 Hydrated reply_to for incoming message")
                         }
                     }
@@ -350,7 +354,10 @@ class MessageRepository @Inject constructor(
                     android.util.Log.e("MessageRepository", "❌ Room handling error", e)
                 }
             }
-        }
+
+        // Un FCM parcial seguido por el evento completo solo debe enriquecer la
+        // fila; no debe volver a sumar no leídos, reproducir sonido ni notificar.
+        if (wasAlreadyStored) return
         
         if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-post-room:$cleanId")) return
         if (currentUserId != null) {
@@ -1978,10 +1985,27 @@ class MessageRepository @Inject constructor(
                         runCatching { json.decodeFromJsonElement<Message>(messageJson) }.getOrNull()
                     }
                     .map { it.copy(chat_id = chatId).withNormalizedStatus() }
-                    
+
+                val currentById = _activeChatMessages[chatId]
+                    ?.value
+                    .orEmpty()
+                    .associateBy { it.id.trim().lowercase() }
+                val historyById = rawMsgs.associateBy { it.id.trim().lowercase() }
+                val hydratedRawMsgs = rawMsgs.map { message ->
+                    val replyId = message.reply_to_id?.trim()?.lowercase()
+                    if (replyId.isNullOrBlank() || message.reply_to != null) {
+                        message
+                    } else {
+                        val reply = currentById[replyId]
+                            ?: historyById[replyId]
+                            ?: runCatching { messageDao.getMessageById(replyId)?.toDomain() }.getOrNull()
+                        message.copy(reply_to = reply)
+                    }
+                }
+
                 val filteredRawMsgs = if (clearedAt != null) {
-                    rawMsgs.filter { (it.created_at ?: "") > clearedAt }
-                } else rawMsgs
+                    hydratedRawMsgs.filter { (it.created_at ?: "") > clearedAt }
+                } else hydratedRawMsgs
 
                 scope.launch {
                     if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-cache:$chatId")) return@launch
@@ -2103,7 +2127,13 @@ class MessageRepository @Inject constructor(
         
         // 1. Exact ID Deduplication (Prefer real status over "sending")
         val byId = messages.groupBy { it.id.trim().lowercase() }.map { (_, variations) ->
-            variations.find { it.status != "sending" } ?: variations.first()
+            val preferred = variations.find { it.status != "sending" } ?: variations.first()
+            preferred.copy(
+                reply_to_id = preferred.reply_to_id
+                    ?: variations.firstNotNullOfOrNull { it.reply_to_id },
+                reply_to = preferred.reply_to
+                    ?: variations.firstNotNullOfOrNull { it.reply_to }
+            )
         }
         
         // 2. Robust Sorting (Ascending for Chat Screen)
@@ -3593,6 +3623,41 @@ class MessageRepository @Inject constructor(
             status = finalStatus,
             deliveredAt = mergedDeliveredAt,
             readAt = mergedReadAt
+        )
+    }
+
+    private fun mergeIncomingMessageWithLocal(incoming: Message, local: Message?): Message {
+        local ?: return incoming
+        val receipt = mergeReceiptState(
+            currentStatus = local.status,
+            currentDeliveredAt = local.delivered_at,
+            currentReadAt = local.read_at,
+            incomingStatus = incoming.status,
+            incomingDeliveredAt = incoming.delivered_at,
+            incomingReadAt = incoming.read_at
+        )
+        return incoming.copy(
+            chat_id = incoming.chat_id.ifBlank { local.chat_id },
+            sender_id = incoming.sender_id.ifBlank { local.sender_id },
+            content = incoming.content.ifBlank { local.content },
+            media_url = incoming.media_url ?: local.media_url,
+            poll_id = incoming.poll_id ?: local.poll_id,
+            media_size = incoming.media_size.takeIf { it > 0 } ?: local.media_size,
+            status = receipt.status,
+            delivered_at = receipt.deliveredAt,
+            read_at = receipt.readAt,
+            reply_to_id = incoming.reply_to_id ?: local.reply_to_id,
+            reply_to = incoming.reply_to ?: local.reply_to,
+            is_edited = incoming.is_edited || local.is_edited,
+            deleted_for_all = incoming.deleted_for_all || local.deleted_for_all,
+            deleted_by = (local.deleted_by + incoming.deleted_by).distinct(),
+            reactions = if (incoming.reactions.isNotEmpty()) incoming.reactions else local.reactions,
+            is_forwarded = incoming.is_forwarded || local.is_forwarded,
+            forwarded_from_message_id = incoming.forwarded_from_message_id ?: local.forwarded_from_message_id,
+            forwarded_from_user_id = incoming.forwarded_from_user_id ?: local.forwarded_from_user_id,
+            sender_name = incoming.sender_name ?: local.sender_name,
+            created_at = incoming.created_at ?: local.created_at,
+            updated_at = incoming.updated_at ?: local.updated_at
         )
     }
 

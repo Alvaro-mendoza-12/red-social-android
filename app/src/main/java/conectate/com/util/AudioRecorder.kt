@@ -29,8 +29,12 @@ class AudioRecorder @Inject constructor(
     private var noiseSuppressor: NoiseSuppressor? = null
     private var automaticGainControl: AutomaticGainControl? = null
     
+    @Volatile
     private var isRecording = false
+    @Volatile
     private var isPaused = false
+    @Volatile
+    private var writerThread: Thread? = null
     
     // Temporary raw PCM file
     private var pcmFile: File? = null
@@ -105,10 +109,7 @@ class AudioRecorder @Inject constructor(
             isRecording = true
             isPaused = false
             
-            // Start writing thread
-            Thread {
-                writePcmDataToFile()
-            }.start()
+            startWriterThread()
             
             return pcmFile
         } catch (e: Exception) {
@@ -135,10 +136,7 @@ class AudioRecorder @Inject constructor(
             audioRecord?.startRecording()
             isPaused = false
             
-            // Restart thread to append data
-            Thread {
-                writePcmDataToFile()
-            }.start()
+            startWriterThread()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -153,6 +151,7 @@ class AudioRecorder @Inject constructor(
         
         try {
             audioRecord?.stop()
+            awaitWriterCompletion()
             audioRecord?.release()
             noiseSuppressor?.release()
             automaticGainControl?.release()
@@ -176,6 +175,8 @@ class AudioRecorder @Inject constructor(
     fun cancel() {
         isRecording = false
         isPaused = false
+        val fileToDelete = pcmFile
+        val threadToAwait = writerThread
         try {
             audioRecord?.stop()
             audioRecord?.release()
@@ -185,8 +186,33 @@ class AudioRecorder @Inject constructor(
             e.printStackTrace()
         }
         audioRecord = null
-        pcmFile?.delete()
         pcmFile = null
+        writerThread = null
+        Thread {
+            runCatching { threadToAwait?.join(WRITER_JOIN_TIMEOUT_MS) }
+            runCatching { fileToDelete?.delete() }
+        }.apply {
+            name = "voice-note-cleanup"
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun startWriterThread() {
+        writerThread = Thread {
+            writePcmDataToFile()
+        }.apply {
+            name = "voice-note-pcm-writer"
+            start()
+        }
+    }
+
+    private fun awaitWriterCompletion() {
+        val activeWriter = writerThread
+        if (activeWriter != null && activeWriter !== Thread.currentThread()) {
+            runCatching { activeWriter.join(WRITER_JOIN_TIMEOUT_MS) }
+        }
+        writerThread = null
     }
 
     private fun writePcmDataToFile() {
@@ -195,20 +221,19 @@ class AudioRecorder @Inject constructor(
         val file = pcmFile ?: return
         
         try {
-            // Append mode is true
-            val os = FileOutputStream(file, true) 
-            
             var totalBytesRead = 0L
-            while (isRecording && !isPaused) {
-                val read = audioRecord?.read(data, 0, bufferSize) ?: 0
-                if (read > 0) {
-                    os.write(data, 0, read)
-                    totalBytesRead += read
-                } else if (read < 0) {
-                    android.util.Log.e("AudioRecorder", "Error reading from AudioRecord: $read")
+            FileOutputStream(file, true).use { output ->
+                while (isRecording && !isPaused) {
+                    val read = audioRecord?.read(data, 0, bufferSize) ?: 0
+                    if (read > 0) {
+                        output.write(data, 0, read)
+                        totalBytesRead += read
+                    } else if (read < 0) {
+                        android.util.Log.e("AudioRecorder", "Error reading from AudioRecord: $read")
+                    }
                 }
+                output.flush()
             }
-            os.close()
             android.util.Log.d("AudioRecorder", "Finished writing PCM. Total bytes: $totalBytesRead")
         } catch (e: Exception) {
             e.printStackTrace()
@@ -318,5 +343,9 @@ class AudioRecorder @Inject constructor(
     private fun sampleRateByteSize(): Int {
         // 16bit = 2 bytes * sampleRate
         return SAMPLE_RATE * 2
+    }
+
+    private companion object {
+        const val WRITER_JOIN_TIMEOUT_MS = 2_000L
     }
 }

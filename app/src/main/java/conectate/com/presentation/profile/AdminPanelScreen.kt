@@ -56,8 +56,6 @@ fun AdminPanelScreen(
     var suspendDays by remember { mutableStateOf("7") }
     // Estado para eliminar usuario completamente
     var userToDelete by remember { mutableStateOf<AdminUser?>(null) }
-    var deleteReason by remember { mutableStateOf("") }
-    var deleteConfirmation by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.checkAdminAccess()
@@ -66,16 +64,12 @@ fun AdminPanelScreen(
     LaunchedEffect(lastDeletedUserId) {
         if (lastDeletedUserId != null && lastDeletedUserId == userToDelete?.id) {
             userToDelete = null
-            deleteReason = ""
-            deleteConfirmation = ""
         }
     }
 
     LaunchedEffect(deleteCandidate) {
         deleteCandidate?.let { candidate ->
             userToDelete = candidate
-            deleteReason = ""
-            deleteConfirmation = ""
             viewModel.consumeDeleteCandidate()
         }
     }
@@ -125,40 +119,30 @@ fun AdminPanelScreen(
 
     // Dialog de confirmacion para ELIMINAR usuario completamente (accion IRREVERSIBLE)
     userToDelete?.let { target ->
-        val requiredConfirmation = if (target.isTestAccount) {
-            "ELIMINAR ${target.id}"
-        } else {
-            "ELIMINAR ${target.id} ${target.email.trim().lowercase()}"
-        }
         AlertDialog(
             onDismissRequest = {
                 if (!isLoading) {
                     userToDelete = null
-                    deleteReason = ""
-                    deleteConfirmation = ""
                 }
             },
-            title = { Text("Eliminar Usuario Completamente", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    "¿Eliminar este usuario?",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 440.dp)
-                        .verticalScroll(rememberScrollState())
-                        .imePadding()
-                ) {
+                Column {
                     Text(
-                        "ADVERTENCIA: Esta accion es IRREVERSIBLE.",
+                        "Esta acción es irreversible.",
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Se eliminara absolutamente toda la informacion del usuario:\n" +
-                        "cuenta, perfil, publicaciones, videos, imagenes,\n" +
-                        "comentarios, chats, grupos, comunidades,\n" +
-                        "seguidores, seguidos, archivos, tokens,\n" +
-                        "notificaciones y registros en almacenamiento.",
+                        "Se eliminarán la cuenta de ${target.displayName} y todos sus datos relacionados del servidor, autenticación, base de datos y almacenamiento.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -174,38 +158,31 @@ fun AdminPanelScreen(
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    Text("ID: ${target.id}", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = deleteReason,
-                        onValueChange = { deleteReason = it },
-                        label = { Text("Motivo (obligatorio)") },
-                        supportingText = { Text("Se registra en el log de auditoria") },
-                        isError = deleteReason.isBlank()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Escribe exactamente: $requiredConfirmation", style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(
-                        value = deleteConfirmation,
-                        onValueChange = { deleteConfirmation = it },
-                        label = { Text("Confirmación exacta") },
-                        isError = deleteConfirmation.isNotEmpty() && deleteConfirmation != requiredConfirmation
-                    )
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = !isLoading && !target.isAdmin && (target.isTestAccount || target.isSuspended) && deleteReason.isNotBlank() && deleteConfirmation == requiredConfirmation,
+                    enabled = !isLoading && !target.isAdmin && (target.isTestAccount || target.isSuspended),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
-                        viewModel.deleteUserCompletely(target.id, deleteReason.trim(), deleteConfirmation)
+                        viewModel.deleteUserCompletely(target.id)
                     }
-                ) { Text("ELIMINAR PERMANENTEMENTE", color = Color.White) }
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                    } else {
+                        Text("Sí, eliminar", color = Color.White)
+                    }
+                }
             },
             dismissButton = {
                 TextButton(
                     enabled = !isLoading,
-                    onClick = { userToDelete = null; deleteReason = ""; deleteConfirmation = "" }
+                    onClick = { userToDelete = null }
                 ) { Text("Cancelar") }
             }
         )

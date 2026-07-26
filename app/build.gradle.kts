@@ -37,8 +37,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 35
-        versionCode = 46
-        versionName = "3.0.6"
+        versionCode = 47
+        versionName = "3.0.7"
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")
@@ -74,6 +74,16 @@ android {
 
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    // Permite ejecutar validaciones físicas muy dirigidas sin esconder ni
+    // modificar la suite androidTest heredada, que se mantiene independiente.
+    sourceSets {
+        if (providers.gradleProperty("audioValidationOnly").orNull == "true") {
+            getByName("androidTest").java.setSrcDirs(
+                listOf("src/audioValidationTest/java")
+            )
         }
     }
 

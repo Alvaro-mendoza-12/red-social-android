@@ -50,6 +50,8 @@ import conectate.com.services.IncomingCallForegroundService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import java.io.ByteArrayOutputStream
 
@@ -319,7 +321,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
             // 3. Inject into Repository for the matching active session only.
             if (isTargetingActiveAccount && !chatId.isNullOrBlank()) {
-                serviceScope.launch {
+                // La notificación no debe adelantarse a la fila local: si el
+                // usuario la toca inmediatamente, el mensaje ya debe existir.
+                runBlocking(Dispatchers.IO) {
+                    withTimeoutOrNull(2_000L) {
                     try {
                         val incomingId = messageId ?: "fcm_${System.currentTimeMillis()}"
                         if (isGroup) {
@@ -332,7 +337,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 content_type = contentType,
                                 media_url = data["media_url"] ?: data["url"],
                                 created_at = data["created_at"] ?: java.time.Instant.now().toString(),
-                                sender_name = senderName
+                                sender_name = senderName,
+                                reply_to_id = data["reply_to_id"],
+                                poll_id = data["poll_id"],
+                                is_forwarded = data["is_forwarded"]?.toBooleanStrictOrNull() ?: false,
+                                forwarded_from_message_id = data["forwarded_from_message_id"],
+                                forwarded_from_user_id = data["forwarded_from_user_id"]
                             )
                             groupRepository.handleIncomingMessage(msg)
                         } else if (isCommunity) {
@@ -345,7 +355,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 content_type = contentType,
                                 media_url = data["media_url"] ?: data["url"],
                                 created_at = data["created_at"] ?: java.time.Instant.now().toString(),
-                                sender_name = senderName
+                                sender_name = senderName,
+                                reply_to_id = data["reply_to_id"],
+                                poll_id = data["poll_id"],
+                                is_forwarded = data["is_forwarded"]?.toBooleanStrictOrNull() ?: false,
+                                forwarded_from_message_id = data["forwarded_from_message_id"],
+                                forwarded_from_user_id = data["forwarded_from_user_id"]
                             )
                             communityRepository.handleIncomingMessage(msg)
                         } else {
@@ -357,13 +372,20 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 content = content,
                                 content_type = contentType,
                                 media_url = data["media_url"] ?: data["url"],
-                                created_at = data["created_at"],
+                                media_size = data["media_size"]?.toLongOrNull() ?: 0L,
+                                reply_to_id = data["reply_to_id"],
+                                poll_id = data["poll_id"],
+                                is_forwarded = data["is_forwarded"]?.toBooleanStrictOrNull() ?: false,
+                                forwarded_from_message_id = data["forwarded_from_message_id"],
+                                forwarded_from_user_id = data["forwarded_from_user_id"],
+                                created_at = data["created_at"] ?: java.time.Instant.now().toString(),
                                 status = "delivered"
                             )
                             messageRepository.handleIncomingMessage(msg)
                         }
                     } catch (e: Exception) {
                         android.util.Log.e(TAG, "Background Repo Insert Error", e)
+                    }
                     }
                 }
             }

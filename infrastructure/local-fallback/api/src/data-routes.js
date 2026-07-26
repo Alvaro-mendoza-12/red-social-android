@@ -7075,6 +7075,14 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         })
         .map((participant) => normalizeId(participant.id))
         .filter((participantId) => participantId && !identity.ids.has(participantId))
+      const roomMessage = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
+      // Publicar primero el mensaje completo. Así Room puede recibirlo antes
+      // que la notificación sea tocada y FCM queda como respaldo/wake-up.
+      await publishChatMessageEvent({
+        chatId: `room:${config.kind}:${roomId}`,
+        message: roomMessage,
+        recipientIds: roomRecipients,
+      })
       await Promise.all(
         notificationRecipients.map((participantId) =>
           createLocalNotificationBestEffort(pool, {
@@ -7089,16 +7097,19 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
             extraData: {
               [`${config.kind}_id`]: roomId,
               message_id: textOf(rows[0], ['id'], ''),
+              content_type: textOf(rows[0], ['content_type'], 'text'),
+              media_url: textOf(rows[0], ['media_url'], ''),
+              media_size: String(numberOf(rows[0], ['media_size'], 0)),
+              reply_to_id: textOf(rows[0], ['reply_to_id'], ''),
+              poll_id: textOf(rows[0], ['poll_id'], ''),
+              is_forwarded: String(boolOf(rows[0], ['is_forwarded'], false)),
+              forwarded_from_message_id: textOf(rows[0], ['forwarded_from_message_id'], ''),
+              forwarded_from_user_id: textOf(rows[0], ['forwarded_from_user_id'], ''),
+              created_at: textOf(rows[0], ['created_at'], ''),
             },
           }),
         ),
       )
-      const roomMessage = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
-      void publishChatMessageEvent({
-        chatId: `room:${config.kind}:${roomId}`,
-        message: roomMessage,
-        recipientIds: roomRecipients,
-      })
       res.status(201).json({ message: roomMessage })
     } catch (error) {
       next(error)
@@ -9256,6 +9267,13 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       const recipientList = Array.from(recipientIds).filter(
         (recipientId) => recipientId && !identity.ids.has(recipientId),
       )
+      // El evento autoritativo debe adelantarse a FCM para evitar que un
+      // placeholder parcial pise citas o que el tap abra un chat aún vacío.
+      await publishChatMessageEvent({
+        chatId,
+        message: insertedMessage,
+        recipientIds: recipientList,
+      })
       await Promise.all(
         recipientList.map((recipientId) =>
           createLocalNotificationBestEffort(pool, {
@@ -9267,15 +9285,22 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
             targetId: chatId,
             targetType: 'chat',
             content: content || previewFromMessage({ content_type: contentType }),
-            extraData: { chat_id: chatId, message_id: textOf(insertedMessage, ['id'], '') },
+            extraData: {
+              chat_id: chatId,
+              message_id: textOf(insertedMessage, ['id'], ''),
+              content_type: textOf(insertedMessage, ['content_type'], 'text'),
+              media_url: textOf(insertedMessage, ['media_url'], ''),
+              media_size: String(numberOf(insertedMessage, ['media_size'], 0)),
+              reply_to_id: textOf(insertedMessage, ['reply_to_id'], ''),
+              poll_id: textOf(insertedMessage, ['poll_id'], ''),
+              is_forwarded: String(boolOf(insertedMessage, ['is_forwarded'], false)),
+              forwarded_from_message_id: textOf(insertedMessage, ['forwarded_from_message_id'], ''),
+              forwarded_from_user_id: textOf(insertedMessage, ['forwarded_from_user_id'], ''),
+              created_at: textOf(insertedMessage, ['created_at'], ''),
+            },
           }),
         ),
       )
-      void publishChatMessageEvent({
-        chatId,
-        message: insertedMessage,
-        recipientIds: recipientList,
-      })
       res.status(201).json({ message: insertedMessage })
     } catch (error) {
       next(error)

@@ -959,12 +959,11 @@ class GroupChatViewModel @Inject constructor(
         if (!send) {
             voiceMessageManager.stopRecordingForReview()
         } else {
-            val result = voiceMessageManager.stopAndGetFile()
-            val file = result.first
-            val duration = result.second
-            
-            if (file != null) {
-                sendVoiceMessage(file, duration)
+            viewModelScope.launch {
+                val (file, duration) = voiceMessageManager.stopAndGetFile()
+                if (file != null) {
+                    sendVoiceMessage(file, duration)
+                }
             }
         }
     }
@@ -980,9 +979,9 @@ class GroupChatViewModel @Inject constructor(
     
     private fun sendVoiceMessage(file: File, durationMs: Long) {
          if (durationMs > 1000) {
-            val bytes = file.readBytes()
             viewModelScope.launch {
                 _isSending.value = true
+                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
                 val uploadResult = groupRepository.uploadGroupAudio(groupId, bytes)
                 if (uploadResult.isSuccess) {
                     val url = uploadResult.getOrThrow()

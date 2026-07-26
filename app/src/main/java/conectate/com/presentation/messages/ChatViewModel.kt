@@ -1359,15 +1359,13 @@ class ChatViewModel @Inject constructor(
             // Just stop and review
             voiceMessageManager.stopRecordingForReview()
         } else {
-            // Stop and Send immediately (Drag to send)
-            val result = voiceMessageManager.stopAndGetFile()
-            val file = result.first
-            val duration = result.second
-            
-            if (file != null) {
-                val uri = Uri.fromFile(file)
-                val durationLabel = voiceMessageManager.formatDuration(duration)
-                sendMediaMessage(uri, "audio", durationLabel)
+            viewModelScope.launch {
+                val (file, duration) = voiceMessageManager.stopAndGetFile()
+                if (file != null) {
+                    val uri = Uri.fromFile(file)
+                    val durationLabel = voiceMessageManager.formatDuration(duration)
+                    sendMediaMessage(uri, "audio", durationLabel)
+                }
             }
         }
     }

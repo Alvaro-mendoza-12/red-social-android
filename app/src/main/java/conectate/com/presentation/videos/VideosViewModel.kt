@@ -256,28 +256,28 @@ class VideosViewModel @Inject constructor(
         if (!shouldSend) {
             voiceMessageManager.stopRecordingForReview()
         } else {
-            val currentState = voiceState.value
-            var fileToSend: java.io.File? = null
-            var duration = 0L
-            
-            if (currentState == conectate.com.presentation.messages.VoiceState.RECORDING || currentState == conectate.com.presentation.messages.VoiceState.PAUSED) {
-                val pair = voiceMessageManager.stopAndGetFile()
-                fileToSend = pair.first
-                duration = pair.second
-            } else if (currentState == conectate.com.presentation.messages.VoiceState.REVIEWING) {
-                fileToSend = voiceMessageManager.getRecordedFile()
-                duration = recordingDuration.value
-                voiceMessageManager.reset()
-            }
-            
-            if (fileToSend != null && duration > 800) {
-                 val videoId = _selectedVideoForComments.value ?: return
-                 viewModelScope.launch {
-                     videoRepository.sendAudioComment(videoId, fileToSend)
-                         .onSuccess { refreshCommentsAfterWrite(videoId) }
-                 }
-            } else {
-                voiceMessageManager.reset()
+            viewModelScope.launch {
+                val currentState = voiceState.value
+                var fileToSend: java.io.File? = null
+                var duration = 0L
+
+                if (currentState == conectate.com.presentation.messages.VoiceState.RECORDING || currentState == conectate.com.presentation.messages.VoiceState.PAUSED) {
+                    val pair = voiceMessageManager.stopAndGetFile()
+                    fileToSend = pair.first
+                    duration = pair.second
+                } else if (currentState == conectate.com.presentation.messages.VoiceState.REVIEWING) {
+                    fileToSend = voiceMessageManager.getRecordedFile()
+                    duration = recordingDuration.value
+                    voiceMessageManager.reset()
+                }
+
+                if (fileToSend != null && duration > 800) {
+                    val videoId = _selectedVideoForComments.value ?: return@launch
+                    videoRepository.sendAudioComment(videoId, fileToSend)
+                        .onSuccess { refreshCommentsAfterWrite(videoId) }
+                } else {
+                    voiceMessageManager.reset()
+                }
             }
         }
     }
