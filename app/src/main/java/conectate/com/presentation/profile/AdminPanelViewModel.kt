@@ -6,6 +6,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.AdminDashboardStats
 import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminUser
+import conectate.com.data.localfallback.AdminModerationAppeal
 import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,6 +66,8 @@ class AdminPanelViewModel @Inject constructor(
 
     private val _suspendedProfiles = MutableStateFlow<List<SuspendedProfile>>(emptyList())
     val suspendedProfiles: StateFlow<List<SuspendedProfile>> = _suspendedProfiles.asStateFlow()
+    private val _moderationAppeals = MutableStateFlow<List<AdminModerationAppeal>>(emptyList())
+    val moderationAppeals: StateFlow<List<AdminModerationAppeal>> = _moderationAppeals.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -125,6 +128,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadCatalog(token)
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
+                    loadModerationAppeals(token)
                     loadReports(token)
                     loadSystemHealth()
                 } else {
@@ -297,6 +301,15 @@ class AdminPanelViewModel @Inject constructor(
         updateUserDecorations(userId, verified = verified)
     }
 
+    private suspend fun loadModerationAppeals(token: String) {
+        localFallbackApiClient.adminGetModerationAppeals(token)
+            .onSuccess { _moderationAppeals.value = it }
+            .onFailure {
+                Log.w(TAG, "No se pudieron cargar apelaciones", it)
+                _moderationAppeals.value = emptyList()
+            }
+    }
+
     private suspend fun loadSystemHealth() {
         localFallbackApiClient.loadSystemHealth()
             .onSuccess { _systemHealth.value = it }
@@ -366,17 +379,33 @@ class AdminPanelViewModel @Inject constructor(
         _users.value = _users.value.map { if (it.id == updated.id || it.localId == updated.localId) updated else it }
     }
 
-    fun suspendUser(userId: String, reason: String, days: Int) {
+    fun suspendUser(
+        userId: String,
+        reason: String,
+        days: Int,
+        ruleCode: String,
+        severity: String,
+        evidence: List<String>
+    ) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
                 val token = authService.ensureValidAccessToken().getOrThrow()
-                val result = localFallbackApiClient.adminSuspendUser(token, userId, reason, days)
+                val result = localFallbackApiClient.adminSuspendUser(
+                    token,
+                    userId,
+                    reason,
+                    days,
+                    ruleCode,
+                    severity,
+                    evidence
+                )
                 if (result.isSuccess) {
                     _statusMessage.value = "Usuario suspendido correctamente."
                     loadStats(token)
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
+                    loadModerationAppeals(token)
                 } else {
                     _errorMessage.value = adminError(
                         result.exceptionOrNull(),
@@ -407,6 +436,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadStats(token)
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
+                    loadModerationAppeals(token)
                 } else {
                     _errorMessage.value = adminError(
                         result.exceptionOrNull(),
@@ -438,6 +468,48 @@ class AdminPanelViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _errorMessage.value = adminError(e, "No se pudo actualizar el reporte.")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun reviewModerationAppeal(
+        appealId: String,
+        outcome: String,
+        note: String
+    ) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                localFallbackApiClient.adminReviewModerationAppeal(
+                    token,
+                    appealId,
+                    outcome,
+                    note
+                ).onSuccess {
+                    _statusMessage.value = if (outcome == "overturned") {
+                        "Apelación aceptada y cuenta reactivada."
+                    } else {
+                        "Apelación revisada; la decisión se mantiene."
+                    }
+                    loadModerationAppeals(token)
+                    loadSuspendedProfiles(token)
+                    loadStats(token)
+                    loadUsers(token, _userSearch.value)
+                }.onFailure {
+                    _errorMessage.value = adminError(
+                        it,
+                        "No se pudo guardar la revisión de la apelación."
+                    )
+                }
+            } catch (error: Exception) {
+                _errorMessage.value = adminError(
+                    error,
+                    "No se pudo guardar la revisión de la apelación."
+                )
             } finally {
                 _isLoading.value = false
             }

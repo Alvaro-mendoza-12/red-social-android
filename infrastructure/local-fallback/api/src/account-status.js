@@ -20,11 +20,29 @@ async function findActiveSuspension(pool, rawLocalUserId) {
 
   const { rows } = await pool.query(
     `SELECT m.is_suspended, m.suspended_until, m.suspension_end_date,
-            m.suspension_reason, m.updated_at
+            m.suspension_reason, m.updated_at,
+            d.id::text AS decision_id,
+            d.rule_code,
+            d.rule_title,
+            d.explanation,
+            d.evidence,
+            d.severity,
+            d.appeal_deadline,
+            appeal.id::text AS appeal_id,
+            appeal.status AS appeal_status,
+            appeal.reviewer_note AS appeal_reviewer_note
      FROM fallback_users u
      INNER JOIN fallback_profile_moderation m
        ON lower(m.user_id) = lower(u.id::text)
        OR lower(m.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+     LEFT JOIN fallback_moderation_decisions d ON d.id = m.decision_id
+     LEFT JOIN LATERAL (
+       SELECT a.id, a.status, a.reviewer_note
+       FROM fallback_moderation_appeals a
+       WHERE a.decision_id = d.id
+       ORDER BY a.created_at DESC
+       LIMIT 1
+     ) appeal ON TRUE
      WHERE lower(u.id::text) = $1
        AND m.is_suspended = TRUE
        AND (
@@ -44,6 +62,12 @@ async function findActiveSuspension(pool, rawLocalUserId) {
 function accountSuspendedPayload(row) {
   const until = suspensionEnd(row)
   const reason = String(row?.suspension_reason || '').trim() || null
+  const evidence = Array.isArray(row?.evidence)
+    ? row.evidence.map((entry) => ({
+      source: String(entry?.source || 'manual'),
+      label: String(entry?.label || ''),
+    })).filter((entry) => entry.label)
+    : []
   return {
     error: 'ACCOUNT_SUSPENDED',
     message: until
@@ -56,6 +80,16 @@ function accountSuspendedPayload(row) {
     until,
     suspended_until: until,
     suspension_end_date: until,
+    decision_id: row?.decision_id || null,
+    rule_code: row?.rule_code || 'community_standards_other',
+    rule_title: row?.rule_title || 'Normas de la comunidad',
+    explanation: row?.explanation || reason,
+    evidence,
+    severity: row?.severity || 'high',
+    appeal_deadline: row?.appeal_deadline || null,
+    appeal_id: row?.appeal_id || null,
+    appeal_status: row?.appeal_status || null,
+    appeal_reviewer_note: row?.appeal_reviewer_note || null,
   }
 }
 

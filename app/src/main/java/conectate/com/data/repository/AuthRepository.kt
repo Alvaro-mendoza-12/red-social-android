@@ -2,6 +2,7 @@ package conectate.com.data.repository
 
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.User
 import conectate.com.data.supabase.AuthService
@@ -61,7 +62,8 @@ class AuthRepository @Inject constructor(
     private val groupRepository: GroupRepository,
     private val communityRepository: CommunityRepository,
     private val notificationRepository: NotificationRepository,
-    private val twoFactorAuthManager: conectate.com.auth.twoFactor.TwoFactorAuthManager
+    private val twoFactorAuthManager: conectate.com.auth.twoFactor.TwoFactorAuthManager,
+    private val localFallbackApiClient: LocalFallbackApiClient
 ) {
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, throwable ->
@@ -71,6 +73,11 @@ class AuthRepository @Inject constructor(
     private val accountSwitchMutex = Mutex()
     private val _accountSwitchUiState = MutableStateFlow(AccountSwitchUiState())
     val accountSwitchUiState: StateFlow<AccountSwitchUiState> = _accountSwitchUiState
+
+    suspend fun submitModerationAppeal(
+        appealToken: String,
+        statement: String
+    ): Result<String> = localFallbackApiClient.submitModerationAppeal(appealToken, statement)
 
     @kotlinx.serialization.Serializable
     private data class SuspensionStateResponse(

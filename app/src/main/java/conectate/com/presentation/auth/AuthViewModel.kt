@@ -22,7 +22,18 @@ sealed class AuthState {
     object Idle : AuthState()
     object Loading : AuthState()
     data class Success(val user: User) : AuthState()
-    data class Suspended(val suspensionEndDate: String?, val reason: String?) : AuthState()
+    data class Suspended(
+        val suspensionEndDate: String?,
+        val reason: String?,
+        val appealToken: String? = null,
+        val decisionId: String? = null,
+        val ruleTitle: String? = null,
+        val explanation: String? = null,
+        val evidence: List<String> = emptyList(),
+        val appealDeadline: String? = null,
+        val appealStatus: String? = null,
+        val appealReviewerNote: String? = null
+    ) : AuthState()
     data class MigratedPasswordSetupRequired(
         val email: String,
         val displayName: String? = null,
@@ -60,6 +71,23 @@ class AuthViewModel @Inject constructor(
 
     private val _accountSwitchMessage = MutableStateFlow<String?>(null)
     val accountSwitchMessage: StateFlow<String?> = _accountSwitchMessage.asStateFlow()
+    private val _appealSubmitting = MutableStateFlow(false)
+    val appealSubmitting: StateFlow<Boolean> = _appealSubmitting.asStateFlow()
+    private val _appealMessage = MutableStateFlow<String?>(null)
+    val appealMessage: StateFlow<String?> = _appealMessage.asStateFlow()
+
+    private fun suspendedState(error: AccountSuspendedException) = AuthState.Suspended(
+        suspensionEndDate = error.suspensionEndDate,
+        reason = error.reason,
+        appealToken = error.appealToken,
+        decisionId = error.decisionId,
+        ruleTitle = error.ruleTitle,
+        explanation = error.explanation,
+        evidence = error.evidence,
+        appealDeadline = error.appealDeadline,
+        appealStatus = error.appealStatus,
+        appealReviewerNote = error.appealReviewerNote
+    )
 
     init {
         checkAuthState()
@@ -94,10 +122,7 @@ class AuthViewModel @Inject constructor(
             authRepository.enforceCurrentSessionIsActive()
                 .onFailure { throwable ->
                     _authState.value = when (throwable) {
-                        is AccountSuspendedException -> AuthState.Suspended(
-                            suspensionEndDate = throwable.suspensionEndDate,
-                            reason = throwable.reason
-                        )
+                        is AccountSuspendedException -> suspendedState(throwable)
                         else -> AuthState.Error(mapAuthError(throwable))
                     }
                 }
@@ -137,6 +162,7 @@ class AuthViewModel @Inject constructor(
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
+            _appealMessage.value = null
             _authState.value = AuthState.Loading
             
             var result = authRepository.signInWithEmail(email, password)
@@ -148,10 +174,7 @@ class AuthViewModel @Inject constructor(
                 },
                 onFailure = {
                     when (it) {
-                        is AccountSuspendedException -> AuthState.Suspended(
-                            suspensionEndDate = it.suspensionEndDate,
-                            reason = it.reason
-                        )
+                        is AccountSuspendedException -> suspendedState(it)
                         is LocalFallbackMigratedPasswordSetupRequiredException ->
                             AuthState.MigratedPasswordSetupRequired(
                                 email = it.email.ifBlank { email.trim().lowercase() },
@@ -240,10 +263,7 @@ class AuthViewModel @Inject constructor(
                     }
                     _accountSwitchMessage.value = friendlyMessage
                     _authState.value = when (it) {
-                        is AccountSuspendedException -> AuthState.Suspended(
-                            suspensionEndDate = it.suspensionEndDate,
-                            reason = it.reason
-                        )
+                        is AccountSuspendedException -> suspendedState(it)
                         else -> AuthState.Idle
                     }
                 }
@@ -261,6 +281,37 @@ class AuthViewModel @Inject constructor(
 
     fun resetAuthState() {
         _authState.value = AuthState.Idle
+        _appealMessage.value = null
+        _appealSubmitting.value = false
+    }
+
+    fun submitModerationAppeal(statement: String) {
+        val suspended = _authState.value as? AuthState.Suspended ?: return
+        val token = suspended.appealToken.orEmpty()
+        val normalized = statement.trim()
+        if (token.isBlank()) {
+            _appealMessage.value = "Vuelve a iniciar sesión para obtener un permiso seguro de apelación."
+            return
+        }
+        if (normalized.length < 20) {
+            _appealMessage.value = "Explica tu apelación con al menos 20 caracteres."
+            return
+        }
+        if (_appealSubmitting.value) return
+        viewModelScope.launch {
+            _appealSubmitting.value = true
+            _appealMessage.value = null
+            authRepository.submitModerationAppeal(token, normalized)
+                .onSuccess {
+                    _authState.value = suspended.copy(appealStatus = "pending")
+                    _appealMessage.value =
+                        "Apelación enviada. Un administrador la revisará y podrás consultar el resultado al volver a iniciar sesión."
+                }
+                .onFailure {
+                    _appealMessage.value = mapAuthError(it)
+                }
+            _appealSubmitting.value = false
+        }
     }
 
     fun setAuthError(message: String) {

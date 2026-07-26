@@ -4002,6 +4002,8 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_chat_hidden WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_nicknames WHERE lower(user_id) = ANY($1::text[]) OR lower(target_user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_user_blocks WHERE lower(blocker_id) = ANY($1::text[]) OR lower(blocked_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_moderation_appeals WHERE lower(user_id) = ANY($1::text[]) OR decision_id IN (SELECT id FROM fallback_moderation_decisions WHERE lower(user_id) = ANY($1::text[]))`,
+      `DELETE FROM fallback_moderation_decisions WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_profile_moderation WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_video_reports WHERE lower(reporter_id) = ANY($1::text[]) OR lower(video_owner_id) = ANY($1::text[])`,
       `DELETE FROM fallback_view_once_consumptions WHERE lower(user_id) = ANY($1::text[])`,

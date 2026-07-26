@@ -27,6 +27,8 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_live_comments',
   'fallback_live_streams',
   'fallback_messages',
+  'fallback_moderation_appeals',
+  'fallback_moderation_decisions',
   'fallback_moderation_events',
   'fallback_moment_views',
   'fallback_moments',
@@ -158,8 +160,51 @@ const PROFILE_FRAME_CATALOG = Object.freeze([
   { id: 'ruby', name: 'Rubí' },
   { id: 'ocean', name: 'Océano' },
 ])
+const MODERATION_RULE_CATALOG = Object.freeze([
+  {
+    id: 'harassment_abuse',
+    title: 'Acoso o abuso',
+    description: 'Ataques, amenazas, hostigamiento o conducta abusiva contra otras personas.',
+  },
+  {
+    id: 'fraud_scam',
+    title: 'Fraude o estafa',
+    description: 'Engaño, suplantación o solicitud fraudulenta de dinero o datos.',
+  },
+  {
+    id: 'hate_discrimination',
+    title: 'Odio o discriminación',
+    description: 'Contenido que ataca a personas por una característica protegida.',
+  },
+  {
+    id: 'sexual_content',
+    title: 'Contenido sexual no permitido',
+    description: 'Contenido sexual que infringe las normas o involucra riesgo para menores.',
+  },
+  {
+    id: 'violence_threats',
+    title: 'Violencia o amenazas',
+    description: 'Amenazas creíbles, promoción de violencia o contenido extremadamente gráfico.',
+  },
+  {
+    id: 'spam_manipulation',
+    title: 'Spam o manipulación',
+    description: 'Actividad repetitiva, automatizada o diseñada para manipular la plataforma.',
+  },
+  {
+    id: 'privacy_impersonation',
+    title: 'Privacidad o suplantación',
+    description: 'Publicación de datos privados, identidad falsa o uso indebido de otra identidad.',
+  },
+  {
+    id: 'community_standards_other',
+    title: 'Otra infracción de las normas',
+    description: 'Incumplimiento documentado que no corresponde a otra categoría.',
+  },
+])
 const ADMIN_BADGES_BY_ID = new Map(ADMIN_BADGE_CATALOG.map((badge) => [badge.id, badge]))
 const PROFILE_FRAME_IDS = new Set(PROFILE_FRAME_CATALOG.map((frame) => frame.id))
+const MODERATION_RULES_BY_ID = new Map(MODERATION_RULE_CATALOG.map((rule) => [rule.id, rule]))
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
@@ -361,6 +406,78 @@ function suspensionWindow(days, now = Date.now()) {
   }
 }
 
+function normalizeModerationRule(value) {
+  const id = normalizeId(value) || 'community_standards_other'
+  return MODERATION_RULES_BY_ID.get(id) || null
+}
+
+function normalizeModerationSeverity(value) {
+  const severity = normalizeId(value)
+  return ['low', 'medium', 'high', 'critical'].includes(severity) ? severity : 'high'
+}
+
+function normalizeModerationEvidence(value) {
+  if (!Array.isArray(value)) return []
+  const seen = new Set()
+  return value
+    .map((entry) => {
+      const source = typeof entry === 'object' && entry !== null
+        ? textOf(entry, ['source', 'type'], 'manual')
+        : 'manual'
+      const reference = typeof entry === 'object' && entry !== null
+        ? textOf(entry, ['reference', 'content_ref', 'id'], '')
+        : ''
+      const label = typeof entry === 'object' && entry !== null
+        ? textOf(entry, ['label', 'summary', 'description'], '')
+        : String(entry || '').trim()
+      return {
+        source: source.slice(0, 40),
+        reference: reference.slice(0, 160),
+        label: label.slice(0, 240),
+      }
+    })
+    .filter((entry) => {
+      if (!entry.label) return false
+      const fingerprint = `${entry.source}|${entry.reference}|${entry.label}`.toLowerCase()
+      if (seen.has(fingerprint)) return false
+      seen.add(fingerprint)
+      return true
+    })
+    .slice(0, 12)
+}
+
+function moderationDecisionPayload(row, appeal = null) {
+  if (!row) return null
+  const evidence = Array.isArray(row.evidence) ? row.evidence : []
+  return {
+    id: String(row.id || ''),
+    user_id: String(row.user_id || ''),
+    action: String(row.action || 'suspension'),
+    rule_code: String(row.rule_code || 'community_standards_other'),
+    rule_title: String(row.rule_title || 'Otra infracción de las normas'),
+    explanation: String(row.explanation || ''),
+    evidence: evidence.map((entry) => ({
+      source: String(entry?.source || 'manual'),
+      label: String(entry?.label || ''),
+    })).filter((entry) => entry.label),
+    severity: String(row.severity || 'high'),
+    status: String(row.status || 'active'),
+    effective_until: row.effective_until || null,
+    appeal_deadline: row.appeal_deadline || null,
+    decided_at: row.decided_at || null,
+    appeal: appeal
+      ? {
+        id: String(appeal.id || ''),
+        status: String(appeal.status || 'pending'),
+        statement: String(appeal.statement || ''),
+        reviewer_note: appeal.reviewer_note || null,
+        created_at: appeal.created_at || null,
+        reviewed_at: appeal.reviewed_at || null,
+      }
+      : null,
+  }
+}
+
 async function ensureAdminModerationTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_profile_moderation (
@@ -374,6 +491,54 @@ async function ensureAdminModerationTables(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_moderation_decisions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      action TEXT NOT NULL DEFAULT 'suspension',
+      rule_code TEXT NOT NULL,
+      rule_title TEXT NOT NULL,
+      explanation TEXT NOT NULL,
+      evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      severity TEXT NOT NULL DEFAULT 'high',
+      status TEXT NOT NULL DEFAULT 'active',
+      decided_by TEXT,
+      decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      effective_until TIMESTAMPTZ,
+      appeal_deadline TIMESTAMPTZ,
+      reversed_at TIMESTAMPTZ,
+      reversal_reason TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_moderation_appeals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      decision_id UUID NOT NULL REFERENCES fallback_moderation_decisions(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      statement TEXT NOT NULL,
+      evidence_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewer_id TEXT,
+      reviewer_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_moderation_decisions_user
+     ON fallback_moderation_decisions(lower(user_id), decided_at DESC)`,
+  )
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_moderation_appeals_open
+     ON fallback_moderation_appeals(decision_id)
+     WHERE status IN ('pending', 'reviewing')`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_moderation_appeals_status
+     ON fallback_moderation_appeals(status, created_at)`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_moderation_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -408,6 +573,7 @@ async function ensureAdminModerationTables(pool) {
   for (const statement of [
     `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS decision_id UUID`,
     `ALTER TABLE fallback_video_reports ADD COLUMN IF NOT EXISTS warn_sent BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_video_reports ADD COLUMN IF NOT EXISTS strike_applied BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_video_reports ADD COLUMN IF NOT EXISTS action_note TEXT`,
@@ -730,6 +896,8 @@ async function purgeFallbackUserData(client, localUserId, identityValues, relati
     ['profile_login_emails', `DELETE FROM fallback_profile_login_emails WHERE user_id = $1::uuid`, [localUserId]],
     ['profile_overrides', `DELETE FROM fallback_profile_overrides WHERE user_id = $1::uuid`, [localUserId]],
     ['web_login_pairings', `DELETE FROM fallback_web_login_pairings WHERE approved_by_user_id = $1::uuid`, [localUserId]],
+    ['moderation_appeals', `DELETE FROM fallback_moderation_appeals WHERE lower(user_id) = ANY($1::text[]) OR decision_id IN (SELECT id FROM fallback_moderation_decisions WHERE lower(user_id) = ANY($1::text[]))`, [identityValues]],
+    ['moderation_decisions', `DELETE FROM fallback_moderation_decisions WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
     ['profile_moderation', `DELETE FROM fallback_profile_moderation WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
     ['moderation_events', `DELETE FROM fallback_moderation_events WHERE lower(COALESCE(actor_id, '')) = ANY($1::text[]) OR lower(COALESCE(content_ref, '')) = ANY($1::text[])`, [identityValues]],
   ]
@@ -1053,6 +1221,7 @@ async function executeAdminHardDelete(options) {
 function registerAdminModerationRoutes(app, {
   pool,
   authRequired,
+  appealAuthRequired = authRequired,
   getCurrentUser,
   userIdentity,
   deleteExternalAuthUser,
@@ -1072,6 +1241,117 @@ function registerAdminModerationRoutes(app, {
     }
     return { user, identity }
   }
+
+  app.get('/v1/moderation/decision', appealAuthRequired, async (req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT d.*
+         FROM fallback_users u
+         JOIN fallback_profile_moderation m
+           ON lower(m.user_id) = lower(u.id::text)
+           OR lower(m.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+         JOIN fallback_moderation_decisions d ON d.id = m.decision_id
+         WHERE u.id = $1::uuid
+         ORDER BY d.decided_at DESC
+         LIMIT 1`,
+        [req.auth.sub],
+      )
+      const decision = rows[0]
+      if (!decision) return res.status(404).json({ error: 'MODERATION_DECISION_NOT_FOUND' })
+      const appeals = await pool.query(
+        `SELECT *
+         FROM fallback_moderation_appeals
+         WHERE decision_id = $1::uuid
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [decision.id],
+      )
+      res.json({ decision: moderationDecisionPayload(decision, appeals.rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/moderation/appeals', appealAuthRequired, async (req, res, next) => {
+    try {
+      const statement = textOf(req.body, ['statement', 'message']).slice(0, 2000)
+      if (statement.length < 20) {
+        return res.status(400).json({ error: 'APPEAL_STATEMENT_TOO_SHORT' })
+      }
+      const evidenceUrls = Array.from(new Set(
+        (Array.isArray(req.body?.evidence_urls) ? req.body.evidence_urls : [])
+          .map((value) => String(value || '').trim())
+          .filter((value) => /^https:\/\//i.test(value))
+          .map((value) => value.slice(0, 500)),
+      )).slice(0, 5)
+      const decisionResult = await pool.query(
+        `SELECT d.*, m.user_id AS moderation_user_id
+         FROM fallback_users u
+         JOIN fallback_profile_moderation m
+           ON lower(m.user_id) = lower(u.id::text)
+           OR lower(m.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+         JOIN fallback_moderation_decisions d ON d.id = m.decision_id
+         WHERE u.id = $1::uuid
+           AND d.status = 'active'
+         ORDER BY d.decided_at DESC
+         LIMIT 1`,
+        [req.auth.sub],
+      )
+      const decision = decisionResult.rows[0]
+      if (!decision) return res.status(404).json({ error: 'ACTIVE_MODERATION_DECISION_NOT_FOUND' })
+      if (decision.appeal_deadline && new Date(decision.appeal_deadline).getTime() < Date.now()) {
+        return res.status(409).json({ error: 'APPEAL_DEADLINE_EXPIRED' })
+      }
+      const existing = await pool.query(
+        `SELECT id::text, status
+         FROM fallback_moderation_appeals
+         WHERE decision_id = $1::uuid
+           AND status IN ('pending', 'reviewing')
+         LIMIT 1`,
+        [decision.id],
+      )
+      if (existing.rows[0]) {
+        return res.status(409).json({
+          error: 'APPEAL_ALREADY_OPEN',
+          appeal_id: existing.rows[0].id,
+          status: existing.rows[0].status,
+        })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_moderation_appeals(
+           decision_id, user_id, statement, evidence_urls, status
+         )
+         VALUES ($1::uuid, $2, $3, $4::jsonb, 'pending')
+         RETURNING *`,
+        [
+          decision.id,
+          decision.moderation_user_id,
+          statement,
+          JSON.stringify(evidenceUrls),
+        ],
+      )
+      await recordModerationEvent(pool, decision.moderation_user_id, {
+        context: 'moderation_appeal_submitted',
+        contentRef: decision.id,
+        verdict: 'pending_human_review',
+        metadataPreview: `Apelación ${rows[0].id}`,
+      })
+      res.status(201).json({
+        appeal: {
+          id: rows[0].id,
+          decision_id: rows[0].decision_id,
+          status: rows[0].status,
+          statement: rows[0].statement,
+          created_at: rows[0].created_at,
+        },
+      })
+    } catch (error) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'APPEAL_ALREADY_OPEN' })
+      }
+      next(error)
+    }
+  })
 
   app.get('/v1/data/admin/access', authRequired, async (req, res, next) => {
     try {
@@ -1291,18 +1571,196 @@ function registerAdminModerationRoutes(app, {
            m.suspension_end_date,
            m.suspension_reason,
            m.suspension_count,
+           m.decision_id::text,
+           d.rule_code,
+           d.rule_title,
+           d.explanation,
+           d.evidence,
+           d.severity,
+           d.appeal_deadline,
+           appeal.id::text AS appeal_id,
+           appeal.status AS appeal_status,
+           appeal.statement AS appeal_statement,
+           appeal.reviewer_note AS appeal_reviewer_note,
+           appeal.created_at AS appeal_created_at,
+           appeal.reviewed_at AS appeal_reviewed_at,
            m.updated_at
          FROM fallback_profile_moderation m
          LEFT JOIN fallback_users u
            ON lower(m.user_id) = lower(u.id::text)
            OR lower(m.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
          LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+         LEFT JOIN fallback_moderation_decisions d ON d.id = m.decision_id
+         LEFT JOIN LATERAL (
+           SELECT a.*
+           FROM fallback_moderation_appeals a
+           WHERE a.decision_id = d.id
+           ORDER BY a.created_at DESC
+           LIMIT 1
+         ) appeal ON TRUE
          WHERE m.is_suspended = TRUE
            AND (m.suspended_until IS NULL OR m.suspended_until > NOW())
          ORDER BY m.updated_at DESC
          LIMIT 200`,
       )
       res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/admin/moderation/appeals', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const status = normalizeId(req.query?.status || 'all')
+      if (!['all', 'pending', 'reviewing', 'upheld', 'overturned'].includes(status)) {
+        return res.status(400).json({ error: 'APPEAL_STATUS_INVALID' })
+      }
+      const params = []
+      const predicate = status === 'all' ? '' : 'WHERE a.status = $1'
+      if (status !== 'all') params.push(status)
+      const { rows } = await pool.query(
+        `SELECT
+           a.id::text,
+           a.decision_id::text,
+           a.user_id,
+           a.statement,
+           a.evidence_urls,
+           a.status,
+           a.reviewer_id,
+           a.reviewer_note,
+           a.created_at,
+           a.updated_at,
+           a.reviewed_at,
+           d.action,
+           d.rule_code,
+           d.rule_title,
+           d.explanation,
+           d.evidence,
+           d.severity,
+           d.effective_until,
+           d.appeal_deadline,
+           COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, u.email, 'Usuario') AS display_name,
+           u.email
+         FROM fallback_moderation_appeals a
+         JOIN fallback_moderation_decisions d ON d.id = a.decision_id
+         LEFT JOIN fallback_users u
+           ON lower(a.user_id) = lower(u.id::text)
+           OR lower(a.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+         LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+         ${predicate}
+         ORDER BY
+           CASE a.status WHEN 'pending' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END,
+           a.created_at
+         LIMIT 300`,
+        params,
+      )
+      res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/admin/moderation/appeals/:id', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const appealId = normalizeId(req.params.id)
+      const outcome = normalizeId(req.body?.outcome || req.body?.status)
+      const note = textOf(req.body, ['note', 'reviewer_note']).slice(0, 2000)
+      if (!/^[0-9a-f-]{36}$/.test(appealId)) {
+        return res.status(400).json({ error: 'APPEAL_ID_INVALID' })
+      }
+      if (!['upheld', 'overturned'].includes(outcome)) {
+        return res.status(400).json({ error: 'APPEAL_OUTCOME_INVALID' })
+      }
+      if (note.length < 3) return res.status(400).json({ error: 'APPEAL_REVIEW_NOTE_REQUIRED' })
+
+      const client = await pool.connect()
+      let appeal
+      try {
+        await client.query('BEGIN')
+        const current = await client.query(
+          `SELECT a.*, d.user_id AS decision_user_id
+           FROM fallback_moderation_appeals a
+           JOIN fallback_moderation_decisions d ON d.id = a.decision_id
+           WHERE a.id = $1::uuid
+           FOR UPDATE OF a`,
+          [appealId],
+        )
+        appeal = current.rows[0]
+        if (!appeal) {
+          await client.query('ROLLBACK')
+          return res.status(404).json({ error: 'APPEAL_NOT_FOUND' })
+        }
+        if (!['pending', 'reviewing'].includes(appeal.status)) {
+          await client.query('ROLLBACK')
+          return res.status(409).json({ error: 'APPEAL_ALREADY_REVIEWED' })
+        }
+        const decisionUserId = appeal.decision_user_id
+        const updated = await client.query(
+          `UPDATE fallback_moderation_appeals
+           SET status = $2,
+               reviewer_id = $3,
+               reviewer_note = $4,
+               reviewed_at = NOW(),
+               updated_at = NOW()
+           WHERE id = $1::uuid
+           RETURNING *`,
+          [appealId, outcome, context.identity.displayUserId, note],
+        )
+        appeal = { ...updated.rows[0], decision_user_id: decisionUserId }
+        if (outcome === 'overturned') {
+          await client.query(
+            `UPDATE fallback_moderation_decisions
+             SET status = 'reversed',
+                 reversed_at = NOW(),
+                 reversal_reason = $2,
+                 updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [appeal.decision_id, note],
+          )
+          await client.query(
+            `UPDATE fallback_profile_moderation
+             SET is_suspended = FALSE,
+                 suspended_until = NULL,
+                 suspension_end_date = NULL,
+                 suspension_reason = NULL,
+                 updated_at = NOW()
+             WHERE decision_id = $1::uuid`,
+            [appeal.decision_id],
+          )
+        }
+        await client.query('COMMIT')
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {})
+        throw error
+      } finally {
+        client.release()
+      }
+      await recordModerationEvent(pool, context.identity.displayUserId, {
+        context: 'moderation_appeal_reviewed',
+        contentRef: appeal.decision_id,
+        verdict: outcome,
+        metadataPreview: note,
+      })
+      void publishRealtimeEvent(`user:${normalizeId(appeal.decision_user_id)}`, {
+        event: 'moderation_appeal_reviewed',
+        outcome,
+        decisionId: appeal.decision_id,
+      }).catch(() => {})
+      res.json({
+        success: true,
+        appeal: {
+          id: appeal.id,
+          decision_id: appeal.decision_id,
+          status: appeal.status,
+          reviewer_note: appeal.reviewer_note,
+          reviewed_at: appeal.reviewed_at,
+        },
+        account_reactivated: outcome === 'overturned',
+      })
     } catch (error) {
       next(error)
     }
@@ -1341,9 +1799,13 @@ function registerAdminModerationRoutes(app, {
       const userId = normalizeId(req.body?.user_id)
       const reason = textOf(req.body, ['reason']).slice(0, 500)
       const window = suspensionWindow(req.body?.days)
+      const rule = normalizeModerationRule(req.body?.rule_code)
+      const severity = normalizeModerationSeverity(req.body?.severity)
+      const evidence = normalizeModerationEvidence(req.body?.evidence)
       if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' })
       if (!reason) return res.status(400).json({ error: 'SUSPENSION_REASON_REQUIRED' })
       if (!window) return res.status(400).json({ error: 'SUSPENSION_DAYS_INVALID' })
+      if (!rule) return res.status(400).json({ error: 'MODERATION_RULE_INVALID' })
 
       const target = await findAdminTarget(pool, userId)
       if (!target) return res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -1351,23 +1813,69 @@ function registerAdminModerationRoutes(app, {
         return res.status(403).json({ error: 'ADMIN_CANNOT_BE_SUSPENDED' })
       }
 
-      await pool.query(
-        `INSERT INTO fallback_profile_moderation (user_id, is_suspended, suspension_reason, suspension_end_date, suspended_until, suspension_count, updated_at)
-         VALUES ($1, TRUE, $2, $3, $3, 1, NOW())
-         ON CONFLICT (user_id) DO UPDATE SET
-         is_suspended = TRUE, suspension_reason = $2, suspension_end_date = $3, suspended_until = $3,
-         suspension_count = fallback_profile_moderation.suspension_count + 1,
-         updated_at = NOW()`,
-        [target.id, reason, window.suspendedUntil]
-      )
+      const client = await pool.connect()
+      let decision
+      try {
+        await client.query('BEGIN')
+        const appealDeadline = new Date(Date.now() + 14 * 86400000).toISOString()
+        const decisionResult = await client.query(
+          `INSERT INTO fallback_moderation_decisions(
+             user_id, action, rule_code, rule_title, explanation, evidence,
+             severity, status, decided_by, effective_until, appeal_deadline
+           )
+           VALUES ($1, 'suspension', $2, $3, $4, $5::jsonb, $6, 'active', $7, $8, $9)
+           RETURNING *`,
+          [
+            target.id,
+            rule.id,
+            rule.title,
+            reason,
+            JSON.stringify(evidence.length > 0
+              ? evidence
+              : [{ source: 'manual', reference: '', label: reason }]),
+            severity,
+            context.identity.displayUserId,
+            window.suspendedUntil,
+            appealDeadline,
+          ],
+        )
+        decision = decisionResult.rows[0]
+        await client.query(
+          `INSERT INTO fallback_profile_moderation (
+             user_id, is_suspended, suspension_reason, suspension_end_date,
+             suspended_until, suspension_count, decision_id, updated_at
+           )
+           VALUES ($1, TRUE, $2, $3, $3, 1, $4::uuid, NOW())
+           ON CONFLICT (user_id) DO UPDATE SET
+             is_suspended = TRUE,
+             suspension_reason = $2,
+             suspension_end_date = $3,
+             suspended_until = $3,
+             suspension_count = fallback_profile_moderation.suspension_count + 1,
+             decision_id = $4::uuid,
+             updated_at = NOW()`,
+          [target.id, reason, window.suspendedUntil, decision.id],
+        )
+        await client.query('COMMIT')
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {})
+        throw error
+      } finally {
+        client.release()
+      }
       await recordModerationEvent(pool, context.identity.displayUserId, {
         context: 'admin_suspend_user',
-        contentRef: target.id,
+        contentRef: decision.id,
         verdict: window.days === 0 ? 'suspended_permanently' : `suspended_${window.days}_days`,
-        metadataPreview: reason,
+        metadataPreview: `${rule.id}: ${reason}`,
       })
 
-      res.json({ success: true, suspended_until: window.suspendedUntil, permanent: window.days === 0 })
+      res.json({
+        success: true,
+        suspended_until: window.suspendedUntil,
+        permanent: window.days === 0,
+        decision: moderationDecisionPayload(decision),
+      })
     } catch (error) {
       next(error)
     }
@@ -1383,6 +1891,21 @@ function registerAdminModerationRoutes(app, {
       const target = await findAdminTarget(pool, userId)
       if (!target) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identityValues = Array.from(new Set([target.id, target.local_id].map(normalizeId).filter(Boolean)))
+      await pool.query(
+        `UPDATE fallback_moderation_decisions
+         SET status = 'reversed',
+             reversed_at = NOW(),
+             reversal_reason = $2,
+             updated_at = NOW()
+         WHERE id IN (
+           SELECT decision_id
+           FROM fallback_profile_moderation
+           WHERE lower(user_id) = ANY($1::text[])
+             AND decision_id IS NOT NULL
+         )
+           AND status = 'active'`,
+        [identityValues, reason],
+      )
       const { rowCount } = await pool.query(
         `UPDATE fallback_profile_moderation
          SET is_suspended = FALSE,
@@ -1432,6 +1955,7 @@ function registerAdminModerationRoutes(app, {
 
 module.exports = {
   ADMIN_BADGE_CATALOG,
+  MODERATION_RULE_CATALOG,
   PROFILE_FRAME_CATALOG,
   ensureAdminModerationTables,
   executeAdminHardDelete,
@@ -1440,6 +1964,9 @@ module.exports = {
   isHardDeleteConfirmationValid,
   isTestAccountTarget,
   normalizeBadgeIds,
+  normalizeModerationEvidence,
+  normalizeModerationRule,
+  normalizeModerationSeverity,
   normalizeProfileFrame,
   normalizeSuspensionDays,
   recordModerationEvent,

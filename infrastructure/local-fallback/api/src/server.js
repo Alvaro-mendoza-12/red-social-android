@@ -378,6 +378,23 @@ function signUserToken(user, options = {}) {
   )
 }
 
+function signAppealToken(userId) {
+  return jwt.sign(
+    {
+      provider: 'local-fallback',
+      tokenType: 'moderation-appeal',
+      scope: 'moderation:appeal',
+    },
+    jwtSecret,
+    {
+      subject: String(userId || '').trim(),
+      expiresIn: '14d',
+      issuer: serviceName,
+      audience: 'conectate-moderation-appeals',
+    },
+  )
+}
+
 function signMigrationPasswordToken(user) {
   return jwt.sign(
     {
@@ -483,7 +500,11 @@ async function authRequired(req, res, next) {
     }
     const suspension = await findActiveSuspension(pool, req.auth.sub)
     if (suspension) {
-      return res.status(403).json(accountSuspendedPayload(suspension))
+      return res.status(403).json({
+        ...accountSuspendedPayload(suspension),
+        appealToken: signAppealToken(req.auth.sub),
+        appealTokenExpiresIn: '14d',
+      })
     }
     const activeSession = await touchWebSessionForAuth(req.auth, req)
     if (!activeSession) {
@@ -496,6 +517,35 @@ async function authRequired(req, res, next) {
     }
     if (error?.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'INVALID_TOKEN' })
+    }
+    return next(error)
+  }
+}
+
+async function appealAuthRequired(req, res, next) {
+  const authorization = String(req.headers.authorization || '')
+  const token = authorization.replace(/^Bearer\s+/i, '').trim()
+  if (!token) return res.status(401).json({ error: 'APPEAL_AUTH_REQUIRED' })
+  try {
+    req.auth = jwt.verify(token, jwtSecret, {
+      issuer: serviceName,
+      audience: 'conectate-moderation-appeals',
+    })
+    if (req.auth.tokenType !== 'moderation-appeal' || req.auth.scope !== 'moderation:appeal') {
+      return res.status(403).json({ error: 'APPEAL_TOKEN_SCOPE_INVALID' })
+    }
+    const { rows } = await pool.query(
+      `SELECT 1 FROM fallback_users WHERE id = $1::uuid LIMIT 1`,
+      [req.auth.sub],
+    )
+    if (!rows[0]) return res.status(401).json({ error: 'ACCOUNT_DELETED' })
+    return next()
+  } catch (error) {
+    if (error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'APPEAL_TOKEN_EXPIRED' })
+    }
+    if (error?.name && String(error.name).includes('JsonWebToken')) {
+      return res.status(401).json({ error: 'APPEAL_TOKEN_INVALID' })
     }
     return next(error)
   }
@@ -993,6 +1043,7 @@ app.get('/ready', async (_req, res, next) => {
         'system_health_v1',
         'feed_modes_v1',
         'saved_collections_v1',
+        'moderation_appeals_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),
@@ -1327,7 +1378,11 @@ app.post('/v1/auth/login', async (req, res, next) => {
     const suspension = await findActiveSuspension(pool, row.id)
     if (suspension) {
       await recordAudit('auth_login_suspended', row.id, { email })
-      return res.status(403).json(accountSuspendedPayload(suspension))
+      return res.status(403).json({
+        ...accountSuspendedPayload(suspension),
+        appealToken: signAppealToken(row.id),
+        appealTokenExpiresIn: '14d',
+      })
     }
 
     const updated = await pool.query(
@@ -1972,7 +2027,7 @@ async function deleteExternalAuthUser(userId) {
 }
 
 registerStorageRoutes(app, { pool, authRequired })
-registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
+registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser })
 registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 registerAiRoutes(app, { authRequired })
 

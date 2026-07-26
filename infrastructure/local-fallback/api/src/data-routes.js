@@ -4280,7 +4280,7 @@ async function ensureLocalDataTables(pool) {
   await ensureProximityTables(pool)
 }
 
-function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser }) {
+function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser }) {
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
@@ -4297,6 +4297,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
   registerAdminModerationRoutes(app, {
     pool,
     authRequired,
+    appealAuthRequired,
     getCurrentUser,
     userIdentity,
     deleteExternalAuthUser,

@@ -24,6 +24,7 @@ import androidx.navigation.NavController
 import conectate.com.data.model.Report
 import conectate.com.data.model.VideoReport
 import conectate.com.data.localfallback.AdminCatalog
+import conectate.com.data.localfallback.AdminModerationAppeal
 import conectate.com.data.localfallback.AdminUser
 import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.presentation.components.FullScreenImageDialog
@@ -41,6 +42,7 @@ fun AdminPanelScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
     
     val suspendedProfiles by viewModel.suspendedProfiles.collectAsState()
+    val moderationAppeals by viewModel.moderationAppeals.collectAsState()
     val userReports by viewModel.userReports.collectAsState()
     val videoReports by viewModel.videoReports.collectAsState()
     val stats by viewModel.stats.collectAsState()
@@ -56,6 +58,13 @@ fun AdminPanelScreen(
     var userToSuspend by remember { mutableStateOf<String?>(null) }
     var suspendReason by remember { mutableStateOf("") }
     var suspendDays by remember { mutableStateOf("7") }
+    var suspendRuleCode by remember { mutableStateOf("community_standards_other") }
+    var suspendSeverity by remember { mutableStateOf("high") }
+    var suspendEvidence by remember { mutableStateOf("") }
+    var ruleMenuExpanded by remember { mutableStateOf(false) }
+    var severityMenuExpanded by remember { mutableStateOf(false) }
+    var appealToReview by remember { mutableStateOf<AdminModerationAppeal?>(null) }
+    var appealReviewNote by remember { mutableStateOf("") }
     // Estado para eliminar usuario completamente
     var userToDelete by remember { mutableStateOf<AdminUser?>(null) }
 
@@ -81,16 +90,101 @@ fun AdminPanelScreen(
             onDismissRequest = { userToSuspend = null },
             title = { Text("Suspender Usuario") },
             text = {
-                Column {
+                val rules = listOf(
+                    "harassment_abuse" to "Acoso o abuso",
+                    "fraud_scam" to "Fraude o estafa",
+                    "hate_discrimination" to "Odio o discriminación",
+                    "sexual_content" to "Contenido sexual no permitido",
+                    "violence_threats" to "Violencia o amenazas",
+                    "spam_manipulation" to "Spam o manipulación",
+                    "privacy_impersonation" to "Privacidad o suplantación",
+                    "community_standards_other" to "Otra infracción"
+                )
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text("ID: ${userToSuspend}")
-                    Spacer(modifier = Modifier.height(8.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = ruleMenuExpanded,
+                        onExpandedChange = { ruleMenuExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = rules.firstOrNull { it.first == suspendRuleCode }?.second.orEmpty(),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Regla aplicada") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(ruleMenuExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = ruleMenuExpanded,
+                            onDismissRequest = { ruleMenuExpanded = false }
+                        ) {
+                            rules.forEach { (code, title) ->
+                                DropdownMenuItem(
+                                    text = { Text(title) },
+                                    onClick = {
+                                        suspendRuleCode = code
+                                        ruleMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = suspendReason,
-                        onValueChange = { suspendReason = it },
-                        label = { Text("Motivo obligatorio") },
-                        supportingText = { Text("Se guardará en el registro de auditoría") }
+                        onValueChange = { suspendReason = it.take(500) },
+                        label = { Text("Explicación para el usuario") },
+                        supportingText = { Text("Debe describir qué ocurrió; se guardará en auditoría") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = suspendEvidence,
+                        onValueChange = { suspendEvidence = it.take(1000) },
+                        label = { Text("Evidencias resumidas") },
+                        supportingText = { Text("Una por línea; no incluyas datos privados innecesarios") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = severityMenuExpanded,
+                        onExpandedChange = { severityMenuExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = when (suspendSeverity) {
+                                "critical" -> "Crítica"
+                                "medium" -> "Media"
+                                "low" -> "Baja"
+                                else -> "Alta"
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Severidad") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(severityMenuExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = severityMenuExpanded,
+                            onDismissRequest = { severityMenuExpanded = false }
+                        ) {
+                            listOf(
+                                "low" to "Baja",
+                                "medium" to "Media",
+                                "high" to "Alta",
+                                "critical" to "Crítica"
+                            ).forEach { (code, title) ->
+                                DropdownMenuItem(
+                                    text = { Text(title) },
+                                    onClick = {
+                                        suspendSeverity = code
+                                        severityMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = suspendDays,
                         onValueChange = { value ->
@@ -106,15 +200,95 @@ fun AdminPanelScreen(
                 Button(
                     enabled = suspendReason.isNotBlank() && days != null && days in 0..3650,
                     onClick = {
-                        viewModel.suspendUser(userToSuspend!!, suspendReason.trim(), days ?: return@Button)
+                        viewModel.suspendUser(
+                            userToSuspend!!,
+                            suspendReason.trim(),
+                            days ?: return@Button,
+                            suspendRuleCode,
+                            suspendSeverity,
+                            suspendEvidence.lines().map { it.trim() }.filter { it.isNotBlank() }
+                        )
                         userToSuspend = null
                         suspendReason = ""
                         suspendDays = "7"
+                        suspendRuleCode = "community_standards_other"
+                        suspendSeverity = "high"
+                        suspendEvidence = ""
                     }
                 ) { Text("Suspender") }
             },
             dismissButton = {
                 TextButton(onClick = { userToSuspend = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    appealToReview?.let { appeal ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isLoading) {
+                    appealToReview = null
+                    appealReviewNote = ""
+                }
+            },
+            title = { Text("Revisión humana de apelación") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(appeal.displayName, fontWeight = FontWeight.Bold)
+                    Text("Regla: ${appeal.ruleTitle}")
+                    Text("Decisión: ${appeal.explanation}")
+                    Text("Apelación:", fontWeight = FontWeight.SemiBold)
+                    Text(appeal.statement)
+                    OutlinedTextField(
+                        value = appealReviewNote,
+                        onValueChange = { appealReviewNote = it.take(2000) },
+                        label = { Text("Fundamento de la revisión") },
+                        supportingText = { Text("Será visible para la persona") },
+                        minLines = 3,
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isLoading && appealReviewNote.trim().length >= 3,
+                    onClick = {
+                        viewModel.reviewModerationAppeal(
+                            appeal.id,
+                            "overturned",
+                            appealReviewNote
+                        )
+                        appealToReview = null
+                        appealReviewNote = ""
+                    }
+                ) { Text("Aceptar apelación") }
+            },
+            dismissButton = {
+                Column {
+                    TextButton(
+                        enabled = !isLoading && appealReviewNote.trim().length >= 3,
+                        onClick = {
+                            viewModel.reviewModerationAppeal(
+                                appeal.id,
+                                "upheld",
+                                appealReviewNote
+                            )
+                            appealToReview = null
+                            appealReviewNote = ""
+                        }
+                    ) { Text("Mantener decisión") }
+                    TextButton(
+                        enabled = !isLoading,
+                        onClick = {
+                            appealToReview = null
+                            appealReviewNote = ""
+                        }
+                    ) { Text("Cancelar") }
+                }
             }
         )
     }
@@ -225,6 +399,7 @@ fun AdminPanelScreen(
                 Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, text = { Text("Suspendidos") })
                 Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, text = { Text("Reportes") })
                 Tab(selected = selectedTabIndex == 4, onClick = { selectedTabIndex = 4 }, text = { Text("Videos") })
+                Tab(selected = selectedTabIndex == 5, onClick = { selectedTabIndex = 5 }, text = { Text("Apelaciones") })
             }
 
             if (!errorMessage.isNullOrBlank()) {
@@ -306,6 +481,20 @@ fun AdminPanelScreen(
                                 report = report,
                                 onSuspend = { userToSuspend = report.videoOwnerId },
                                 onStatusChange = { status -> viewModel.updateReportStatus(report.id, status, "video") }
+                            )
+                        }
+                    }
+                    5 -> {
+                        if (moderationAppeals.isEmpty() && !isLoading) {
+                            item { Text("No hay apelaciones para revisar.") }
+                        }
+                        items(moderationAppeals, key = { it.id }) { appeal ->
+                            ModerationAppealCard(
+                                appeal = appeal,
+                                onReview = {
+                                    appealReviewNote = appeal.reviewerNote.orEmpty()
+                                    appealToReview = appeal
+                                }
                             )
                         }
                     }
@@ -567,6 +756,51 @@ private fun AdminUserCard(
 }
 
 @Composable
+private fun ModerationAppealCard(
+    appeal: AdminModerationAppeal,
+    onReview: () -> Unit
+) {
+    val pending = appeal.status == "pending" || appeal.status == "reviewing"
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(appeal.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (appeal.email.isNotBlank()) {
+                Text(appeal.email, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Regla: ${appeal.ruleTitle}", fontWeight = FontWeight.SemiBold)
+            Text("Decisión: ${appeal.explanation}")
+            Divider()
+            Text("Apelación", fontWeight = FontWeight.SemiBold)
+            Text(appeal.statement)
+            Text(
+                "Estado: ${when (appeal.status) {
+                    "pending" -> "Pendiente"
+                    "reviewing" -> "En revisión"
+                    "upheld" -> "Decisión mantenida"
+                    "overturned" -> "Aceptada"
+                    else -> appeal.status
+                }}",
+                color = if (pending) MaterialTheme.colorScheme.tertiary
+                else MaterialTheme.colorScheme.primary
+            )
+            appeal.reviewerNote?.takeIf { it.isNotBlank() }?.let {
+                Text("Fundamento del revisor: $it")
+            }
+            if (pending) {
+                Button(onClick = onReview, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.RateReview, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Revisar apelación")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SuspendedProfileCard(
     profile: SuspendedProfile,
     onReactivate: () -> Unit,
@@ -575,8 +809,33 @@ private fun SuspendedProfileCard(
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("ID: ${profile.userId}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            profile.ruleTitle?.takeIf { it.isNotBlank() }?.let {
+                Text("Regla: $it", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
             if (!profile.suspensionReason.isNullOrBlank()) {
                 Text("Razón: ${profile.suspensionReason}", style = MaterialTheme.typography.bodySmall)
+            }
+            profile.explanation
+                ?.takeIf { it.isNotBlank() && it != profile.suspensionReason }
+                ?.let { Text("Explicación: $it", style = MaterialTheme.typography.bodySmall) }
+            if (profile.evidence.isNotEmpty()) {
+                Text("Evidencia:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                profile.evidence.take(5).forEach {
+                    Text("• $it", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            profile.appealStatus?.let {
+                Text(
+                    "Apelación: ${when (it) {
+                        "pending" -> "pendiente"
+                        "reviewing" -> "en revisión"
+                        "upheld" -> "decisión mantenida"
+                        "overturned" -> "aceptada"
+                        else -> it
+                    }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
             }
             Text("Hasta: ${profile.suspendedUntil ?: "Permanente"}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(12.dp))
@@ -681,5 +940,12 @@ data class SuspendedProfile(
     val suspensionEndDate: String? = null,
     val suspensionReason: String? = null,
     val suspensionCount: Int = 0,
+    val decisionId: String? = null,
+    val ruleTitle: String? = null,
+    val explanation: String? = null,
+    val evidence: List<String> = emptyList(),
+    val severity: String? = null,
+    val appealDeadline: String? = null,
+    val appealStatus: String? = null,
     val updatedAt: String? = null
 )

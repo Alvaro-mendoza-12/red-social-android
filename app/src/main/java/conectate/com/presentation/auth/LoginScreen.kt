@@ -66,11 +66,15 @@ fun LoginScreen(
     var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
+    var showAppealForm by rememberSaveable { mutableStateOf(false) }
+    var appealStatement by rememberSaveable { mutableStateOf("") }
     var switchingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     
     val authState by viewModel.authState.collectAsStateWithLifecycle()
     val storedAccounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
     val accountSwitchMessage by viewModel.accountSwitchMessage.collectAsStateWithLifecycle()
+    val appealSubmitting by viewModel.appealSubmitting.collectAsStateWithLifecycle()
+    val appealMessage by viewModel.appealMessage.collectAsStateWithLifecycle()
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
     val suspendedState = authState as? AuthState.Suspended
     val authErrorText = (authState as? AuthState.Error)?.message.orEmpty()
@@ -135,23 +139,103 @@ fun LoginScreen(
             onDismissRequest = { },
             title = { Text("Cuenta suspendida") },
             text = {
-                val message = buildString {
-                    append("Tu cuenta ha sido suspendida por no cumplir las normas de la comunidad o políticas de privacidad.")
-                    if (suspensionReason.isNotBlank()) {
-                        append("\n\nMotivo: $suspensionReason")
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Tu cuenta fue restringida por una decisión de moderación.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    suspendedState?.ruleTitle?.takeIf { it.isNotBlank() }?.let {
+                        Text("Regla aplicada: $it", fontWeight = FontWeight.SemiBold)
                     }
-                    append(
+                    val explanation = suspendedState?.explanation
+                        ?.takeIf { it.isNotBlank() }
+                        ?: suspensionReason.takeIf { it.isNotBlank() }
+                    explanation?.let { Text("Explicación: $it") }
+                    suspendedState?.evidence?.takeIf { it.isNotEmpty() }?.let { evidence ->
+                        Text("Evidencia considerada:", fontWeight = FontWeight.SemiBold)
+                        evidence.take(5).forEach { Text("• $it") }
+                    }
+                    Text(
                         if (permanent) {
-                            "\n\nLa suspensión es permanente."
+                            "La suspensión es permanente."
                         } else {
-                            "\n\nSuspendida hasta:\n$suspensionDateText\n\nVuelve en esa fecha para poder iniciar sesión."
+                            "Suspendida hasta: $suspensionDateText"
                         }
                     )
+                    suspendedState?.decisionId?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            "Decisión: ${it.take(12)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    when (suspendedState?.appealStatus) {
+                        "pending", "reviewing" -> Text(
+                            "Tu apelación está pendiente de revisión humana.",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        "upheld" -> Text(
+                            suspendedState?.appealReviewerNote
+                                ?: "La revisión mantuvo la decisión.",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        "overturned" -> Text(
+                            "La apelación fue aceptada. Vuelve a iniciar sesión.",
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        else -> {
+                            if (!suspendedState?.appealToken.isNullOrBlank()) {
+                                if (showAppealForm) {
+                                    OutlinedTextField(
+                                        value = appealStatement,
+                                        onValueChange = { appealStatement = it.take(2000) },
+                                        label = { Text("Explica por qué debe revisarse") },
+                                        supportingText = {
+                                            Text("${appealStatement.trim().length}/2000 · mínimo 20")
+                                        },
+                                        minLines = 3,
+                                        maxLines = 6,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Button(
+                                        enabled = !appealSubmitting && appealStatement.trim().length >= 20,
+                                        onClick = { viewModel.submitModerationAppeal(appealStatement) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        if (appealSubmitting) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Text("Enviar apelación")
+                                        }
+                                    }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = { showAppealForm = true },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Apelar esta decisión")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    appealMessage?.let {
+                        Text(
+                            it,
+                            color = if (it.startsWith("Apelación enviada"))
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium
-                )
             },
             confirmButton = {
                 Button(
@@ -161,6 +245,8 @@ fun LoginScreen(
                         email = ""
                         password = ""
                         loginType = "email"
+                        showAppealForm = false
+                        appealStatement = ""
                     }
                 ) {
                     Text("Aceptar")

@@ -1,6 +1,7 @@
 package conectate.com.data.localfallback
 
 import conectate.com.BuildConfig
+import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.GroupMessage
@@ -394,6 +395,23 @@ data class LocalFallbackPostDetailResponse(
     val comments: List<Comment> = emptyList()
 )
 
+data class AdminModerationAppeal(
+    val id: String,
+    val decisionId: String,
+    val userId: String,
+    val displayName: String,
+    val email: String,
+    val statement: String,
+    val status: String,
+    val ruleCode: String,
+    val ruleTitle: String,
+    val explanation: String,
+    val severity: String,
+    val reviewerNote: String? = null,
+    val createdAt: String? = null,
+    val reviewedAt: String? = null
+)
+
 @Serializable
 data class SavedCollection(
     val id: String = "",
@@ -771,12 +789,30 @@ private data class LocalFallbackReactionRequest(
 )
 
 @Serializable
+private data class LocalFallbackModerationEvidence(
+    val source: String = "",
+    val label: String = ""
+)
+
+@Serializable
 private data class LocalFallbackErrorResponse(
     val error: String? = null,
     val message: String? = null,
     val migrationToken: String? = null,
     val email: String? = null,
-    val displayName: String? = null
+    val displayName: String? = null,
+    val reason: String? = null,
+    @SerialName("suspension_reason") val suspensionReason: String? = null,
+    val until: String? = null,
+    @SerialName("suspended_until") val suspendedUntil: String? = null,
+    @SerialName("decision_id") val decisionId: String? = null,
+    @SerialName("rule_title") val ruleTitle: String? = null,
+    val explanation: String? = null,
+    val evidence: List<LocalFallbackModerationEvidence> = emptyList(),
+    @SerialName("appeal_deadline") val appealDeadline: String? = null,
+    @SerialName("appeal_status") val appealStatus: String? = null,
+    @SerialName("appeal_reviewer_note") val appealReviewerNote: String? = null,
+    val appealToken: String? = null
 )
 
 @Serializable
@@ -2017,6 +2053,32 @@ class LocalFallbackApiClient @Inject constructor(
                     .getOrNull()
                     ?.let { mapPost(it) }
                 Result.success(post)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun submitModerationAppeal(
+        appealToken: String,
+        statement: String
+    ): Result<String> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        if (appealToken.isBlank()) return Result.failure(Exception("Vuelve a iniciar sesión para apelar."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/moderation/appeals") {
+                localHeaders(appealToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("statement", JsonPrimitive(statement.trim()))
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val appeal = json.parseToJsonElement(body).jsonObject["appeal"]?.jsonObject
+                Result.success(textOf(appeal ?: JsonObject(emptyMap()), "status").ifBlank { "pending" })
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
@@ -3955,6 +4017,25 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
+            "ACCOUNT_SUSPENDED" -> AccountSuspendedException(
+                suspensionEndDate = error.suspendedUntil ?: error.until,
+                reason = error.suspensionReason ?: error.reason,
+                message = error.message
+                    ?.removePrefix("ACCOUNT_SUSPENDED:")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Tu cuenta está suspendida.",
+                appealToken = error.appealToken,
+                decisionId = error.decisionId,
+                ruleTitle = error.ruleTitle,
+                explanation = error.explanation,
+                evidence = error.evidence.mapNotNull { item ->
+                    item.label.trim().takeIf { it.isNotBlank() }
+                },
+                appealDeadline = error.appealDeadline,
+                appealStatus = error.appealStatus,
+                appealReviewerNote = error.appealReviewerNote
+            )
             "INVALID_CREDENTIALS" -> Exception("Correo o contraseña incorrectos.")
             "ACCOUNT_NOT_FOUND" -> Exception("No existe una cuenta con ese correo. Regístrate para crear una cuenta.")
             "INVALID_PASSWORD" -> Exception("Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.")
@@ -3974,6 +4055,26 @@ class LocalFallbackApiClient @Inject constructor(
             "MESSAGE_REQUIRED" -> Exception("Escribe un mensaje para Novvin.")
             "MESSAGE_TOO_LONG" -> Exception("El mensaje para Novvin supera los 1.000 caracteres.")
             "AI_RATE_LIMITED" -> Exception("Has enviado muchos mensajes seguidos. Espera un momento antes de reintentar.")
+            "APPEAL_STATEMENT_TOO_SHORT" ->
+                Exception("Explica tu apelación con al menos 20 caracteres.")
+            "APPEAL_ALREADY_OPEN" ->
+                Exception("Ya existe una apelación pendiente de revisión humana para esta decisión.")
+            "APPEAL_DEADLINE_EXPIRED" ->
+                Exception("El plazo para apelar esta decisión ya terminó.")
+            "APPEAL_TOKEN_EXPIRED", "APPEAL_TOKEN_INVALID", "APPEAL_AUTH_REQUIRED" ->
+                Exception("El permiso para apelar venció. Inicia sesión otra vez para solicitar uno nuevo.")
+            "APPEAL_REVIEW_NOTE_REQUIRED" ->
+                Exception("Escribe el fundamento de la revisión antes de guardar.")
+            "APPEAL_ALREADY_REVIEWED" ->
+                Exception("Esta apelación ya fue revisada. Actualiza el panel para ver el resultado.")
+            "APPEAL_NOT_FOUND" ->
+                Exception("La apelación ya no está disponible.")
+            "MODERATION_RULE_INVALID" ->
+                Exception("Selecciona una norma válida para registrar la decisión.")
+            "SUSPENSION_DAYS_INVALID" ->
+                Exception("La duración de la suspensión no es válida.")
+            "ADMIN_REQUIRED" ->
+                Exception("Tu cuenta no tiene permiso de administrador para realizar esta acción.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
             "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
@@ -4982,12 +5083,88 @@ class LocalFallbackApiClient @Inject constructor(
                     suspensionEndDate = textOf(obj, "suspension_end_date").ifBlank { null },
                     suspensionReason = textOf(obj, "suspension_reason").ifBlank { null },
                     suspensionCount = intOf(obj, "suspension_count"),
+                    decisionId = textOf(obj, "decision_id").ifBlank { null },
+                    ruleTitle = textOf(obj, "rule_title").ifBlank { null },
+                    explanation = textOf(obj, "explanation").ifBlank { null },
+                    evidence = obj["evidence"]?.jsonArray
+                        ?.mapNotNull { evidence ->
+                            textOf(evidence.jsonObject, "label").takeIf { it.isNotBlank() }
+                        }
+                        .orEmpty(),
+                    severity = textOf(obj, "severity").ifBlank { null },
+                    appealDeadline = textOf(obj, "appeal_deadline").ifBlank { null },
+                    appealStatus = textOf(obj, "appeal_status").ifBlank { null },
                     updatedAt = textOf(obj, "updated_at").ifBlank { null }
                 )
             }
             Result.success(profiles)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun adminGetModerationAppeals(
+        accessToken: String,
+        status: String = "all"
+    ): Result<List<AdminModerationAppeal>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/moderation/appeals") {
+                localHeaders(accessToken)
+                parameter("status", status)
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                return Result.failure(toException(response, decodeError(body)))
+            }
+            val items = json.parseToJsonElement(body).jsonObject["items"]?.jsonArray.orEmpty()
+            Result.success(items.map { element ->
+                val row = element.jsonObject
+                AdminModerationAppeal(
+                    id = textOf(row, "id"),
+                    decisionId = textOf(row, "decision_id"),
+                    userId = textOf(row, "user_id"),
+                    displayName = textOf(row, "display_name").ifBlank { "Usuario" },
+                    email = textOf(row, "email"),
+                    statement = textOf(row, "statement"),
+                    status = textOf(row, "status").ifBlank { "pending" },
+                    ruleCode = textOf(row, "rule_code"),
+                    ruleTitle = textOf(row, "rule_title").ifBlank { "Normas de la comunidad" },
+                    explanation = textOf(row, "explanation"),
+                    severity = textOf(row, "severity").ifBlank { "high" },
+                    reviewerNote = textOf(row, "reviewer_note").ifBlank { null },
+                    createdAt = textOf(row, "created_at").ifBlank { null },
+                    reviewedAt = textOf(row, "reviewed_at").ifBlank { null }
+                )
+            })
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun adminReviewModerationAppeal(
+        accessToken: String,
+        appealId: String,
+        outcome: String,
+        note: String
+    ): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put(
+                "$baseUrl/v1/data/admin/moderation/appeals/${urlEncode(appealId)}"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("outcome", JsonPrimitive(outcome))
+                    put("note", JsonPrimitive(note.trim()))
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -5058,7 +5235,15 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun adminSuspendUser(accessToken: String, userId: String, reason: String, days: Int): Result<Boolean> {
+    suspend fun adminSuspendUser(
+        accessToken: String,
+        userId: String,
+        reason: String,
+        days: Int,
+        ruleCode: String = "community_standards_other",
+        severity: String = "high",
+        evidence: List<String> = emptyList()
+    ): Result<Boolean> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/suspend") {
@@ -5068,9 +5253,24 @@ class LocalFallbackApiClient @Inject constructor(
                     put("user_id", kotlinx.serialization.json.JsonPrimitive(userId))
                     put("reason", kotlinx.serialization.json.JsonPrimitive(reason))
                     put("days", kotlinx.serialization.json.JsonPrimitive(days))
+                    put("rule_code", JsonPrimitive(ruleCode))
+                    put("severity", JsonPrimitive(severity))
+                    put("evidence", buildJsonArray {
+                        evidence.map { it.trim() }.filter { it.isNotBlank() }.distinct().forEach { label ->
+                            add(buildJsonObject {
+                                put("source", JsonPrimitive("manual"))
+                                put("label", JsonPrimitive(label))
+                            })
+                        }
+                    })
                 })
             }
-            if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(true)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -5087,14 +5287,18 @@ class LocalFallbackApiClient @Inject constructor(
                     put("reason", JsonPrimitive(reason))
                 })
             }
-            if (response.status.isSuccess()) Result.success(true) else Result.failure(Exception("Error: ${response.status}"))
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(true)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     suspend fun adminUpdateReportStatus(accessToken: String, reportId: String, status: String, type: String): Result<Boolean> {
-        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/admin/reports/$reportId/status") {

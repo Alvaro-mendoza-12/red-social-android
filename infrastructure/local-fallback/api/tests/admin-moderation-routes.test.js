@@ -10,6 +10,9 @@ const {
   isHardDeleteConfirmationValid,
   isTestAccountTarget,
   normalizeBadgeIds,
+  normalizeModerationEvidence,
+  normalizeModerationRule,
+  normalizeModerationSeverity,
   normalizeProfileFrame,
   normalizeSuspensionDays,
   registerAdminModerationRoutes,
@@ -120,6 +123,21 @@ async function testHelpers() {
   assert.strictEqual(normalizeBadgeIds(['unknown']), null)
   assert.strictEqual(normalizeProfileFrame('NEON'), 'neon')
   assert.strictEqual(normalizeProfileFrame('unknown'), null)
+  assert.strictEqual(normalizeModerationRule('FRAUD_SCAM').title, 'Fraude o estafa')
+  assert.strictEqual(normalizeModerationRule('unknown'), null)
+  assert.strictEqual(normalizeModerationSeverity('critical'), 'critical')
+  assert.strictEqual(normalizeModerationSeverity('unknown'), 'high')
+  assert.deepStrictEqual(
+    normalizeModerationEvidence([
+      'Captura del reporte',
+      'Captura del reporte',
+      { source: 'report', reference: 'report-1', label: 'Reporte confirmado' },
+    ]),
+    [
+      { source: 'manual', reference: '', label: 'Captura del reporte' },
+      { source: 'report', reference: 'report-1', label: 'Reporte confirmado' },
+    ],
+  )
   assert.strictEqual(isTestAccountTarget({ email: 'fixture+test@example.com' }), true)
   assert.strictEqual(isTestAccountTarget({ email: 'persona@conectate.social' }), false)
   assert.strictEqual(hardDeleteConfirmation(TARGET_ID), `ELIMINAR ${TARGET_ID}`)
