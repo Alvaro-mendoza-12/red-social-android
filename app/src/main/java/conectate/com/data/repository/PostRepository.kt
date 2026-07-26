@@ -11,6 +11,7 @@ import conectate.com.data.cache.UpstashCacheService
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Post
+import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
@@ -770,6 +771,24 @@ class PostRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun getPostReactions(
+        postId: String,
+        reactionType: String? = null
+    ): Result<List<PostReactionUser>> {
+        return try {
+            val accessToken = authService.getAccessToken()
+                ?: return Result.failure(Exception("Inicia sesión para ver las reacciones."))
+            if (supabaseConfig.isLocalFallbackPrimary) {
+                return localFallbackApiClient
+                    .loadPostReactions(accessToken, postId, reactionType)
+                    .map { it.items }
+            }
+            Result.failure(Exception("La lista de reacciones no está disponible en este servidor."))
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 

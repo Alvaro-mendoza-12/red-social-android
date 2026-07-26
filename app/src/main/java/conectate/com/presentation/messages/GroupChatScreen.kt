@@ -100,8 +100,22 @@ fun GroupChatScreen(
     var pendingMediaQueue by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var backgroundImageToCrop by remember { mutableStateOf<Uri?>(null) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { viewModel.setChatBackground("custom", it.toString()) }
+        backgroundImageToCrop = uri
+    }
+
+    backgroundImageToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Ajustar fondo del grupo",
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.ORIGINAL,
+            onDismiss = { backgroundImageToCrop = null },
+            onCropped = { croppedUri ->
+                viewModel.setChatBackground("custom", croppedUri.toString())
+                backgroundImageToCrop = null
+            }
+        )
     }
 
     // FULL SCREEN MEDIA VIEWER STATE

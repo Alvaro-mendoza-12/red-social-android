@@ -27,6 +27,35 @@ class AdminPanelViewModel @Inject constructor(
         const val TAG = "AdminPanelViewModel"
     }
 
+    private fun adminError(error: Throwable?, fallback: String): String {
+        val raw = error?.message.orEmpty().trim()
+        val normalized = raw.lowercase()
+        return when {
+            normalized.contains("account_must_be_suspended") ->
+                "La cuenta debe permanecer suspendida antes de eliminarla."
+            normalized.contains("admin_cannot_be_deleted") ||
+                normalized.contains("self_delete_forbidden") ->
+                "Por seguridad no se puede eliminar esa cuenta administradora."
+            normalized.contains("hard_delete_confirmation_invalid") ||
+                normalized.contains("acknowledgements_required") ->
+                "La confirmación de eliminación dejó de ser válida. Actualiza el usuario e inténtalo otra vez."
+            normalized.contains("hard_delete_orphans_remain") ||
+                normalized.contains("internal_error") ||
+                normalized.contains("http 500") ->
+                "El servidor no pudo completar la eliminación y revirtió los cambios. Ningún dato quedó eliminado a medias."
+            normalized.contains("401") || normalized.contains("invalid_token") ->
+                "Tu sesión venció. Inicia sesión otra vez."
+            normalized.contains("403") || normalized.contains("admin_required") ->
+                "Tu cuenta no tiene permiso para realizar esta acción."
+            normalized.contains("unable to resolve") ||
+                normalized.contains("unknown host") ||
+                normalized.contains("failed to connect") ||
+                normalized.contains("timeout") ->
+                "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo nuevamente."
+            else -> fallback
+        }
+    }
+
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -77,7 +106,10 @@ class AdminPanelViewModel @Inject constructor(
             try {
                 val token = authService.ensureValidAccessToken()
                     .getOrElse {
-                        _errorMessage.value = "Error de autenticación: ${it.message}"
+                        _errorMessage.value = adminError(
+                            it,
+                            "No pudimos comprobar tu sesión de administrador. Inicia sesión otra vez."
+                        )
                         _isLoading.value = false
                         return@launch
                     }
@@ -92,10 +124,16 @@ class AdminPanelViewModel @Inject constructor(
                     loadReports(token)
                 } else {
                     _isAdmin.value = false
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "No tienes permisos de administrador."
+                    _errorMessage.value = adminError(
+                        result.exceptionOrNull(),
+                        "No tienes permisos de administrador."
+                    )
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = adminError(
+                    e,
+                    "No se pudo abrir el panel de administración. Inténtalo nuevamente."
+                )
             } finally {
                 _isLoading.value = false
             }
@@ -113,7 +151,10 @@ class AdminPanelViewModel @Inject constructor(
             .onSuccess { _catalog.value = it }
             .onFailure {
                 Log.w(TAG, "No se pudo cargar el catálogo administrativo", it)
-                _errorMessage.value = "No se pudo cargar el catálogo de insignias y marcos: ${it.message}"
+                _errorMessage.value = adminError(
+                    it,
+                    "No se pudo cargar el catálogo de insignias y marcos."
+                )
             }
     }
 
@@ -131,7 +172,7 @@ class AdminPanelViewModel @Inject constructor(
                 _errorMessage.value = if (it.message.orEmpty().contains("404")) {
                     "El servidor público está desactualizado y aún no publica admin_users_v1. Actualiza la API; no es un fallo de tu cuenta ni del buscador."
                 } else {
-                    "No se pudieron cargar los usuarios: ${it.message}"
+                    adminError(it, "No se pudieron cargar los usuarios. Inténtalo nuevamente.")
                 }
             }
     }
@@ -186,7 +227,7 @@ class AdminPanelViewModel @Inject constructor(
                 val token = authService.ensureValidAccessToken().getOrThrow()
                 loadUsers(token, _userSearch.value)
             } catch (e: Exception) {
-                _errorMessage.value = "Error al buscar usuarios: ${e.message}"
+                _errorMessage.value = adminError(e, "No se pudo completar la búsqueda.")
             } finally {
                 _isLoading.value = false
             }
@@ -201,9 +242,11 @@ class AdminPanelViewModel @Inject constructor(
                 val token = authService.ensureValidAccessToken().getOrThrow()
                 localFallbackApiClient.adminGetUser(token, userId)
                     .onSuccess { _selectedUser.value = it }
-                    .onFailure { _errorMessage.value = "No se pudo cargar el detalle: ${it.message}" }
+                    .onFailure {
+                        _errorMessage.value = adminError(it, "No se pudo cargar el detalle del usuario.")
+                    }
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo cargar el detalle: ${e.message}"
+                _errorMessage.value = adminError(e, "No se pudo cargar el detalle del usuario.")
             } finally {
                 _isLoading.value = false
             }
@@ -231,7 +274,10 @@ class AdminPanelViewModel @Inject constructor(
                     else -> _deleteCandidate.value = target
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo preparar la eliminación: ${e.message}"
+                _errorMessage.value = adminError(
+                    e,
+                    "No se pudo preparar la eliminación. Actualiza el panel e inténtalo otra vez."
+                )
             } finally {
                 _isLoading.value = false
             }
@@ -285,10 +331,16 @@ class AdminPanelViewModel @Inject constructor(
                         _selectedUser.value = updated
                         _statusMessage.value = "Cambio guardado en el servidor."
                     }.onFailure {
-                        _errorMessage.value = "No se pudo actualizar el usuario: ${it.message}"
+                        _errorMessage.value = adminError(
+                            it,
+                            "No se pudo actualizar el usuario. Inténtalo nuevamente."
+                        )
                     }
                 } catch (e: Exception) {
-                    _errorMessage.value = "No se pudo actualizar el usuario: ${e.message}"
+                    _errorMessage.value = adminError(
+                        e,
+                        "No se pudo actualizar el usuario. Inténtalo nuevamente."
+                    )
                 } finally {
                     _isLoading.value = false
                 }
@@ -312,10 +364,13 @@ class AdminPanelViewModel @Inject constructor(
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
                 } else {
-                    _errorMessage.value = "Error al suspender: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = adminError(
+                        result.exceptionOrNull(),
+                        "No se pudo suspender la cuenta."
+                    )
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = adminError(e, "No se pudo suspender la cuenta.")
             } finally {
                 _isLoading.value = false
             }
@@ -339,10 +394,13 @@ class AdminPanelViewModel @Inject constructor(
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
                 } else {
-                    _errorMessage.value = "Error al reactivar: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = adminError(
+                        result.exceptionOrNull(),
+                        "No se pudo reactivar la cuenta."
+                    )
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = adminError(e, "No se pudo reactivar la cuenta.")
             } finally {
                 _isLoading.value = false
             }
@@ -359,10 +417,13 @@ class AdminPanelViewModel @Inject constructor(
                     _statusMessage.value = "Estado de reporte actualizado."
                     loadReports(token)
                 } else {
-                    _errorMessage.value = "Error al actualizar reporte: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = adminError(
+                        result.exceptionOrNull(),
+                        "No se pudo actualizar el reporte."
+                    )
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = adminError(e, "No se pudo actualizar el reporte.")
             } finally {
                 _isLoading.value = false
             }
@@ -417,10 +478,17 @@ class AdminPanelViewModel @Inject constructor(
                     loadSuspendedProfiles(token)
                     loadReports(token)
                 } else {
-                    _errorMessage.value = "Error al eliminar usuario: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = adminError(
+                        result.exceptionOrNull(),
+                        "No se pudo eliminar la cuenta. Actualiza el panel e inténtalo nuevamente."
+                    )
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                Log.e(TAG, "No se pudo eliminar la cuenta", e)
+                _errorMessage.value = adminError(
+                    e,
+                    "No se pudo eliminar la cuenta. Actualiza el panel e inténtalo nuevamente."
+                )
             } finally {
                 _isLoading.value = false
             }

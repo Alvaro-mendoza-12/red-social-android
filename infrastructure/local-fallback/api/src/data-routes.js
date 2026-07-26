@@ -363,6 +363,7 @@ async function localMessages(pool, chatIds) {
         content,
         content_type,
         media_url,
+        thumbnail_url,
         media_size,
         status,
         reply_to_id,
@@ -616,6 +617,7 @@ async function getFallbackMessage(pool, chatId, messageId) {
         content,
         content_type,
         media_url,
+        thumbnail_url,
         media_size,
         status,
         reply_to_id,
@@ -649,6 +651,7 @@ async function updateFallbackChatLastMessage(pool, chatId) {
         content,
         content_type,
         media_url,
+        thumbnail_url,
         media_size,
         status,
         reply_to_id,
@@ -2370,11 +2373,61 @@ function countRows(rows, predicate) {
   return rows.reduce((total, row) => total + (predicate(row) ? 1 : 0), 0)
 }
 
-function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) {
+const POST_REACTION_TYPES = new Set(['LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD', 'ANGRY', 'CARE', 'FIRE'])
+
+function buildPostReactionState(rows, identity) {
+  const latestByPostAndUser = new Map()
+
+  for (const row of rows) {
+    const postId = postIdOf(row)
+    const userId = normalizeId(textOf(row, ['user_id', 'profile_id', 'owner_id'], ''))
+    if (!postId || !userId) continue
+    const requestedType = cleanText(row?.reaction_type || row?.reactionType || 'LIKE', 40).toUpperCase()
+    const reactionType = POST_REACTION_TYPES.has(requestedType) ? requestedType : 'LIKE'
+    latestByPostAndUser.set(`${postId}:${userId}`, {
+      row,
+      postId,
+      userId,
+      reactionType,
+    })
+  }
+
+  const counts = new Map()
+  const totals = new Map()
+  const mine = new Map()
+  const items = new Map()
+  for (const snapshot of latestByPostAndUser.values()) {
+    const postCounts = counts.get(snapshot.postId) || {}
+    postCounts[snapshot.reactionType] = (postCounts[snapshot.reactionType] || 0) + 1
+    counts.set(snapshot.postId, postCounts)
+    totals.set(snapshot.postId, (totals.get(snapshot.postId) || 0) + 1)
+    if (rowMatchesAny(snapshot.row, ['user_id', 'profile_id', 'owner_id'], identity.ids)) {
+      mine.set(snapshot.postId, snapshot.reactionType)
+    }
+    const postItems = items.get(snapshot.postId) || []
+    postItems.push(snapshot)
+    items.set(snapshot.postId, postItems)
+  }
+
+  return { counts, totals, mine, items }
+}
+
+function enrichPost(
+  row,
+  profilesById,
+  likeCounts,
+  commentCounts,
+  likedPostIds,
+  reactionCounts = new Map(),
+  myReactions = new Map(),
+) {
   const authorId = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], ''))
   const profile = authorId ? profilesById.get(authorId) : null
   const postId = textOf(row, ['id'], '')
   const mediaUrls = normalizePostMediaUrls(row)
+  const countsForPost = reactionCounts.get(postId) || {}
+  const reactionTotal = Object.values(countsForPost).reduce((total, count) => total + Number(count || 0), 0)
+  const myReaction = myReactions.get(postId) || null
 
   return {
     ...row,
@@ -2384,13 +2437,17 @@ function enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds) 
     media_urls: mediaUrls,
     media_url: textOf(row, ['media_url'], '') || mediaUrls[0] || '',
     visibility: textOf(row, ['visibility'], 'public'),
-    like_count: likeCounts.has(postId)
-      ? likeCounts.get(postId)
-      : numberOf(row, ['like_count', 'likes_count'], 0),
+    like_count: reactionTotal > 0
+      ? reactionTotal
+      : likeCounts.has(postId)
+        ? likeCounts.get(postId)
+        : numberOf(row, ['like_count', 'likes_count'], 0),
     comment_count: commentCounts.has(postId)
       ? commentCounts.get(postId)
       : numberOf(row, ['comment_count', 'comments_count'], 0),
-    liked_by_me: likedPostIds.has(postId),
+    liked_by_me: Boolean(myReaction) || likedPostIds.has(postId),
+    my_reaction: myReaction,
+    reaction_counts: countsForPost,
   }
 }
 
@@ -2879,9 +2936,18 @@ async function loadPostDetailPayload(pool, user, rawPostId) {
   ]
 
   const { counts: likeCounts, mine: likedPostIds } = countPostInteractions(relevantLikes, identity)
+  const reactionState = buildPostReactionState(relevantLikes, identity)
   const commentCounts = new Map([[postId, relevantComments.length]])
   const { counts: shareCounts, mine: sharedPostIds } = countPostInteractions(relevantShares, identity)
-  const enrichedPost = enrichPost(post, profilesById, likeCounts, commentCounts, likedPostIds)
+  const enrichedPost = enrichPost(
+    post,
+    profilesById,
+    likeCounts,
+    commentCounts,
+    likedPostIds,
+    reactionState.counts,
+    reactionState.mine,
+  )
 
   return {
     post: {
@@ -3323,6 +3389,7 @@ async function ensureLocalDataTables(pool) {
       content TEXT NOT NULL DEFAULT '',
       content_type TEXT NOT NULL DEFAULT 'text',
       media_url TEXT,
+      thumbnail_url TEXT,
       media_size BIGINT NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'sent',
       reply_to_id TEXT,
@@ -3342,6 +3409,7 @@ async function ensureLocalDataTables(pool) {
   `)
   for (const statement of [
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS media_size BIGINT NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS thumbnail_url TEXT`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS poll_id TEXT`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`,
@@ -4566,17 +4634,19 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         })
 
       const postIds = posts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
-      const [fallbackLikes, fallbackComments, importedLikes, importedComments] = await Promise.all([
+      const [fallbackLikes, fallbackComments, importedLikes, importedReactions, importedComments] = await Promise.all([
         localPostReactions(pool, postIds, 10_000),
         localPostComments(pool, postIds, 10_000),
         importedRows(pool, 'post_likes', 10_000),
+        importedRows(pool, 'post_reactions', 10_000),
         importedRows(pool, 'post_comments', 10_000),
       ])
       const profilesById = indexProfiles(profiles)
       const likeCounts = new Map()
       const commentCounts = new Map()
       const likedPostIds = new Set()
-      for (const row of [...importedLikes, ...fallbackLikes]) {
+      const allReactionRows = [...importedLikes, ...importedReactions, ...fallbackLikes]
+      for (const row of allReactionRows) {
         const id = textOf(row, ['post_id'], '')
         if (!id || (postIds.length > 0 && !postIds.includes(id))) continue
         likeCounts.set(id, (likeCounts.get(id) || 0) + 1)
@@ -4587,13 +4657,22 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         if (!id || (postIds.length > 0 && !postIds.includes(id))) continue
         commentCounts.set(id, (commentCounts.get(id) || 0) + 1)
       }
+      const reactionState = buildPostReactionState(allReactionRows, identity)
 
       setPrivateShortCache(res, 10)
       res.json({
         profile,
         posts: sortByDateDesc(posts, ['created_at', 'updated_at'])
           .slice(0, 30)
-          .map((row) => enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds)),
+          .map((row) => enrichPost(
+            row,
+            profilesById,
+            likeCounts,
+            commentCounts,
+            likedPostIds,
+            reactionState.counts,
+            reactionState.mine,
+          )),
         isFollowing,
         stats: {
           posts: posts.length,
@@ -5076,7 +5155,8 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       const commentCounts = new Map()
       const likedPostIds = new Set()
 
-      for (const row of [...likes, ...reactions, ...fallbackLikes]) {
+      const allReactionRows = [...likes, ...reactions, ...fallbackLikes]
+      for (const row of allReactionRows) {
         const postId = textOf(row, ['post_id'], '')
         if (!postId) continue
         likeCounts.set(postId, (likeCounts.get(postId) || 0) + 1)
@@ -5090,10 +5170,19 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
         if (!postId) continue
         commentCounts.set(postId, (commentCounts.get(postId) || 0) + 1)
       }
+      const reactionState = buildPostReactionState(allReactionRows, identity)
 
       const items = sortByDateDesc(posts, ['created_at', 'updated_at'])
         .slice(offset, offset + limit)
-        .map((row) => enrichPost(row, profilesById, likeCounts, commentCounts, likedPostIds))
+        .map((row) => enrichPost(
+          row,
+          profilesById,
+          likeCounts,
+          commentCounts,
+          likedPostIds,
+          reactionState.counts,
+          reactionState.mine,
+        ))
 
       res.json({ items })
     } catch (error) {
@@ -5552,6 +5641,67 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
     }
   })
 
+  app.get('/v1/data/feed/posts/:postId/reactions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const requestedType = cleanText(req.query.type || '', 40).toUpperCase()
+      if (requestedType && !POST_REACTION_TYPES.has(requestedType)) {
+        return res.status(400).json({ error: 'POST_REACTION_INVALID' })
+      }
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 200))
+      const offset = Math.max(0, Number(req.query.offset) || 0)
+      const identity = userIdentity(user)
+      const [importedProfiles, localProfiles, importedLikes, importedReactions, fallbackReactions] =
+        await Promise.all([
+          importedRows(pool, 'profiles', 5000),
+          fallbackUserProfileRows(pool, 5000),
+          importedRows(pool, 'post_likes', 50_000),
+          importedRows(pool, 'post_reactions', 50_000),
+          localPostReactions(pool, [postId], 50_000),
+        ])
+      const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
+      const relevantRows = [
+        ...importedLikes.filter((row) => postIdOf(row) === postId),
+        ...importedReactions.filter((row) => postIdOf(row) === postId),
+        ...fallbackReactions,
+      ]
+      const state = buildPostReactionState(relevantRows, identity)
+      const allItems = (state.items.get(postId) || [])
+        .filter((snapshot) => !requestedType || snapshot.reactionType === requestedType)
+        .sort((left, right) => {
+          const leftAt = textOf(left.row, ['updated_at', 'created_at'], '')
+          const rightAt = textOf(right.row, ['updated_at', 'created_at'], '')
+          return toMillis(rightAt) - toMillis(leftAt)
+        })
+        .map((snapshot) => {
+          const profile = profilesById.get(snapshot.userId)
+          return {
+            user_id: snapshot.userId,
+            user_name: profileName(profile, textOf(snapshot.row, ['user_name', 'display_name'], 'Usuario')),
+            user_avatar_url: profileAvatar(profile) || textOf(snapshot.row, ['user_avatar_url', 'avatar_url'], ''),
+            is_verified: boolOf(profile, ['is_verified', 'verified'], false),
+            reaction_type: snapshot.reactionType,
+            reacted_at: textOf(snapshot.row, ['updated_at', 'created_at'], ''),
+          }
+        })
+
+      res.json({
+        items: allItems.slice(offset, offset + limit),
+        total: allItems.length,
+        reaction_counts: state.counts.get(postId) || {},
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
 
   app.post('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
     try {
@@ -5565,6 +5715,9 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
 
       const identity = userIdentity(user)
       const reactionType = cleanText(req.body?.reactionType || req.body?.reaction_type || 'LIKE', 40).toUpperCase() || 'LIKE'
+      if (!POST_REACTION_TYPES.has(reactionType)) {
+        return res.status(400).json({ error: 'POST_REACTION_INVALID' })
+      }
       await pool.query(
         `INSERT INTO fallback_post_reactions(post_id, user_id, reaction_type, created_at, updated_at)
          VALUES ($1, $2, $3, NOW(), NOW())
@@ -6933,6 +7086,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       const content = String(req.body?.content || '').trim()
       const contentType = String(req.body?.contentType || 'text').trim() || 'text'
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
+      const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
       const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
       const replyToId = String(req.body?.replyToId || '').trim() || null
       const pollId = String(req.body?.pollId || '').trim() || null
@@ -9123,6 +9277,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       const content = String(req.body?.content || '').trim()
       const contentType = String(req.body?.contentType || 'text').trim() || 'text'
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
+      const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
       const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
       const replyToId = String(req.body?.replyToId || '').trim() || null
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
@@ -9158,6 +9313,14 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
       }))) {
         return res.status(403).json({ error: 'CHAT_MEDIA_REFERENCE_FORBIDDEN' })
       }
+      if (thumbnailUrl && !(await currentUserOwnsStorageObject(
+        pool,
+        user.id,
+        thumbnailUrl,
+        ['thumbnails'],
+      ))) {
+        return res.status(403).json({ error: 'CHAT_THUMBNAIL_REFERENCE_FORBIDDEN' })
+      }
       const senderId = identity.displayUserId
       const { rows } = await pool.query(
         `INSERT INTO fallback_messages(
@@ -9167,19 +9330,21 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
             content,
             content_type,
             media_url,
+            thumbnail_url,
             media_size,
             reply_to_id,
             is_forwarded,
             forwarded_from_message_id,
             forwarded_from_user_id
          )
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (id) DO UPDATE SET
             chat_id = EXCLUDED.chat_id,
             sender_id = EXCLUDED.sender_id,
             content = EXCLUDED.content,
             content_type = EXCLUDED.content_type,
             media_url = EXCLUDED.media_url,
+            thumbnail_url = EXCLUDED.thumbnail_url,
             media_size = EXCLUDED.media_size,
             reply_to_id = EXCLUDED.reply_to_id,
             is_forwarded = EXCLUDED.is_forwarded,
@@ -9194,6 +9359,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
             content,
             content_type,
             media_url,
+            thumbnail_url,
             media_size,
             status,
             reply_to_id,
@@ -9216,6 +9382,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
           content,
           contentType,
           mediaUrl || null,
+          thumbnailUrl || null,
           mediaSize,
           replyToId,
           isForwarded,
@@ -9290,6 +9457,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
               message_id: textOf(insertedMessage, ['id'], ''),
               content_type: textOf(insertedMessage, ['content_type'], 'text'),
               media_url: textOf(insertedMessage, ['media_url'], ''),
+              thumbnail_url: textOf(insertedMessage, ['thumbnail_url'], ''),
               media_size: String(numberOf(insertedMessage, ['media_size'], 0)),
               reply_to_id: textOf(insertedMessage, ['reply_to_id'], ''),
               poll_id: textOf(insertedMessage, ['poll_id'], ''),

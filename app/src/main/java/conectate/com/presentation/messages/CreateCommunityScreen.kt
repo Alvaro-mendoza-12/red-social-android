@@ -26,6 +26,11 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.AddAPhoto
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,19 +42,36 @@ fun CreateCommunityScreen(
     var description by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
+    var cropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val isCreating by viewModel.isCreating.collectAsState()
     val error by viewModel.error.collectAsState()
     val selectedImageBytes by viewModel.selectedImageBytes.collectAsState()
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
-        uri?.let {
-            val bytes = context.contentResolver.openInputStream(it)?.readBytes()
-            viewModel.setImageBytes(bytes)
-        }
+        cropSourceUri = uri
+    }
+
+    cropSourceUri?.let { source ->
+        SimpleImageCropDialog(
+            sourceUri = source,
+            title = "Ajustar icono de la comunidad",
+            initialPreset = ImageCropPreset.SQUARE,
+            onDismiss = { cropSourceUri = null },
+            onCropped = { cropped ->
+                cropSourceUri = null
+                scope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(cropped)?.use { it.readBytes() }
+                    }
+                    viewModel.setImageBytes(bytes)
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -74,6 +96,7 @@ fun CreateCommunityScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {

@@ -1265,15 +1265,11 @@ app.post('/v1/auth/login', async (req, res, next) => {
     if (!hasLocalPassword) {
       const restoredPasswordOk = await verifyRestoredSupabasePassword(row, password)
       if (!restoredPasswordOk) {
-        const user = sanitizeUser(await hydrateUserRow(row))
-        await recordAudit('auth_migrated_password_setup_required', user.id, { email })
-        return res.status(409).json({
-          error: 'MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED',
-          migrationToken: signMigrationPasswordToken(user),
-          email: user.email,
-          displayName: user.displayName,
+        await recordAudit('auth_migrated_password_verification_failed', row.id, { email })
+        return res.status(401).json({
+          error: 'INVALID_PASSWORD',
           message:
-            'Por la migracion a Ubuntu, esta cuenta necesita crear una nueva contrasena local para continuar.',
+            'La contraseña actual no coincide. Escríbela correctamente para autorizar el cambio de contraseña.',
         })
       }
 

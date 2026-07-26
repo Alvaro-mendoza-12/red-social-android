@@ -68,6 +68,11 @@ internal fun Throwable?.toUserFacingMessage(
             rawMessage.contains("EMAIL_AND_STRONG_PASSWORD_REQUIRED", ignoreCase = true) ->
             "La contraseña debe tener al menos 8 caracteres."
 
+        rawMessage.contains("job was cancelled", ignoreCase = true) ||
+            rawMessage.contains("job was canceled", ignoreCase = true) ||
+            rawMessage.contains("cancellationexception", ignoreCase = true) ->
+            "La operación se interrumpió antes de terminar. Inténtalo nuevamente."
+
         looksLikeWebAccessBridgeIssue(rawMessage) ->
             "La conexión entre la app y la web no está disponible en este momento. Inténtalo más tarde."
 
@@ -105,6 +110,12 @@ internal fun looksLikeTechnicalBackendMessage(message: String?): Boolean {
     if (normalized.isBlank()) return false
     return normalized.contains("42p") ||
         normalized.contains("pgrst") ||
+        normalized.contains("internal_error") ||
+        normalized.contains("\"error\"") ||
+        normalized.contains("{\"") ||
+        normalized.contains("http 500") ||
+        normalized.contains("http 502") ||
+        normalized.contains("http 503") ||
         normalized.contains("schema cache") ||
         normalized.contains("could not find the table") ||
         normalized.contains("json object requested") ||

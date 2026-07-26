@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Hd
@@ -63,9 +67,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -78,9 +84,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -91,17 +99,32 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
+import coil.request.videoFrameMillis
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 data class OutgoingMessageMedia(
     val uri: Uri,
@@ -113,17 +136,31 @@ private data class DeviceMedia(
     val uri: Uri,
     val type: String,
     val durationMs: Long,
-    val dateAdded: Long
+    val dateAdded: Long,
+    val dateModified: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0
+)
+
+private data class NormalizedCrop(
+    val left: Float = 0f,
+    val top: Float = 0f,
+    val right: Float = 1f,
+    val bottom: Float = 1f
 )
 
 private data class ComposerEditState(
     val rotateQuarterTurns: Int = 0,
     val drawEnabled: Boolean = false,
+    val cropEnabled: Boolean = false,
+    val crop: NormalizedCrop = NormalizedCrop(),
     val brushColor: Color = Color.White,
     val overlayText: String = "",
     val overlayEmoji: String = "",
     val strokes: List<List<Offset>> = emptyList(),
-    val previewSize: IntSize = IntSize.Zero
+    val previewSize: IntSize = IntSize.Zero,
+    val trimStartMs: Long = 0L,
+    val trimEndMs: Long = 0L
 )
 
 @Composable
@@ -252,19 +289,34 @@ fun MessageMediaComposer(
                         error = null
                         preparing = true
                         scope.launch {
-                            val outgoing = withContext(Dispatchers.Default) {
-                                selected.map { item ->
-                                    val edit = edits[item.uri] ?: ComposerEditState()
-                                    val isGif = context.contentResolver.getType(item.uri)
-                                        ?.equals("image/gif", ignoreCase = true) == true
-                                    val uri = if (item.type == "image" && !isGif) {
+                            val outgoing = mutableListOf<OutgoingMessageMedia>()
+                            selected.forEach { item ->
+                                val edit = edits[item.uri] ?: ComposerEditState()
+                                val isGif = context.contentResolver.getType(item.uri)
+                                    ?.equals("image/gif", ignoreCase = true) == true
+                                val outputUri = when {
+                                    item.type == "image" && !isGif -> withContext(Dispatchers.Default) {
                                         runCatching { processComposerImage(context, item.uri, edit) }
                                             .getOrElse { item.uri }
-                                    } else {
-                                        item.uri
                                     }
-                                    OutgoingMessageMedia(uri, item.type)
+                                    item.type == "video" && shouldTrimVideo(item, edit) -> {
+                                        try {
+                                            trimComposerVideo(
+                                                context = context,
+                                                sourceUri = item.uri,
+                                                startMs = edit.trimStartMs,
+                                                endMs = edit.trimEndMs.coerceAtMost(item.durationMs)
+                                            )
+                                        } catch (trimError: Exception) {
+                                            if (trimError is CancellationException) throw trimError
+                                            error = "No se pudo recortar el video. Inténtalo nuevamente."
+                                            preparing = false
+                                            return@launch
+                                        }
+                                    }
+                                    else -> item.uri
                                 }
+                                outgoing += OutgoingMessageMedia(outputUri, item.type)
                             }
                             preparing = false
                             onSend(outgoing, caption.trim())
@@ -358,7 +410,7 @@ private fun MessageGalleryStep(
                             .clickable { onToggle(item) }
                     ) {
                         AsyncImage(
-                            model = item.uri,
+                            model = composerThumbnailRequest(LocalContext.current, item),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -424,6 +476,7 @@ private fun FilterChip(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageEditorStep(
     selected: List<DeviceMedia>,
@@ -440,6 +493,7 @@ private fun MessageEditorStep(
     onEditChange: (Uri, ComposerEditState) -> Unit,
     onSend: () -> Unit
 ) {
+    val context = LocalContext.current
     val active = selected.getOrNull(activeIndex) ?: return
     val edit = edits[active.uri] ?: ComposerEditState()
     val strokes = remember(active.uri, edit.strokes) { mutableStateListOf<List<Offset>>().apply { addAll(edit.strokes) } }
@@ -454,55 +508,83 @@ private fun MessageEditorStep(
             Color(0xFFAB47BC)
         )
     }
+    val pagerState = rememberPagerState(
+        initialPage = activeIndex.coerceIn(0, selected.lastIndex),
+        pageCount = { selected.size }
+    )
+
+    LaunchedEffect(activeIndex, selected.size) {
+        if (activeIndex in selected.indices && pagerState.currentPage != activeIndex) {
+            pagerState.scrollToPage(activeIndex)
+        }
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != activeIndex) {
+            onActiveIndexChange(pagerState.currentPage)
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .imePadding()
     ) {
-        if (active.type == "video") {
-            AsyncImage(
-                model = active.uri,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
-            Icon(
-                imageVector = Icons.Default.PlayCircle,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(72.dp)
-            )
-        } else {
-            AsyncImage(
-                model = active.uri,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onSizeChanged { onEditChange(active.uri, edit.copy(previewSize = it)) }
-                    .pointerInput(edit.drawEnabled, active.uri) {
-                        if (!edit.drawEnabled) return@pointerInput
-                        detectDragGestures(
-                            onDragStart = { offset -> activeStroke = listOf(offset) },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                activeStroke = activeStroke + change.position
-                            },
-                            onDragEnd = {
-                                if (activeStroke.size > 1) {
-                                    strokes.add(activeStroke)
-                                    onEditChange(active.uri, edit.copy(strokes = strokes.toList()))
-                                }
-                                activeStroke = emptyList()
-                            },
-                            onDragCancel = { activeStroke = emptyList() }
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = !edit.drawEnabled && !edit.cropEnabled,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val pageItem = selected[page]
+            val pageEdit = edits[pageItem.uri] ?: ComposerEditState()
+            if (pageItem.type == "video") {
+                ComposerVideoPreview(
+                    item = pageItem,
+                    edit = pageEdit,
+                    isActive = page == activeIndex
+                )
+            } else {
+                AsyncImage(
+                    model = pageItem.uri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (page == activeIndex) {
+                                Modifier
+                                    .onSizeChanged {
+                                        onEditChange(pageItem.uri, pageEdit.copy(previewSize = it))
+                                    }
+                                    .pointerInput(pageEdit.drawEnabled, pageItem.uri) {
+                                        if (!pageEdit.drawEnabled) return@pointerInput
+                                        detectDragGestures(
+                                            onDragStart = { offset -> activeStroke = listOf(offset) },
+                                            onDrag = { change, _ ->
+                                                change.consume()
+                                                activeStroke = activeStroke + change.position
+                                            },
+                                            onDragEnd = {
+                                                if (activeStroke.size > 1) {
+                                                    strokes.add(activeStroke)
+                                                    onEditChange(
+                                                        pageItem.uri,
+                                                        pageEdit.copy(strokes = strokes.toList())
+                                                    )
+                                                }
+                                                activeStroke = emptyList()
+                                            },
+                                            onDragCancel = { activeStroke = emptyList() }
+                                        )
+                                    }
+                            } else {
+                                Modifier
+                            }
                         )
-                    }
-            )
+                )
+            }
+        }
+
+        if (active.type == "image") {
             androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
                 (strokes + listOf(activeStroke)).forEach { stroke ->
                     for (i in 1 until stroke.size) {
@@ -515,6 +597,12 @@ private fun MessageEditorStep(
                         )
                     }
                 }
+            }
+            if (edit.cropEnabled) {
+                ComposerCropOverlay(
+                    crop = edit.crop,
+                    onCropChange = { crop -> onEditChange(active.uri, edit.copy(crop = crop)) }
+                )
             }
             if (edit.overlayText.isNotBlank() || edit.overlayEmoji.isNotBlank()) {
                 Text(
@@ -540,22 +628,46 @@ private fun MessageEditorStep(
             IconButton(onClick = onBack, enabled = !isSending) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Galería", tint = Color.White)
             }
-            Spacer(Modifier.weight(1f))
-            if (active.type == "image") {
-                RoundToolButton(Icons.Default.RotateRight, "Girar") {
-                    onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (active.type == "image") {
+                    item {
+                        RoundToolButton(Icons.Default.RotateRight, "Girar") {
+                            onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
+                        }
+                    }
+                    item {
+                        RoundToolButton(Icons.Default.Crop, "Recortar libre", selected = edit.cropEnabled) {
+                            onEditChange(
+                                active.uri,
+                                edit.copy(cropEnabled = !edit.cropEnabled, drawEnabled = false)
+                            )
+                        }
+                    }
+                    item {
+                        RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled) {
+                            onEditChange(
+                                active.uri,
+                                edit.copy(drawEnabled = !edit.drawEnabled, cropEnabled = false)
+                            )
+                        }
+                    }
+                    item {
+                        RoundToolButton(Icons.Default.EmojiEmotions, "Emoji") {
+                            onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
+                        }
+                    }
+                    item {
+                        RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank()) {
+                            onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
+                        }
+                    }
+                } else {
+                    item { RoundToolButton(Icons.Default.Hd, "HD") {} }
                 }
-                RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled) {
-                    onEditChange(active.uri, edit.copy(drawEnabled = !edit.drawEnabled))
-                }
-                RoundToolButton(Icons.Default.EmojiEmotions, "Emoji") {
-                    onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
-                }
-                RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank()) {
-                    onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
-                }
-            } else {
-                RoundToolButton(Icons.Default.Hd, "HD") {}
             }
             IconButton(onClick = onDismiss, enabled = !isSending) {
                 Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
@@ -601,6 +713,7 @@ private fun MessageEditorStep(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
+                .imePadding()
                 .navigationBarsPadding()
                 .padding(12.dp)
         ) {
@@ -619,7 +732,7 @@ private fun MessageEditorStep(
                             .clickable { onActiveIndexChange(index) }
                     ) {
                         AsyncImage(
-                            model = item.uri,
+                            model = composerThumbnailRequest(context, item),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -638,6 +751,35 @@ private fun MessageEditorStep(
                         }
                     }
                 }
+            }
+
+            if (active.type == "video" && active.durationMs > 0L) {
+                val trimEnd = edit.trimEndMs.takeIf { it > 0L }
+                    ?.coerceAtMost(active.durationMs)
+                    ?: active.durationMs
+                val trimStart = edit.trimStartMs.coerceIn(0L, (trimEnd - 500L).coerceAtLeast(0L))
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Recorte ${formatComposerDuration(trimStart)} – ${formatComposerDuration(trimEnd)}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                RangeSlider(
+                    value = trimStart.toFloat()..trimEnd.toFloat(),
+                    onValueChange = { range ->
+                        val start = range.start.toLong()
+                            .coerceAtMost((range.endInclusive.toLong() - 500L).coerceAtLeast(0L))
+                        val end = range.endInclusive.toLong()
+                            .coerceAtLeast(start + 500L)
+                            .coerceAtMost(active.durationMs)
+                        onEditChange(
+                            active.uri,
+                            edit.copy(trimStartMs = start, trimEndMs = end)
+                        )
+                    },
+                    valueRange = 0f..active.durationMs.coerceAtLeast(1_000L).toFloat(),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             Spacer(Modifier.height(10.dp))
@@ -717,11 +859,161 @@ private fun RoundToolButton(
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun ComposerVideoPreview(
+    item: DeviceMedia,
+    edit: ComposerEditState,
+    isActive: Boolean
+) {
+    val context = LocalContext.current
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(item.uri))
+            repeatMode = Player.REPEAT_MODE_ONE
+            prepare()
+        }
+    }
+
+    LaunchedEffect(isActive, edit.trimStartMs, edit.trimEndMs, item.durationMs, player) {
+        val start = edit.trimStartMs.coerceAtLeast(0L)
+        val end = edit.trimEndMs.takeIf { it > start }
+            ?.coerceAtMost(item.durationMs)
+            ?: item.durationMs
+        if (isActive) {
+            player.seekTo(start)
+            player.playWhenReady = true
+            while (isActive) {
+                if (end > start && player.currentPosition >= end) {
+                    player.seekTo(start)
+                }
+                delay(100)
+            }
+        } else {
+            player.pause()
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    AndroidView(
+        factory = { playerContext ->
+            PlayerView(playerContext).apply {
+                this.player = player
+                useController = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                setBackgroundColor(AndroidColor.BLACK)
+            }
+        },
+        update = { it.player = player },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+private fun ComposerCropOverlay(
+    crop: NormalizedCrop,
+    onCropChange: (NormalizedCrop) -> Unit
+) {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    var activeHandle by remember { mutableStateOf(-1) }
+    val minimumSpan = 0.08f
+    val accentColor = MaterialTheme.colorScheme.primary
+
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { size = it }
+            .pointerInput(crop, size) {
+                detectDragGestures(
+                    onDragStart = { point ->
+                        if (size.width <= 0 || size.height <= 0) return@detectDragGestures
+                        val corners = listOf(
+                            Offset(crop.left * size.width, crop.top * size.height),
+                            Offset(crop.right * size.width, crop.top * size.height),
+                            Offset(crop.left * size.width, crop.bottom * size.height),
+                            Offset(crop.right * size.width, crop.bottom * size.height)
+                        )
+                        activeHandle = corners.indices.minByOrNull { index ->
+                            val dx = corners[index].x - point.x
+                            val dy = corners[index].y - point.y
+                            dx * dx + dy * dy
+                        } ?: -1
+                    },
+                    onDragEnd = { activeHandle = -1 },
+                    onDragCancel = { activeHandle = -1 },
+                    onDrag = { change, _ ->
+                        if (activeHandle < 0 || size.width <= 0 || size.height <= 0) return@detectDragGestures
+                        change.consume()
+                        val x = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val y = (change.position.y / size.height).coerceIn(0f, 1f)
+                        val updated = when (activeHandle) {
+                            0 -> crop.copy(
+                                left = x.coerceAtMost(crop.right - minimumSpan),
+                                top = y.coerceAtMost(crop.bottom - minimumSpan)
+                            )
+                            1 -> crop.copy(
+                                right = x.coerceAtLeast(crop.left + minimumSpan),
+                                top = y.coerceAtMost(crop.bottom - minimumSpan)
+                            )
+                            2 -> crop.copy(
+                                left = x.coerceAtMost(crop.right - minimumSpan),
+                                bottom = y.coerceAtLeast(crop.top + minimumSpan)
+                            )
+                            else -> crop.copy(
+                                right = x.coerceAtLeast(crop.left + minimumSpan),
+                                bottom = y.coerceAtLeast(crop.top + minimumSpan)
+                            )
+                        }
+                        onCropChange(updated)
+                    }
+                )
+            }
+    ) {
+        val rect = Rect(
+            crop.left * this.size.width,
+            crop.top * this.size.height,
+            crop.right * this.size.width,
+            crop.bottom * this.size.height
+        )
+        val shade = Color.Black.copy(alpha = 0.58f)
+        drawRect(shade, topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(this.size.width, rect.top))
+        drawRect(shade, topLeft = Offset(0f, rect.bottom), size = androidx.compose.ui.geometry.Size(this.size.width, this.size.height - rect.bottom))
+        drawRect(shade, topLeft = Offset(0f, rect.top), size = androidx.compose.ui.geometry.Size(rect.left, rect.height))
+        drawRect(shade, topLeft = Offset(rect.right, rect.top), size = androidx.compose.ui.geometry.Size(this.size.width - rect.right, rect.height))
+        drawRect(Color.White, topLeft = rect.topLeft, size = rect.size, style = Stroke(width = 3f))
+        listOf(rect.topLeft, rect.topRight, rect.bottomLeft, rect.bottomRight).forEach { point ->
+            drawCircle(Color.White, radius = 12f, center = point)
+            drawCircle(accentColor, radius = 7f, center = point)
+        }
+    }
+}
+
+private fun composerThumbnailRequest(context: Context, item: DeviceMedia): ImageRequest {
+    val key = "message-composer:${item.uri}:${item.dateModified}:${item.width}x${item.height}"
+    return ImageRequest.Builder(context)
+        .data(item.uri)
+        .apply {
+            if (item.type == "video") videoFrameMillis(min(1_000L, (item.durationMs / 3L).coerceAtLeast(0L)))
+        }
+        .size(Size(720, 720))
+        .memoryCacheKey(key)
+        .diskCacheKey(key)
+        .crossfade(false)
+        .build()
+}
+
 private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
     val out = mutableListOf<DeviceMedia>()
     val imageProjection = arrayOf(
         MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DATE_ADDED
+        MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DATE_MODIFIED,
+        MediaStore.Images.Media.WIDTH,
+        MediaStore.Images.Media.HEIGHT
     )
     context.contentResolver.query(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -732,6 +1024,9 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
     )?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
+        val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+        val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
             out.add(
@@ -740,7 +1035,10 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
                     uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
                     type = "image",
                     durationMs = 0,
-                    dateAdded = cursor.getLong(dateColumn)
+                    dateAdded = cursor.getLong(dateColumn),
+                    dateModified = cursor.getLong(modifiedColumn),
+                    width = cursor.getInt(widthColumn),
+                    height = cursor.getInt(heightColumn)
                 )
             )
         }
@@ -749,7 +1047,10 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
     val videoProjection = arrayOf(
         MediaStore.Video.Media._ID,
         MediaStore.Video.Media.DATE_ADDED,
-        MediaStore.Video.Media.DURATION
+        MediaStore.Video.Media.DATE_MODIFIED,
+        MediaStore.Video.Media.DURATION,
+        MediaStore.Video.Media.WIDTH,
+        MediaStore.Video.Media.HEIGHT
     )
     context.contentResolver.query(
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -760,7 +1061,10 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
     )?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
         val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+        val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
         val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+        val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
             out.add(
@@ -769,7 +1073,10 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
                     uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id),
                     type = "video",
                     durationMs = cursor.getLong(durationColumn),
-                    dateAdded = cursor.getLong(dateColumn)
+                    dateAdded = cursor.getLong(dateColumn),
+                    dateModified = cursor.getLong(modifiedColumn),
+                    width = cursor.getInt(widthColumn),
+                    height = cursor.getInt(heightColumn)
                 )
             )
         }
@@ -778,18 +1085,93 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
 }
 
 private fun ComposerEditState.hasRealEdits(): Boolean {
-    return rotateQuarterTurns != 0 || overlayText.isNotBlank() || overlayEmoji.isNotBlank() || strokes.any { it.size > 1 }
+    return rotateQuarterTurns != 0 ||
+        crop != NormalizedCrop() ||
+        overlayText.isNotBlank() ||
+        overlayEmoji.isNotBlank() ||
+        strokes.any { it.size > 1 }
 }
 
 private fun processComposerImage(context: Context, sourceUri: Uri, edit: ComposerEditState): Uri {
     val decoded = decodeComposerBitmap(context, sourceUri) ?: return sourceUri
     val rotated = rotateComposerBitmap(decoded, edit.rotateQuarterTurns)
-    val merged = drawComposerOverlays(rotated, edit)
+    val cropped = cropComposerBitmap(rotated, edit.crop)
+    val merged = drawComposerOverlays(cropped, edit)
     val file = File(context.cacheDir, "message_media_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.jpg")
     FileOutputStream(file).use { output ->
         flattenComposerBitmapForJpeg(merged).compress(Bitmap.CompressFormat.JPEG, 86, output)
     }
     return file.toUri()
+}
+
+private fun cropComposerBitmap(bitmap: Bitmap, crop: NormalizedCrop): Bitmap {
+    if (crop == NormalizedCrop()) return bitmap
+    val left = (crop.left.coerceIn(0f, 1f) * bitmap.width).toInt()
+        .coerceIn(0, (bitmap.width - 1).coerceAtLeast(0))
+    val top = (crop.top.coerceIn(0f, 1f) * bitmap.height).toInt()
+        .coerceIn(0, (bitmap.height - 1).coerceAtLeast(0))
+    val right = (crop.right.coerceIn(0f, 1f) * bitmap.width).toInt()
+        .coerceIn(left + 1, bitmap.width)
+    val bottom = (crop.bottom.coerceIn(0f, 1f) * bitmap.height).toInt()
+        .coerceIn(top + 1, bitmap.height)
+    return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+}
+
+private fun shouldTrimVideo(item: DeviceMedia, edit: ComposerEditState): Boolean {
+    if (item.durationMs <= 0L || edit.trimEndMs <= 0L) return false
+    return edit.trimStartMs > 0L || edit.trimEndMs < item.durationMs - 50L
+}
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private suspend fun trimComposerVideo(
+    context: Context,
+    sourceUri: Uri,
+    startMs: Long,
+    endMs: Long
+): Uri = withContext(Dispatchers.Main) {
+    suspendCancellableCoroutine { continuation ->
+        val output = File(
+            context.cacheDir,
+            "message_video_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.mp4"
+        )
+        val clippedItem = MediaItem.fromUri(sourceUri)
+            .buildUpon()
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(startMs.coerceAtLeast(0L))
+                    .setEndPositionMs(endMs.coerceAtLeast(startMs + 500L))
+                    .build()
+            )
+            .build()
+        val transformer = androidx.media3.transformer.Transformer.Builder(context)
+            .addListener(object : androidx.media3.transformer.Transformer.Listener {
+                override fun onCompleted(
+                    composition: androidx.media3.transformer.Composition,
+                    result: androidx.media3.transformer.ExportResult
+                ) {
+                    if (continuation.isActive) continuation.resume(output.toUri())
+                }
+
+                override fun onError(
+                    composition: androidx.media3.transformer.Composition,
+                    result: androidx.media3.transformer.ExportResult,
+                    exception: androidx.media3.transformer.ExportException
+                ) {
+                    output.delete()
+                    if (continuation.isActive) continuation.resumeWithException(exception)
+                }
+            })
+            .build()
+        continuation.invokeOnCancellation {
+            transformer.cancel()
+            output.delete()
+        }
+        runCatching { transformer.start(clippedItem, output.absolutePath) }
+            .onFailure { error ->
+                output.delete()
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+    }
 }
 
 private fun decodeComposerBitmap(context: Context, uri: Uri): Bitmap? {

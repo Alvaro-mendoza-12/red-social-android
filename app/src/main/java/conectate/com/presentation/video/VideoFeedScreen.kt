@@ -13,12 +13,16 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import conectate.com.presentation.components.AdminBadge
@@ -107,6 +111,86 @@ private enum class VideoSidePanel {
     VIDEO,
     COMMENTS,
     PROFILE
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun VideoSearchPreview(
+    video: Video,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val resolvedThumbnail = remember(video.thumbnailUrl) {
+        UbuntuMedia.resolveUrl(video.thumbnailUrl) ?: video.thumbnailUrl
+    }
+    val request = remember(context, resolvedThumbnail) {
+        ImageRequest.Builder(context)
+            .data(resolvedThumbnail)
+            .size(540, 960)
+            .crossfade(false)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build()
+    }
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(9f / 16f),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171717))
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            if (resolvedThumbnail.isNotBlank()) {
+                AsyncImage(
+                    model = request,
+                    contentDescription = "Vista previa de ${video.title}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
+                        )
+                    )
+            )
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = "Reproducir",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                    .padding(8.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Text(
+                    video.title.ifBlank { "Video" },
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    "${video.userName} · ${video.views} vistas",
+                    color = Color.White.copy(alpha = 0.74f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -750,6 +834,33 @@ fun VideoFeedScreen(
                      }
                  }
             } else {
+                if (isSearchMode) {
+                    LaunchedEffect(Unit) {
+                        exoPlayer.pause()
+                        playbackRequested = false
+                    }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 148.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 8.dp,
+                            end = 8.dp,
+                            top = 68.dp,
+                            bottom = 88.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(currentVideos, key = { it.id }) { video ->
+                            VideoSearchPreview(
+                                video = video,
+                                onClick = {
+                                    navController.navigate(Screen.VideoPlayer.createRoute(video.id))
+                                }
+                            )
+                        }
+                    }
+                } else {
                 // 3️⃣ VERTICAL PAGER
                 VerticalPager(
                     state = pagerState,
@@ -817,6 +928,7 @@ fun VideoFeedScreen(
                         }
                         null -> Unit
                     }
+                }
                 }
             }
             

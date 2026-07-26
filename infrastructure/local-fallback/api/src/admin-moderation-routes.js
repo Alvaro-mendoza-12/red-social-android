@@ -754,17 +754,23 @@ async function purgeImportedUserData(client, relatedValues) {
   for (const [tableName, columns] of columnsByTable) {
     const exactColumns = columns.filter((column) => IMPORT_RELATED_FIELDS.includes(column))
     const arrayColumns = columns.filter((column) => IMPORT_IDENTITY_ARRAY_FIELDS.includes(column))
+    const arrayParameter = exactColumns.length > 0 ? '$2' : '$1'
     const predicates = exactColumns.map((column) =>
       `lower(COALESCE(${quoteIdentifier(column)}::text, '')) = ANY($1::text[])`,
     )
     predicates.push(...arrayColumns.map((column) =>
-      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) LIKE ANY($2::text[])`,
+      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) LIKE ANY(${arrayParameter}::text[])`,
     ))
     if (predicates.length === 0) continue
+    const params = exactColumns.length > 0 && arrayColumns.length > 0
+      ? [relatedValues, patterns]
+      : exactColumns.length > 0
+        ? [relatedValues]
+        : [patterns]
     const result = await client.query(
       `DELETE FROM ${quoteIdentifier('supabase_import')}.${quoteIdentifier(tableName)}
        WHERE ${predicates.join(' OR ')}`,
-      [relatedValues, patterns],
+      params,
     )
     deletedRows += Number(result.rowCount) || 0
   }

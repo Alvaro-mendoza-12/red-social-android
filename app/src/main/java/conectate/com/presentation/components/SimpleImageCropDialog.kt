@@ -10,13 +10,21 @@ import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -26,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -52,12 +63,20 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 enum class ImageCropPreset(val label: String, val aspectRatio: Float?) {
+    FREE("Libre", null),
     ORIGINAL("Original", null),
     SQUARE("1:1", 1f),
     PORTRAIT("4:5", 4f / 5f),
     WIDE("16:9", 16f / 9f),
     COVER("Portada", 3f)
 }
+
+private data class NormalizedImageCrop(
+    val left: Float = 0f,
+    val top: Float = 0f,
+    val right: Float = 1f,
+    val bottom: Float = 1f
+)
 
 /**
  * Recorte central predecible para imágenes elegidas desde cualquier pantalla.
@@ -81,9 +100,15 @@ fun SimpleImageCropDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedPreset by remember(sourceUri) { mutableStateOf(initialPreset) }
+    var sourceAspect by remember(sourceUri) { mutableStateOf(1f) }
+    var crop by remember(sourceUri) { mutableStateOf(NormalizedImageCrop()) }
     var isSaving by remember(sourceUri) { mutableStateOf(false) }
     var errorMessage by remember(sourceUri) { mutableStateOf<String?>(null) }
-    val previewAspect = selectedPreset.aspectRatio ?: 1f
+
+    LaunchedEffect(sourceUri) {
+        sourceAspect = readImageAspect(context, sourceUri)
+        crop = cropForPreset(initialPreset, sourceAspect)
+    }
 
     Dialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -115,7 +140,7 @@ fun SimpleImageCropDialog(
                                 isSaving = true
                                 errorMessage = null
                                 runCatching {
-                                    cropImageToCache(context, sourceUri, selectedPreset.aspectRatio)
+                                    cropImageToCache(context, sourceUri, crop)
                                 }.onSuccess(onCropped).onFailure {
                                     errorMessage = "No se pudo recortar la imagen. Inténtalo otra vez."
                                     isSaving = false
@@ -131,38 +156,63 @@ fun SimpleImageCropDialog(
                     }
                 }
 
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = sourceUri,
-                        contentDescription = "Vista previa del recorte",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(previewAspect)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = if (selectedPreset == ImageCropPreset.ORIGINAL) {
-                            ContentScale.Fit
+                    val containerAspect = if (maxHeight.value > 0f) {
+                        maxWidth.value / maxHeight.value
+                    } else {
+                        sourceAspect
+                    }
+                    Box(
+                        modifier = if (sourceAspect >= containerAspect) {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(sourceAspect)
                         } else {
-                            ContentScale.Crop
-                        }
-                    )
+                            Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(sourceAspect)
+                        }.clip(RoundedCornerShape(12.dp))
+                    ) {
+                        AsyncImage(
+                            model = sourceUri,
+                            contentDescription = "Vista previa del recorte",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.FillBounds
+                        )
+                        ManualImageCropOverlay(
+                            crop = crop,
+                            onCropChange = { updated ->
+                                crop = updated
+                                selectedPreset = ImageCropPreset.FREE
+                            }
+                        )
+                    }
                     if (isSaving) {
                         CircularProgressIndicator(color = Color.White)
                     }
                 }
 
-                if (presets.size > 1) {
+                val availablePresets = remember(presets) {
+                    (listOf(ImageCropPreset.FREE) + presets).distinct()
+                }
+                if (availablePresets.size > 1) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        presets.distinct().forEach { preset ->
+                        availablePresets.forEach { preset ->
                             AssistChip(
-                                onClick = { selectedPreset = preset },
+                                onClick = {
+                                    selectedPreset = preset
+                                    crop = cropForPreset(preset, sourceAspect)
+                                },
                                 enabled = !isSaving,
                                 label = { Text(preset.label) },
                                 leadingIcon = if (selectedPreset == preset) {
@@ -183,11 +233,7 @@ fun SimpleImageCropDialog(
                     )
                 }
                 Text(
-                    text = if (selectedPreset == ImageCropPreset.ORIGINAL) {
-                        "Se conservará la imagen original."
-                    } else {
-                        "La imagen se ajustará al marco ${selectedPreset.label}."
-                    },
+                    text = "Arrastra las esquinas o mueve el marco para elegir exactamente qué parte usar.",
                     color = Color.White.copy(alpha = 0.75f),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -200,12 +246,12 @@ fun SimpleImageCropDialog(
 private suspend fun cropImageToCache(
     context: Context,
     sourceUri: Uri,
-    targetAspect: Float?
+    crop: NormalizedImageCrop
 ): Uri = withContext(Dispatchers.IO) {
-    if (targetAspect == null) return@withContext sourceUri
+    if (crop == NormalizedImageCrop()) return@withContext sourceUri
 
     val decoded = decodeScaledBitmap(context, sourceUri)
-    val cropped = centerCropBitmap(decoded, targetAspect)
+    val cropped = cropBitmap(decoded, crop)
     val output = File(context.cacheDir, "crop_${UUID.randomUUID()}.jpg")
     FileOutputStream(output).use { stream ->
         check(cropped.compress(Bitmap.CompressFormat.JPEG, 92, stream)) {
@@ -215,6 +261,18 @@ private suspend fun cropImageToCache(
     if (cropped !== decoded) decoded.recycle()
     cropped.recycle()
     FileProvider.getUriForFile(context, "${context.packageName}.provider", output)
+}
+
+private suspend fun readImageAspect(context: Context, uri: Uri): Float = withContext(Dispatchers.IO) {
+    runCatching {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri).use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
+        }
+        val width = options.outWidth.coerceAtLeast(1)
+        val height = options.outHeight.coerceAtLeast(1)
+        width.toFloat() / height.toFloat()
+    }.getOrDefault(1f)
 }
 
 private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap {
@@ -265,14 +323,137 @@ private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap {
     return rotated
 }
 
-private fun centerCropBitmap(source: Bitmap, targetAspect: Float): Bitmap {
-    val sourceAspect = source.width.toFloat() / source.height.toFloat()
-    val (cropWidth, cropHeight) = if (sourceAspect > targetAspect) {
-        (source.height * targetAspect).roundToInt().coerceAtMost(source.width) to source.height
-    } else {
-        source.width to (source.width / targetAspect).roundToInt().coerceAtMost(source.height)
+private fun cropForPreset(preset: ImageCropPreset, sourceAspect: Float): NormalizedImageCrop {
+    if (preset == ImageCropPreset.ORIGINAL) return NormalizedImageCrop()
+    if (preset == ImageCropPreset.FREE || preset.aspectRatio == null) {
+        return NormalizedImageCrop(0.08f, 0.08f, 0.92f, 0.92f)
     }
-    val left = ((source.width - cropWidth) / 2).coerceAtLeast(0)
-    val top = ((source.height - cropHeight) / 2).coerceAtLeast(0)
-    return Bitmap.createBitmap(source, left, top, cropWidth, cropHeight)
+    val targetAspect = preset.aspectRatio
+    return if (sourceAspect > targetAspect) {
+        val width = (targetAspect / sourceAspect).coerceIn(0.05f, 1f)
+        val left = (1f - width) / 2f
+        NormalizedImageCrop(left, 0f, left + width, 1f)
+    } else {
+        val height = (sourceAspect / targetAspect).coerceIn(0.05f, 1f)
+        val top = (1f - height) / 2f
+        NormalizedImageCrop(0f, top, 1f, top + height)
+    }
+}
+
+private fun cropBitmap(source: Bitmap, crop: NormalizedImageCrop): Bitmap {
+    val left = (crop.left.coerceIn(0f, 1f) * source.width).roundToInt()
+        .coerceIn(0, source.width - 1)
+    val top = (crop.top.coerceIn(0f, 1f) * source.height).roundToInt()
+        .coerceIn(0, source.height - 1)
+    val right = (crop.right.coerceIn(0f, 1f) * source.width).roundToInt()
+        .coerceIn(left + 1, source.width)
+    val bottom = (crop.bottom.coerceIn(0f, 1f) * source.height).roundToInt()
+        .coerceIn(top + 1, source.height)
+    return Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+}
+
+@Composable
+private fun ManualImageCropOverlay(
+    crop: NormalizedImageCrop,
+    onCropChange: (NormalizedImageCrop) -> Unit
+) {
+    val handleColor = MaterialTheme.colorScheme.primary
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(crop) {
+                val minimumSpan = 0.08f
+                var dragTarget = -1
+                detectDragGestures(
+                    onDragStart = { point ->
+                        val corners = listOf(
+                            Offset(crop.left * size.width, crop.top * size.height),
+                            Offset(crop.right * size.width, crop.top * size.height),
+                            Offset(crop.left * size.width, crop.bottom * size.height),
+                            Offset(crop.right * size.width, crop.bottom * size.height)
+                        )
+                        val nearest = corners.indices.minByOrNull { index ->
+                            (corners[index] - point).getDistance()
+                        } ?: -1
+                        dragTarget = if (
+                            nearest >= 0 &&
+                            (corners[nearest] - point).getDistance() <= 52.dp.toPx()
+                        ) {
+                            nearest
+                        } else {
+                            val frame = Rect(
+                                crop.left * size.width,
+                                crop.top * size.height,
+                                crop.right * size.width,
+                                crop.bottom * size.height
+                            )
+                            if (frame.contains(point)) 4 else -1
+                        }
+                    },
+                    onDragEnd = { dragTarget = -1 },
+                    onDragCancel = { dragTarget = -1 }
+                ) { change, dragAmount ->
+                    change.consume()
+                    val dx = dragAmount.x / size.width.coerceAtLeast(1).toFloat()
+                    val dy = dragAmount.y / size.height.coerceAtLeast(1).toFloat()
+                    val updated = when (dragTarget) {
+                        0 -> crop.copy(
+                            left = (crop.left + dx).coerceIn(0f, crop.right - minimumSpan),
+                            top = (crop.top + dy).coerceIn(0f, crop.bottom - minimumSpan)
+                        )
+                        1 -> crop.copy(
+                            right = (crop.right + dx).coerceIn(crop.left + minimumSpan, 1f),
+                            top = (crop.top + dy).coerceIn(0f, crop.bottom - minimumSpan)
+                        )
+                        2 -> crop.copy(
+                            left = (crop.left + dx).coerceIn(0f, crop.right - minimumSpan),
+                            bottom = (crop.bottom + dy).coerceIn(crop.top + minimumSpan, 1f)
+                        )
+                        3 -> crop.copy(
+                            right = (crop.right + dx).coerceIn(crop.left + minimumSpan, 1f),
+                            bottom = (crop.bottom + dy).coerceIn(crop.top + minimumSpan, 1f)
+                        )
+                        4 -> {
+                            val width = crop.right - crop.left
+                            val height = crop.bottom - crop.top
+                            val left = (crop.left + dx).coerceIn(0f, 1f - width)
+                            val top = (crop.top + dy).coerceIn(0f, 1f - height)
+                            NormalizedImageCrop(left, top, left + width, top + height)
+                        }
+                        else -> crop
+                    }
+                    if (updated != crop) onCropChange(updated)
+                }
+            }
+    ) {
+        val frame = Rect(
+            crop.left * size.width,
+            crop.top * size.height,
+            crop.right * size.width,
+            crop.bottom * size.height
+        )
+        val shade = Color.Black.copy(alpha = 0.58f)
+        drawRect(shade, size = androidx.compose.ui.geometry.Size(size.width, frame.top))
+        drawRect(
+            shade,
+            topLeft = Offset(0f, frame.bottom),
+            size = androidx.compose.ui.geometry.Size(size.width, size.height - frame.bottom)
+        )
+        drawRect(
+            shade,
+            topLeft = Offset(0f, frame.top),
+            size = androidx.compose.ui.geometry.Size(frame.left, frame.height)
+        )
+        drawRect(
+            shade,
+            topLeft = Offset(frame.right, frame.top),
+            size = androidx.compose.ui.geometry.Size(size.width - frame.right, frame.height)
+        )
+        drawRect(Color.White, topLeft = frame.topLeft, size = frame.size, style = Stroke(width = 3.dp.toPx()))
+        val radius = 8.dp.toPx()
+        listOf(frame.topLeft, frame.topRight, frame.bottomLeft, frame.bottomRight).forEach { corner ->
+            drawCircle(Color.White, radius = radius, center = corner)
+            drawCircle(handleColor, radius = radius * 0.55f, center = corner)
+        }
+    }
 }

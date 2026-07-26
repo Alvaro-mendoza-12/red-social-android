@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object UbuntuMedia {
     fun resolveUrl(url: String?): String? = UbuntuStorageUrl.rewrite(url)
 

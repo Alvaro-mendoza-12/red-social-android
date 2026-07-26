@@ -14,6 +14,7 @@ data class Message(
     val content: String = "",
     @SerialName("content_type") val content_type: String = "text",
     @SerialName("media_url") val media_url: String? = null,
+    @SerialName("thumbnail_url") val thumbnail_url: String? = null,
     @SerialName("poll_id") val poll_id: String? = null,
     @SerialName("media_size") val media_size: Long = 0,
     val status: String = "sent",

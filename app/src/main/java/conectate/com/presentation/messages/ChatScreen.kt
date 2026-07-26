@@ -191,6 +191,8 @@ fun ChatScreen(
     var showScheduledMessagesDialog by remember { mutableStateOf(false) }
     var showTranslateDialog by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
+    var scheduledImageToCrop by remember { mutableStateOf<Uri?>(null) }
+    var backgroundImageToCrop by remember { mutableStateOf<Uri?>(null) }
     val scheduleDefaults = remember {
         val nowPlus = LocalDateTime.now().plusMinutes(5)
         nowPlus.toLocalDate().toString() to nowPlus.toLocalTime().withSecond(0).withNano(0).toString()
@@ -305,10 +307,7 @@ fun ChatScreen(
     val scheduleImagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) {
-            scheduledMediaUri = uri
-            scheduledMediaType = "image"
-        }
+        scheduledImageToCrop = uri
     }
 
     val scheduleVideoPickerLauncher = rememberLauncherForActivityResult(
@@ -323,9 +322,34 @@ fun ChatScreen(
     val backgroundImagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.setChatBackground("custom", uri.toString())
-        }
+        backgroundImageToCrop = uri
+    }
+
+    scheduledImageToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar imagen programada",
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.ORIGINAL,
+            onDismiss = { scheduledImageToCrop = null },
+            onCropped = { croppedUri ->
+                scheduledMediaUri = croppedUri
+                scheduledMediaType = "image"
+                scheduledImageToCrop = null
+            }
+        )
+    }
+
+    backgroundImageToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Ajustar fondo del chat",
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.ORIGINAL,
+            onDismiss = { backgroundImageToCrop = null },
+            onCropped = { croppedUri ->
+                viewModel.setChatBackground("custom", croppedUri.toString())
+                backgroundImageToCrop = null
+            }
+        )
     }
     
     // Message Actions State
@@ -1146,11 +1170,7 @@ fun ChatScreen(
                                     isPlaying = currentPlayingAudioId == message.id,
                                     progress = if (currentPlayingAudioId == message.id) audioProgress else 0f,
                                     duration = if (currentPlayingAudioId == message.id) audioDurationLabel else message.content,
-                                     senderName = if (message.sender_id != currentUserId) {
-                                         state.otherUser?.username ?: state.otherUser?.displayName
-                                     } else {
-                                         "Tú" 
-                                     },
+                                     senderName = null,
                                     senderEmail = if (message.sender_id != currentUserId) {
                                         state.otherUser?.email 
                                     } else {

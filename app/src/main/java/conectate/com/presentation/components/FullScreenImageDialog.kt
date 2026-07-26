@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +78,7 @@ import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
 import conectate.com.util.VideoPerformanceProfiles
 import kotlin.math.min
+import kotlin.math.abs
 
 data class MediaItem(
     val id: String,
@@ -216,6 +218,7 @@ fun FullScreenImageDialog(
     initialIndex: Int = 0,
     onResolveUrl: (suspend (String) -> String?)? = null,
     onDownload: ((MediaItem) -> Unit)? = null,
+    bottomOverlay: (@Composable (page: Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val items = remember(imageUrl, mediaItems) {
@@ -228,6 +231,7 @@ fun FullScreenImageDialog(
     var currentMediaItem by remember(items) {
         mutableStateOf(items.getOrNull(normalizedMediaIndex(initialIndex, items.size)))
     }
+    var dismissDragY by remember { mutableStateOf(0f) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -241,7 +245,34 @@ fun FullScreenImageDialog(
                 .fillMaxSize()
                 .background(Color.Black)
         ) {
-            if (items.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = dismissDragY.coerceAtLeast(0f)
+                        alpha = (1f - (dismissDragY.coerceAtLeast(0f) / size.height.coerceAtLeast(1f)) * 0.65f)
+                            .coerceIn(0.35f, 1f)
+                    }
+                    .pointerInput(items) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { change, dragAmount ->
+                                if (dragAmount > 0f || dismissDragY > 0f) {
+                                    change.consume()
+                                    dismissDragY = (dismissDragY + dragAmount).coerceAtLeast(0f)
+                                }
+                            },
+                            onDragCancel = { dismissDragY = 0f },
+                            onDragEnd = {
+                                if (dismissDragY >= size.height * 0.16f || dismissDragY >= 120f) {
+                                    onDismiss()
+                                } else {
+                                    dismissDragY = 0f
+                                }
+                            }
+                        )
+                    }
+            ) {
+                if (items.isNotEmpty()) {
                 val safeInitialIndex = normalizedMediaIndex(initialIndex, items.size)
                 val pagerState = rememberPagerState(
                     initialPage = safeInitialIndex,
@@ -298,7 +329,16 @@ fun FullScreenImageDialog(
                     }
                 }
 
-                if (items.size > 1) {
+                if (bottomOverlay != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                    ) {
+                        bottomOverlay(pagerState.currentPage)
+                    }
+                } else if (items.size > 1) {
                     Text(
                         text = "${pagerState.currentPage + 1} / ${items.size}",
                         color = Color.White,
@@ -314,7 +354,7 @@ fun FullScreenImageDialog(
                 }
             }
 
-            Row(
+                Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
@@ -347,6 +387,7 @@ fun FullScreenImageDialog(
                         tint = Color.White
                     )
                 }
+            }
             }
         }
     }

@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 import conectate.com.util.ChatContactPayload
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.encodeContactPayload
+import conectate.com.presentation.common.toUserFacingMessage
 
 sealed class CommunityChatUiState {
     object Loading : CommunityChatUiState()
@@ -390,8 +391,8 @@ class CommunityChatViewModel @Inject constructor(
                 replyTo = replyTo
             )
             if (result.isFailure) {
-                val error = result.exceptionOrNull()?.message ?: "Error desconocido"
-                _errorMessage.value = "Error al enviar: $error"
+                _errorMessage.value = result.exceptionOrNull()
+                    .toUserFacingMessage("No se pudo enviar el mensaje.")
                 _messageText.value = content
                 _replyToMessage.value = replyTo
             }
@@ -444,11 +445,11 @@ class CommunityChatViewModel @Inject constructor(
                     content = content
                 )
                 if (sendResult.isFailure) {
-                    val reason = sendResult.exceptionOrNull()?.message ?: "Error desconocido"
-                    _errorMessage.value = "Error al enviar: $reason"
+                    _errorMessage.value = sendResult.exceptionOrNull()
+                        .toUserFacingMessage("No se pudo enviar el archivo.")
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = e.toUserFacingMessage("No se pudo enviar el archivo.")
             }
             _isSending.value = false
         }
@@ -493,8 +494,8 @@ class CommunityChatViewModel @Inject constructor(
                 mediaUrl = cleanUrl
             )
             if (result.isFailure) {
-                val reason = result.exceptionOrNull()?.message ?: "Error desconocido"
-                _errorMessage.value = "Error al enviar: $reason"
+                _errorMessage.value = result.exceptionOrNull()
+                    .toUserFacingMessage("No se pudo enviar el sticker.")
             }
             _isSending.value = false
         }
@@ -611,8 +612,8 @@ class CommunityChatViewModel @Inject constructor(
                 mediaUrl = mediaUrl
             )
             if (result.isFailure) {
-                val reason = result.exceptionOrNull()?.message ?: "Error desconocido"
-                _errorMessage.value = "Error al enviar: $reason"
+                _errorMessage.value = result.exceptionOrNull()
+                    .toUserFacingMessage("No se pudo enviar el mensaje.")
             }
             _isSending.value = false
         }
@@ -678,7 +679,8 @@ class CommunityChatViewModel @Inject constructor(
                 allowsMultiple = allowsMultiple
             )
             if (result.isFailure) {
-                _errorMessage.value = result.exceptionOrNull()?.message ?: "No se pudo crear la encuesta"
+                _errorMessage.value = result.exceptionOrNull()
+                    .toUserFacingMessage("No se pudo crear la encuesta.")
             }
             _isCreatingPoll.value = false
         }
@@ -697,7 +699,8 @@ class CommunityChatViewModel @Inject constructor(
                 if (previous != null) {
                     _pollStates.update { it + (pollId to previous) }
                 }
-                _errorMessage.value = result.exceptionOrNull()?.message ?: "No se pudo registrar tu voto"
+                _errorMessage.value = result.exceptionOrNull()
+                    .toUserFacingMessage("No se pudo registrar tu voto.")
             }
         }
     }

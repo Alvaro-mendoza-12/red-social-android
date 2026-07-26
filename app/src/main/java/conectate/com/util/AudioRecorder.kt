@@ -211,6 +211,11 @@ class AudioRecorder @Inject constructor(
         val activeWriter = writerThread
         if (activeWriter != null && activeWriter !== Thread.currentThread()) {
             runCatching { activeWriter.join(WRITER_JOIN_TIMEOUT_MS) }
+            if (activeWriter.isAlive) {
+                android.util.Log.w("AudioRecorder", "El escritor PCM tardó demasiado; se interrumpe de forma segura.")
+                runCatching { activeWriter.interrupt() }
+                runCatching { activeWriter.join(500L) }
+            }
         }
         writerThread = null
     }
@@ -257,23 +262,30 @@ class AudioRecorder @Inject constructor(
         
         val outputDir = context.cacheDir
         val outputFile = File.createTempFile("voice_message_", ".m4a", outputDir)
-        
+        var inputStream: FileInputStream? = null
+        var mediaMuxer: MediaMuxer? = null
+        var codec: MediaCodec? = null
+        var muxerStarted = false
+
         try {
-            val fis = FileInputStream(inputFile)
+            val fis = FileInputStream(inputFile).also { inputStream = it }
             
-            val mediaMuxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val activeMuxer = MediaMuxer(
+                outputFile.absolutePath,
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            ).also { mediaMuxer = it }
             val codecName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(
                 MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 1)
             ) ?: "OMX.google.aac.encoder"
             
-            val codec = MediaCodec.createByCodecName(codecName)
+            val activeCodec = MediaCodec.createByCodecName(codecName).also { codec = it }
             val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 1)
-            format.setInteger(MediaFormat.KEY_BIT_RATE, 128000) // 128kbps high quality
+            format.setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
             format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
             format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
             
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
+            activeCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            activeCodec.start()
 
             val bufferInfo = MediaCodec.BufferInfo()
             var trackIndex = -1
@@ -282,61 +294,84 @@ class AudioRecorder @Inject constructor(
             
             val buffer = ByteArray(4096)
             var presentationTimeUs = 0L
+            val deadlineMs = android.os.SystemClock.elapsedRealtime() + ENCODER_TIMEOUT_MS
             
             while (!outputDone) {
+                if (android.os.SystemClock.elapsedRealtime() > deadlineMs) {
+                    throw IllegalStateException("El codificador de audio no terminó a tiempo.")
+                }
                 if (!inputDone) {
-                    val index = codec.dequeueInputBuffer(2000)
+                    val index = activeCodec.dequeueInputBuffer(2_000)
                     if (index >= 0) {
-                        val inputBuffer = codec.getInputBuffer(index)
+                        val inputBuffer = activeCodec.getInputBuffer(index)
                         inputBuffer?.clear()
                         
                         val read = fis.read(buffer)
                         if (read == -1) {
-                            codec.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            activeCodec.queueInputBuffer(
+                                index,
+                                0,
+                                0,
+                                presentationTimeUs,
+                                MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                            )
                             inputDone = true
                         } else {
-                             inputBuffer?.put(buffer, 0, read)
-                             codec.queueInputBuffer(index, 0, read, presentationTimeUs, 0)
-                             presentationTimeUs += (read.toLong() * 1000000L / (sampleRateByteSize())).toLong()
+                            if (inputBuffer == null) {
+                                throw IllegalStateException("El codificador no entregó un búfer de entrada.")
+                            }
+                            inputBuffer.put(buffer, 0, read)
+                            activeCodec.queueInputBuffer(index, 0, read, presentationTimeUs, 0)
+                            presentationTimeUs += read.toLong() * 1_000_000L / sampleRateByteSize()
                         }
                     }
                 }
                 
-                var encoderStatus = codec.dequeueOutputBuffer(bufferInfo, 2000)
+                val encoderStatus = activeCodec.dequeueOutputBuffer(bufferInfo, 2_000)
                 if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    trackIndex = mediaMuxer.addTrack(codec.outputFormat)
-                    mediaMuxer.start()
+                    if (muxerStarted) {
+                        throw IllegalStateException("El formato de audio cambió más de una vez.")
+                    }
+                    trackIndex = activeMuxer.addTrack(activeCodec.outputFormat)
+                    activeMuxer.start()
+                    muxerStarted = true
                 } else if (encoderStatus >= 0) {
-                     val outputBuffer = codec.getOutputBuffer(encoderStatus)
-                     if (outputBuffer != null) {
-                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                             bufferInfo.size = 0
-                         }
+                    val outputBuffer = activeCodec.getOutputBuffer(encoderStatus)
+                    if (outputBuffer != null) {
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                            bufferInfo.size = 0
+                        }
                          
-                         if (bufferInfo.size != 0 && trackIndex >= 0) {
-                             mediaMuxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
-                         }
+                        if (bufferInfo.size != 0 && trackIndex >= 0 && muxerStarted) {
+                            outputBuffer.position(bufferInfo.offset)
+                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                            activeMuxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
+                        }
                          
-                         codec.releaseOutputBuffer(encoderStatus, false)
+                        activeCodec.releaseOutputBuffer(encoderStatus, false)
                          
-                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                             outputDone = true
-                         }
-                     }
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            outputDone = true
+                        }
+                    } else {
+                        activeCodec.releaseOutputBuffer(encoderStatus, false)
+                    }
                 }
             }
-            
-            codec.stop()
-            codec.release()
-            mediaMuxer.stop()
-            mediaMuxer.release()
-            fis.close()
-            
-            return outputFile
-            
+
+            return outputFile.takeIf { it.exists() && it.length() > 0L }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("AudioRecorder", "No se pudo codificar el audio", e)
+            runCatching { outputFile.delete() }
             return null
+        } finally {
+            runCatching { inputStream?.close() }
+            runCatching { codec?.stop() }
+            runCatching { codec?.release() }
+            if (muxerStarted) {
+                runCatching { mediaMuxer?.stop() }
+            }
+            runCatching { mediaMuxer?.release() }
         }
     }
     
@@ -346,6 +381,7 @@ class AudioRecorder @Inject constructor(
     }
 
     private companion object {
-        const val WRITER_JOIN_TIMEOUT_MS = 2_000L
+        const val WRITER_JOIN_TIMEOUT_MS = 5_000L
+        const val ENCODER_TIMEOUT_MS = 90_000L
     }
 }

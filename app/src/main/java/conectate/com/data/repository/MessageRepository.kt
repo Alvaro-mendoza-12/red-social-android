@@ -45,6 +45,7 @@ import conectate.com.util.guessMimeTypeFromUri
 import conectate.com.util.inferMimeTypeFromBytes
 import conectate.com.util.isCallEventContentType
 import conectate.com.util.resolveMediaMeta
+import conectate.com.util.VideoUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.gotrue.SessionStatus
 import io.github.jan.supabase.gotrue.auth
@@ -262,6 +263,13 @@ class MessageRepository @Inject constructor(
 
     fun setActiveChatSession(chatId: String?, isVisible: Boolean) {
         sessionStateStore.setActiveChatSession(chatId, isVisible)
+        if (isVisible) {
+            chatId
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() && !it.startsWith("placeholder_") }
+                ?.let(messageNotificationService::cancelNotificationForChat)
+        }
     }
 
     // --- REALTIME: Delegado a MessageRealtimeSync ---
@@ -1501,11 +1509,12 @@ class MessageRepository @Inject constructor(
             var syncedCount = 0
             pendingMessages.forEach { pending ->
                 if (pending.sender_id.trim().lowercase() != currentUserId) return@forEach
-                var synced = syncPendingSendMessage(pending, token)
-                if (synced) {
-                    syncedCount++
-                } else {
-                    messageDao.updateSyncStatus(pending.id, "failed", false, "send")
+                when (syncPendingSendMessage(pending, token)) {
+                    PendingSendOutcome.SENT -> syncedCount++
+                    PendingSendOutcome.RETRY_LATER ->
+                        messageDao.updateSyncStatus(pending.id, "sending", false, "send")
+                    PendingSendOutcome.TERMINAL_FAILURE ->
+                        messageDao.updateSyncStatus(pending.id, "failed", false, "send")
                 }
             }
 
@@ -1554,7 +1563,7 @@ class MessageRepository @Inject constructor(
     private suspend fun syncPendingSendMessage(
         pending: conectate.com.data.local.entity.MessageEntity,
         token: String
-    ): Boolean {
+    ): PendingSendOutcome {
         return try {
             var pendingMessage = pending.toDomain().copy(
                 chat_id = pending.chat_id.trim().lowercase(),
@@ -1569,10 +1578,15 @@ class MessageRepository @Inject constructor(
                     mediaType = pendingMessage.content_type
                 ).getOrElse { error ->
                     android.util.Log.w("MessageRepository", "Pending media upload still unavailable for ${pending.id}", error)
-                    return false
+                    return if (isRetryableNetworkFailure(error.message)) {
+                        PendingSendOutcome.RETRY_LATER
+                    } else {
+                        PendingSendOutcome.TERMINAL_FAILURE
+                    }
                 }
                 pendingMessage = pendingMessage.copy(
                     media_url = upload.url,
+                    thumbnail_url = upload.thumbnailUrl,
                     media_size = upload.sizeBytes
                 )
                 messageDao.insertMessage(
@@ -1594,7 +1608,11 @@ class MessageRepository @Inject constructor(
                     "MessageRepository",
                     "retryPendingMessages server rejected ${pending.id}: ${serverResult.statusCode}"
                 )
-                return false
+                return if (isRetryableBackendFailure(serverResult.statusCode, serverResult.errorBody)) {
+                    PendingSendOutcome.RETRY_LATER
+                } else {
+                    PendingSendOutcome.TERMINAL_FAILURE
+                }
             }
 
             val serverMessage = if (serverResult.isSuccess) serverResult.message else null
@@ -1621,10 +1639,16 @@ class MessageRepository @Inject constructor(
                 senderId = syncedMessage.sender_id,
                 token = token
             )
-            true
+            PendingSendOutcome.SENT
+        } catch (error: CancellationException) {
+            throw error
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "retryPendingMessages failed for ${pending.id}", e)
-            false
+            if (isRetryableNetworkFailure(e.message)) {
+                PendingSendOutcome.RETRY_LATER
+            } else {
+                PendingSendOutcome.TERMINAL_FAILURE
+            }
         }
     }
 
@@ -2317,6 +2341,20 @@ class MessageRepository @Inject constructor(
 
             // --- 2. UPDATE MEMORY (FLOW) ---
             addMessageToFlow(cleanId, msg)
+            val optimisticChats = _userChats.value.toMutableList()
+            val optimisticChatIndex = optimisticChats.indexOfFirst {
+                it.chat.id.trim().lowercase() == cleanId
+            }
+            if (optimisticChatIndex >= 0) {
+                updateChatInList(optimisticChats, optimisticChatIndex, msg, userId)
+            } else {
+                // Room may already know this chat even if the in-memory inbox is
+                // still hydrating after launch.
+                val preview = buildPreviewForContentType(msg.content_type, msg.content)
+                runCatching {
+                    chatDao.updateLastMessage(cleanId, preview, msg.safeCreatedAt, msg.id, userId)
+                }
+            }
             android.util.Log.d("MessageRepository", "🔄 Optimistic update applied to flow")
 
             val token = authService.ensureValidAccessToken().getOrElse { error ->
@@ -2344,7 +2382,11 @@ class MessageRepository @Inject constructor(
                         messageDao.updateSyncStatus(id, "failed", false, "send")
                         return Result.failure(Exception(reason))
                     }
-                msg = msg.copy(media_url = mediaUpload.url, media_size = mediaUpload.sizeBytes)
+                msg = msg.copy(
+                    media_url = mediaUpload.url,
+                    thumbnail_url = mediaUpload.thumbnailUrl,
+                    media_size = mediaUpload.sizeBytes
+                )
                 queuedMessage = msg
                 messageDao.insertMessage(
                     conectate.com.data.local.entity.MessageEntity.fromDomain(
@@ -2487,7 +2529,12 @@ class MessageRepository @Inject constructor(
 
                 Result.failure(Exception(normalizedError))
             }
-        } catch (e: Exception) { 
+        } catch (error: CancellationException) {
+            queuedMessage?.let {
+                runCatching { messageDao.updateSyncStatus(id, "sending", false, "send") }
+            }
+            throw error
+        } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "❌❌ EXCEPTION in sendMessage", e)
             val pending = queuedMessage
             if (pending != null && isRetryableNetworkFailure(e.message)) {
@@ -2536,6 +2583,7 @@ class MessageRepository @Inject constructor(
 
     private data class ChatMediaUpload(
         val url: String,
+        val thumbnailUrl: String? = null,
         val sizeBytes: Long,
         val contentType: String
     )
@@ -2546,6 +2594,12 @@ class MessageRepository @Inject constructor(
         val message: Message? = null,
         val errorBody: String? = null
     )
+
+    private enum class PendingSendOutcome {
+        SENT,
+        RETRY_LATER,
+        TERMINAL_FAILURE
+    }
 
     private suspend fun sendMessageToBackend(
         token: String,
@@ -2558,6 +2612,7 @@ class MessageRepository @Inject constructor(
                 content = msg.content,
                 contentType = msg.content_type,
                 mediaUrl = UbuntuStorageUrl.rewrite(msg.media_url),
+                thumbnailUrl = UbuntuStorageUrl.rewrite(msg.thumbnail_url),
                 mediaSize = msg.media_size,
                 replyToId = msg.reply_to_id,
                 messageId = msg.id,
@@ -4411,9 +4466,38 @@ class MessageRepository @Inject constructor(
                 "chat-media/$filename"
             }
             val uploadedSize = sizeBytes.takeIf { it > 0L } ?: upload.getOrThrow().Size?.toLong() ?: 0L
-            Result.success(ChatMediaUpload(url = url, sizeBytes = uploadedSize, contentType = mimeType))
+            val thumbnailUrl = if (mimeType.startsWith("video/", ignoreCase = true)) {
+                uploadChatVideoThumbnail(cleanChatId, mediaUri)
+            } else {
+                null
+            }
+            Result.success(
+                ChatMediaUpload(
+                    url = url,
+                    thumbnailUrl = thumbnailUrl,
+                    sizeBytes = uploadedSize,
+                    contentType = mimeType
+                )
+            )
         } catch (error: Exception) {
             Result.failure(error)
+        }
+    }
+
+    private suspend fun uploadChatVideoThumbnail(cleanChatId: String, mediaUri: Uri): String? {
+        val bytes = VideoUtils.generateVideoThumbnail(context, mediaUri) ?: return null
+        val filename = "$cleanChatId/${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.jpg"
+        val upload = storageService.uploadFile(
+            bucketName = "thumbnails",
+            fileName = filename,
+            bytes = bytes,
+            contentType = "image/jpeg"
+        ).getOrNull() ?: return null
+        val remoteKey = upload.Key ?: filename
+        return if (shouldUseUbuntuBackend()) {
+            UbuntuStorageUrl.rewrite(storageService.getPublicUrl("thumbnails", remoteKey))
+        } else {
+            "thumbnails/$remoteKey"
         }
     }
 

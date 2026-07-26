@@ -3,6 +3,8 @@ package conectate.com.presentation.messages
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +29,11 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.background
 import conectate.com.data.model.User
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
@@ -45,15 +52,32 @@ fun CreateGroupScreen(
     var searchQuery by remember { mutableStateOf("") }
     var groupName by remember { mutableStateOf("") }
     var groupDescription by remember { mutableStateOf("") }
+    var cropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
-        uri?.let {
-            val bytes = context.contentResolver.openInputStream(it)?.readBytes()
-            viewModel.setImageBytes(bytes)
-        }
+        cropSourceUri = uri
+    }
+
+    cropSourceUri?.let { source ->
+        SimpleImageCropDialog(
+            sourceUri = source,
+            title = "Ajustar icono del grupo",
+            initialPreset = ImageCropPreset.SQUARE,
+            onDismiss = { cropSourceUri = null },
+            onCropped = { cropped ->
+                cropSourceUri = null
+                scope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(cropped)?.use { it.readBytes() }
+                    }
+                    viewModel.setImageBytes(bytes)
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -231,6 +255,8 @@ fun CreateGroupScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                            .imePadding()
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {

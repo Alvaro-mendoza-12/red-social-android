@@ -113,7 +113,7 @@ private object LatestSchemaNormalizer {
 
     private var messagesPlan = TablePlan(
         name = "messages",
-        createSql = "CREATE TABLE IF NOT EXISTS `messages` (`id` TEXT NOT NULL, `chat_id` TEXT NOT NULL, `sender_id` TEXT NOT NULL, `content` TEXT NOT NULL, `content_type` TEXT NOT NULL, `media_url` TEXT, `media_size` INTEGER, `created_at` TEXT NOT NULL, `reply_to_id` TEXT, `reply_to_json` TEXT, `status` TEXT NOT NULL, `is_edited` INTEGER NOT NULL, `deleted_for_all` INTEGER NOT NULL, `deleted_by_json` TEXT NOT NULL, `reactions_json` TEXT NOT NULL, `is_forwarded` INTEGER NOT NULL, `forwarded_from_message_id` TEXT, `forwarded_from_user_id` TEXT, `poll_id` TEXT, `delivered_at` TEXT, `read_at` TEXT, `is_synced` INTEGER NOT NULL, `pending_action` TEXT, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `messages` (`id` TEXT NOT NULL, `chat_id` TEXT NOT NULL, `sender_id` TEXT NOT NULL, `content` TEXT NOT NULL, `content_type` TEXT NOT NULL, `media_url` TEXT, `thumbnail_url` TEXT, `media_size` INTEGER, `created_at` TEXT NOT NULL, `reply_to_id` TEXT, `reply_to_json` TEXT, `status` TEXT NOT NULL, `is_edited` INTEGER NOT NULL, `deleted_for_all` INTEGER NOT NULL, `deleted_by_json` TEXT NOT NULL, `reactions_json` TEXT NOT NULL, `is_forwarded` INTEGER NOT NULL, `forwarded_from_message_id` TEXT, `forwarded_from_user_id` TEXT, `poll_id` TEXT, `delivered_at` TEXT, `read_at` TEXT, `is_synced` INTEGER NOT NULL, `pending_action` TEXT, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("chat_id"),
@@ -121,6 +121,7 @@ private object LatestSchemaNormalizer {
             ColumnSpec("content", "''"),
             ColumnSpec("content_type", "'text'"),
             ColumnSpec("media_url", "NULL", coalesceNulls = false),
+            ColumnSpec("thumbnail_url", "NULL", coalesceNulls = false),
             ColumnSpec("media_size", "NULL", coalesceNulls = false),
             ColumnSpec("created_at", "CURRENT_TIMESTAMP"),
             ColumnSpec("reply_to_id", "NULL", coalesceNulls = false),

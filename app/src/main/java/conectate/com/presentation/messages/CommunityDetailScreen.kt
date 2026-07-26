@@ -354,18 +354,29 @@ fun EditCommunityDialog(
     var onlyAdminsCanTalk by remember { mutableStateOf(community.only_admins_can_talk) }
     var dailyMessageLimit by remember { mutableStateOf(community.daily_message_limit.toString()) }
     var selectedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var imageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
-            try {
-                selectedImageBytes = context.contentResolver.openInputStream(it)?.use { stream -> stream.readBytes() }
-            } catch (e: Exception) {
-                android.util.Log.e("EditCommunityDialog", "Error reading bytes", e)
+        imageToCrop = uri
+    }
+
+    imageToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar foto de la comunidad",
+            presets = listOf(conectate.com.presentation.components.ImageCropPreset.SQUARE),
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.SQUARE,
+            onDismiss = { imageToCrop = null },
+            onCropped = { croppedUri ->
+                selectedImageBytes = runCatching {
+                    context.contentResolver.openInputStream(croppedUri)?.use { it.readBytes() }
+                }.getOrNull()
+                imageToCrop = null
             }
-        }
+        )
     }
 
     AlertDialog(

@@ -25,9 +25,24 @@ object VideoUtils {
             ) ?: retriever.frameAtTime
             
             if (bitmap != null) {
+                val maxSide = 720
+                val longest = maxOf(bitmap.width, bitmap.height)
+                val poster = if (longest > maxSide) {
+                    val scale = maxSide.toFloat() / longest.toFloat()
+                    Bitmap.createScaledBitmap(
+                        bitmap,
+                        (bitmap.width * scale).toInt().coerceAtLeast(1),
+                        (bitmap.height * scale).toInt().coerceAtLeast(1),
+                        true
+                    )
+                } else {
+                    bitmap
+                }
                 val stream = ByteArrayOutputStream()
                 // Compress to JPEG with 70% quality for good balance
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+                poster.compress(Bitmap.CompressFormat.JPEG, 78, stream)
+                if (poster !== bitmap) poster.recycle()
+                bitmap.recycle()
                 stream.toByteArray()
             } else {
                 android.util.Log.e("VideoUtils", "Failed to extract frame from video")

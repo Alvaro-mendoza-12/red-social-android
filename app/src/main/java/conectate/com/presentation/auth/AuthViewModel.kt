@@ -342,10 +342,8 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Flujo "sin código" para cuentas migradas:
-     * - Si el backend ya entregó migrationToken (caso reset requerido), lo usamos directo.
-     * - Si no hay migrationToken (caso setup requerido), solicitamos el reset token al backend
-     *   y si lo devuelve en la respuesta, confirmamos automáticamente sin pedir que el usuario lo escriba.
+     * Finaliza la migración únicamente con el permiso firmado que el servidor
+     * entrega después de comprobar la contraseña anterior de la cuenta.
      */
     fun setupMigratedPassword(email: String, migrationToken: String?, newPassword: String) {
         viewModelScope.launch {
@@ -364,7 +362,6 @@ class AuthViewModel @Inject constructor(
 
             _authState.value = AuthState.Loading
 
-            // Caso 1: el backend ya entregó migrationToken (no requiere código).
             if (token.isNotBlank()) {
                 val result = authRepository.completeMigratedLocalPasswordReset(token, nextPassword)
                 _authState.value = result.fold(
@@ -378,29 +375,8 @@ class AuthViewModel @Inject constructor(
                 return@launch
             }
 
-            // Caso 2: setup requerido (antes pedía "código de migración").
-            val resetRequest = authRepository.requestLocalFallbackPasswordReset(normalizedEmail)
-            val resetInfo = resetRequest.getOrElse {
-                _authState.value = AuthState.Error(mapAuthError(it))
-                return@launch
-            }
-
-            val resetToken = resetInfo.resetToken?.trim().orEmpty()
-            if (resetToken.isBlank()) {
-                _authState.value = AuthState.Error(
-                    "Ubuntu no devolvió el permiso seguro para cambiar la contraseña. Reinicia el servidor y vuelve a intentarlo."
-                )
-                return@launch
-            }
-
-            val confirm = authRepository.confirmLocalFallbackPasswordReset(resetToken, nextPassword)
-            _authState.value = confirm.fold(
-                onSuccess = {
-                    _isUserLoggedIn.value = true
-                    _currentUserId.value = it.id
-                    AuthState.Success(it)
-                },
-                onFailure = { AuthState.Error(mapAuthError(it)) }
+            _authState.value = AuthState.Error(
+                "Primero vuelve al inicio, escribe tu contraseña actual y toca Entrar para autorizar el cambio."
             )
         }
     }

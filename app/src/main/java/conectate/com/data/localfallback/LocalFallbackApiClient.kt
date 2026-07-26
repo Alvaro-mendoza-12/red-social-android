@@ -58,6 +58,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -391,6 +392,12 @@ data class LocalFallbackPostDetailResponse(
     val comments: List<Comment> = emptyList()
 )
 
+data class LocalFallbackPostReactionsResponse(
+    val items: List<conectate.com.data.model.PostReactionUser> = emptyList(),
+    val total: Int = 0,
+    val reactionCounts: Map<String, Int> = emptyMap()
+)
+
 @Serializable
 data class LocalFallbackStorageObject(
     val id: String = "",
@@ -471,6 +478,7 @@ private data class LocalFallbackSendMessageRequest(
     val content: String,
     val contentType: String,
     val mediaUrl: String = "",
+    val thumbnailUrl: String = "",
     val mediaSize: Long = 0L,
     val replyToId: String = "",
     val isForwarded: Boolean = false,
@@ -763,6 +771,13 @@ private data class LocalFallbackRawPostDetailResponse(
 @Serializable
 private data class LocalFallbackRawPostResponse(
     val post: JsonObject? = null
+)
+
+@Serializable
+private data class LocalFallbackRawPostReactionsResponse(
+    val items: List<JsonObject> = emptyList(),
+    val total: Int = 0,
+    @SerialName("reaction_counts") val reactionCounts: Map<String, Int> = emptyMap()
 )
 
 @Serializable
@@ -1921,6 +1936,42 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun loadPostReactions(
+        accessToken: String,
+        postId: String,
+        reactionType: String? = null,
+        limit: Int = 100,
+        offset: Int = 0
+    ): Result<LocalFallbackPostReactionsResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val normalizedType = reactionType?.trim()?.uppercase()?.takeIf(String::isNotBlank)
+        val query = buildString {
+            append("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/reactions")
+            append("?limit=${limit.coerceIn(1, 200)}&offset=${offset.coerceAtLeast(0)}")
+            normalizedType?.let { append("&type=${urlEncode(it)}") }
+        }
+        return requestJson<LocalFallbackRawPostReactionsResponse>(query, accessToken)
+            .map { response ->
+                LocalFallbackPostReactionsResponse(
+                    items = response.items.map { row ->
+                        conectate.com.data.model.PostReactionUser(
+                            userId = textOf(row, "user_id", "userId"),
+                            userName = textOf(row, "user_name", "userName").ifBlank { "Usuario" },
+                            userAvatarUrl = UbuntuStorageUrl.rewrite(
+                                textOf(row, "user_avatar_url", "userAvatarUrl", "avatar_url")
+                            ),
+                            isVerified = boolOf(row, "is_verified", "isVerified", "verified"),
+                            reactionType = textOf(row, "reaction_type", "reactionType").uppercase().ifBlank { "LIKE" },
+                            reactedAt = textOf(row, "reacted_at", "reactedAt", "updated_at", "created_at")
+                                .ifBlank { null }
+                        )
+                    },
+                    total = response.total,
+                    reactionCounts = response.reactionCounts.mapKeys { it.key.uppercase() }
+                )
+            }
+    }
+
     suspend fun loadNotifications(
         accessToken: String,
         unreadOnly: Boolean = false,
@@ -2824,6 +2875,7 @@ class LocalFallbackApiClient @Inject constructor(
         content: String,
         contentType: String,
         mediaUrl: String?,
+        thumbnailUrl: String?,
         mediaSize: Long,
         replyToId: String?,
         messageId: String? = null,
@@ -2831,24 +2883,56 @@ class LocalFallbackApiClient @Inject constructor(
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null
     ): Result<Message> {
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val request = LocalFallbackSendMessageRequest(
+            id = messageId,
+            content = content,
+            contentType = contentType,
+            mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
+            thumbnailUrl = UbuntuStorageUrl.rewrite(thumbnailUrl).orEmpty(),
+            mediaSize = mediaSize,
+            replyToId = replyToId ?: "",
+            isForwarded = isForwarded,
+            forwardedFromMessageId = forwardedFromMessageId,
+            forwardedFromUserId = forwardedFromUserId
+        )
+        val initialUrl = "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/messages"
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/messages") {
+            sendChatMessageOnce(initialUrl, accessToken, request).fold(
+                onSuccess = { Result.success(it) },
+                onFailure = { firstError ->
+                    if (firstError is CancellationException) throw firstError
+                    val retryUrl = refreshedRetryUrl(initialUrl)
+                    if (retryUrl != null && retryUrl != initialUrl) {
+                        sendChatMessageOnce(retryUrl, accessToken, request)
+                    } else {
+                        Result.failure(firstError)
+                    }
+                }
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            val retryUrl = refreshedRetryUrl(initialUrl)
+            if (retryUrl != null && retryUrl != initialUrl) {
+                sendChatMessageOnce(retryUrl, accessToken, request)
+            } else {
+                Result.failure(error)
+            }
+        }
+    }
+
+    private suspend fun sendChatMessageOnce(
+        url: String,
+        accessToken: String,
+        request: LocalFallbackSendMessageRequest
+    ): Result<Message> {
+        return try {
+            val response = supabaseConfig.httpClient.post(url) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
-                setBody(
-                    LocalFallbackSendMessageRequest(
-                        id = messageId,
-                        content = content,
-                        contentType = contentType,
-                        mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
-                        mediaSize = mediaSize,
-                        replyToId = replyToId ?: "",
-                        isForwarded = isForwarded,
-                        forwardedFromMessageId = forwardedFromMessageId,
-                        forwardedFromUserId = forwardedFromUserId
-                    )
-                )
+                setBody(request)
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -2856,6 +2940,8 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -4880,8 +4966,12 @@ class LocalFallbackApiClient @Inject constructor(
                     put("acknowledge_full_purge", JsonPrimitive(true))
                 })
             }
-            if (response.status.isSuccess()) Result.success(true)
-            else Result.failure(Exception("Error al eliminar: ${response.status} - ${response.bodyAsText()}"))
+            if (response.status.isSuccess()) {
+                Result.success(true)
+            } else {
+                val body = response.bodyAsText()
+                Result.failure(toException(response, decodeError(body)))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

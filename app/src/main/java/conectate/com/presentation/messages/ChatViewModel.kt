@@ -29,6 +29,7 @@ import conectate.com.util.UbuntuMedia
 import conectate.com.util.encodeContactPayload
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -660,10 +661,19 @@ class ChatViewModel @Inject constructor(
                 )
             )
             "No puedes enviar mensajes a este usuario."
+        } else if (
+            clean.contains("unable to resolve host", ignoreCase = true) ||
+            clean.contains("unknown host", ignoreCase = true) ||
+            clean.contains("failed to connect", ignoreCase = true) ||
+            clean.contains("network", ignoreCase = true)
+        ) {
+            "Sin conexión. El mensaje quedó guardado y se enviará automáticamente."
+        } else if (clean.contains("job was cancelled", ignoreCase = true)) {
+            "El envío quedó en espera y continuará automáticamente."
         } else if (clean.isBlank()) {
-            "Error desconocido"
+            "No se pudo completar el envío."
         } else {
-            clean
+            "No se pudo enviar el mensaje. Inténtalo nuevamente."
         }
     }
 
@@ -719,6 +729,8 @@ class ChatViewModel @Inject constructor(
                     _replyToMessage.value = replyTo
                     Toast.makeText(context, "No se pudo enviar: $error", Toast.LENGTH_LONG).show()
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Send error", e)
                 Toast.makeText(context, "Error al enviar mensaje", Toast.LENGTH_SHORT).show()
@@ -767,6 +779,8 @@ class ChatViewModel @Inject constructor(
                         cacheAudioFromUri(mediaUrl, uri)
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Media send error", e)
                 Toast.makeText(context, "Error al enviar archivo", Toast.LENGTH_SHORT).show()
@@ -832,6 +846,8 @@ class ChatViewModel @Inject constructor(
                     }
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Batch media send error", e)
                 Toast.makeText(context, "Error al enviar archivos", Toast.LENGTH_SHORT).show()

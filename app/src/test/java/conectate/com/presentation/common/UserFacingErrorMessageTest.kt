@@ -72,4 +72,36 @@ class UserFacingErrorMessageTest {
             result
         )
     }
+
+    @Test
+    fun expiredTunnelHostnameBecomesFriendly() {
+        val result = java.net.UnknownHostException(
+            "Unable to resolve host \"expired.trycloudflare.com\": No address associated with hostname"
+        ).toUserFacingMessage()
+
+        assertEquals(
+            "No pudimos conectarnos con el servidor. Revisa tu internet e inténtalo otra vez.",
+            result
+        )
+    }
+
+    @Test
+    fun cancelledJobDoesNotExposeCoroutineInternals() {
+        val result = Exception("Job was cancelled").toUserFacingMessage()
+
+        assertEquals(
+            "La operación se interrumpió antes de terminar. Inténtalo nuevamente.",
+            result
+        )
+    }
+
+    @Test
+    fun backendJsonDoesNotReachTheUser() {
+        val result = Exception("500 - {\"error\":\"INTERNAL_ERROR\"}").toUserFacingMessage()
+
+        assertEquals(
+            "El servicio no está disponible en este momento. Inténtalo nuevamente más tarde.",
+            result
+        )
+    }
 }

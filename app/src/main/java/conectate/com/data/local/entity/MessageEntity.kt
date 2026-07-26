@@ -25,6 +25,7 @@ data class MessageEntity(
     val content: String,
     val content_type: String, // text, image, video, audio
     val media_url: String? = null,
+    val thumbnail_url: String? = null,
     val media_size: Long? = null,
     val created_at: String,
     val reply_to_id: String? = null,
@@ -56,6 +57,7 @@ data class MessageEntity(
             content = content,
             content_type = content_type,
             media_url = media_url,
+            thumbnail_url = thumbnail_url,
             media_size = media_size ?: 0L,
             created_at = created_at,
             reply_to_id = reply_to_id,
@@ -84,6 +86,7 @@ data class MessageEntity(
                 content = msg.content,
                 content_type = msg.content_type,
                 media_url = msg.media_url,
+                thumbnail_url = msg.thumbnail_url,
                 media_size = msg.media_size,
                 created_at = msg.created_at ?: "",
                 reply_to_id = msg.reply_to_id,

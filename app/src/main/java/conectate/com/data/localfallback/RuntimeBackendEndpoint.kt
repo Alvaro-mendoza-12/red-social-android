@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,7 +34,9 @@ object RuntimeBackendEndpoint {
 
     private val defaultUrl = normalize(BuildConfig.FALLBACK_API_URL)
     private val _baseUrl = MutableStateFlow(defaultUrl)
+    private val refreshMutex = Mutex()
     @Volatile private var appContext: Context? = null
+    @Volatile private var lastResolvedAt: Long = 0L
     val baseUrlFlow: StateFlow<String> = _baseUrl.asStateFlow()
 
     val baseUrl: String
@@ -50,6 +54,7 @@ object RuntimeBackendEndpoint {
         val cachedAt = prefs.getLong(KEY_BASE_URL_SAVED_AT, 0L)
         if (isAllowed(cached) && !isExpiredQuickTunnel(cached, cachedAt)) {
             _baseUrl.value = normalize(cached)
+            lastResolvedAt = cachedAt
         } else if (cached.isNotBlank()) {
             Log.w(TAG, "Ignoring stale quick-tunnel endpoint cached in device: ${safeHost(cached)}")
             prefs.edit().remove(KEY_BASE_URL).remove(KEY_BASE_URL_SAVED_AT).apply()
@@ -73,7 +78,29 @@ object RuntimeBackendEndpoint {
         return failedBase != null && failedBase != _baseUrl.value
     }
 
-    suspend fun refresh(context: Context): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Ensures that a rotating Quick Tunnel is resolved before a mutating request.
+     * A stale BuildConfig URL must never be treated as a healthy endpoint merely
+     * because it has a syntactically valid HTTPS address.
+     */
+    suspend fun ensureFreshEndpoint(): String? {
+        val context = appContext ?: return baseUrl.takeIf(::isAllowed)
+        val current = baseUrl
+        val needsRefresh = !isAllowed(current) ||
+            (isQuickTunnel(current) &&
+                (lastResolvedAt <= 0L ||
+                    System.currentTimeMillis() - lastResolvedAt > QUICK_TUNNEL_MAX_CACHE_MS))
+        if (needsRefresh) {
+            refresh(context)
+        }
+        return baseUrl.takeIf(::isAllowed)
+    }
+
+    suspend fun refresh(context: Context): Boolean = refreshMutex.withLock {
+        refreshUnlocked(context)
+    }
+
+    private suspend fun refreshUnlocked(context: Context): Boolean = withContext(Dispatchers.IO) {
         val candidates = listOfNotNull(
             fetchDnsEndpoint(),
             fetchConfigEndpoint(),
@@ -88,6 +115,7 @@ object RuntimeBackendEndpoint {
             .apply()
         val changed = candidate != _baseUrl.value
         _baseUrl.value = candidate
+        lastResolvedAt = System.currentTimeMillis()
         changed
     }
 
@@ -151,10 +179,13 @@ object RuntimeBackendEndpoint {
 
     private fun isExpiredQuickTunnel(value: String, savedAt: Long): Boolean {
         val normalized = normalize(value)
-        if (!normalized.contains(".trycloudflare.com", ignoreCase = true)) return false
+        if (!isQuickTunnel(normalized)) return false
         if (savedAt <= 0L) return true
         return System.currentTimeMillis() - savedAt > QUICK_TUNNEL_MAX_CACHE_MS
     }
+
+    private fun isQuickTunnel(value: String): Boolean =
+        normalize(value).contains(".trycloudflare.com", ignoreCase = true)
 
     private fun safeHost(value: String): String = runCatching {
         URI(normalize(value)).host.orEmpty()

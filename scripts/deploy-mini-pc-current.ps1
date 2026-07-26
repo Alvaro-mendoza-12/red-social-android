@@ -27,7 +27,10 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) ("conectate-deploy-" + [guid]::NewGu
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 
 function Invoke-Remote([string]$Command) {
-  & ssh @ssh $target $Command
+  # PowerShell here-strings use CRLF on Windows. Passing those bytes directly
+  # to Bash makes options such as `set -o pipefail` end in a literal `\r`.
+  $normalizedCommand = $Command.Replace("`r`n", "`n").Replace("`r", "`n")
+  & ssh @ssh $target $normalizedCommand
   if ($LASTEXITCODE -ne 0) { throw "SSH fallo: $Command" }
 }
 

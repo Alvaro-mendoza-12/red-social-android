@@ -101,7 +101,7 @@ fun LoginScreen(
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
                 migrationInfo =
-                    "Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña una sola vez para volver a entrar normal."
+                    "Verificamos tu contraseña actual. Ahora crea una nueva contraseña una sola vez para volver a entrar con normalidad."
                 if (resolvedEmail.isNotBlank()) email = resolvedEmail
                 password = ""
             }
@@ -406,27 +406,32 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Migrated account password setup. This stays local to Ubuntu and does not depend on email delivery.
+            // Secure migration helper: the existing password must be verified first.
             TextButton(
                 onClick = {
                     val trimmedEmail = email.trim().lowercase()
-                    if (trimmedEmail.isNotBlank()) {
-                        migrationEmail = trimmedEmail
-                        migrationDisplayName = ""
-                        migrationToken = ""
-                        migrationNewPassword = ""
-                        migrationConfirmPassword = ""
-                        migrationInfo = "Tu cuenta ya existe, pero necesita una nueva contraseña en Ubuntu. Créala una sola vez y podrás entrar con normalidad."
-                        password = ""
-                        viewModel.resetAuthState()
-                    } else {
-                        viewModel.setAuthError("Ingresa tu correo para preparar el cambio de contraseña en Ubuntu.")
+                    when {
+                        trimmedEmail.isBlank() ->
+                            viewModel.setAuthError("Ingresa el correo de tu cuenta.")
+                        password.isBlank() ->
+                            viewModel.setAuthError(
+                                "Ingresa tu contraseña actual arriba para comprobar que la cuenta es tuya."
+                            )
+                        else -> {
+                            migrationEmail = ""
+                            migrationDisplayName = ""
+                            migrationToken = ""
+                            migrationNewPassword = ""
+                            migrationConfirmPassword = ""
+                            migrationInfo = ""
+                            viewModel.signInWithEmail(trimmedEmail, password)
+                        }
                     }
                 },
                 enabled = authState !is AuthState.Loading
             ) {
                 Text(
-                    text = "Cambiar contraseña",
+                    text = "Actualizar contraseña de cuenta migrada",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )

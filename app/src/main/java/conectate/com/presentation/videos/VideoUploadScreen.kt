@@ -29,6 +29,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import conectate.com.data.repository.VideoRepository
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -184,13 +185,13 @@ class VideoUploadViewModel @Inject constructor(
                     },
                     onFailure = {
                         _isUploading.value = false
-                        _uploadError.value = it.message
+                        _uploadError.value = it.toUserFacingMessage("No se pudo subir el video.")
                         onComplete(false)
                     }
                 )
             } catch (e: Throwable) {
                 _isUploading.value = false
-                _uploadError.value = "Error al subir el video: ${e.message ?: "Memoria insuficiente o error de red"}"
+                _uploadError.value = e.toUserFacingMessage("No se pudo subir el video.")
                 onComplete(false)
             }
         }
@@ -231,6 +232,7 @@ fun VideoUploadScreen(
     val uploadError by viewModel.uploadError.collectAsState()
     val videoDurationMs by viewModel.videoDurationMs.collectAsState()
     val requiresEditing by viewModel.requiresEditing.collectAsState()
+    var thumbnailToCrop by remember { mutableStateOf<Uri?>(null) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -246,7 +248,20 @@ fun VideoUploadScreen(
 
     val thumbnailPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> uri?.let { viewModel.setThumbnailUri(it) } }
+    ) { uri: Uri? -> thumbnailToCrop = uri }
+
+    thumbnailToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Recortar portada del video",
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.PORTRAIT,
+            onDismiss = { thumbnailToCrop = null },
+            onCropped = { croppedUri ->
+                viewModel.setThumbnailUri(croppedUri)
+                thumbnailToCrop = null
+            }
+        )
+    }
 
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
 

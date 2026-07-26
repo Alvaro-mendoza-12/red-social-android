@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.ExperimentalMaterialApi
@@ -89,6 +90,7 @@ import coil.compose.rememberAsyncImagePainter
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -103,6 +105,17 @@ private fun formatRemainingTime(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
     return String.format(Locale.getDefault(), "%02d:%02d", m, s)
+}
+
+private fun socialReactionEmoji(type: String): String = when (type.uppercase()) {
+    "LOVE" -> "❤️"
+    "HAHA" -> "😂"
+    "WOW" -> "😮"
+    "SAD" -> "😢"
+    "ANGRY" -> "😡"
+    "CARE" -> "🤗"
+    "FIRE" -> "🔥"
+    else -> "👍"
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -130,6 +143,9 @@ fun SocialScreen(
     val votingCountdown by challengeViewModel.votingCountdown.collectAsState()
     val winnersCountdown by challengeViewModel.winnersCountdown.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
+    val reactionUsers by viewModel.reactionUsers.collectAsState()
+    val reactionsLoading by viewModel.reactionsLoading.collectAsState()
+    val reactionsError by viewModel.reactionsError.collectAsState()
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
@@ -146,6 +162,7 @@ fun SocialScreen(
     val tabs = listOf("Social", "Momentos", "Retos")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
+    val socialListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         notificationViewModel.updateUnreadCount()
@@ -159,6 +176,7 @@ fun SocialScreen(
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
+    var reactionPost by remember { mutableStateOf<Post?>(null) }
     var challengesUnlocked by remember { mutableStateOf(false) }
     var showDrawingCanvas by remember { mutableStateOf(false) }
     var showTextChallengeEntry by remember { mutableStateOf(false) }
@@ -217,6 +235,21 @@ fun SocialScreen(
         }
     }
 
+    LaunchedEffect(socialListState, posts) {
+        snapshotFlow {
+            socialListState.layoutInfo.visibleItemsInfo
+                .mapNotNull { it.key as? String }
+                .filterNot { it == "active-lives" }
+                .toSet()
+        }
+            .distinctUntilChanged()
+            .collect { visibleIds ->
+                visibleIds.forEach { id ->
+                    posts.firstOrNull { it.id == id }?.let(viewModel::recordPostImpression)
+                }
+            }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -224,6 +257,9 @@ fun SocialScreen(
                 // Forzar refresco si estamos en la pestaña de Retos al volver a la app
                 if (pagerState.currentPage == 2) {
                     challengeViewModel.loadActiveChallenge()
+                } else if (pagerState.currentPage == 0) {
+                    viewModel.loadPosts()
+                    coroutineScope.launch { socialListState.scrollToItem(0) }
                 }
             }
         }
@@ -271,6 +307,82 @@ fun SocialScreen(
                 postToReport = null
             }
         )
+    }
+
+    reactionPost?.let { selectedPost ->
+        LaunchedEffect(selectedPost.id) {
+            viewModel.loadPostReactions(selectedPost.id)
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                reactionPost = null
+                viewModel.clearPostReactions()
+            },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(
+                    text = "${selectedPost.reactionCounts.values.sum().takeIf { it > 0 } ?: selectedPost.likeCount} reacciones",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+                when {
+                    reactionsLoading -> Box(
+                        Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                    reactionsError != null -> Text(
+                        reactionsError.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                    )
+                    reactionUsers.isEmpty() -> Text(
+                        "Todavía no hay reacciones.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                    )
+                    else -> LazyColumn(modifier = Modifier.heightIn(max = 460.dp)) {
+                        items(reactionUsers, key = { "${it.userId}:${it.reactionType}" }) { reaction ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        reactionPost = null
+                                        viewModel.clearPostReactions()
+                                        if (reaction.userId != viewModel.currentUserId) {
+                                            navController.navigate(Screen.UserProfile.createRoute(reaction.userId))
+                                        }
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                conectate.com.presentation.components.CircularProfileImage(
+                                    imageUrl = reaction.userAvatarUrl.orEmpty(),
+                                    size = 42.dp,
+                                    isVerified = reaction.isVerified,
+                                    fallbackName = reaction.userName
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    reaction.userName,
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(socialReactionEmoji(reaction.reactionType), fontSize = 24.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     
     if (showCreateChallengeDialog) {
@@ -1090,6 +1202,7 @@ fun SocialScreen(
                             } else {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
+                                    state = socialListState,
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -1110,10 +1223,18 @@ fun SocialScreen(
                                         PostCard(
                                             post = post,
                                             onLikeClick = { viewModel.toggleLike(post) },
-                                            onCommentClick = { navController.navigate(Screen.PostDetail.createRoute(post.id)) },
+                                            onReactionSelect = { reaction -> viewModel.setReaction(post, reaction) },
+                                            onReactionSummaryClick = { reactionPost = post },
+                                            onCommentClick = {
+                                                viewModel.recordPostComment(post)
+                                                navController.navigate(Screen.PostDetail.createRoute(post.id))
+                                            },
                                             onShareClick = { viewModel.togglePostShare(post) },
                                             onUserClick = { userId -> if (userId != viewModel.currentUserId) navController.navigate(Screen.UserProfile.createRoute(userId)) },
-                                            onPostClick = { navController.navigate(Screen.PostDetail.createRoute(post.id)) },
+                                            onPostClick = {
+                                                viewModel.recordPostOpen(post)
+                                                navController.navigate(Screen.PostDetail.createRoute(post.id))
+                                            },
                                             onSendToFriend = {
                                                 selectedPostForShare = post
                                                 showInternalShareDialog = true

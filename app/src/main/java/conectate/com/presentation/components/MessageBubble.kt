@@ -70,6 +70,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.ContentScale
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.util.VideoCache
@@ -79,6 +80,7 @@ import kotlinx.coroutines.withContext
 @Composable
 private fun ChatVideoPreview(
     url: String?,
+    thumbnailUrl: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -88,17 +90,52 @@ private fun ChatVideoPreview(
             runCatching { VideoCache.preloadStart(context.applicationContext, source) }
         }
     }
-    Box(
-        modifier = modifier.background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.VideoLibrary,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.72f),
-            modifier = Modifier.size(38.dp)
-        )
+    val posterSource = thumbnailUrl?.takeIf(String::isNotBlank)
+    val resolvedPoster = UbuntuStorageUrl.thumbnail(posterSource, width = 720)
+        ?: url?.takeIf(String::isNotBlank)
+    val posterRequest = remember(resolvedPoster, posterSource) {
+        resolvedPoster?.let { source ->
+            ImageRequest.Builder(context)
+                .data(source)
+                .apply {
+                    if (posterSource.isNullOrBlank()) videoFrameMillis(1_000)
+                }
+                .size(720, 720)
+                .memoryCacheKey(
+                    UbuntuStorageUrl.stableCacheKey(posterSource ?: source)
+                        ?.let { "chat-video-poster:$it" }
+                )
+                .diskCacheKey(
+                    UbuntuStorageUrl.stableCacheKey(posterSource ?: source)
+                        ?.let { "chat-video-poster:$it" }
+                )
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .crossfade(false)
+                .build()
+        }
     }
+    SubcomposeAsyncImage(
+        model = posterRequest,
+        contentDescription = "Vista previa del video",
+        contentScale = ContentScale.Crop,
+        modifier = modifier.background(Color.Black),
+        loading = {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+            }
+        },
+        error = {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.VideoLibrary,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.72f),
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+        }
+    )
 }
 
 @Composable
@@ -248,10 +285,10 @@ fun VideoMessageBubble(
                 } else {
                     ChatVideoPreview(
                         url = message.media_url,
+                        thumbnailUrl = message.thumbnail_url,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f/9f)
-                            .alpha(0.6f)
                     )
                     
                     Icon(
@@ -308,6 +345,7 @@ fun VideoMessageBubble(
 
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Suppress("ModifierParameter")
 fun MessageBubble(
     message: Message,
@@ -360,17 +398,17 @@ fun MessageBubble(
         if (isFromCurrentUser) sentBgColor else receivedBgColor
     }
     val bubbleShape = RoundedCornerShape(
-        topStart = 16.dp,
-        topEnd = 16.dp,
-        bottomStart = if (isFromCurrentUser) 16.dp else 4.dp,
-        bottomEnd = if (isFromCurrentUser) 4.dp else 16.dp
+        topStart = 18.dp,
+        topEnd = 18.dp,
+        bottomStart = if (isFromCurrentUser) 18.dp else 5.dp,
+        bottomEnd = if (isFromCurrentUser) 5.dp else 18.dp
     )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 1.dp)
             .offset(x = (offsetX / 3).dp) // Visual feedback
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
@@ -390,7 +428,7 @@ fun MessageBubble(
     ) {
         Box(
             modifier = Modifier
-                .widthIn(max = if (isStickerMessage) 124.dp else 280.dp)
+                .widthIn(max = if (isStickerMessage) 124.dp else 340.dp)
                 .then(
                     if (isStickerMessage) {
                         Modifier
@@ -414,13 +452,13 @@ fun MessageBubble(
                     onLongClick = onLongClick
                 )
                 .padding(
-                    horizontal = if (isStickerMessage) 4.dp else 12.dp,
-                    vertical = if (isStickerMessage) 1.dp else 8.dp
+                    horizontal = if (isStickerMessage) 4.dp else 11.dp,
+                    vertical = if (isStickerMessage) 1.dp else 7.dp
                 )
         ) {
             Column {
                 // Sender Name and Badge (For Group/Community or own messages if name provided)
-                if (senderName != null) {
+                if (senderName != null && !isFromCurrentUser) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = if (isFromCurrentUser) Arrangement.End else Arrangement.Start,
@@ -699,10 +737,10 @@ fun MessageBubble(
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
                             ChatVideoPreview(
                                 url = resolvedUrl ?: message.media_url,
+                                thumbnailUrl = message.thumbnail_url,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f/9f)
-                                    .alpha(0.6f)
                             )
                             Icon(
                                 imageVector = Icons.Default.PlayCircleOutline,
@@ -906,8 +944,10 @@ fun MessageBubble(
                 }
 
                 if (!message.deleted_for_all && message.reactions.isNotEmpty()) {
-                    Row(
+                    FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        maxItemsInEachRow = 3,
                         modifier = Modifier
                             .padding(top = 6.dp)
                             .fillMaxWidth()
@@ -954,7 +994,7 @@ fun MessageBubble(
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 
                 // Timestamp and status
                 Row(

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +45,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 fun PostCard(
     post: Post,
     onLikeClick: () -> Unit,
+    onReactionSelect: (String?) -> Unit = {},
+    onReactionSummaryClick: () -> Unit = {},
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
     onUserClick: (String) -> Unit,
@@ -59,6 +63,11 @@ fun PostCard(
 ) {
     val context = LocalContext.current
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
+    var showReactionPicker by remember(post.id) { mutableStateOf(false) }
+    val reactionTotal = remember(post.reactionCounts, post.likeCount) {
+        post.reactionCounts.values.sum().takeIf { it > 0 } ?: post.likeCount
+    }
+    val currentReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
 
     val images = remember(post.mediaUrls, post.mediaUrlLegacy) {
         UbuntuStorageUrl.rewriteAll(
@@ -70,6 +79,79 @@ fun PostCard(
         FullScreenImageDialog(
             mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, "image") },
             initialIndex = initialIndex,
+            bottomOverlay = { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProfileImage(
+                            imageUrl = post.userProfileImage.orEmpty(),
+                            size = 38.dp,
+                            isVerified = post.isVerified,
+                            fallbackName = post.userName,
+                            modifier = Modifier.clickable {
+                                fullScreenImageIndex = null
+                                onUserClick(post.userId)
+                            }
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(post.userName, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(
+                                DateUtils.formatRelativeDate(post.createdAt),
+                                color = Color.White.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        if (images.size > 1) {
+                            Text(
+                                "${page + 1} / ${images.size}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    if (post.content.isNotBlank()) {
+                        Text(
+                            post.content,
+                            color = Color.White,
+                            modifier = Modifier.padding(top = 10.dp),
+                            maxLines = 3
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = reactionPreview(post.reactionCounts, reactionTotal),
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                fullScreenImageIndex = null
+                                onReactionSummaryClick()
+                            }
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${post.commentCount} comentarios",
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.clickable {
+                                fullScreenImageIndex = null
+                                onCommentClick()
+                            }
+                        )
+                    }
+                }
+            },
             onDismiss = { fullScreenImageIndex = null }
         )
     }
@@ -305,18 +387,12 @@ fun PostCard(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (post.likeCount > 0) {
-                        Icon(
-                            imageVector = Icons.Default.ThumbUp,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    if (reactionTotal > 0) {
                         Text(
-                            text = post.likeCount.toString(),
+                            text = reactionPreview(post.reactionCounts, reactionTotal),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable(onClick = onReactionSummaryClick)
                         )
                     }
                     
@@ -355,20 +431,62 @@ fun PostCard(
                     .padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                TextButton(
-                    onClick = onLikeClick,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (post.likedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .combinedClickable(
+                            onClick = onLikeClick,
+                            onLongClick = { showReactionPicker = true }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (post.likedByMe) Icons.Default.ThumbUp else Icons.Outlined.FavoriteBorder, // FavoriteBorder because ThumbUp looks heavy if not filled
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Me gusta", fontSize = 13.sp, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (currentReaction == null) {
+                            Icon(
+                                imageVector = Icons.Outlined.FavoriteBorder,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(reactionEmoji(currentReaction), fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            currentReaction?.let(::reactionLabel) ?: "Me gusta",
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            color = if (currentReaction != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showReactionPicker,
+                        onDismissRequest = { showReactionPicker = false }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            POST_REACTION_ORDER.forEach { reaction ->
+                                IconButton(
+                                    onClick = {
+                                        showReactionPicker = false
+                                        onReactionSelect(reaction)
+                                    }
+                                ) {
+                                    Text(
+                                        reactionEmoji(reaction),
+                                        fontSize = if (currentReaction == reaction) 30.sp else 26.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 TextButton(
@@ -429,4 +547,38 @@ fun PostCard(
             }
         }
     }
+}
+
+private val POST_REACTION_ORDER = listOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE")
+
+private fun reactionEmoji(type: String): String = when (type.uppercase()) {
+    "LOVE" -> "❤️"
+    "HAHA" -> "😂"
+    "WOW" -> "😮"
+    "SAD" -> "😢"
+    "ANGRY" -> "😡"
+    "CARE" -> "🤗"
+    "FIRE" -> "🔥"
+    else -> "👍"
+}
+
+private fun reactionLabel(type: String): String = when (type.uppercase()) {
+    "LOVE" -> "Me encanta"
+    "HAHA" -> "Me divierte"
+    "WOW" -> "Me asombra"
+    "SAD" -> "Me entristece"
+    "ANGRY" -> "Me enoja"
+    "CARE" -> "Me importa"
+    "FIRE" -> "Genial"
+    else -> "Me gusta"
+}
+
+private fun reactionPreview(counts: Map<String, Int>, total: Int): String {
+    val emojis = POST_REACTION_ORDER
+        .filter { (counts[it] ?: 0) > 0 }
+        .sortedByDescending { counts[it] ?: 0 }
+        .take(3)
+        .joinToString(separator = "") { reactionEmoji(it) }
+        .ifBlank { "👍" }
+    return "$emojis $total"
 }

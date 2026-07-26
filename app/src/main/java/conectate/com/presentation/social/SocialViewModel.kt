@@ -7,8 +7,10 @@ import conectate.com.core.feed.FeedInteractionAction
 import conectate.com.core.feed.FeedSignalTracker
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.model.Post
+import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PostMutationEvent
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,10 +67,15 @@ class SocialViewModel @Inject constructor(
 
     private val _friends = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val friends: StateFlow<List<conectate.com.data.model.User>> = _friends.asStateFlow()
+    private val _reactionUsers = MutableStateFlow<List<PostReactionUser>>(emptyList())
+    val reactionUsers: StateFlow<List<PostReactionUser>> = _reactionUsers.asStateFlow()
+    private val _reactionsLoading = MutableStateFlow(false)
+    val reactionsLoading: StateFlow<Boolean> = _reactionsLoading.asStateFlow()
+    private val _reactionsError = MutableStateFlow<String?>(null)
+    val reactionsError: StateFlow<String?> = _reactionsError.asStateFlow()
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
-    private val feedSessionSeed = java.util.UUID.randomUUID().hashCode()
 
     // Challenge flows removed
 
@@ -116,10 +123,9 @@ class SocialViewModel @Inject constructor(
             val startedAt = System.currentTimeMillis()
             _isRefreshing.value = true
             try {
-                postRepository.getGlobalPosts().collect { globalPosts ->
+                postRepository.getGlobalPosts(limit = 60).collect { globalPosts ->
                     val ranked = rankPosts(globalPosts)
                     _posts.value = ranked
-                    feedSignalTracker.recordImpressions(ranked)
                     _isRefreshing.value = false
                     appMetrics.incrementCounter(
                         metric = "feed_load_success",
@@ -153,11 +159,7 @@ class SocialViewModel @Inject constructor(
             signalSnapshot = feedSignalTracker.snapshot(),
             interestTerms = profileInterestTerms()
         )
-        // Preserve ranking while varying close results once per app session.
-        val windowSize = 3
-        return ranked.chunked(windowSize).flatMap { chunk ->
-            chunk.sortedByDescending { post -> post.id.hashCode() xor feedSessionSeed }
-        }
+        return ranked
     }
 
     private fun profileInterestTerms(): Set<String> {
@@ -174,36 +176,98 @@ class SocialViewModel @Inject constructor(
             .toSet()
     }
 
+    fun recordPostImpression(post: Post) {
+        feedSignalTracker.recordInteraction(post, FeedInteractionAction.IMPRESSION)
+    }
+
+    fun recordPostOpen(post: Post) {
+        feedSignalTracker.recordInteraction(post, FeedInteractionAction.OPEN)
+    }
+
+    fun recordPostComment(post: Post) {
+        feedSignalTracker.recordInteraction(post, FeedInteractionAction.COMMENT)
+    }
+
     fun toggleLike(post: Post) {
+        val oldReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
+        setReaction(post, if (oldReaction == null) "LIKE" else null)
+    }
+
+    fun setReaction(post: Post, reactionType: String?) {
         if (!likeRequestsInFlight.add(post.id)) return
         viewModelScope.launch {
+            val oldReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
+            val requestedReaction = reactionType?.trim()?.uppercase()?.takeIf(String::isNotBlank)
+            val newReaction = requestedReaction?.takeUnless { it == oldReaction }
+            val oldCounts = post.reactionCounts.toMutableMap().also { counts ->
+                if (counts.isEmpty() && post.likeCount > 0) counts["LIKE"] = post.likeCount
+            }
             try {
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
-                
+                val newCounts = oldCounts.toMutableMap()
+                oldReaction?.let { old ->
+                    newCounts[old] = ((newCounts[old] ?: 0) - 1).coerceAtLeast(0)
+                    if (newCounts[old] == 0) newCounts.remove(old)
+                }
+                newReaction?.let { selected ->
+                    newCounts[selected] = (newCounts[selected] ?: 0) + 1
+                }
+                val newLikeCount = newCounts.values.sum()
                 _posts.value = _posts.value.map {
-                    if (it.id == post.id) it.copy(likedByMe = !wasLiked, likeCount = newLikeCount) else it
+                    if (it.id == post.id) {
+                        it.copy(
+                            likedByMe = newReaction != null,
+                            likeCount = newLikeCount,
+                            myReaction = newReaction,
+                            reactionCounts = newCounts
+                        )
+                    } else {
+                        it
+                    }
                 }
                 feedSignalTracker.recordInteraction(
                     post = post,
-                    action = if (wasLiked) FeedInteractionAction.UNLIKE else FeedInteractionAction.LIKE
+                    action = if (newReaction == null) FeedInteractionAction.UNLIKE else FeedInteractionAction.LIKE
                 )
 
-                val result = postRepository.toggleLike(post.id, wasLiked)
+                val result = postRepository.setPostReaction(
+                    postId = post.id,
+                    reactionType = newReaction,
+                    wasReacted = oldReaction != null
+                )
                 if (result.isFailure) {
                     _posts.value = _posts.value.map {
-                        if (it.id == post.id) it.copy(likedByMe = wasLiked, likeCount = post.likeCount) else it
+                        if (it.id == post.id) post else it
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SocialViewModel", "Error toggling like", e)
+                android.util.Log.e("SocialViewModel", "Error updating reaction", e)
                 _posts.value = _posts.value.map {
-                    if (it.id == post.id) it.copy(likedByMe = post.likedByMe, likeCount = post.likeCount) else it
+                    if (it.id == post.id) post else it
                 }
             } finally {
                 likeRequestsInFlight.remove(post.id)
             }
         }
+    }
+
+    fun loadPostReactions(postId: String, reactionType: String? = null) {
+        viewModelScope.launch {
+            _reactionsLoading.value = true
+            _reactionsError.value = null
+            postRepository.getPostReactions(postId, reactionType)
+                .onSuccess { _reactionUsers.value = it }
+                .onFailure {
+                    _reactionUsers.value = emptyList()
+                    _reactionsError.value = it.toUserFacingMessage("No se pudieron cargar las reacciones.")
+                }
+            _reactionsLoading.value = false
+        }
+    }
+
+    fun clearPostReactions() {
+        _reactionUsers.value = emptyList()
+        _reactionsError.value = null
+        _reactionsLoading.value = false
     }
 
     fun togglePostShare(post: Post) {
@@ -233,7 +297,11 @@ class SocialViewModel @Inject constructor(
 
                 if (result.isFailure) {
                     android.util.Log.e("SocialViewModel", "togglePostShare FAILED", result.exceptionOrNull())
-                    android.widget.Toast.makeText(context, "Error: ${result.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(
+                        context,
+                        result.exceptionOrNull().toUserFacingMessage("No se pudo compartir la publicación."),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                     // Revert on failure
                     _posts.value = _posts.value.map {
                         if (it.id == post.id) it.copy(sharedByMe = wasShared, shareCount = post.shareCount) else it
@@ -248,7 +316,11 @@ class SocialViewModel @Inject constructor(
                 _posts.value = _posts.value.map {
                     if (it.id == post.id) it.copy(sharedByMe = post.sharedByMe, shareCount = post.shareCount) else it
                 }
-                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(
+                    context,
+                    e.toUserFacingMessage("No se pudo compartir la publicación."),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
             } finally {
                 shareRequestsInFlight.remove(post.id)
             }
@@ -265,11 +337,14 @@ class SocialViewModel @Inject constructor(
                 if (result.isSuccess) {
                     val created = result.getOrThrow()
                     _posts.value = listOf(created) + _posts.value.filterNot { it.id == created.id }
-                    feedSignalTracker.recordImpressions(_posts.value.take(1))
+                    feedSignalTracker.recordInteraction(created, FeedInteractionAction.IMPRESSION)
                     android.widget.Toast.makeText(context, "Publicación creada", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    val reason = result.exceptionOrNull()?.message ?: "Error desconocido"
-                    android.widget.Toast.makeText(context, "Error al publicar: $reason", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(
+                        context,
+                        result.exceptionOrNull().toUserFacingMessage("No se pudo publicar."),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Error creating post", e)
@@ -292,7 +367,7 @@ class SocialViewModel @Inject constructor(
             if (result.isSuccess) {
                 android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                val message = result.exceptionOrNull()?.message ?: "No se pudo enviar el reporte"
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo enviar el reporte.")
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
@@ -305,7 +380,7 @@ class SocialViewModel @Inject constructor(
                 _posts.value = _posts.value.filter { it.id != postId }
                 android.widget.Toast.makeText(context, "Publicación eliminada", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                val message = result.exceptionOrNull()?.message ?: "Error al eliminar la publicación"
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo eliminar la publicación.")
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
@@ -320,7 +395,7 @@ class SocialViewModel @Inject constructor(
                 }
                 android.widget.Toast.makeText(context, "Visibilidad actualizada", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                val message = result.exceptionOrNull()?.message ?: "Error al actualizar visibilidad"
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo actualizar la visibilidad.")
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
@@ -335,7 +410,7 @@ class SocialViewModel @Inject constructor(
                 }
                 android.widget.Toast.makeText(context, "Publicación actualizada", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                val message = result.exceptionOrNull()?.message ?: "Error al actualizar la publicación"
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo actualizar la publicación.")
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }

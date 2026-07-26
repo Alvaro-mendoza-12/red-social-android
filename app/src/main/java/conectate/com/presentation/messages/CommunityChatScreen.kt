@@ -104,8 +104,22 @@ fun CommunityChatScreen(
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var backgroundImageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { viewModel.setChatBackground("custom", it.toString()) }
+        backgroundImageToCrop = uri
+    }
+
+    backgroundImageToCrop?.let { sourceUri ->
+        conectate.com.presentation.components.SimpleImageCropDialog(
+            sourceUri = sourceUri,
+            title = "Ajustar fondo de la comunidad",
+            initialPreset = conectate.com.presentation.components.ImageCropPreset.ORIGINAL,
+            onDismiss = { backgroundImageToCrop = null },
+            onCropped = { croppedUri ->
+                viewModel.setChatBackground("custom", croppedUri.toString())
+                backgroundImageToCrop = null
+            }
+        )
     }
 
     // FULL SCREEN MEDIA VIEWER STATE
@@ -165,30 +179,29 @@ fun CommunityChatScreen(
 
     // Media Launchers
     var showMediaComposer by remember { mutableStateOf(false) }
+    var composerInitialUris by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
+    var composerInitialFilter by remember { mutableStateOf("all") }
+    var composerForcedType by remember { mutableStateOf<String?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { uris: List<Uri> ->
-        uris.take(10).forEach { uri ->
-            viewModel.sendMediaMessage(
-                uri = uri,
-                context = context,
-                forcedMessageType = "image",
-                customContent = null
-            )
+        if (uris.isNotEmpty()) {
+            composerInitialUris = uris.take(10).map { it to "image" }
+            composerInitialFilter = "image"
+            composerForcedType = null
+            showMediaComposer = true
         }
     }
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { uris: List<Uri> ->
-        uris.take(10).forEach { uri ->
-            viewModel.sendMediaMessage(
-                uri = uri,
-                context = context,
-                forcedMessageType = "video",
-                customContent = null
-            )
+        if (uris.isNotEmpty()) {
+            composerInitialUris = uris.take(10).map { it to "video" }
+            composerInitialFilter = "video"
+            composerForcedType = null
+            showMediaComposer = true
         }
     }
 
@@ -1161,6 +1174,9 @@ fun CommunityChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
+                            composerInitialUris = emptyList()
+                            composerInitialFilter = "image"
+                            composerForcedType = "view_once_image"
                             showMediaComposer = true
                         }
                         .padding(8.dp),
@@ -1175,6 +1191,9 @@ fun CommunityChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
+                            composerInitialUris = emptyList()
+                            composerInitialFilter = "video"
+                            composerForcedType = "view_once_video"
                             showMediaComposer = true
                         }
                         .padding(8.dp),
@@ -1295,18 +1314,27 @@ fun CommunityChatScreen(
 
     if (showMediaComposer) {
         MessageMediaComposer(
+            initialFilter = composerInitialFilter,
+            initialSelectedUris = composerInitialUris,
+            initialStep = if (composerInitialUris.isNotEmpty()) "editor" else "gallery",
             isSending = false,
-            onDismiss = { showMediaComposer = false },
+            onDismiss = {
+                showMediaComposer = false
+                composerInitialUris = emptyList()
+                composerForcedType = null
+            },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
                 mediaList.forEachIndexed { index, outgoingMedia ->
                     viewModel.sendMediaMessage(
                         uri = outgoingMedia.uri,
                         context = context,
-                        forcedMessageType = outgoingMedia.type,
+                        forcedMessageType = composerForcedType ?: outgoingMedia.type,
                         customContent = if (index == 0 && mediaCaption.isNotBlank()) mediaCaption else ""
                     )
                 }
+                composerInitialUris = emptyList()
+                composerForcedType = null
             }
         )
     }
