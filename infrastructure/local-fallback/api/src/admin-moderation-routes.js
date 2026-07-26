@@ -1046,6 +1046,7 @@ function registerAdminModerationRoutes(app, {
   getCurrentUser,
   userIdentity,
   deleteExternalAuthUser,
+  invalidateProfileCache = () => {},
 }) {
   async function adminGuard(req, res) {
     const user = await getCurrentUser(pool, req)
@@ -1188,6 +1189,7 @@ function registerAdminModerationRoutes(app, {
       if (hasBadges) patch.badges = badgeIds.map((id) => ADMIN_BADGES_BY_ID.get(id))
       if (hasFrame) patch.profile_frame = profileFrame
       await upsertAdminProfilePatch(pool, user.local_id, patch)
+      invalidateProfileCache()
       await recordModerationEvent(pool, context.identity.displayUserId, {
         context: 'admin_profile_decorations',
         contentRef: user.id,
@@ -1195,6 +1197,10 @@ function registerAdminModerationRoutes(app, {
         metadataPreview: JSON.stringify({ fields: Object.keys(patch) }),
       })
       const updated = await findAdminTarget(pool, user.id)
+      void publishRealtimeEvent(`user:${user.id}`, {
+        event: 'profile_updated',
+        fields: Object.keys(patch),
+      }).catch(() => {})
       res.json({ user: updated })
     } catch (error) {
       next(error)

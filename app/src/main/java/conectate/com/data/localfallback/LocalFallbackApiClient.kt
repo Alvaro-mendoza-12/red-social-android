@@ -4631,20 +4631,27 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun adminUpdateUserDecorations(
         accessToken: String,
         userId: String,
-        verified: Boolean,
-        badgeIds: List<String>,
-        profileFrame: String
+        verified: Boolean? = null,
+        badgeIds: List<String>? = null,
+        profileFrame: String? = null
     ): Result<AdminUser> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        if (verified == null && badgeIds == null && profileFrame == null) {
+            return Result.failure(IllegalArgumentException("No hay cambios administrativos para guardar."))
+        }
         return runCatching {
             val encodedId = URLEncoder.encode(userId, Charsets.UTF_8.name())
             val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/admin/users/$encodedId/decorations") {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
                 setBody(buildJsonObject {
-                    put("verified", JsonPrimitive(verified))
-                    put("badge_ids", buildJsonArray { badgeIds.distinct().forEach { add(JsonPrimitive(it)) } })
-                    put("profile_frame", JsonPrimitive(profileFrame))
+                    verified?.let { put("verified", JsonPrimitive(it)) }
+                    badgeIds?.let { values ->
+                        put("badge_ids", buildJsonArray {
+                            values.distinct().forEach { add(JsonPrimitive(it)) }
+                        })
+                    }
+                    profileFrame?.let { put("profile_frame", JsonPrimitive(it)) }
                 })
             }
             if (!response.status.isSuccess()) error("Error al actualizar usuario: ${response.status} - ${response.bodyAsText()}")

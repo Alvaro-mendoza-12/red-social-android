@@ -354,8 +354,11 @@ class CallRepository @Inject constructor(
         clearEndedCallSummary()
 
         var peerUserId = pendingInvitees.firstOrNull()?.trim()?.ifBlank { null }
-        var peerName = title.ifBlank { null }
-        val peerAvatar = null
+        val peerProfile = peerUserId?.let { loadUserProfileQuick(it) }
+        var peerName = peerProfile?.displayName
+            ?: peerProfile?.username
+            ?: title.ifBlank { null }
+        val peerAvatar = peerProfile?.avatar_url
 
         _activeCall.value = ActiveCall(
             callId = callId,
@@ -469,6 +472,11 @@ class CallRepository @Inject constructor(
         callSetupMetricCallId = callId.trim()
         clearEndedCallSummary()
         var normalizedContextType = contextType.trim().lowercase().ifBlank { "dm" }
+        val peerProfile = if (normalizedContextType == "dm") {
+            loadUserProfileQuick(initiatorUserId)
+        } else {
+            null
+        }
 
         _activeCall.value = ActiveCall(
             callId = callId.trim(),
@@ -478,8 +486,8 @@ class CallRepository @Inject constructor(
             contextType = normalizedContextType,
             contextId = contextId?.trim()?.ifBlank { null },
             peerUserId = if (normalizedContextType == "dm") initiatorUserId.trim().ifBlank { null } else null,
-            peerName = null,
-            peerAvatarUrl = null,
+            peerName = peerProfile?.displayName ?: peerProfile?.username,
+            peerAvatarUrl = peerProfile?.avatar_url,
             isVideo = false
         )
         _isSpeaker.value = false
@@ -697,6 +705,8 @@ class CallRepository @Inject constructor(
 
     fun toggleVideo(enabled: Boolean) {
         webRTCManager?.setVideoEnabled(enabled)
+        _activeCall.value = _activeCall.value?.copy(isVideo = enabled)
+        updateServiceNotification()
     }
 
     fun switchCamera() {
@@ -1059,6 +1069,7 @@ class CallRepository @Inject constructor(
                     (current.filterNot { it.socketId == sid || it.userId.equals(uid, ignoreCase = true) } + p)
                         .distinctBy { it.socketId }
                 }
+                updateDirectPeer(uid, pname, pavatar)
                 refreshRemoteParticipantFlag(_participants.value)
 
                 webRTCManager?.onUserJoined(sid, uid)
@@ -1122,6 +1133,9 @@ class CallRepository @Inject constructor(
                     }
 
                 _participants.value = authoritativeList
+                remoteParticipants.firstOrNull()?.let {
+                    updateDirectPeer(it.userId, it.name, it.avatarUrl)
+                }
                 refreshRemoteParticipantFlag(authoritativeList)
                 promoteConnectedIfReady()
                 if (remoteParticipants.isNotEmpty()) {
@@ -1544,6 +1558,7 @@ class CallRepository @Inject constructor(
                 action = "START"
                 putExtra(CallForegroundService.EXTRA_CALL_TITLE, _activeCall.value?.title ?: "Llamada")
                 putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
+                putExtra(CallForegroundService.EXTRA_IS_VIDEO, _activeCall.value?.isVideo == true)
             }
             ContextCompat.startForegroundService(context, intent)
         } catch (e: Exception) {
@@ -1557,6 +1572,7 @@ class CallRepository @Inject constructor(
                 action = "UPDATE"
                 putExtra(CallForegroundService.EXTRA_CALL_TITLE, _activeCall.value?.title ?: "Llamada")
                 putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
+                putExtra(CallForegroundService.EXTRA_IS_VIDEO, _activeCall.value?.isVideo == true)
             }
             context.startService(intent)
         } catch (error: Exception) {
@@ -1625,6 +1641,16 @@ class CallRepository @Inject constructor(
         withTimeoutOrNull(timeoutMs) {
             userRepository.getUserById(userId.trim()).getOrNull()
         }
+
+    private fun updateDirectPeer(userId: String, name: String, avatarUrl: String?) {
+        val current = _activeCall.value ?: return
+        if (current.contextType.trim().lowercase() != "dm") return
+        _activeCall.value = current.copy(
+            peerUserId = userId.trim().takeIf { it.isNotBlank() } ?: current.peerUserId,
+            peerName = name.trim().takeIf { it.isNotBlank() } ?: current.peerName,
+            peerAvatarUrl = avatarUrl?.trim()?.ifBlank { null } ?: current.peerAvatarUrl
+        )
+    }
 
     private fun releaseCallAudioSession() {
         var audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return

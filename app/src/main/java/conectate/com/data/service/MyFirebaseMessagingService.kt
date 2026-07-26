@@ -32,6 +32,7 @@ import conectate.com.data.repository.AccountSessionRepository
 import conectate.com.data.repository.CallRepository
 import conectate.com.data.repository.MultiAccountInboxRepository
 import conectate.com.data.repository.NotificationRepository
+import conectate.com.data.repository.message.MessageSessionStateStore
 import conectate.com.data.model.MultiAccountPendingDestination
 import conectate.com.data.supabase.AuthService
 import conectate.com.util.buildConversationBackgroundPreview
@@ -79,6 +80,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     @Inject
     lateinit var multiAccountInboxRepository: MultiAccountInboxRepository
 
+    @Inject
+    lateinit var messageSessionStateStore: MessageSessionStateStore
+
     private val serviceScope = newSafeScope("FirebaseMessagingService", Dispatchers.IO)
     private val callGuardPrefs by lazy {
         applicationContext.getSharedPreferences(CALL_GUARD_PREFS, Context.MODE_PRIVATE)
@@ -120,7 +124,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             var targetId = data["target_id"] ?: data["targetId"] ?: data["post_id"] ?: data["video_id"] ?: data["challenge_id"] ?: ""
             var postId = data["post_id"] ?: data["postId"]
             var videoId = data["video_id"] ?: data["videoId"]
-            var messageId = data["message_id"] ?: data["focus_message_id"] ?: data["id"]
+            var messageId = data["message_id"] ?: data["focus_message_id"]
             var commentId = data["comment_id"] ?: data["focus_comment_id"]
             
             var isGroup = data["is_group"] == "true" ||
@@ -317,7 +321,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             if (isTargetingActiveAccount && !chatId.isNullOrBlank()) {
                 serviceScope.launch {
                     try {
-                        val incomingId = data["id"] ?: data["message_id"] ?: "fcm_${System.currentTimeMillis()}"
+                        val incomingId = messageId ?: "fcm_${System.currentTimeMillis()}"
                         if (isGroup) {
                             runCatching { groupRepository.markMessageAsDelivered(chatId, incomingId) }
                             var msg = conectate.com.data.model.GroupMessage(
@@ -366,6 +370,22 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             
             if (isCallEventContentType(contentType)) {
                 android.util.Log.d(TAG, "Skipping standard chat notification for call event contentType=$contentType")
+                return
+            }
+
+            val activeConversationType = when {
+                isCommunity -> "community"
+                isGroup -> "group"
+                else -> "chat"
+            }
+            if (
+                isTargetingActiveAccount &&
+                !chatId.isNullOrBlank() &&
+                messageSessionStateStore.isActiveConversationVisible(activeConversationType, chatId)
+            ) {
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .cancel(chatId.hashCode())
+                android.util.Log.d(TAG, "Conversation $activeConversationType/$chatId visible; notification skipped.")
                 return
             }
 

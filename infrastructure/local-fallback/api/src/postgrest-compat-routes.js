@@ -764,8 +764,8 @@ async function accessibleCollectionIds(pool, kind, identity) {
   const roomTable = kind === 'group' ? 'groups' : 'communities'
   const memberTable = kind === 'group' ? 'group_members' : 'community_members'
   const [compatRooms, compatMembers] = await Promise.all([
-    readCompatRows(pool, roomTable),
-    readCompatRows(pool, memberTable),
+    importedAndCompatRows(pool, roomTable),
+    importedAndCompatRows(pool, memberTable),
   ])
   for (const room of compatRooms) {
     if (identityOwnsRow(identity, room, ['creator_id', 'owner_id', 'user_id'])) {
@@ -2381,7 +2381,7 @@ function toggleReactionForIdentity(current, emoji, identity) {
   return next
 }
 
-async function toggleMessageReaction(pool, auth, body) {
+async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const messageId = validUuidOrNull(messageBodyValue(body, 'message_id', ''))
@@ -2403,6 +2403,27 @@ async function toggleMessageReaction(pool, auth, body) {
       [messageId, reactions],
     )
     return { message_id: messageId, reactions }
+  }
+
+  if (collectionKind === 'group' || collectionKind === 'community') {
+    const tableName = collectionKind === 'group' ? 'group_messages' : 'community_messages'
+    const importedMessage = (await importedAndCompatRows(pool, tableName))
+      .find((row) => normalizeIdentityValue(row.id) === messageId)
+    if (importedMessage) {
+      const roomId = normalizeIdentityValue(
+        importedMessage[`${collectionKind}_id`] || importedMessage.room_id
+      )
+      if (!(await canAccessCollection(pool, collectionKind, identity, roomId))) {
+        throw httpError('COLLECTION_ACCESS_DENIED')
+      }
+      const reactions = toggleReactionForIdentity(importedMessage.reactions, emoji, identity)
+      await storeCompatRow(pool, tableName, {
+        ...importedMessage,
+        id: messageId,
+        reactions,
+      })
+      return { message_id: messageId, reactions }
+    }
   }
 
   const directResult = await pool.query(
@@ -4242,9 +4263,11 @@ async function handleRpc(pool, req, rpcName) {
     case 'secure_vote_poll_option':
       return votePollOption(pool, auth, body)
     case 'secure_toggle_message_reaction':
-    case 'secure_toggle_group_message_reaction':
-    case 'secure_toggle_community_message_reaction':
       return toggleMessageReaction(pool, auth, body)
+    case 'secure_toggle_group_message_reaction':
+      return toggleMessageReaction(pool, auth, body, 'group')
+    case 'secure_toggle_community_message_reaction':
+      return toggleMessageReaction(pool, auth, body, 'community')
     case 'secure_set_chat_translation_settings':
       return setChatTranslationRpc(pool, auth, body)
     case 'increment_post_count':

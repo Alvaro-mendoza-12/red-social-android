@@ -2,6 +2,8 @@ package conectate.com.presentation.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -138,7 +140,12 @@ fun AdminPanelScreen(
             },
             title = { Text("Eliminar Usuario Completamente", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 440.dp)
+                        .verticalScroll(rememberScrollState())
+                        .imePadding()
+                ) {
                     Text(
                         "ADVERTENCIA: Esta accion es IRREVERSIBLE.",
                         color = MaterialTheme.colorScheme.error,
@@ -276,9 +283,11 @@ fun AdminPanelScreen(
                                 catalog = catalog,
                                 expanded = selectedUser?.id == summary.id,
                                 onOpen = { viewModel.loadUserDetails(summary.id) },
-                                onUpdate = { verified, badges, frame ->
-                                    viewModel.updateUserDecorations(summary.id, verified, badges, frame)
+                                onVerifiedChange = { viewModel.updateUserVerification(summary.id, it) },
+                                onBadgeChange = { badgeId, enabled ->
+                                    viewModel.updateUserBadge(summary.id, badgeId, enabled)
                                 },
+                                onFrameChange = { viewModel.updateUserFrame(summary.id, it) },
                                 onSuspend = { userToSuspend = summary.id },
                                 onReactivate = { viewModel.unsuspendUser(summary.id) },
                                 onDelete = { viewModel.prepareUserDeletion(user.id) }
@@ -376,7 +385,9 @@ private fun AdminUserCard(
     catalog: AdminCatalog,
     expanded: Boolean,
     onOpen: () -> Unit,
-    onUpdate: (Boolean, List<String>, String) -> Unit,
+    onVerifiedChange: (Boolean) -> Unit,
+    onBadgeChange: (String, Boolean) -> Unit,
+    onFrameChange: (String) -> Unit,
     onSuspend: () -> Unit,
     onReactivate: () -> Unit,
     onDelete: () -> Unit
@@ -420,7 +431,7 @@ private fun AdminUserCard(
                     Text("Verificación", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Switch(
                         checked = user.isVerified,
-                        onCheckedChange = { onUpdate(it, badgeIds, user.profileFrame) }
+                        onCheckedChange = onVerifiedChange
                     )
                 }
 
@@ -428,8 +439,7 @@ private fun AdminUserCard(
                 catalog.badges.forEach { badge ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            val next = if (badge.id in badgeIds) badgeIds - badge.id else badgeIds + badge.id
-                            onUpdate(user.isVerified, next, user.profileFrame)
+                            onBadgeChange(badge.id, badge.id !in badgeIds)
                         },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -452,29 +462,33 @@ private fun AdminUserCard(
                     DropdownMenu(expanded = frameMenuExpanded, onDismissRequest = { frameMenuExpanded = false }) {
                         DropdownMenuItem(
                             text = { Text("Sin marco") },
-                            onClick = { frameMenuExpanded = false; onUpdate(user.isVerified, badgeIds, "") }
+                            onClick = { frameMenuExpanded = false; onFrameChange("") }
                         )
                         catalog.frames.forEach { frame ->
                             DropdownMenuItem(
                                 text = { Text(frame.name) },
-                                onClick = { frameMenuExpanded = false; onUpdate(user.isVerified, badgeIds, frame.id) }
+                                onClick = { frameMenuExpanded = false; onFrameChange(frame.id) }
                             )
                         }
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     if (!user.isAdmin) {
                         if (user.isSuspended) {
-                            OutlinedButton(onClick = onReactivate) { Text("Reactivar") }
+                            OutlinedButton(onClick = onReactivate, modifier = Modifier.fillMaxWidth()) { Text("Reactivar") }
                         } else {
-                            OutlinedButton(onClick = onSuspend) { Text("Suspender") }
+                            OutlinedButton(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
                         }
                     }
                     if (!user.isAdmin && (user.isTestAccount || user.isSuspended)) {
                         Button(
                             onClick = onDelete,
+                            modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) { Text(if (user.isTestAccount) "Eliminar prueba" else "Eliminar cuenta", color = Color.White) }
                     }

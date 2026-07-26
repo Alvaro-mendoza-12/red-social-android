@@ -1,5 +1,6 @@
 package conectate.com.data.repository.message
 
+import android.app.NotificationManager
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.decodeFromString
@@ -38,6 +39,9 @@ class MessageSessionStateStore @Inject constructor(
     @Volatile
     private var isActiveChatScreenVisible: Boolean = false
 
+    @Volatile
+    private var activeConversationType: String? = null
+
     init {
         runCatching {
             val raw = viewOncePrefs.getString(KEY_CONSUMED_IDS, null).orEmpty()
@@ -51,15 +55,33 @@ class MessageSessionStateStore @Inject constructor(
     }
 
     fun setActiveChatSession(chatId: String?, isVisible: Boolean) {
-        var cleanId = chatId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-        activeChatId = cleanId
-        isActiveChatScreenVisible = cleanId != null && isVisible
+        setActiveConversation("chat", chatId, isVisible)
     }
 
     fun isActiveChatVisible(chatId: String): Boolean {
+        return isActiveConversationVisible("chat", chatId)
+    }
+
+    fun setActiveConversation(type: String, conversationId: String?, isVisible: Boolean) {
+        val cleanType = type.trim().lowercase()
+        val cleanId = conversationId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        if (cleanId != null && isVisible) {
+            activeConversationType = cleanType
+            activeChatId = cleanId
+            isActiveChatScreenVisible = true
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                ?.cancel(cleanId.hashCode())
+        } else if (activeConversationType == cleanType && (cleanId == null || activeChatId == cleanId)) {
+            activeConversationType = null
+            activeChatId = null
+            isActiveChatScreenVisible = false
+        }
+    }
+
+    fun isActiveConversationVisible(type: String, conversationId: String): Boolean {
         if (!isActiveChatScreenVisible) return false
-        var active = activeChatId ?: return false
-        return active == chatId.trim().lowercase()
+        return activeConversationType == type.trim().lowercase() &&
+            activeChatId == conversationId.trim().lowercase()
     }
 
     fun rememberLocalReadOverride(chatId: String) {
@@ -96,6 +118,7 @@ class MessageSessionStateStore @Inject constructor(
     fun clearAll() {
         locallyReadChatOverrides.clear()
         activeChatId = null
+        activeConversationType = null
         isActiveChatScreenVisible = false
     }
 

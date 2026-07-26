@@ -1693,6 +1693,12 @@ async function fallbackUserProfileRows(pool, limit = 5000) {
             COALESCE(o.profile->>'profile_theme', o.profile->>'profileTheme', 'conectate') AS profile_theme,
             COALESCE(o.profile->>'profile_effect', o.profile->>'profileEffect', 'none') AS profile_effect,
             COALESCE(o.profile->>'profile_welcome', o.profile->>'profileWelcome') AS profile_welcome,
+            COALESCE(o.profile->>'is_verified', o.profile->>'isVerified', 'false') AS is_verified,
+            CASE
+              WHEN jsonb_typeof(o.profile->'badges') = 'array' THEN o.profile->'badges'
+              ELSE '[]'::jsonb
+            END AS badges,
+            COALESCE(o.profile->>'profile_frame', o.profile->>'profileFrame', '') AS profile_frame,
             COALESCE(
               o.profile->'__clear_fields',
               to_jsonb(ARRAY_REMOVE(ARRAY[
@@ -4116,6 +4122,7 @@ function registerDataRoutes(app, { pool, authRequired, deleteExternalAuthUser })
     getCurrentUser,
     userIdentity,
     deleteExternalAuthUser,
+    invalidateProfileCache: invalidateImportedDataCache,
   })
   registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })

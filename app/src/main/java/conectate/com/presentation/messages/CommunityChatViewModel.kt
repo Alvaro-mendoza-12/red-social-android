@@ -23,6 +23,7 @@ import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.StickerRepository
 import conectate.com.data.repository.ChatBackgroundSettings
 import conectate.com.data.repository.ChatSettingsRepository
+import conectate.com.data.repository.message.MessageSessionStateStore
 import java.io.File
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -61,7 +62,8 @@ class CommunityChatViewModel @Inject constructor(
     private val voiceMessageManager: VoiceMessageManager,
     private val messageRepository: MessageRepository,
     private val stickerRepository: StickerRepository,
-    private val chatSettingsRepository: ChatSettingsRepository
+    private val chatSettingsRepository: ChatSettingsRepository,
+    private val messageSessionStateStore: MessageSessionStateStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<CommunityChatUiState>(CommunityChatUiState.Loading)
@@ -203,12 +205,14 @@ class CommunityChatViewModel @Inject constructor(
         val cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return
         if (isVisible) {
+            messageSessionStateStore.setActiveConversation("community", cleanId, true)
             viewModelScope.launch {
                 communityRepository.setActiveCommunity(cleanId)
                 communityRepository.markMessagesAsDelivered(cleanId)
                 communityRepository.markAsRead(cleanId)
             }
         } else {
+            messageSessionStateStore.setActiveConversation("community", cleanId, false)
             communityRepository.setActiveCommunity(null)
         }
     }
@@ -379,10 +383,17 @@ class CommunityChatViewModel @Inject constructor(
             _replyToMessage.value = null
             _messageText.value = "" // Optimistic UI clear
             
-            val result = communityRepository.sendCommunityMessage(communityId, content, replyToId = replyTo?.id)
+            val result = communityRepository.sendCommunityMessage(
+                communityId,
+                content,
+                replyToId = replyTo?.id,
+                replyTo = replyTo
+            )
             if (result.isFailure) {
                 val error = result.exceptionOrNull()?.message ?: "Error desconocido"
                 _errorMessage.value = "Error al enviar: $error"
+                _messageText.value = content
+                _replyToMessage.value = replyTo
             }
             _isSending.value = false
         }

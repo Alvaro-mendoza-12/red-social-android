@@ -1324,6 +1324,7 @@ class GroupRepository @Inject constructor(
         groupId: String,
         content: String,
         replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
         contentType: String = "text",
         mediaUrl: String? = null,
         pollId: String? = null,
@@ -1384,6 +1385,21 @@ class GroupRepository @Inject constructor(
                 created_at = now,
                 status = "sending",
                 reply_to_id = replyToId,
+                reply_to = replyTo?.let {
+                    GroupMessage(
+                        id = it.id,
+                        group_id = cleanId,
+                        sender_id = it.sender_id,
+                        content = it.content,
+                        content_type = it.content_type,
+                        media_url = it.media_url,
+                        poll_id = it.poll_id,
+                        created_at = it.created_at.orEmpty(),
+                        status = it.status,
+                        sender_name = it.sender_name,
+                        reply_to_id = it.reply_to_id
+                    )
+                },
                 is_forwarded = isForwarded,
                 forwarded_from_message_id = forwardedFromMessageId,
                 forwarded_from_user_id = forwardedFromUserId
@@ -1480,7 +1496,12 @@ class GroupRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
-                        val synced = serverMessage.copy(group_id = cleanId, status = "sent")
+                        val synced = serverMessage.copy(
+                            group_id = cleanId,
+                            status = "sent",
+                            reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,
+                            reply_to = serverMessage.reply_to ?: msg.reply_to
+                        )
                         groupDao.insertMessages(
                             listOf(
                                 GroupMessageEntity.fromDomain(

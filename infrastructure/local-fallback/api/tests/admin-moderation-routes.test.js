@@ -179,6 +179,7 @@ async function testRoutePermissionsAndValidation() {
 async function testPartialDecorationUpdate() {
   const { app, routes } = fakeApp()
   let storedPatch = null
+  let invalidations = 0
   const baseUser = {
     local_id: TARGET_ID,
     public_id: null,
@@ -220,6 +221,7 @@ async function testPartialDecorationUpdate() {
     authRequired: (_req, _res, next) => next(),
     getCurrentUser: async () => ({ id: ADMIN_ID }),
     userIdentity: () => ({ localUserId: ADMIN_ID, displayUserId: ADMIN_ID }),
+    invalidateProfileCache: () => { invalidations += 1 },
   })
   const route = routes.find((entry) => entry.method === 'patch')
   const response = await invokeRoute(route, {
@@ -231,6 +233,7 @@ async function testPartialDecorationUpdate() {
   assert.strictEqual(response.body.user.is_verified, true)
   assert.strictEqual(response.body.user.profile_frame, 'gold')
   assert.deepStrictEqual(response.body.user.badges.map((badge) => badge.id), ['creator'])
+  assert.strictEqual(invalidations, 1)
 }
 
 async function testFakeAccountHardDelete() {

@@ -23,6 +23,7 @@ import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.StickerRepository
 import conectate.com.data.repository.ChatBackgroundSettings
 import conectate.com.data.repository.ChatSettingsRepository
+import conectate.com.data.repository.message.MessageSessionStateStore
 import java.io.File
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -61,7 +62,8 @@ class GroupChatViewModel @Inject constructor(
     private val voiceMessageManager: VoiceMessageManager,
     private val messageRepository: MessageRepository,
     private val stickerRepository: StickerRepository,
-    private val chatSettingsRepository: ChatSettingsRepository
+    private val chatSettingsRepository: ChatSettingsRepository,
+    private val messageSessionStateStore: MessageSessionStateStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<GroupChatUiState>(GroupChatUiState.Loading)
@@ -206,12 +208,14 @@ class GroupChatViewModel @Inject constructor(
         val cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return
         if (isVisible) {
+            messageSessionStateStore.setActiveConversation("group", cleanId, true)
             viewModelScope.launch {
                 groupRepository.setActiveGroup(cleanId)
                 groupRepository.markMessagesAsDelivered(cleanId)
                 groupRepository.markAsRead(cleanId)
             }
         } else {
+            messageSessionStateStore.setActiveConversation("group", cleanId, false)
             groupRepository.setActiveGroup(null)
         }
     }
@@ -365,10 +369,17 @@ class GroupChatViewModel @Inject constructor(
             _replyToMessage.value = null
             _messageText.value = "" // Optimistic UI clear
             
-            val result = groupRepository.sendGroupMessage(groupId, content, replyToId = replyTo?.id)
+            val result = groupRepository.sendGroupMessage(
+                groupId,
+                content,
+                replyToId = replyTo?.id,
+                replyTo = replyTo
+            )
             if (result.isFailure) {
                 val error = result.exceptionOrNull()?.message ?: "Error desconocido"
                 _errorMessage.value = "Error al enviar: $error"
+                _messageText.value = content
+                _replyToMessage.value = replyTo
             }
             _isSending.value = false
         }

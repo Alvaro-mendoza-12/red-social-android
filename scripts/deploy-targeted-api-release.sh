@@ -19,6 +19,7 @@ FILES=(
   api/src/server.js
   api/src/data-routes.js
   api/src/admin-moderation-routes.js
+  api/src/postgrest-compat-routes.js
   api/src/storage-routes.js
   api/package.json
   api/package-lock.json
@@ -77,7 +78,7 @@ docker run --rm \
   -v "$STAGE_DIR/api:/usr/src/app:ro" \
   -w /usr/src/app \
   node:22-alpine \
-  sh -lc 'node --check src/server.js && node --check src/data-routes.js && node --check src/admin-moderation-routes.js && node --check src/storage-routes.js'
+  sh -lc 'node --check src/server.js && node --check src/data-routes.js && node --check src/admin-moderation-routes.js && node --check src/postgrest-compat-routes.js && node --check src/storage-routes.js'
 
 echo "==> Instalando archivos dirigidos"
 rollback_required=true

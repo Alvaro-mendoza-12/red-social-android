@@ -37,8 +37,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 35
-        versionCode = 45
-        versionName = "3.0.5"
+        versionCode = 46
+        versionName = "3.0.6"
 
         val props = Properties()
         val secretsFile = rootProject.file("secrets.properties")

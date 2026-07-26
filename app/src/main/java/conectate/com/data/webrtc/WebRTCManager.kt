@@ -1104,7 +1104,9 @@ class WebRTCManager(
                 Log.w("WebRTCManager", "Remove Remote Track: ${track.kind()} ($socketId)")
                 if (track.kind() == "video") {
                     var map = _remoteVideoTracks.value.toMutableMap()
-                    map.remove(socketId)
+                    if (map[socketId]?.id() == track.id()) {
+                        map.remove(socketId)
+                    }
                     _remoteVideoTracks.value = map
                 }
                 if (track.kind() == "audio") {

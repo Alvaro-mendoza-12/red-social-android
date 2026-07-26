@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import javax.inject.Inject
 import android.util.Log
@@ -66,6 +68,7 @@ class AdminPanelViewModel @Inject constructor(
 
     private val _deleteCandidate = MutableStateFlow<AdminUser?>(null)
     val deleteCandidate: StateFlow<AdminUser?> = _deleteCandidate.asStateFlow()
+    private val decorationMutationLocks = mutableMapOf<String, Mutex>()
 
     fun checkAdminAccess() {
         viewModelScope.launch {
@@ -239,30 +242,56 @@ class AdminPanelViewModel @Inject constructor(
         _deleteCandidate.value = null
     }
 
-    fun updateUserDecorations(
+    fun updateUserVerification(userId: String, verified: Boolean) {
+        updateUserDecorations(userId, verified = verified)
+    }
+
+    fun updateUserBadge(userId: String, badgeId: String, enabled: Boolean) {
+        updateUserDecorations(userId, badgeMutation = badgeId to enabled)
+    }
+
+    fun updateUserFrame(userId: String, profileFrame: String) {
+        updateUserDecorations(userId, profileFrame = profileFrame)
+    }
+
+    private fun updateUserDecorations(
         userId: String,
-        verified: Boolean,
-        badgeIds: List<String>,
-        profileFrame: String
+        verified: Boolean? = null,
+        badgeMutation: Pair<String, Boolean>? = null,
+        profileFrame: String? = null
     ) {
         viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
-                localFallbackApiClient.adminUpdateUserDecorations(
-                    token, userId, verified, badgeIds, profileFrame
-                ).onSuccess { updated ->
-                    replaceUser(updated)
-                    _selectedUser.value = updated
-                    _statusMessage.value = "Perfil administrativo actualizado."
-                }.onFailure {
-                    _errorMessage.value = "No se pudo actualizar el usuario: ${it.message}"
+            val lock = decorationMutationLocks.getOrPut(userId) { Mutex() }
+            lock.withLock {
+                _isLoading.value = true
+                _errorMessage.value = null
+                try {
+                    val token = authService.ensureValidAccessToken().getOrThrow()
+                    val badgeIds = badgeMutation?.let { (badgeId, enabled) ->
+                        val current = _selectedUser.value?.takeIf { it.id == userId }
+                            ?: _users.value.firstOrNull { it.id == userId || it.localId == userId }
+                            ?: error("El usuario ya no está disponible.")
+                        val ids = current.badges.map { it.id }
+                        if (enabled) (ids + badgeId).distinct() else ids - badgeId
+                    }
+                    localFallbackApiClient.adminUpdateUserDecorations(
+                        accessToken = token,
+                        userId = userId,
+                        verified = verified,
+                        badgeIds = badgeIds,
+                        profileFrame = profileFrame
+                    ).onSuccess { updated ->
+                        replaceUser(updated)
+                        _selectedUser.value = updated
+                        _statusMessage.value = "Cambio guardado en el servidor."
+                    }.onFailure {
+                        _errorMessage.value = "No se pudo actualizar el usuario: ${it.message}"
+                    }
+                } catch (e: Exception) {
+                    _errorMessage.value = "No se pudo actualizar el usuario: ${e.message}"
+                } finally {
+                    _isLoading.value = false
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = "No se pudo actualizar el usuario: ${e.message}"
-            } finally {
-                _isLoading.value = false
             }
         }
     }

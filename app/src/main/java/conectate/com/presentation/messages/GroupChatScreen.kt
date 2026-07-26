@@ -89,7 +89,6 @@ fun GroupChatScreen(
     val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
-    var focusAttempts by remember(focusMessageId) { mutableStateOf(0) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showPollDialog by remember { mutableStateOf(false) }
@@ -536,7 +535,8 @@ fun GroupChatScreen(
                         }
                         
                         if (state.messages.isNotEmpty()) {
-                            LaunchedEffect(state.messages.size, focusMessageId) {
+                            val messageIdentity = remember(state.messages) { state.messages.map { it.id } }
+                            LaunchedEffect(messageIdentity, focusMessageId) {
                                 if (!focusResolved && !focusMessageId.isNullOrBlank()) {
                                     val index = state.messages.indexOfFirst {
                                         it.id.equals(focusMessageId, ignoreCase = true)
@@ -547,11 +547,16 @@ fun GroupChatScreen(
                                         return@LaunchedEffect
                                     }
 
-                                    focusAttempts += 1
-                                    if (focusAttempts < 3) return@LaunchedEffect
-                                    focusResolved = true
                                 }
                                 listState.animateScrollToItem(state.messages.size - 1)
+                            }
+                            val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
+                            LaunchedEffect(imeBottom) {
+                                if (imeBottom > 0 &&
+                                    listState.firstVisibleItemIndex >= (state.messages.lastIndex - 3).coerceAtLeast(0)
+                                ) {
+                                    listState.scrollToItem(state.messages.lastIndex)
+                                }
                             }
                         }
                     }
