@@ -24,6 +24,7 @@ const {
   ensureScheduledMessageTables,
   processDueScheduledMessageJobs,
 } = require('./scheduled-message-jobs')
+const { processDueNotificationDigests } = require('./notification-digest-routes')
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
@@ -1044,6 +1045,7 @@ app.get('/ready', async (_req, res, next) => {
         'feed_modes_v1',
         'saved_collections_v1',
         'moderation_appeals_v1',
+        'notification_digest_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),
@@ -2056,6 +2058,7 @@ if (process.env.ROUTE_CHECK_ONLY === '1') {
 
 let server
 let scheduledMessageTimer
+let notificationDigestTimer
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
@@ -2076,6 +2079,16 @@ ensureAuthMetadataColumns()
     runScheduledMessages()
     scheduledMessageTimer = setInterval(runScheduledMessages, 5_000)
     scheduledMessageTimer.unref?.()
+    const runNotificationDigests = () => {
+      void processDueNotificationDigests(pool).catch((error) => {
+        console.error('[notification-digest] worker failed', {
+          message: String(error?.message || error).slice(0, 240),
+        })
+      })
+    }
+    runNotificationDigests()
+    notificationDigestTimer = setInterval(runNotificationDigests, 60_000)
+    notificationDigestTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -2085,6 +2098,7 @@ ensureAuthMetadataColumns()
 async function shutdown(signal) {
   console.log(`received ${signal}, shutting down`)
   if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)
+  if (notificationDigestTimer) clearInterval(notificationDigestTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

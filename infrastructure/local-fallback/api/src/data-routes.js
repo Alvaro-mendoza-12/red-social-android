@@ -1,5 +1,10 @@
 const crypto = require('crypto')
 const { mergeProfileRows } = require('./profile-merge')
+const {
+  ensureNotificationDigestTables,
+  registerNotificationDigestRoutes,
+  shouldDeferNotificationPush,
+} = require('./notification-digest-routes')
 
 function quoteIdentifier(value) {
   return `"${String(value).replace(/"/g, '""')}"`
@@ -1918,7 +1923,24 @@ async function createLocalNotification(pool, input) {
   const content = cleanText(input?.content, 700) || null
   const actorName = cleanText(input?.actorName || input?.actor_name, 160) || null
   const actorAvatarUrl = cleanText(input?.actorAvatarUrl || input?.actor_avatar_url, 700) || null
-  const extraData = input?.extraData && typeof input.extraData === 'object' ? input.extraData : {}
+  const originalExtraData = input?.extraData && typeof input.extraData === 'object' ? input.extraData : {}
+  const delivery = await shouldDeferNotificationPush(
+    pool,
+    {
+      recipient_id: recipientId,
+      type,
+      target_id: targetId,
+      target_type: targetType,
+    },
+    originalExtraData,
+  )
+  const extraData = delivery.defer
+    ? {
+        ...originalExtraData,
+        digest_deferred: true,
+        digest_category: delivery.category,
+      }
+    : originalExtraData
 
   const { rows } = await pool.query(
     `INSERT INTO fallback_notifications(
@@ -4278,6 +4300,7 @@ async function ensureLocalDataTables(pool) {
   await ensureAdminModerationTables(pool)
   await ensureLiveTables(pool)
   await ensureProximityTables(pool)
+  await ensureNotificationDigestTables(pool)
 }
 
 function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser }) {
@@ -4305,6 +4328,12 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   })
   registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerNotificationDigestRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
   app.post('/v1/data/messages/translate', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)

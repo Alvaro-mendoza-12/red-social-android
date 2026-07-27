@@ -3,6 +3,8 @@ package conectate.com.presentation.profile
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.data.localfallback.NotificationDigestOverview
+import conectate.com.data.localfallback.NotificationDigestPreferences
 import conectate.com.data.model.Notification
 import conectate.com.data.repository.NotificationRepository
 import conectate.com.data.supabase.AuthService
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 
@@ -21,6 +24,12 @@ sealed class NotificationsUiState {
     object Loading : NotificationsUiState()
     data class Success(val notifications: List<Notification>) : NotificationsUiState()
     data class Error(val message: String) : NotificationsUiState()
+}
+
+sealed class NotificationDigestUiState {
+    object Loading : NotificationDigestUiState()
+    data class Ready(val overview: NotificationDigestOverview) : NotificationDigestUiState()
+    data class Error(val message: String) : NotificationDigestUiState()
 }
 
 @HiltViewModel
@@ -40,6 +49,17 @@ class NotificationViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _digestState = MutableStateFlow<NotificationDigestUiState>(
+        NotificationDigestUiState.Loading
+    )
+    val digestState: StateFlow<NotificationDigestUiState> = _digestState.asStateFlow()
+
+    private val _digestSaving = MutableStateFlow(false)
+    val digestSaving: StateFlow<Boolean> = _digestSaving.asStateFlow()
+
+    private val _digestMessage = MutableStateFlow<String?>(null)
+    val digestMessage: StateFlow<String?> = _digestMessage.asStateFlow()
+
     init {
         // Only fetch count by default to avoid heavy list loading when just showing a badge
         updateUnreadCount()
@@ -49,41 +69,52 @@ class NotificationViewModel @Inject constructor(
             notificationRepository.observeNotifications().collect { notification ->
                 // When a new notification arrives:
                 // 1. Show a local system alert (Foreground feedback)
+                val digestDeferred = (
+                    notification.extraData
+                        ?.get("digest_deferred")
+                        ?.jsonPrimitive
+                        ?.let {
+                            it.booleanOrNull ?: it.contentOrNull?.equals("true", ignoreCase = true)
+                        }
+                    ) == true
                 try {
-                    val effectiveType = resolveNotificationType(notification)
-                    val typeLabel = when(effectiveType) {
-                        "follow" -> "Nuevo seguidor"
-                        "friend_request" -> "Solicitud de amistad"
-                        "like", "like_post" -> "Le gusta tu publicación"
-                        "comment", "comment_post" -> "Comentó tu publicación"
-                        "reply_post" -> "Respondió a tu comentario"
-                        "mention_post", "mention" -> "Te mencionó en un comentario"
-                        "voice_invite" -> "Te invitó a una sala de voz"
-                        "challenge_invite" -> "Te desafió a un reto"
-                        "like_video" -> "Le gusta tu video"
-                        "comment_video" -> "Comentó tu video"
-                        "reply_video" -> "Respondió a tu comentario en video"
-                        "mention_video" -> "Te mencionó en un comentario de video"
-                        "share_video" -> "Compartió tu video"
-                        "admin_warning_video" -> "Tu video recibió una advertencia"
-                        "account_suspended" -> "Tu cuenta fue suspendida"
-                        "account_enabled" -> "Tu cuenta fue habilitada"
-                        else -> "Nueva notificación"
+                    if (!digestDeferred) {
+                        val effectiveType = resolveNotificationType(notification)
+                        val typeLabel = when(effectiveType) {
+                            "follow" -> "Nuevo seguidor"
+                            "friend_request" -> "Solicitud de amistad"
+                            "like", "like_post" -> "Le gusta tu publicación"
+                            "comment", "comment_post" -> "Comentó tu publicación"
+                            "reply_post" -> "Respondió a tu comentario"
+                            "mention_post", "mention" -> "Te mencionó en un comentario"
+                            "voice_invite" -> "Te invitó a una sala de voz"
+                            "challenge_invite" -> "Te desafió a un reto"
+                            "like_video" -> "Le gusta tu video"
+                            "comment_video" -> "Comentó tu video"
+                            "reply_video" -> "Respondió a tu comentario en video"
+                            "mention_video" -> "Te mencionó en un comentario de video"
+                            "share_video" -> "Compartió tu video"
+                            "admin_warning_video" -> "Tu video recibió una advertencia"
+                            "account_suspended" -> "Tu cuenta fue suspendida"
+                            "account_enabled" -> "Tu cuenta fue habilitada"
+                            "notification_digest" -> "Tu resumen de Novvin"
+                            else -> "Nueva notificación"
+                        }
+
+                        val name = notification.actorName ?: "Alguien"
+                        val contentText = if (notification.content.isNullOrBlank()) typeLabel else notification.content
+
+                        notificationHelper.showSocialNotification(
+                            title = name,
+                            body = contentText,
+                            type = effectiveType,
+                            targetId = notification.targetId ?: "",
+                            senderId = notification.actorId,
+                            senderAvatar = notification.actorAvatarUrl,
+                            targetType = notification.targetType,
+                            extraData = notification.extraData
+                        )
                     }
-                    
-                    val name = notification.actorName ?: "Alguien"
-                    val contentText = if (notification.content.isNullOrBlank()) typeLabel else notification.content
-                    
-                    notificationHelper.showSocialNotification(
-                        title = name,
-                        body = contentText,
-                        type = effectiveType,
-                        targetId = notification.targetId ?: "",
-                        senderId = notification.actorId,
-                        senderAvatar = notification.actorAvatarUrl,
-                        targetType = notification.targetType,
-                        extraData = notification.extraData
-                    )
                 } catch (e: Exception) {
                     android.util.Log.e("NotificationViewModel", "Error showing local notification", e)
                 }
@@ -96,6 +127,9 @@ class NotificationViewModel @Inject constructor(
                 val currentState = _notificationsState.value
                 if (currentState is NotificationsUiState.Success) {
                     loadNotifications()
+                }
+                if (digestDeferred || resolveNotificationType(notification) == "notification_digest") {
+                    loadNotificationDigest()
                 }
             }
         }
@@ -134,6 +168,55 @@ class NotificationViewModel @Inject constructor(
                     _notificationsState.value = NotificationsUiState.Error(e.message ?: "Error desconocido")
                 }
             _isRefreshing.value = false
+        }
+    }
+
+    fun loadNotificationDigest() {
+        viewModelScope.launch {
+            _digestState.value = NotificationDigestUiState.Loading
+            notificationRepository.getNotificationDigest()
+                .onSuccess { overview ->
+                    _digestState.value = NotificationDigestUiState.Ready(overview)
+                }
+                .onFailure { error ->
+                    _digestState.value = NotificationDigestUiState.Error(
+                        digestErrorMessage(error)
+                    )
+                }
+        }
+    }
+
+    fun saveNotificationDigestPreferences(preferences: NotificationDigestPreferences) {
+        viewModelScope.launch {
+            _digestSaving.value = true
+            _digestMessage.value = null
+            notificationRepository.updateNotificationDigestPreferences(preferences)
+                .onSuccess {
+                    _digestMessage.value = "Preferencias guardadas."
+                    loadNotificationDigest()
+                }
+                .onFailure { error ->
+                    _digestMessage.value = digestErrorMessage(error)
+                }
+            _digestSaving.value = false
+        }
+    }
+
+    fun clearDigestMessage() {
+        _digestMessage.value = null
+    }
+
+    private fun digestErrorMessage(error: Throwable): String {
+        val raw = error.message.orEmpty()
+        return when {
+            raw.contains("DIGEST_CATEGORY_REQUIRED", ignoreCase = true) ->
+                "Elige al menos una categoría para el resumen."
+            raw.contains("network", ignoreCase = true) ||
+                raw.contains("host", ignoreCase = true) ||
+                raw.contains("connect", ignoreCase = true) ->
+                "No se pudo conectar. Revisa tu conexión e inténtalo otra vez."
+            raw.isBlank() -> "No se pudo cargar la configuración del resumen."
+            else -> raw
         }
     }
 

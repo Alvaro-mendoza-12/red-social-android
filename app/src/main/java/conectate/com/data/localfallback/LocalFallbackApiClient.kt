@@ -918,6 +918,82 @@ data class LocalFallbackNotificationList(
 )
 
 @Serializable
+data class NotificationDigestPreferences(
+    val enabled: Boolean = false,
+    val frequency: String = "daily",
+    val deliveryHour: Int = 18,
+    val deliveryWeekday: Int = 1,
+    val timezoneOffsetMinutes: Int = 0,
+    val includeMentions: Boolean = true,
+    val includeDirectMessages: Boolean = false,
+    val includeCommunityActivity: Boolean = true,
+    val includeUpcomingLives: Boolean = true,
+    val lastDeliveredAt: String? = null,
+    val updatedAt: String? = null
+)
+
+@Serializable
+data class NotificationDigestCategoryCounts(
+    val mentions: Int = 0,
+    val directMessages: Int = 0,
+    val communityActivity: Int = 0,
+    val upcomingLives: Int = 0
+)
+
+@Serializable
+data class NotificationDigestItem(
+    val id: String = "",
+    val actorName: String = "Novvin",
+    val actorAvatarUrl: String? = null,
+    val type: String = "activity",
+    val targetId: String? = null,
+    val targetType: String? = null,
+    val content: String? = null,
+    val category: String = "",
+    val createdAt: String = ""
+)
+
+@Serializable
+data class NotificationDigestSummary(
+    val frequency: String = "daily",
+    val periodStart: String = "",
+    val periodEnd: String = "",
+    val total: Int = 0,
+    val unreadCount: Int = 0,
+    val categories: NotificationDigestCategoryCounts = NotificationDigestCategoryCounts(),
+    val items: List<NotificationDigestItem> = emptyList()
+)
+
+data class NotificationDigestOverview(
+    val preferences: NotificationDigestPreferences = NotificationDigestPreferences(),
+    val summary: NotificationDigestSummary = NotificationDigestSummary()
+)
+
+@Serializable
+private data class NotificationDigestPreferencesResponse(
+    val preferences: NotificationDigestPreferences = NotificationDigestPreferences()
+)
+
+@Serializable
+private data class NotificationDigestOverviewResponse(
+    val preferences: NotificationDigestPreferences = NotificationDigestPreferences(),
+    val summary: NotificationDigestSummary = NotificationDigestSummary()
+)
+
+@Serializable
+private data class UpdateNotificationDigestPreferencesRequest(
+    val enabled: Boolean,
+    val frequency: String,
+    val deliveryHour: Int,
+    val deliveryWeekday: Int,
+    val timezoneOffsetMinutes: Int,
+    val includeMentions: Boolean,
+    val includeDirectMessages: Boolean,
+    val includeCommunityActivity: Boolean,
+    val includeUpcomingLives: Boolean
+)
+
+@Serializable
 private data class LocalFallbackNotificationResponse(
     val notification: JsonObject? = null
 )
@@ -2207,6 +2283,57 @@ class LocalFallbackApiClient @Inject constructor(
                     unreadCount = response.unreadCount
                 )
             }
+    }
+
+    suspend fun loadNotificationDigest(accessToken: String): Result<NotificationDigestOverview> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<NotificationDigestOverviewResponse>(
+            "$baseUrl/v1/data/notification-digest",
+            accessToken
+        ).map { response ->
+            NotificationDigestOverview(
+                preferences = response.preferences,
+                summary = response.summary
+            )
+        }
+    }
+
+    suspend fun updateNotificationDigestPreferences(
+        accessToken: String,
+        preferences: NotificationDigestPreferences
+    ): Result<NotificationDigestPreferences> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put(
+                "$baseUrl/v1/data/notification-digest/preferences"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    UpdateNotificationDigestPreferencesRequest(
+                        enabled = preferences.enabled,
+                        frequency = preferences.frequency,
+                        deliveryHour = preferences.deliveryHour,
+                        deliveryWeekday = preferences.deliveryWeekday,
+                        timezoneOffsetMinutes = preferences.timezoneOffsetMinutes,
+                        includeMentions = preferences.includeMentions,
+                        includeDirectMessages = preferences.includeDirectMessages,
+                        includeCommunityActivity = preferences.includeCommunityActivity,
+                        includeUpcomingLives = preferences.includeUpcomingLives
+                    )
+                )
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(
+                    json.decodeFromString<NotificationDigestPreferencesResponse>(body).preferences
+                )
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun markNotificationRead(accessToken: String, notificationId: String): Result<Unit> {

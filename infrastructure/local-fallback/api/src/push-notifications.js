@@ -86,6 +86,11 @@ function isInvalidTokenError(code = '') {
 }
 
 async function sendPushForNotification(pool, notification, extraData = {}) {
+  const digestDeferred = extraData?.digest_deferred === true ||
+    String(extraData?.digest_deferred || '').trim().toLowerCase() === 'true'
+  if (digestDeferred) {
+    return { sent: 0, failed: 0, deferred: true }
+  }
   const app = initializeFirebase()
   if (!app || !notification?.recipient_id) return { sent: 0, failed: 0, disabled: true }
 

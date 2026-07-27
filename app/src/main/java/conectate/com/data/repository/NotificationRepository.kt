@@ -5,6 +5,8 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.repository.RepositoryCallHandler
 import conectate.com.core.result.AppResult
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.NotificationDigestOverview
+import conectate.com.data.localfallback.NotificationDigestPreferences
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.AccountDeletedEvents
 import conectate.com.data.model.Notification
@@ -196,6 +198,26 @@ class NotificationRepository @Inject constructor(
             Log.e("NotificationRepository", "🚨 Exception in getNotifications", e)
             Result.failure(e)
         }
+    }
+
+    suspend fun getNotificationDigest(): Result<NotificationDigestOverview> {
+        if (!authService.isLocalFallbackSession()) {
+            return Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
+        }
+        val token = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
+        return localFallbackApiClient.loadNotificationDigest(token)
+    }
+
+    suspend fun updateNotificationDigestPreferences(
+        preferences: NotificationDigestPreferences
+    ): Result<NotificationDigestPreferences> {
+        if (!authService.isLocalFallbackSession()) {
+            return Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
+        }
+        val token = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
+        return localFallbackApiClient.updateNotificationDigestPreferences(token, preferences)
     }
 
     suspend fun markAsRead(notificationId: String): Result<Unit> {

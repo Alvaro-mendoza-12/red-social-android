@@ -3976,6 +3976,7 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_follows WHERE lower(follower_id) = ANY($1::text[]) OR lower(following_id) = ANY($1::text[])`,
       `DELETE FROM fallback_reports WHERE lower(reporter_id) = ANY($1::text[]) OR lower(reported_user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_notifications WHERE lower(recipient_id) = ANY($1::text[]) OR lower(COALESCE(actor_id, '')) = ANY($1::text[])`,
+      `DELETE FROM fallback_notification_digest_preferences WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_fcm_tokens WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[]) OR lower(COALESCE(forwarded_from_user_id, '')) = ANY($1::text[])`,
       `DELETE FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]) OR lower(COALESCE(forwarded_from_user_id, '')) = ANY($1::text[])`,

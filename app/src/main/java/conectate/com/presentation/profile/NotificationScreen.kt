@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,9 +38,11 @@ fun NotificationScreen(
     viewModel: NotificationViewModel = hiltViewModel()
 ) {
     val state by viewModel.notificationsState.collectAsState()
+    val digestState by viewModel.digestState.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadNotifications()
+        viewModel.loadNotificationDigest()
     }
 
     Scaffold(
@@ -51,13 +55,17 @@ fun NotificationScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { navController.navigate(Screen.NotificationSettings.route) }) {
+                        Icon(Icons.Default.Tune, contentDescription = "Configurar resumen")
+                    }
                     IconButton(onClick = { viewModel.deleteAllNotifications() }) {
                         Icon(Icons.Default.DeleteSweep, "Borrar Todo", tint = MaterialTheme.colorScheme.error)
                     }
-                    TextButton(onClick = { viewModel.markAllAsRead() }) {
-                        Icon(Icons.Default.DoneAll, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Todo leído", fontSize = 12.sp)
+                    IconButton(onClick = { viewModel.markAllAsRead() }) {
+                        Icon(
+                            Icons.Default.DoneAll,
+                            contentDescription = "Marcar todo como leído"
+                        )
                     }
                 }
             )
@@ -85,19 +93,32 @@ fun NotificationScreen(
                     }
                 }
                 is NotificationsUiState.Success -> {
-                    if (s.notifications.isEmpty()) {
-                        Column(
-                            modifier = Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("No tienes notificaciones", color = Color.Gray)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            TextButton(onClick = { viewModel.loadNotifications() }) {
-                                Text("Recargar")
-                            }
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        item(key = "digest-overview") {
+                            NotificationDigestOverviewCard(
+                                state = digestState,
+                                onConfigure = {
+                                    navController.navigate(Screen.NotificationSettings.route)
+                                },
+                                onRetry = viewModel::loadNotificationDigest
+                            )
                         }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        if (s.notifications.isEmpty()) {
+                            item(key = "empty-notifications") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 48.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("No tienes notificaciones", color = Color.Gray)
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    TextButton(onClick = { viewModel.loadNotifications() }) {
+                                        Text("Recargar")
+                                    }
+                                }
+                            }
+                        } else {
                             items(s.notifications, key = { it.id }) { notification ->
                                 NotificationItem(
                                     notification = notification,
@@ -115,6 +136,90 @@ fun NotificationScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NotificationDigestOverviewCard(
+    state: NotificationDigestUiState,
+    onConfigure: () -> Unit,
+    onRetry: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .clickable(onClick = onConfigure),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.NotificationsActive,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Resumen de actividad",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                when (state) {
+                    NotificationDigestUiState.Loading -> {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    is NotificationDigestUiState.Error -> {
+                        Text(
+                            state.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) {
+                            Text("Reintentar")
+                        }
+                    }
+                    is NotificationDigestUiState.Ready -> {
+                        val overview = state.overview
+                        if (!overview.preferences.enabled) {
+                            Text(
+                                "Desactivado. Puedes recibir un resumen diario o semanal.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            val frequency = if (overview.preferences.frequency == "weekly") {
+                                "Semanal"
+                            } else {
+                                "Diario"
+                            }
+                            Text(
+                                "$frequency · ${overview.summary.total} actividades recientes",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            val categories = overview.summary.categories
+                            val details = listOfNotNull(
+                                categories.mentions.takeIf { it > 0 }?.let { "$it menciones" },
+                                categories.directMessages.takeIf { it > 0 }?.let { "$it mensajes" },
+                                categories.communityActivity.takeIf { it > 0 }?.let { "$it comunidades" },
+                                categories.upcomingLives.takeIf { it > 0 }?.let { "$it directos" }
+                            ).joinToString(" · ")
+                            if (details.isNotBlank()) {
+                                Text(details, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+            Icon(Icons.Default.Tune, contentDescription = null)
         }
     }
 }
@@ -234,6 +339,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "voice_access_request" -> " solicitó acceso a la sección de voz"
         "account_suspended" -> " notificó una suspensión de cuenta"
         "account_enabled" -> " notificó que tu cuenta fue habilitada"
+        "notification_digest" -> " preparó tu resumen de actividad"
         else -> " realizó una acción"
     }
     

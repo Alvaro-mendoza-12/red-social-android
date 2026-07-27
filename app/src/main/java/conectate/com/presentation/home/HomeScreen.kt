@@ -334,6 +334,10 @@ fun HomeScreen(
                 conectate.com.presentation.profile.NotificationScreen(navController = navController)
             }
 
+            composable(Screen.NotificationSettings.route) {
+                conectate.com.presentation.profile.NotificationSettingsScreen(navController = navController)
+            }
+
             // ✅ FIX: Add Ranking route to HomeScreen NavHost
             composable(Screen.Ranking.route) {
                 conectate.com.presentation.ranking.RankingScreen(navController = navController)

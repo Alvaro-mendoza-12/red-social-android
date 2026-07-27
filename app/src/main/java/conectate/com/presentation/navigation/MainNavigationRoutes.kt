@@ -405,6 +405,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.NotificationSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.NotificationSettingsScreen(navController = navController)
+        }
+    }
+
     composable(
         route = Screen.Call.route,
         arguments = listOf(
