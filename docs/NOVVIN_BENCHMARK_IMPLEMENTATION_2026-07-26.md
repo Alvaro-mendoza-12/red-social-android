@@ -124,11 +124,10 @@ Antes de comenzar se creó y verificó el respaldo local
 - Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
   aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
   declaró aprobado porque se detuvo por tiempo sin errores visibles.
-- Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `2BED4F4DCF25CC60BC62273200794C7C6B813B797E6ACD1F067557F1BC3DC806`.
-- Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
-  SHA-256
-  `E795F43BFA9E8DBB2CF93117EC8FDCB4F1F383D38BB68C7695FAFEC74F19F3DD`.
+- Debug: `app-debug.apk`, firmado con la clave Debug. Su hash final queda
+  registrado en el manifiesto del respaldo local post-B05.
+- Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados. Su
+  hash final queda registrado en el manifiesto del respaldo local post-B05.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
 - Servidor: despliegue `conectate-mini-pc-20260727T004331Z`, commit
