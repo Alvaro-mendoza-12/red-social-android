@@ -80,6 +80,20 @@ Antes de comenzar se creó y verificó el respaldo local
   borrado completo de cuenta elimina apelaciones y decisiones relacionadas para
   evitar registros huérfanos.
 
+### Fase 1.3 — resúmenes de notificaciones
+
+- **B05, resúmenes configurables:** cada persona puede activar o desactivar
+  resúmenes diarios o semanales, escoger la hora local, elegir día de la semana
+  y seleccionar categorías: menciones, mensajes personales no urgentes,
+  actividad de comunidades y próximos directos.
+- Las llamadas, seguridad de cuenta, administración, moderación, solicitudes
+  urgentes y mensajes personales marcados como urgentes se mantienen
+  inmediatos. Un resumen nunca reemplaza una notificación crítica.
+- El servidor guarda preferencias persistentes, marca las notificaciones
+  diferidas sin enviarlas por FCM y genera una notificación resumen cuando
+  corresponde. La app muestra el estado del resumen y permite cambiarlo desde
+  la bandeja de notificaciones.
+
 ## Estado del backlog B01–B30
 
 | ID | Estado | Decisión |
@@ -88,7 +102,7 @@ Antes de comenzar se creó y verificó el respaldo local
 | B02 | Implementado en este incremento | Motivos comprensibles y controles inmediatos |
 | B03 | Implementado en este incremento | Temas/cuentas silenciados y reversibles |
 | B04 | Implementado en este incremento | Colecciones, etiquetas, notas, búsqueda y privacidad sincronizadas |
-| B05 | Planificado | Resumen configurable sin sustituir notificaciones urgentes |
+| B05 | Implementado en este incremento | Resumen diario/semanal configurable con urgentes inmediatas |
 | B06 | Implementado en este incremento | Norma, explicación, evidencia segura, severidad, vigencia y auditoría |
 | B07 | Implementado en este incremento | Token restringido, apelación única, cola humana y reactivación atómica |
 | B08–B13 | Fase 2 | Ampliar comunidades existentes con roles, canales y eventos |
@@ -107,18 +121,19 @@ Antes de comenzar se creó y verificó el respaldo local
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
   seguridad, todas aprobadas.
-- Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin y
-  Android Lint aprobados.
+- Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
+  aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
+  declaró aprobado porque se detuvo por tiempo sin errores visibles.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `3151328476264751DB9DDCD42DDC8000BBFEF9025CF5A355F7287B3CCAE5D091`.
+  `2BED4F4DCF25CC60BC62273200794C7C6B813B797E6ACD1F067557F1BC3DC806`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `30BBE933BA3367AE14CEF98C65532C9CF702EEAA82555AFB6C6279137327E1B4`.
+  `E795F43BFA9E8DBB2CF93117EC8FDCB4F1F383D38BB68C7695FAFEC74F19F3DD`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260726T222937Z`, commit
-  `adddd5594f70`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260726T222947Z`.
+- Servidor: despliegue `conectate-mini-pc-20260727T004331Z`, commit
+  `6865837e6750`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260727T004346Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - B04: prueba integral pública aprobada con la cuenta ficticia
@@ -132,6 +147,12 @@ Antes de comenzar se creó y verificó el respaldo local
   duplicada, cola administrativa, revisión humana y reactivación atómica.
   Después de la prueba PostgreSQL confirmó `users=0`, `moderation=0`,
   `decisions=0` y `appeals=0` para sus dos cuentas ficticias.
+- B05: canario público `1785116839398` aprobado. Cubrió preferencia apagada por
+  defecto, rechazo de selección vacía, diferimiento de menciones y mensajes
+  personales normales, envío inmediato de mensaje urgente, conteos del resumen
+  y publicación de `notification_digest_v1`. Después de la prueba PostgreSQL
+  confirmó `users=0` y `notifications=0` para sus cuentas y contenidos
+  ficticios.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
   verificados. No había ningún dispositivo visible por ADB durante este cierre.
