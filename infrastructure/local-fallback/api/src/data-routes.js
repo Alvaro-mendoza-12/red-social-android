@@ -3388,6 +3388,18 @@ function voiceRoomMatches(row, cleanRoomId) {
   return voiceRoomId(row) === cleanRoomId || voiceRoomReadableId(row) === cleanRoomId
 }
 
+function voiceRoomMode(row) {
+  return textOf(row, ['room_mode', 'roomMode', 'mode'], 'casual').trim().toLowerCase() === 'stage'
+    ? 'stage'
+    : 'casual'
+}
+
+function voiceParticipantRole(row, roomMode = 'casual') {
+  const role = textOf(row, ['role', 'stage_role', 'stageRole'], '').trim().toLowerCase()
+  if (role === 'moderator' || role === 'speaker' || role === 'audience') return role
+  return roomMode === 'stage' ? 'audience' : 'speaker'
+}
+
 function voiceParticipantRoomId(row) {
   return normalizeId(textOf(row, ['room_id', 'voice_room_id'], ''))
 }
@@ -3408,6 +3420,8 @@ async function localVoiceParticipants(pool, roomId = '') {
             socket_id,
             is_muted,
             is_speaking,
+            role,
+            hand_raised,
             joined_at,
             updated_at
          FROM fallback_voice_room_participants
@@ -3438,6 +3452,7 @@ async function localVoiceRooms(pool, limit = 1000) {
             is_active,
             agora_channel_name,
             readable_id,
+            room_mode,
             created_at,
             updated_at
          FROM fallback_voice_rooms
@@ -3465,16 +3480,24 @@ function mapVoiceParticipant(row, profilesById) {
     user_avatar_url: textOf(row, ['user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
     is_muted: boolOf(row, ['is_muted'], false),
     is_speaking: boolOf(row, ['is_speaking'], false),
+    role: voiceParticipantRole(row),
+    hand_raised: boolOf(row, ['hand_raised'], false),
     joined_at: textOf(row, ['joined_at', 'created_at'], ''),
   }
 }
 
-function mapVoiceRoom(row, profilesById, participantCount) {
+function mapVoiceRoom(row, profilesById, participantCount, participantRows = []) {
   const creatorId = normalizeId(textOf(row, ['creator_id', 'owner_id', 'user_id'], ''))
   const creatorProfile = creatorId ? profilesById.get(creatorId) : null
   const id = voiceRoomId(row)
   // Presence is live state. Historical CSV counters must never appear as listeners.
   const count = Math.max(0, Number(participantCount || 0))
+  const mode = voiceRoomMode(row)
+  const speakerIds = participantRows
+    .filter((participant) => ['moderator', 'speaker'].includes(voiceParticipantRole(participant, mode)))
+    .map((participant) => normalizeId(textOf(participant, ['user_id', 'profile_id'], '')))
+    .filter(Boolean)
+  const raisedHandCount = participantRows.filter((participant) => boolOf(participant, ['hand_raised'], false)).length
   return {
     ...row,
     id,
@@ -3488,6 +3511,9 @@ function mapVoiceRoom(row, profilesById, participantCount) {
     current_participants: count,
     participant_count: count,
     max_participants: Math.max(1, numberOf(row, ['max_participants', 'capacity'], 10)),
+    room_mode: mode,
+    speaker_ids: speakerIds,
+    raised_hand_count: raisedHandCount,
     updated_at: textOf(row, ['updated_at', 'created_at'], ''),
     created_at: textOf(row, ['created_at'], textOf(row, ['updated_at'], '')),
   }
@@ -4254,6 +4280,7 @@ async function ensureLocalDataTables(pool) {
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
       agora_channel_name TEXT NOT NULL DEFAULT '',
       readable_id TEXT,
+      room_mode TEXT NOT NULL DEFAULT 'casual',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -4267,6 +4294,7 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS agora_channel_name TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS readable_id TEXT`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS room_mode TEXT NOT NULL DEFAULT 'casual'`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
@@ -4286,6 +4314,8 @@ async function ensureLocalDataTables(pool) {
       socket_id TEXT NOT NULL DEFAULT '',
       is_muted BOOLEAN NOT NULL DEFAULT FALSE,
       is_speaking BOOLEAN NOT NULL DEFAULT FALSE,
+      role TEXT NOT NULL DEFAULT 'speaker',
+      hand_raised BOOLEAN NOT NULL DEFAULT FALSE,
       joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (room_id, user_id)
@@ -4300,6 +4330,8 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS socket_id TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS is_speaking BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'speaker'`,
+    `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS hand_raised BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_voice_room_participants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
@@ -8759,6 +8791,10 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const isPublic = Object.prototype.hasOwnProperty.call(req.body || {}, 'isPublic')
         ? Boolean(req.body.isPublic)
         : Boolean(req.body?.is_public ?? true)
+      const requestedRoomMode = String(req.body?.roomMode || req.body?.room_mode || 'casual').trim().toLowerCase()
+      if (!['casual', 'stage'].includes(requestedRoomMode)) {
+        return res.status(400).json({ error: 'VOICE_ROOM_MODE_INVALID' })
+      }
 
       const { rows } = await pool.query(
         `INSERT INTO fallback_voice_rooms(
@@ -8771,6 +8807,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             is_active,
             agora_channel_name,
             readable_id,
+            room_mode,
             created_at,
             updated_at
          )
@@ -8784,6 +8821,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             TRUE,
             COALESCE(NULLIF($7, ''), 'room_' || COALESCE($1::text, gen_random_uuid()::text)),
             NULLIF($8, ''),
+            $9,
             NOW(),
             NOW()
          )
@@ -8793,6 +8831,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             creator_id = EXCLUDED.creator_id,
             max_participants = EXCLUDED.max_participants,
             is_public = EXCLUDED.is_public,
+            room_mode = EXCLUDED.room_mode,
             is_active = TRUE,
             updated_at = NOW()
          RETURNING
@@ -8805,6 +8844,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             is_active,
             agora_channel_name,
             readable_id,
+            room_mode,
             created_at,
             updated_at`,
         [
@@ -8816,6 +8856,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           isPublic,
           String(req.body?.agoraChannelName || req.body?.agora_channel_name || '').trim(),
           String(req.body?.readableId || req.body?.readable_id || '').trim(),
+          requestedRoomMode,
         ],
       )
 
@@ -8841,15 +8882,17 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const rooms = [...importedRooms, ...fallbackRooms]
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
       const countByRoom = new Map()
+      const participantsByRoom = new Map()
       for (const row of fallbackParticipants) {
         const id = voiceParticipantRoomId(row)
         if (!id) continue
         countByRoom.set(id, (countByRoom.get(id) || 0) + 1)
+        participantsByRoom.set(id, [...(participantsByRoom.get(id) || []), row])
       }
       const items = sortByDateDesc(
         rooms.map((row) => {
           const id = voiceRoomId(row)
-          return mapVoiceRoom(row, profilesById, countByRoom.get(id) || 0)
+          return mapVoiceRoom(row, profilesById, countByRoom.get(id) || 0, participantsByRoom.get(id) || [])
         }),
         ['updated_at', 'created_at'],
       )
@@ -8875,12 +8918,13 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
       const actualRoomId = voiceRoomId(room) || cleanRoomId
-      const participants = fallbackParticipants
+      const participantRows = fallbackParticipants
         .filter((row) => voiceParticipantRoomId(row) === actualRoomId)
+      const participants = participantRows
         .map((row) => mapVoiceParticipant(row, profilesById))
       setPrivateShortCache(res, 2)
       res.json({
-        room: mapVoiceRoom(room, profilesById, participants.length),
+        room: mapVoiceRoom(room, profilesById, participants.length, participantRows),
         participants,
       })
     } catch (error) {
@@ -8901,6 +8945,27 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const actualRoomId = voiceRoomId(room) || cleanRoomId
 
       const identity = userIdentity(user)
+      const mode = voiceRoomMode(room)
+      const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+      const existingParticipant = await pool.query(
+        `SELECT role, hand_raised
+         FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1 AND lower(user_id) = $2
+         LIMIT 1`,
+        [actualRoomId, identity.displayUserId],
+      )
+      const existingRole = voiceParticipantRole(existingParticipant.rows[0] || {}, mode)
+      const role = mode === 'casual'
+        ? 'speaker'
+        : isCreator
+          ? 'moderator'
+          : ['moderator', 'speaker', 'audience'].includes(existingRole)
+            ? existingRole
+            : 'audience'
+      const isMuted = role === 'audience' ? true : Boolean(req.body?.isMuted)
+      const handRaised = mode === 'stage'
+        && role === 'audience'
+        && Boolean(existingParticipant.rows[0]?.hand_raised)
       await pool.query(
         `INSERT INTO fallback_voice_room_participants(
             room_id,
@@ -8910,16 +8975,20 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             socket_id,
             is_muted,
             is_speaking,
+            role,
+            hand_raised,
             joined_at,
             updated_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, FALSE, NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7, $8, NOW(), NOW())
          ON CONFLICT (room_id, user_id)
          DO UPDATE SET
             user_name = EXCLUDED.user_name,
             user_avatar_url = EXCLUDED.user_avatar_url,
             socket_id = EXCLUDED.socket_id,
             is_muted = EXCLUDED.is_muted,
+            role = EXCLUDED.role,
+            hand_raised = EXCLUDED.hand_raised,
             updated_at = NOW()`,
         [
           actualRoomId,
@@ -8927,7 +8996,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           String(req.body?.userName || user.display_name || user.email || 'Usuario').trim(),
           String(req.body?.userAvatarUrl || user.avatar_url || '').trim(),
           String(req.body?.socketId || '').trim(),
-          Boolean(req.body?.isMuted),
+          isMuted,
+          role,
+          handRaised,
         ],
       )
       await pool.query(
@@ -8941,6 +9012,143 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
       const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
       void publishVoiceRoomsLiveEvent({ action: 'joined', roomId: actualRoomId, participants })
+      res.json({ participants })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/voice/rooms/:roomId/stage/request', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const cleanRoomId = normalizeId(req.params.roomId)
+      const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (voiceRoomMode(room) !== 'stage') {
+        return res.status(409).json({ error: 'VOICE_STAGE_REQUIRED' })
+      }
+
+      const actualRoomId = voiceRoomId(room) || cleanRoomId
+      const identity = userIdentity(user)
+      const participantResult = await pool.query(
+        `SELECT *
+         FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1 AND lower(user_id) = $2
+         LIMIT 1`,
+        [actualRoomId, identity.displayUserId],
+      )
+      const participant = participantResult.rows[0]
+      if (!participant) return res.status(409).json({ error: 'VOICE_STAGE_JOIN_REQUIRED' })
+      if (voiceParticipantRole(participant, 'stage') !== 'audience') {
+        return res.status(409).json({ error: 'VOICE_STAGE_ALREADY_SPEAKER' })
+      }
+
+      const handRaised = Boolean(req.body?.handRaised ?? req.body?.hand_raised ?? true)
+      await pool.query(
+        `UPDATE fallback_voice_room_participants
+         SET hand_raised = $3, is_muted = TRUE, updated_at = NOW()
+         WHERE lower(room_id) = $1 AND lower(user_id) = $2`,
+        [actualRoomId, identity.displayUserId, handRaised],
+      )
+      clearVoiceCaches()
+      const payload = await localVoiceParticipants(pool, actualRoomId)
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
+      void publishVoiceRoomsLiveEvent({
+        action: handRaised ? 'hand-raised' : 'hand-lowered',
+        roomId: actualRoomId,
+        userId: identity.displayUserId,
+        participants,
+      })
+      res.json({ participants, handRaised })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/voice/rooms/:roomId/stage/participants/:userId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const cleanRoomId = normalizeId(req.params.roomId)
+      const targetUserId = normalizeId(req.params.userId)
+      const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
+      const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (voiceRoomMode(room) !== 'stage') {
+        return res.status(409).json({ error: 'VOICE_STAGE_REQUIRED' })
+      }
+      if (!targetUserId) return res.status(400).json({ error: 'VOICE_STAGE_PARTICIPANT_REQUIRED' })
+
+      const actualRoomId = voiceRoomId(room) || cleanRoomId
+      const identity = userIdentity(user)
+      const actorIsCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+      const participantsResult = await pool.query(
+        `SELECT *
+         FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1`,
+        [actualRoomId],
+      )
+      const actor = participantsResult.rows.find((row) => rowMatchesAny(row, ['user_id'], identity.ids))
+      const target = participantsResult.rows.find(
+        (row) => normalizeId(textOf(row, ['user_id'], '')) === targetUserId,
+      )
+      if (!target) return res.status(404).json({ error: 'VOICE_STAGE_PARTICIPANT_NOT_FOUND' })
+      const actorIsModerator = actorIsCreator || voiceParticipantRole(actor || {}, 'stage') === 'moderator'
+      if (!actorIsModerator) return res.status(403).json({ error: 'VOICE_STAGE_MODERATION_DENIED' })
+
+      const targetIsCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], [
+        normalizeId(textOf(target, ['user_id'], '')),
+      ])
+      const targetRole = voiceParticipantRole(target, 'stage')
+      if (targetIsCreator || (!actorIsCreator && targetRole === 'moderator')) {
+        return res.status(403).json({ error: 'VOICE_STAGE_MODERATOR_IMMUTABLE' })
+      }
+
+      const hasRole = Object.prototype.hasOwnProperty.call(req.body || {}, 'role')
+      const requestedRole = hasRole ? String(req.body.role || '').trim().toLowerCase() : targetRole
+      if (!['moderator', 'speaker', 'audience'].includes(requestedRole)) {
+        return res.status(400).json({ error: 'VOICE_STAGE_ROLE_INVALID' })
+      }
+      if (requestedRole === 'moderator' && !actorIsCreator) {
+        return res.status(403).json({ error: 'VOICE_STAGE_MODERATION_DENIED' })
+      }
+      const hasMuted = Object.prototype.hasOwnProperty.call(req.body || {}, 'isMuted')
+        || Object.prototype.hasOwnProperty.call(req.body || {}, 'is_muted')
+      if (!hasRole && !hasMuted) {
+        return res.status(400).json({ error: 'VOICE_STAGE_UPDATE_REQUIRED' })
+      }
+      const requestedMuted = Boolean(req.body?.isMuted ?? req.body?.is_muted)
+      const isMuted = requestedRole === 'audience'
+        ? true
+        : hasMuted
+          ? requestedMuted
+          : Boolean(target.is_muted)
+
+      await pool.query(
+        `UPDATE fallback_voice_room_participants
+         SET role = $3,
+             is_muted = $4,
+             is_speaking = CASE WHEN $4 THEN FALSE ELSE is_speaking END,
+             hand_raised = FALSE,
+             updated_at = NOW()
+         WHERE lower(room_id) = $1 AND lower(user_id) = $2`,
+        [actualRoomId, targetUserId, requestedRole, isMuted],
+      )
+      clearVoiceCaches()
+      const payload = await localVoiceParticipants(pool, actualRoomId)
+      const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
+      const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
+      void publishVoiceRoomsLiveEvent({
+        action: 'stage-participant-updated',
+        roomId: actualRoomId,
+        userId: targetUserId,
+        role: requestedRole,
+        isMuted,
+        participants,
+      })
       res.json({ participants })
     } catch (error) {
       next(error)

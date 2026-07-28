@@ -25,6 +25,7 @@ class CreateVoiceRoomViewModel @Inject constructor(
         description: String?,
         isPublic: Boolean,
         password: String?,
+        roomMode: String,
         onSuccess: (String) -> Unit
     ) {
         if (name.isBlank()) {
@@ -38,7 +39,7 @@ class CreateVoiceRoomViewModel @Inject constructor(
             _isCreating.value = true
             _error.value = null
             try {
-                val result = repository.createRoom(name, description, isPublic, password)
+                val result = repository.createRoom(name, description, isPublic, password, roomMode)
                 if (result.isSuccess) {
                     val room = result.getOrThrow()
                     onSuccess(room.id)

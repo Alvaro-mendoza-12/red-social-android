@@ -2,6 +2,9 @@ package conectate.com.data.repository
 
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
+import conectate.com.data.model.VoiceRoomModes
+import conectate.com.data.model.VoiceStageRoles
+import conectate.com.data.model.isStageMode
 import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
@@ -225,6 +228,50 @@ class VoiceRoomRepository @Inject constructor(
         if (currentUserId.isBlank()) return false
         return participants.any { participant ->
             participant.id.trim().lowercase() == currentUserId && participant.isMuted
+        }
+    }
+
+    private fun canCurrentUserPublishMedia(
+        room: VoiceRoom? = _currentRoom.value,
+        participants: List<VoiceParticipant> = _currentParticipants.value
+    ): Boolean {
+        if (room?.isStageMode() != true) return true
+        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        if (currentUserId.isBlank()) return false
+        if (room.creatorId.trim().lowercase() == currentUserId) return true
+        val role = participants.firstOrNull {
+            it.id.trim().lowercase() == currentUserId
+        }?.role?.trim()?.lowercase()
+        return role == VoiceStageRoles.MODERATOR || role == VoiceStageRoles.SPEAKER
+    }
+
+    private fun applyVoiceRoomState(room: VoiceRoom, participants: List<VoiceParticipant>) {
+        val previousById = _currentParticipants.value.associateBy { it.id.trim().lowercase() }
+        val mergedParticipants = participants.map { participant ->
+            val previous = previousById[participant.id.trim().lowercase()]
+            if (participant.socketId.isBlank() && previous?.socketId?.isNotBlank() == true) {
+                participant.copy(socketId = previous.socketId)
+            } else {
+                participant
+            }
+        }
+        val enrichedRoom = normalizeRoomForUi(room).copy(
+            participantCount = mergedParticipants.size,
+            participantIds = mergedParticipants.map { it.id },
+            speakerIds = mergedParticipants
+                .filter { it.role == VoiceStageRoles.MODERATOR || it.role == VoiceStageRoles.SPEAKER }
+                .map { it.id },
+            participantNames = mergedParticipants.associate { it.id to it.name },
+            raisedHandCount = mergedParticipants.count { it.handRaised }
+        )
+        _currentRoom.value = enrichedRoom
+        _currentParticipants.value = mergedParticipants
+        refreshParticipantAliases()
+        if (!canCurrentUserPublishMedia(enrichedRoom, mergedParticipants)) {
+            toggleMute(true)
+            if (_currentVideoMode.value != VideoMode.NONE) {
+                stopVideo()
+            }
         }
     }
 
@@ -918,9 +965,56 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
+    suspend fun refreshVoiceRoomState(roomId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
+            return@withContext Result.success(Unit)
+        }
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Tu sesión venció. Inicia sesión otra vez."))
+        localFallbackApiClient.loadVoiceRoom(token, roomId).map { state ->
+            applyVoiceRoomState(state.room, state.participants)
+        }
+    }
+
+    suspend fun setStageHandRaised(roomId: String, handRaised: Boolean): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Tu sesión venció. Inicia sesión otra vez."))
+            localFallbackApiClient.setVoiceStageHandRaised(token, roomId, handRaised).map { participants ->
+                val current = _currentRoom.value ?: getRoomById(roomId).getOrThrow()
+                applyVoiceRoomState(current, participants)
+            }
+        }
+
+    suspend fun moderateStageParticipant(
+        roomId: String,
+        userId: String,
+        role: String? = null,
+        isMuted: Boolean? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Tu sesión venció. Inicia sesión otra vez."))
+        localFallbackApiClient.moderateVoiceStageParticipant(
+            accessToken = token,
+            roomId = roomId,
+            userId = userId,
+            role = role,
+            isMuted = isMuted
+        ).map { participants ->
+            val current = _currentRoom.value ?: getRoomById(roomId).getOrThrow()
+            applyVoiceRoomState(current, participants)
+        }
+    }
 
 
-    suspend fun createRoom(name: String, description: String?, isPublic: Boolean, password: String?): Result<VoiceRoom> = withContext(Dispatchers.IO) {
+
+    suspend fun createRoom(
+        name: String,
+        description: String?,
+        isPublic: Boolean,
+        password: String?,
+        roomMode: String = VoiceRoomModes.CASUAL
+    ): Result<VoiceRoom> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             // We can rely on DB to generate ID, or generate here. Let's let DB handle readable_id via trigger.
@@ -934,6 +1028,7 @@ class VoiceRoomRepository @Inject constructor(
                 creatorId = userId,
                 isPublic = isPublic,
                 password = password,
+                roomMode = roomMode,
                 agoraChannelName = "room_$roomId"
             )
 
@@ -947,7 +1042,8 @@ class VoiceRoomRepository @Inject constructor(
                     description = description,
                     isPublic = isPublic,
                     maxParticipants = DEFAULT_ROOM_CAPACITY,
-                    agoraChannelName = "room_$roomId"
+                    agoraChannelName = "room_$roomId",
+                    roomMode = roomMode
                 ).getOrThrow().let(::normalizeRoomForUi)
                 if (shouldShowRoomInLobby(createdRoom, userId.trim().lowercase())) {
                     _activeRooms.update { current ->
@@ -959,8 +1055,25 @@ class VoiceRoomRepository @Inject constructor(
                 return@withContext Result.success(createdRoom)
             }
 
-            // Insert without readable_id/created_at to let DB handle defaults
-            supabaseConfig.client.postgrest["voice_rooms"].insert(room)
+            if (roomMode == VoiceRoomModes.STAGE) {
+                return@withContext Result.failure(
+                    Exception("El modo escenario requiere la sesión del servidor Novvin.")
+                )
+            }
+            // Keep the legacy Supabase contract free of the new Ubuntu-only
+            // stage fields so older installations continue creating casual rooms.
+            val legacyRoomPayload = buildJsonObject {
+                put("id", room.id)
+                put("name", room.name)
+                put("description", room.description)
+                put("creator_id", room.creatorId)
+                put("max_participants", room.maxParticipants)
+                put("is_public", room.isPublic)
+                put("is_active", room.isActive)
+                put("agora_channel_name", room.agoraChannelName)
+                room.password?.let { put("password", it) }
+            }
+            supabaseConfig.client.postgrest["voice_rooms"].insert(legacyRoomPayload)
             
             // Re-fetch to get the generated readableID
             val createdRoom = getRoomById(roomId).getOrNull() ?: room
@@ -997,7 +1110,14 @@ class VoiceRoomRepository @Inject constructor(
 
 
 
-    suspend fun joinRoom(roomId: String, userId: String, displayName: String, avatarUrl: String? = null, signalingRoomId: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun joinRoom(
+        roomId: String,
+        userId: String,
+        displayName: String,
+        avatarUrl: String? = null,
+        signalingRoomId: String? = null,
+        startMuted: Boolean = false
+    ) = withContext(Dispatchers.IO) {
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
         pendingConnectMetricName = "voice_room_join"
         pendingConnectStartedAtMs = System.currentTimeMillis()
@@ -1022,6 +1142,7 @@ class VoiceRoomRepository @Inject constructor(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
+                isMuted = startMuted,
                 socketId = socket?.id() ?: userId
             )
             if (_currentParticipants.value.none { it.id == userId }) {
@@ -1035,15 +1156,15 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = false
+                        isMuted = startMuted
                     )
                 }
             }
             
-            prepareVoiceAudioSession(forceMicUnmute = true)
+            prepareVoiceAudioSession(forceMicUnmute = !startMuted)
             webRTCManager?.ensureLocalTracks()
             webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-            webRTCManager?.setAudioEnabled(!isSelfMuted())
+            webRTCManager?.setAudioEnabled(!startMuted && !isSelfMuted())
             emitCurrentMediaState()
             flushPendingRoomSocketEvents(signalRoom)
             updateConnectionState(VoiceConnectionState.CONNECTED)
@@ -1106,7 +1227,8 @@ class VoiceRoomRepository @Inject constructor(
                 webRTCManager?.setRemoteAudioPlaybackEnabled(true)
                 // Removed setCurrentUser with empty socketId to avoid race condition with isPolite
 
-                prepareVoiceAudioSession(forceMicUnmute = true)
+                prepareVoiceAudioSession(forceMicUnmute = !startMuted)
+                webRTCManager?.setAudioEnabled(!startMuted)
                 android.util.Log.d("VoiceRoomRepository", "✅ Audio mode set to COMM + Focus Requested")
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "❌ WebRTC Re-init failed: ${e.message}")
@@ -1126,6 +1248,7 @@ class VoiceRoomRepository @Inject constructor(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
+                isMuted = startMuted,
                 socketId = userId
             )
             _currentParticipants.value = listOf(self)
@@ -1143,9 +1266,12 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = false
+                        isMuted = startMuted
                     ).onSuccess { participants ->
-                        _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                        if (participants.isNotEmpty()) {
+                            _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
+                                ?: run { _currentParticipants.value = participants }
+                        }
                     }
                 }
             } else {
@@ -1282,7 +1408,10 @@ class VoiceRoomRepository @Inject constructor(
                                 socketId = sid.ifBlank { userId },
                                 isMuted = false
                             ).onSuccess { participants ->
-                                _currentParticipants.value = participants.ifEmpty { _currentParticipants.value }
+                                if (participants.isNotEmpty()) {
+                                    _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
+                                        ?: run { _currentParticipants.value = participants }
+                                }
                             }
                         }
                     }
@@ -1846,6 +1975,10 @@ class VoiceRoomRepository @Inject constructor(
 
     fun startScreenCapture(intent: android.content.Intent) {
         if (!hasActiveSessionFor(activeRoomId ?: "")) return
+        if (!canCurrentUserPublishMedia()) {
+            _videoError.value = "El moderador debe darte la palabra antes de compartir pantalla."
+            return
+        }
         updateSharingState(socketId = currentSocketId(), userId = authService.getCurrentUserId(), isCameraSharing = false, isScreenSharing = true)
         appMetrics.incrementCounter(
             metric = "voice_video_transition",
@@ -1901,6 +2034,10 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun startCameraCapture(isFront: Boolean = true) {
+        if (!canCurrentUserPublishMedia()) {
+            _videoError.value = "El moderador debe darte la palabra antes de activar la cámara."
+            return
+        }
         appMetrics.incrementCounter(
             metric = "voice_video_transition",
             attributes = currentMetricAttributes(reason = "camera_start") + ("targetMode" to "camera")
@@ -2024,6 +2161,15 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun toggleMute(isMuted: Boolean) {
+        if (!isMuted && !canCurrentUserPublishMedia()) {
+            _currentParticipants.value = _currentParticipants.value.map {
+                if (it.id == authService.getCurrentUserId()) it.copy(isMuted = true) else it
+            }
+            webRTCManager?.setAudioEnabled(false)
+            _lastConnectionError.value = "Solicita la palabra para activar el micrófono en este escenario."
+            updateVoiceForegroundService()
+            return
+        }
         android.util.Log.d("VoiceRoomRepository", "🎤 NUCLEAR MUTE: $isMuted")
         
         // 1. Update Participants UI

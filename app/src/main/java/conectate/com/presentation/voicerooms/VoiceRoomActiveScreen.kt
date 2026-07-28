@@ -52,6 +52,10 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import conectate.com.data.model.VoiceRoom
+import conectate.com.data.model.VoiceParticipant
+import conectate.com.data.model.VoiceStageRoles
+import conectate.com.data.model.canPublishOnStage
+import conectate.com.data.model.isStageMode
 import conectate.com.data.repository.VoiceRoomRepository
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
@@ -132,6 +136,25 @@ fun VoiceRoomActiveScreen(
     val signalingStates by viewModel.signalingStates.collectAsState()
     val debugInfo by viewModel.debugInfo.collectAsState()
     val fullScreenParticipantId by viewModel.fullScreenParticipantId.collectAsState()
+    val joinError by viewModel.joinError.collectAsStateWithLifecycle()
+    val videoError by viewModel.videoError.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isStage = room?.isStageMode() == true
+    val selfParticipant = participants.firstOrNull {
+        it.id.trim().equals(currentUserId?.trim().orEmpty(), ignoreCase = true)
+    }
+    val canPublishMedia = !isStage ||
+        room?.creatorId?.trim()?.equals(currentUserId?.trim().orEmpty(), ignoreCase = true) == true ||
+        selfParticipant?.canPublishOnStage() == true
+    val isStageModerator = isStage && (
+        room?.creatorId?.trim()?.equals(currentUserId?.trim().orEmpty(), ignoreCase = true) == true ||
+            selfParticipant?.role?.equals(VoiceStageRoles.MODERATOR, ignoreCase = true) == true
+        )
+
+    LaunchedEffect(joinError, videoError) {
+        val message = videoError?.takeIf { it.isNotBlank() } ?: joinError?.takeIf { it.isNotBlank() }
+        if (message != null) snackbarHostState.showSnackbar(message)
+    }
     
     val cinemaState by viewModel.cinemaState.collectAsState()
     val isCinemaMode = cinemaState?.isCinemaMode == true
@@ -171,6 +194,7 @@ fun VoiceRoomActiveScreen(
 
     Scaffold(
         containerColor = backgroundColor,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // Transparent top bar for video mode, visible otherwise
             // Always show TopBar but style differntly
@@ -189,7 +213,10 @@ fun VoiceRoomActiveScreen(
                                 color = (if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.7f)
                             )
                             Text(
-                                text = "Estado: ${if (isJoined) "Conectado" else "Conectando..."} · ${participants.size} en sala",
+                                text = buildString {
+                                    if (isStage) append("Escenario · ")
+                                    append("Estado: ${if (isJoined) "Conectado" else "Conectando..."} · ${participants.size} en sala")
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = (if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.65f)
                             )
@@ -262,6 +289,9 @@ fun VoiceRoomActiveScreen(
                  isMuted = isMuted,
                  isSpeaker = isSpeaker,
                  videoMode = videoMode,
+                 canPublishMedia = canPublishMedia,
+                 isStage = isStage,
+                 handRaised = selfParticipant?.handRaised == true,
                  onToggleMute = { viewModel.toggleMute() },
                  onToggleSpeaker = { viewModel.toggleSpeaker() },
                  onToggleCamera = {
@@ -286,6 +316,9 @@ fun VoiceRoomActiveScreen(
                  },
                  onShowChat = { showChat = true },
                  onShowReactions = { showReactions = true },
+                 onToggleHandRaised = {
+                     viewModel.setHandRaised(selfParticipant?.handRaised != true)
+                 },
                  onToggleCinema = {
                      if (room?.creatorId == viewModel.getCurrentUserId()) {
                          if (isCinemaMode) {
@@ -367,6 +400,16 @@ fun VoiceRoomActiveScreen(
                             .padding(top = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        if (isStage) {
+                            StageControlPanel(
+                                participants = participants,
+                                currentUserId = currentUserId.orEmpty(),
+                                isModerator = isStageModerator,
+                                onToggleHandRaised = { raised -> viewModel.setHandRaised(raised) },
+                                onMoveParticipant = { userId, role -> viewModel.moveStageParticipant(userId, role) },
+                                onSetMuted = { userId, muted -> viewModel.setStageParticipantMuted(userId, muted) }
+                            )
+                        }
                         CinemaPlayer(
                             videoUrl = cinemaState?.videoUrl ?: "",
                             isPlaying = cinemaState?.isPlaying ?: false,
@@ -420,28 +463,52 @@ fun VoiceRoomActiveScreen(
                     }
                 } else if (hasRealVideo) {
                     // Video Grid Layout
-                VideoGridLayout(
-                    participants = participants,
-                    remoteVideoTracks = remoteVideoTracks,
-                    peerConnectionStates = peerConnectionStates,
-                    signalingStates = signalingStates,
-                    debugInfo = debugInfo,
-                    localVideoTrack = localVideoTrack,
-                    localVideoMode = videoMode,
-                    eglBaseContext = viewModel.getEglBaseContext(),
-                    currentUserId = currentUserId ?: "",
-                    onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) },
-                    onFullscreenToggle = { id -> viewModel.toggleFullScreen(id) }
-                )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (isStage) {
+                            StageControlPanel(
+                                participants = participants,
+                                currentUserId = currentUserId.orEmpty(),
+                                isModerator = isStageModerator,
+                                onToggleHandRaised = { raised -> viewModel.setHandRaised(raised) },
+                                onMoveParticipant = { userId, role -> viewModel.moveStageParticipant(userId, role) },
+                                onSetMuted = { userId, muted -> viewModel.setStageParticipantMuted(userId, muted) }
+                            )
+                        }
+                        VideoGridLayout(
+                            participants = participants,
+                            remoteVideoTracks = remoteVideoTracks,
+                            peerConnectionStates = peerConnectionStates,
+                            signalingStates = signalingStates,
+                            debugInfo = debugInfo,
+                            localVideoTrack = localVideoTrack,
+                            localVideoMode = videoMode,
+                            eglBaseContext = viewModel.getEglBaseContext(),
+                            currentUserId = currentUserId ?: "",
+                            onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) },
+                            onFullscreenToggle = { id -> viewModel.toggleFullScreen(id) }
+                        )
+                    }
                 } else {
                     // Audio Only Grid
-                    AudioOnlyLayout(
-                        participants = participants,
-                        peerConnectionStates = peerConnectionStates,
-                        signalingStates = signalingStates,
-                        debugInfo = debugInfo,
-                        onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) }
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (isStage) {
+                            StageControlPanel(
+                                participants = participants,
+                                currentUserId = currentUserId.orEmpty(),
+                                isModerator = isStageModerator,
+                                onToggleHandRaised = { raised -> viewModel.setHandRaised(raised) },
+                                onMoveParticipant = { userId, role -> viewModel.moveStageParticipant(userId, role) },
+                                onSetMuted = { userId, muted -> viewModel.setStageParticipantMuted(userId, muted) }
+                            )
+                        }
+                        AudioOnlyLayout(
+                            participants = participants,
+                            peerConnectionStates = peerConnectionStates,
+                            signalingStates = signalingStates,
+                            debugInfo = debugInfo,
+                            onVolumeChange = { id, vol -> viewModel.setParticipantVolume(id, vol) }
+                        )
+                    }
                 }
                 } else if (!permissionsState.allPermissionsGranted) {
                 PermissionRequestContent { permissionsState.launchMultiplePermissionRequest() }
@@ -483,6 +550,142 @@ fun VoiceRoomActiveScreen(
             Box(Modifier.fillMaxSize().padding(bottom = 100.dp), contentAlignment = Alignment.BottomCenter) {
                 activeReactions.forEach { reaction ->
                     FloatingReaction(reaction)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StageControlPanel(
+    participants: List<VoiceParticipant>,
+    currentUserId: String,
+    isModerator: Boolean,
+    onToggleHandRaised: (Boolean) -> Unit,
+    onMoveParticipant: (String, String) -> Unit,
+    onSetMuted: (String, Boolean) -> Unit
+) {
+    val self = participants.firstOrNull {
+        it.id.trim().equals(currentUserId.trim(), ignoreCase = true)
+    }
+    val raisedHands = participants.filter { it.handRaised }
+    val stageParticipants = participants.filter {
+        it.role == VoiceStageRoles.MODERATOR || it.role == VoiceStageRoles.SPEAKER
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Campaign, contentDescription = null)
+                    Column {
+                        Text("Modo escenario", fontWeight = FontWeight.Bold)
+                        Text(
+                            when (self?.role) {
+                                VoiceStageRoles.MODERATOR -> "Estás moderando"
+                                VoiceStageRoles.SPEAKER -> "Tienes la palabra"
+                                else -> "Estás en la audiencia"
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                if (self?.role == VoiceStageRoles.AUDIENCE) {
+                    FilledTonalButton(
+                        onClick = { onToggleHandRaised(!self.handRaised) }
+                    ) {
+                        Icon(
+                            imageVector = if (self.handRaised) Icons.Default.BackHand else Icons.Default.PanTool,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (self.handRaised) "Cancelar solicitud" else "Solicitar hablar")
+                    }
+                }
+            }
+
+            if (isModerator && raisedHands.isNotEmpty()) {
+                Text(
+                    "${raisedHands.size} ${if (raisedHands.size == 1) "solicitud" else "solicitudes"} para hablar",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(raisedHands, key = { "raised-${it.id}" }) { participant ->
+                        ElevatedCard {
+                            Column(
+                                modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(participant.name, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Button(
+                                        onClick = {
+                                            onMoveParticipant(participant.id, VoiceStageRoles.SPEAKER)
+                                        }
+                                    ) {
+                                        Text("Dar palabra")
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            onMoveParticipant(participant.id, VoiceStageRoles.AUDIENCE)
+                                        }
+                                    ) {
+                                        Text("Rechazar")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (isModerator && stageParticipants.any { it.id != currentUserId }) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(stageParticipants.filterNot { it.id == currentUserId }, key = { "stage-${it.id}" }) { participant ->
+                        OutlinedCard {
+                            Column(
+                                modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(participant.name, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (participant.role == VoiceStageRoles.MODERATOR) "Moderador" else "Orador",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (participant.role == VoiceStageRoles.SPEAKER) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        TextButton(
+                                            onClick = { onSetMuted(participant.id, !participant.isMuted) }
+                                        ) {
+                                            Text(if (participant.isMuted) "Activar" else "Silenciar")
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                onMoveParticipant(participant.id, VoiceStageRoles.AUDIENCE)
+                                            }
+                                        ) {
+                                            Text("A audiencia")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -819,12 +1022,16 @@ fun ControlBar(
     isMuted: Boolean,
     isSpeaker: Boolean,
     videoMode: VoiceRoomRepository.VideoMode,
+    canPublishMedia: Boolean,
+    isStage: Boolean,
+    handRaised: Boolean,
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
     onToggleCamera: () -> Unit,
     onToggleScreenShare: () -> Unit,
     onShowChat: () -> Unit,
     onShowReactions: () -> Unit,
+    onToggleHandRaised: () -> Unit,
     onToggleCinema: () -> Unit,
     isCinemaActive: Boolean,
     isCreator: Boolean,
@@ -860,6 +1067,7 @@ fun ControlBar(
                  icon = if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) Icons.Rounded.StopScreenShare else Icons.Rounded.ScreenShare,
                  isActive = videoMode == VoiceRoomRepository.VideoMode.SCREEN,
                  activeColor = Color.Red, // Make it red when sharing like a "recording" indicator
+                 enabled = canPublishMedia,
                  onClick = onToggleScreenShare
             )
             
@@ -874,8 +1082,18 @@ fun ControlBar(
             ControlIcon(
                  icon = if (videoMode == VoiceRoomRepository.VideoMode.CAMERA) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff,
                  isActive = videoMode == VoiceRoomRepository.VideoMode.CAMERA,
+                 enabled = canPublishMedia,
                  onClick = onToggleCamera
             )
+
+            if (isStage && !canPublishMedia) {
+                ControlIcon(
+                    icon = Icons.Default.PanTool,
+                    isActive = handRaised,
+                    activeColor = MaterialTheme.colorScheme.tertiary,
+                    onClick = onToggleHandRaised
+                )
+            }
 
             // Mic
             ControlIcon(
@@ -884,6 +1102,7 @@ fun ControlBar(
                  activeColor = MaterialTheme.colorScheme.primary,
                  inactiveColor = MaterialTheme.colorScheme.error,
                  filled = true,
+                 enabled = canPublishMedia,
                  onClick = onToggleMute
             )
             
@@ -930,6 +1149,7 @@ fun ControlIcon(
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     filled: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val backgroundColor = if (filled && isActive) activeColor.copy(alpha = 0.1f) else Color.Transparent
@@ -937,6 +1157,7 @@ fun ControlIcon(
     
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .background(backgroundColor, CircleShape)
             .size(48.dp)
@@ -944,7 +1165,7 @@ fun ControlIcon(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = contentColor,
+            tint = if (enabled) contentColor else contentColor.copy(alpha = 0.35f),
             modifier = Modifier.size(28.dp)
         )
     }

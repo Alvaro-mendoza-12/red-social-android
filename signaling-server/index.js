@@ -637,7 +637,7 @@ async function setParticipantCount(roomId, participantCount) {
 
 async function syncVoiceRoomJoin(socket, roomId, participant) {
     try {
-        await callUbuntuApi(`/v1/data/voice/rooms/${encodeURIComponent(roomId)}/join`, {
+        const payload = await callUbuntuApi(`/v1/data/voice/rooms/${encodeURIComponent(roomId)}/join`, {
             method: 'POST',
             accessToken: socket.data.authToken,
             body: {
@@ -647,6 +647,21 @@ async function syncVoiceRoomJoin(socket, roomId, participant) {
                 isMuted: Boolean(participant?.isMuted)
             }
         });
+        const persisted = Array.isArray(payload?.participants)
+            ? payload.participants.find((item) => String(item?.user_id || item?.id || '').toLowerCase() === String(socket.data.authUserId || '').toLowerCase())
+            : null;
+        const memoryParticipant = rooms.get(roomId)?.get(socket.id);
+        if (memoryParticipant && persisted) {
+            memoryParticipant.role = String(persisted.role || 'speaker').toLowerCase();
+            memoryParticipant.isMuted = Boolean(persisted.is_muted);
+            memoryParticipant.handRaised = Boolean(persisted.hand_raised);
+            socket.emit('voice-stage-state', {
+                roomId,
+                role: memoryParticipant.role,
+                isMuted: memoryParticipant.isMuted,
+                handRaised: memoryParticipant.handRaised
+            });
+        }
     } catch (error) {
         console.error(`[SOCKET_DEBUG] [DB] Error syncing voice room join for ${roomId}:`, error);
         socket.emit('room-sync-warning', {
@@ -726,6 +741,31 @@ async function getLiveStreamMeta(liveId, accessToken) {
 // room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing, isScreenSharing })
 const rooms = new Map();
 const voiceRoomCleanupTimers = new Map();
+
+function voiceParticipantCanPublish(roomId, socketId) {
+    const role = String(rooms.get(roomId)?.get(socketId)?.role || 'speaker').toLowerCase();
+    return role === 'speaker' || role === 'moderator';
+}
+
+async function refreshVoiceParticipantAccess(socket, roomId) {
+    try {
+        const payload = await callUbuntuApi(`/v1/data/voice/rooms/${encodeURIComponent(roomId)}`, {
+            accessToken: socket.data.authToken
+        });
+        const persisted = Array.isArray(payload?.participants)
+            ? payload.participants.find((item) => String(item?.user_id || item?.id || '').toLowerCase() === String(socket.data.authUserId || '').toLowerCase())
+            : null;
+        const memoryParticipant = rooms.get(roomId)?.get(socket.id);
+        if (memoryParticipant && persisted) {
+            memoryParticipant.role = String(persisted.role || 'speaker').toLowerCase();
+            memoryParticipant.isMuted = Boolean(persisted.is_muted);
+            memoryParticipant.handRaised = Boolean(persisted.hand_raised);
+        }
+    } catch (error) {
+        console.warn(`[SOCKET_DEBUG] [STAGE] Could not refresh role for ${roomId}:`, error.message || error);
+    }
+    return voiceParticipantCanPublish(roomId, socket.id);
+}
 const VOICE_EMPTY_ROOM_GRACE_MS = clampInt(process.env.VOICE_EMPTY_ROOM_GRACE_MS, 15 * 1000, 3 * 1000, 5 * 60 * 1000);
 const VOICE_PRESENCE_HEARTBEAT_MS = clampInt(process.env.VOICE_PRESENCE_HEARTBEAT_MS, 30 * 1000, 15 * 1000, 2 * 60 * 1000);
 
@@ -805,6 +845,9 @@ io.on('connection', (socket) => {
             userId,
             name,
             avatarUrl,
+            role: 'pending',
+            isMuted: Boolean(data.isMuted),
+            handRaised: false,
             isCameraSharing: false,
             isScreenSharing: false
         });
@@ -908,25 +951,37 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('speaking-status', (data) => {
+    socket.on('speaking-status', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'speaking-status');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
+        if (Boolean(data?.isSpeaking) && !(await refreshVoiceParticipantAccess(socket, roomId))) {
+            socket.emit('voice-stage-denied', { roomId, action: 'speaking', error: 'VOICE_STAGE_AUDIENCE_MUTED' });
+            return;
+        }
         socket.to(roomId).emit('speaking-status', { ...data, userId });
     });
 
-    socket?.on('mute-state', (data) => {
+    socket?.on('mute-state', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'mute-state');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
+        if (data?.isMuted === false && !(await refreshVoiceParticipantAccess(socket, roomId))) {
+            socket.emit('voice-stage-denied', { roomId, action: 'unmute', error: 'VOICE_STAGE_AUDIENCE_MUTED' });
+            return;
+        }
         socket.to(roomId).emit('mute-state', { ...data, userId });
     });
 
-    socket?.on('media-status', (data) => {
+    socket?.on('media-status', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'media-status');
         const { isCameraSharing, isScreenSharing } = data;
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
+        if ((Boolean(isCameraSharing) || Boolean(isScreenSharing)) && !(await refreshVoiceParticipantAccess(socket, roomId))) {
+            socket.emit('voice-stage-denied', { roomId, action: 'media', error: 'VOICE_STAGE_AUDIENCE_MEDIA_DENIED' });
+            return;
+        }
 
         // Persist on server for late joiners
         const currentRoomParticipants = rooms.get(roomId);

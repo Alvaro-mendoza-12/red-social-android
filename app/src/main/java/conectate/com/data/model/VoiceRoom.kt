@@ -19,10 +19,12 @@ data class VoiceRoom(
     @SerialName("agora_channel_name") val agoraChannelName: String = "",
     val password: String? = null,
     @SerialName("readable_id") val readableId: String? = null,
+    @SerialName("room_mode") val roomMode: String = VoiceRoomModes.CASUAL,
     val settings: kotlinx.serialization.json.JsonElement? = null,
     @Transient val agoraToken: String = "",
     @Transient val participantIds: List<String> = emptyList(),
-    @Transient val speakerIds: List<String> = emptyList(),
+    @SerialName("speaker_ids") val speakerIds: List<String> = emptyList(),
+    @SerialName("raised_hand_count") val raisedHandCount: Int = 0,
     @Transient val participantNames: Map<String, String> = emptyMap(),
     @SerialName("is_cinema_mode") val isCinemaMode: Boolean = false,
     @SerialName("current_video_url") val currentVideoUrl: String? = null,
@@ -40,5 +42,24 @@ data class VoiceParticipant(
     val avatarUrl: String? = null,
     val isSpeaking: Boolean = false,
     val isMuted: Boolean = false,
+    val role: String = VoiceStageRoles.SPEAKER,
+    @SerialName("hand_raised") val handRaised: Boolean = false,
     @Transient val socketId: String = ""
 )
+
+object VoiceRoomModes {
+    const val CASUAL = "casual"
+    const val STAGE = "stage"
+}
+
+object VoiceStageRoles {
+    const val MODERATOR = "moderator"
+    const val SPEAKER = "speaker"
+    const val AUDIENCE = "audience"
+}
+
+fun VoiceRoom.isStageMode(): Boolean = roomMode.equals(VoiceRoomModes.STAGE, ignoreCase = true)
+
+fun VoiceParticipant.canPublishOnStage(): Boolean =
+    role.equals(VoiceStageRoles.MODERATOR, ignoreCase = true) ||
+        role.equals(VoiceStageRoles.SPEAKER, ignoreCase = true)

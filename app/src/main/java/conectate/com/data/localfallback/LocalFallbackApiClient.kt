@@ -672,7 +672,8 @@ private data class LocalFallbackCreateVoiceRoomRequest(
     val isPublic: Boolean = true,
     val maxParticipants: Int = 50,
     val agoraChannelName: String? = null,
-    val readableId: String? = null
+    val readableId: String? = null,
+    val roomMode: String = "casual"
 )
 
 @Serializable
@@ -916,6 +917,17 @@ private data class LocalFallbackVoiceJoinRequest(
     val userAvatarUrl: String? = null,
     val socketId: String? = null,
     val isMuted: Boolean = false
+)
+
+@Serializable
+private data class LocalFallbackVoiceStageRequest(
+    val handRaised: Boolean
+)
+
+@Serializable
+private data class LocalFallbackVoiceStageModerationRequest(
+    val role: String? = null,
+    val isMuted: Boolean? = null
 )
 
 @Serializable
@@ -4027,7 +4039,8 @@ class LocalFallbackApiClient @Inject constructor(
         description: String?,
         isPublic: Boolean,
         maxParticipants: Int,
-        agoraChannelName: String?
+        agoraChannelName: String?,
+        roomMode: String
     ): Result<VoiceRoom> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -4041,7 +4054,8 @@ class LocalFallbackApiClient @Inject constructor(
                         description = description,
                         isPublic = isPublic,
                         maxParticipants = maxParticipants,
-                        agoraChannelName = agoraChannelName
+                        agoraChannelName = agoraChannelName,
+                        roomMode = roomMode
                     )
                 )
             }
@@ -4115,6 +4129,60 @@ class LocalFallbackApiClient @Inject constructor(
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
                 Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setVoiceStageHandRaised(
+        accessToken: String,
+        roomId: String,
+        handRaised: Boolean
+    ): Result<List<VoiceParticipant>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/voice/rooms/${urlEncode(roomId)}/stage/request"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackVoiceStageRequest(handRaised))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val payload = json.decodeFromString<LocalFallbackVoiceParticipantsResponse>(body)
+                Result.success(payload.participants.map(::mapVoiceParticipant))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun moderateVoiceStageParticipant(
+        accessToken: String,
+        roomId: String,
+        userId: String,
+        role: String? = null,
+        isMuted: Boolean? = null
+    ): Result<List<VoiceParticipant>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/voice/rooms/${urlEncode(roomId)}/stage/participants/${urlEncode(userId)}"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackVoiceStageModerationRequest(role = role, isMuted = isMuted))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val payload = json.decodeFromString<LocalFallbackVoiceParticipantsResponse>(body)
+                Result.success(payload.participants.map(::mapVoiceParticipant))
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
@@ -4549,6 +4617,24 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("Selecciona un recordatorio válido.")
             "EVENT_REMINDER_TOO_LATE" ->
                 Exception("Ese recordatorio ya habría ocurrido. Elige uno más cercano o ninguno.")
+            "VOICE_ROOM_MODE_INVALID" ->
+                Exception("Selecciona una modalidad válida para la sala.")
+            "VOICE_STAGE_REQUIRED" ->
+                Exception("Esta acción solo está disponible en una sala de escenario.")
+            "VOICE_STAGE_JOIN_REQUIRED" ->
+                Exception("Entra primero al escenario para solicitar la palabra.")
+            "VOICE_STAGE_ALREADY_SPEAKER" ->
+                Exception("Ya puedes hablar en este escenario.")
+            "VOICE_STAGE_MODERATION_DENIED" ->
+                Exception("No tienes permiso para moderar este escenario.")
+            "VOICE_STAGE_MODERATOR_IMMUTABLE" ->
+                Exception("No puedes cambiar el rol de esa persona moderadora.")
+            "VOICE_STAGE_ROLE_INVALID" ->
+                Exception("Selecciona un rol válido para el escenario.")
+            "VOICE_STAGE_PARTICIPANT_REQUIRED", "VOICE_STAGE_PARTICIPANT_NOT_FOUND" ->
+                Exception("Esa persona ya no está en el escenario.")
+            "VOICE_STAGE_UPDATE_REQUIRED" ->
+                Exception("Selecciona una acción para esta persona.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty(),
@@ -5079,6 +5165,9 @@ class LocalFallbackApiClient @Inject constructor(
                 isPublic = boolOf(row, "is_public", "public", fallback = true),
                 isActive = boolOf(row, "is_active", "active", fallback = true),
                 readableId = textOf(row, "readable_id").ifBlank { null },
+                roomMode = textOf(row, "room_mode", "roomMode").ifBlank { "casual" },
+                speakerIds = stringListOf(row, "speaker_ids", "speakerIds"),
+                raisedHandCount = intOf(row, "raised_hand_count", "raisedHandCount"),
             )
         }
     }
@@ -5091,6 +5180,8 @@ class LocalFallbackApiClient @Inject constructor(
             avatarUrl = UbuntuStorageUrl.rewrite(textOf(row, "user_avatar_url", "avatar_url")),
             isSpeaking = boolOf(row, "is_speaking"),
             isMuted = boolOf(row, "is_muted"),
+            role = textOf(row, "role", "stage_role").ifBlank { "speaker" },
+            handRaised = boolOf(row, "hand_raised", "handRaised"),
             socketId = textOf(row, "socket_id")
         )
     }

@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.VoiceRoom
+import conectate.com.data.model.isStageMode
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -222,6 +223,18 @@ fun RoomCard(
                         text = "Por ${room.creatorName}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SuggestionChip(
+                        onClick = onClick,
+                        label = { Text(if (room.isStageMode()) "Escenario" else "Sala casual") },
+                        icon = {
+                            Icon(
+                                imageVector = if (room.isStageMode()) Icons.Default.Campaign else Icons.Default.Groups,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     )
                 }
                 

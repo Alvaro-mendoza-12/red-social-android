@@ -1054,6 +1054,7 @@ app.get('/ready', async (_req, res, next) => {
         'community_channels_v1',
         'community_member_profiles_v1',
         'community_events_v1',
+        'voice_room_stage_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),

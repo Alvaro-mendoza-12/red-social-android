@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.ui.unit.sp
+import conectate.com.data.model.VoiceRoomModes
 import conectate.com.data.repository.VoiceRoomRepository
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,6 +30,7 @@ fun CreateVoiceRoomScreen(
     var createdRoomId by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var roomMode by remember { mutableStateOf(VoiceRoomModes.CASUAL) }
     var isPublic by remember { mutableStateOf(true) }
     var password by remember { mutableStateOf("") }
     val error by viewModel.error.collectAsState()
@@ -154,6 +156,52 @@ fun CreateVoiceRoomScreen(
                     minLines = 2
                 )
 
+                Text("Modalidad", style = MaterialTheme.typography.titleMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedCard(
+                        onClick = { roomMode = VoiceRoomModes.CASUAL },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = roomMode == VoiceRoomModes.CASUAL,
+                                onClick = { roomMode = VoiceRoomModes.CASUAL }
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text("Sala casual", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                Text(
+                                    "Todos pueden conversar, activar cámara y compartir pantalla.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                    OutlinedCard(
+                        onClick = { roomMode = VoiceRoomModes.STAGE },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = roomMode == VoiceRoomModes.STAGE,
+                                onClick = { roomMode = VoiceRoomModes.STAGE }
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text("Escenario", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                Text(
+                                    "La audiencia escucha y solicita la palabra; moderadores controlan quién habla.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -192,7 +240,13 @@ fun CreateVoiceRoomScreen(
 
                 Button(
                     onClick = {
-                        viewModel.createRoom(name, description, isPublic, if (isPublic) null else password) { id ->
+                        viewModel.createRoom(
+                            name,
+                            description,
+                            isPublic,
+                            if (isPublic) null else password,
+                            roomMode
+                        ) { id ->
                             // Assuming id is usable for navigation
                             createdRoomId = id 
                         }

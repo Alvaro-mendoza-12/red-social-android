@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
+import conectate.com.data.model.VoiceStageRoles
+import conectate.com.data.model.canPublishOnStage
+import conectate.com.data.model.isStageMode
 import conectate.com.data.repository.VoiceRoomRepository
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -111,6 +114,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     val isSearchingInvites: StateFlow<Boolean> = _isSearchingInvites.asStateFlow()
 
     private var joinedRoomId: String? = null
+    private var stageSyncJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -230,14 +234,23 @@ class VoiceRoomActiveViewModel @Inject constructor(
                     ?: seed?.fullName
                     ?: seed?.email?.substringBefore("@")
                     ?: "Usuario"
+                val startMuted = resolvedRoom.isStageMode()
+                    && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase()
+                if (startMuted) {
+                    _isMuted.value = true
+                }
                 voiceRoomRepository.toggleSpeaker(_isSpeaker.value)
                 voiceRoomRepository.joinRoom(
                     roomId = resolvedRoom.id,
                     userId = userId,
                     displayName = displayName,
                     avatarUrl = seed?.avatarUrl,
-                    signalingRoomId = roomId
+                    signalingRoomId = roomId,
+                    startMuted = startMuted
                 )
+                if (resolvedRoom.isStageMode()) {
+                    startStageSync(resolvedRoom.id)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomActiveVM", "Error joining room", e)
                 _isJoined.value = false
@@ -247,6 +260,11 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun toggleMute() {
+        if (!canCurrentUserPublish()) {
+            _isMuted.value = true
+            _joinError.value = "Solicita la palabra para activar el micrófono en este escenario."
+            return
+        }
         val next = !_isMuted.value
         _isMuted.value = next
         voiceRoomRepository.toggleMute(next)
@@ -263,6 +281,10 @@ class VoiceRoomActiveViewModel @Inject constructor(
         videoActionJob = viewModelScope.launch {
             if (!_isJoined.value) {
                 _joinError.value = "Espera a que la sala termine de conectar."
+                return@launch
+            }
+            if (!canCurrentUserPublish()) {
+                _joinError.value = "El moderador debe darte la palabra antes de activar la cámara."
                 return@launch
             }
             runCatching {
@@ -283,6 +305,10 @@ class VoiceRoomActiveViewModel @Inject constructor(
         videoActionJob = viewModelScope.launch {
             if (!_isJoined.value) {
                 _joinError.value = "Espera a que la sala termine de conectar."
+                return@launch
+            }
+            if (!canCurrentUserPublish()) {
+                _joinError.value = "El moderador debe darte la palabra antes de compartir pantalla."
                 return@launch
             }
             runCatching {
@@ -308,9 +334,72 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     fun leaveRoom() {
         viewModelScope.launch {
+            stageSyncJob?.cancel()
+            stageSyncJob = null
             voiceRoomRepository.leaveRoom()
             _isJoined.value = false
             joinedRoomId = null
+        }
+    }
+
+    fun canCurrentUserPublish(): Boolean {
+        if (_room.value?.isStageMode() != true) return true
+        if (
+            _room.value?.creatorId?.trim()
+                ?.equals(getCurrentUserId().trim(), ignoreCase = true) == true
+        ) return true
+        return _participants.value.firstOrNull {
+            it.id.trim().equals(getCurrentUserId().trim(), ignoreCase = true)
+        }?.canPublishOnStage() == true
+    }
+
+    fun isCurrentUserStageModerator(): Boolean {
+        val currentId = getCurrentUserId().trim()
+        if (_room.value?.creatorId?.trim()?.equals(currentId, ignoreCase = true) == true) return true
+        return _participants.value.firstOrNull {
+            it.id.trim().equals(currentId, ignoreCase = true)
+        }?.role?.equals(VoiceStageRoles.MODERATOR, ignoreCase = true) == true
+    }
+
+    fun setHandRaised(handRaised: Boolean) {
+        val roomId = _room.value?.id ?: return
+        viewModelScope.launch {
+            voiceRoomRepository.setStageHandRaised(roomId, handRaised).fold(
+                onSuccess = { _joinError.value = null },
+                onFailure = { _joinError.value = it.message ?: "No se pudo actualizar tu solicitud." }
+            )
+        }
+    }
+
+    fun moveStageParticipant(userId: String, role: String) {
+        val roomId = _room.value?.id ?: return
+        viewModelScope.launch {
+            voiceRoomRepository.moderateStageParticipant(roomId, userId, role = role).fold(
+                onSuccess = { _joinError.value = null },
+                onFailure = { _joinError.value = it.message ?: "No se pudo actualizar a esta persona." }
+            )
+        }
+    }
+
+    fun setStageParticipantMuted(userId: String, isMuted: Boolean) {
+        val roomId = _room.value?.id ?: return
+        viewModelScope.launch {
+            voiceRoomRepository.moderateStageParticipant(roomId, userId, isMuted = isMuted).fold(
+                onSuccess = { _joinError.value = null },
+                onFailure = { _joinError.value = it.message ?: "No se pudo cambiar el micrófono." }
+            )
+        }
+    }
+
+    private fun startStageSync(roomId: String) {
+        stageSyncJob?.cancel()
+        stageSyncJob = viewModelScope.launch {
+            while (joinedRoomId == roomId) {
+                voiceRoomRepository.refreshVoiceRoomState(roomId).onFailure { error ->
+                    android.util.Log.w("VoiceRoomActiveVM", "No se pudo sincronizar el escenario", error)
+                }
+                delay(2_500)
+            }
         }
     }
 
