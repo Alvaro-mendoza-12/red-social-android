@@ -23,6 +23,9 @@ una copia íntegra transportable del repositorio.
 El cierre del escenario de voz B14 quedó respaldado en
 `backups/post-voice-stage-20260728-a4b2a86`; su bundle contiene el historial
 completo y los hashes de fuente y APK fueron verificados.
+La recuperación de red B15 quedó congelada en
+`backups/post-network-recovery-20260728-671d818` con fuente, historial Git
+completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
 
 ## Incrementos implementados
 
