@@ -44,7 +44,11 @@ import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Community
 import conectate.com.data.model.CommunityChannel
 import conectate.com.data.model.CommunityChannelCatalog
+import conectate.com.data.model.CommunityEvent
+import conectate.com.data.model.CommunityEventCatalog
 import conectate.com.data.model.CommunityMember
+import conectate.com.data.model.CommunityMemberProfile
+import conectate.com.data.model.CommunityMemberProfileCatalog
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.CommunityWithLastMessage
@@ -376,6 +380,111 @@ class CommunityRepository @Inject constructor(
                 channelId.trim().lowercase()
             )
         }
+
+    suspend fun getCommunityMemberProfiles(
+        communityId: String
+    ): Result<CommunityMemberProfileCatalog> = withContext(Dispatchers.IO) {
+        val userId = authService.getCurrentUserId().orEmpty()
+        if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
+            return@withContext Result.success(
+                CommunityMemberProfileCatalog(
+                    profile = CommunityMemberProfile(
+                        communityId = communityId,
+                        userId = userId
+                    )
+                )
+            )
+        }
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.loadCommunityMemberProfiles(
+            token,
+            communityId.trim().lowercase()
+        )
+    }
+
+    suspend fun updateCommunityMemberProfile(
+        communityId: String,
+        alias: String?,
+        bio: String?,
+        distinctive: String?
+    ): Result<CommunityMemberProfile> = withContext(Dispatchers.IO) {
+        if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
+            return@withContext Result.failure(
+                Exception("El perfil por comunidad requiere conexión con el servidor Novvin.")
+            )
+        }
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.updateCommunityMemberProfile(
+            token,
+            communityId.trim().lowercase(),
+            alias?.trim(),
+            bio?.trim(),
+            distinctive?.trim()
+        )
+    }
+
+    suspend fun getCommunityEvents(communityId: String): Result<CommunityEventCatalog> =
+        withContext(Dispatchers.IO) {
+            if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
+                return@withContext Result.success(CommunityEventCatalog())
+            }
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+            localFallbackApiClient.loadCommunityEvents(token, communityId.trim().lowercase())
+        }
+
+    suspend fun createCommunityEvent(
+        communityId: String,
+        title: String,
+        description: String?,
+        startsAt: String,
+        endsAt: String?,
+        location: String?
+    ): Result<CommunityEvent> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.createCommunityEvent(
+            token,
+            communityId.trim().lowercase(),
+            title.trim(),
+            description?.trim(),
+            startsAt,
+            endsAt,
+            location?.trim()
+        )
+    }
+
+    suspend fun cancelCommunityEvent(
+        communityId: String,
+        eventId: String
+    ): Result<CommunityEvent> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.cancelCommunityEvent(
+            token,
+            communityId.trim().lowercase(),
+            eventId.trim().lowercase()
+        )
+    }
+
+    suspend fun updateCommunityEventAttendance(
+        communityId: String,
+        eventId: String,
+        attending: Boolean,
+        reminderMinutes: Int?
+    ): Result<CommunityEvent> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.updateCommunityEventAttendance(
+            token,
+            communityId.trim().lowercase(),
+            eventId.trim().lowercase(),
+            if (attending) "going" else "not_going",
+            reminderMinutes.takeIf { attending }
+        )
+    }
 
     // --- REALTIME SUBSCRIPTION (ROBUST) ---
 

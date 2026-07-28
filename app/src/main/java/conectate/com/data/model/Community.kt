@@ -139,6 +139,50 @@ data class CommunityChannelCatalog(
     val channels: List<CommunityChannel> = emptyList()
 )
 
+@Serializable
+data class CommunityMemberProfile(
+    val communityId: String,
+    val userId: String,
+    val alias: String? = null,
+    val bio: String? = null,
+    val distinctive: String? = null,
+    val updatedAt: String? = null
+)
+
+@Serializable
+data class CommunityMemberProfileCatalog(
+    val profile: CommunityMemberProfile,
+    val profiles: List<CommunityMemberProfile> = emptyList()
+)
+
+@Serializable
+data class CommunityEvent(
+    val id: String,
+    val communityId: String,
+    val title: String,
+    val description: String? = null,
+    val startsAt: String,
+    val endsAt: String? = null,
+    val location: String? = null,
+    val createdBy: String,
+    val isCancelled: Boolean = false,
+    val attendanceCount: Int = 0,
+    val currentAttendance: String? = null,
+    val reminderMinutes: Int? = null,
+    val reminderAt: String? = null,
+    val reminderSentAt: String? = null,
+    val canManage: Boolean = false,
+    val createdAt: String? = null,
+    val updatedAt: String? = null
+)
+
+@Serializable
+data class CommunityEventCatalog(
+    val currentRole: String = "member",
+    val canManageEvents: Boolean = false,
+    val events: List<CommunityEvent> = emptyList()
+)
+
 fun CommunityChannel.acceptsMessages(): Boolean = type != "voice"
 
 fun CommunityChannel.isEffectivelyPaused(nowMillis: Long = System.currentTimeMillis()): Boolean {

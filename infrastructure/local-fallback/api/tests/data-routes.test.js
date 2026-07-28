@@ -3,6 +3,8 @@ const {
   buildProfileForUser,
   collectionRoleCapabilities,
   communityChannelPayload,
+  communityEventPayload,
+  communityMemberProfilePayload,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -75,6 +77,62 @@ assert.deepStrictEqual(
     isPaused: true,
     canManage: true,
     canPause: true,
+  },
+)
+assert.deepStrictEqual(
+  communityMemberProfilePayload(
+    {
+      community_id: 'community-1',
+      user_id: 'user-1',
+      alias: 'Ada',
+      bio: 'Ciencia y comunidad',
+      distinctive: '🔭',
+      updated_at: new Date('2026-07-28T14:00:00.000Z'),
+    },
+  ),
+  {
+    communityId: 'community-1',
+    userId: 'user-1',
+    alias: 'Ada',
+    bio: 'Ciencia y comunidad',
+    distinctive: '🔭',
+    updatedAt: '2026-07-28T14:00:00.000Z',
+  },
+)
+assert.deepStrictEqual(
+  communityEventPayload(
+    {
+      id: 'event-1',
+      community_id: 'community-1',
+      title: 'Astronomía',
+      starts_at: new Date('2026-07-29T14:00:00.000Z'),
+      created_by: 'user-1',
+    },
+    {
+      attendanceCount: 3,
+      currentAttendance: 'going',
+      reminderMinutes: 60,
+      canManage: true,
+    },
+  ),
+  {
+    id: 'event-1',
+    communityId: 'community-1',
+    title: 'Astronomía',
+    description: null,
+    startsAt: '2026-07-29T14:00:00.000Z',
+    endsAt: null,
+    location: null,
+    createdBy: 'user-1',
+    isCancelled: false,
+    attendanceCount: 3,
+    currentAttendance: 'going',
+    reminderMinutes: 60,
+    reminderAt: '2026-07-29T13:00:00.000Z',
+    reminderSentAt: null,
+    canManage: true,
+    createdAt: null,
+    updatedAt: null,
   },
 )
 

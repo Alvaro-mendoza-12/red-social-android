@@ -3,7 +3,9 @@ package conectate.com.presentation.messages
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Community
+import conectate.com.data.model.CommunityEvent
 import conectate.com.data.model.CommunityMember
+import conectate.com.data.model.CommunityMemberProfile
 import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.supabase.AuthService
@@ -51,6 +53,18 @@ class CommunityDetailViewModel @Inject constructor(
     private val _roleCatalog = MutableStateFlow<CommunityRoleCatalog?>(null)
     val roleCatalog = _roleCatalog.asStateFlow()
 
+    private val _communityProfile = MutableStateFlow<CommunityMemberProfile?>(null)
+    val communityProfile = _communityProfile.asStateFlow()
+
+    private val _communityProfiles = MutableStateFlow<Map<String, CommunityMemberProfile>>(emptyMap())
+    val communityProfiles = _communityProfiles.asStateFlow()
+
+    private val _events = MutableStateFlow<List<CommunityEvent>>(emptyList())
+    val events = _events.asStateFlow()
+
+    private val _canManageEvents = MutableStateFlow(false)
+    val canManageEvents = _canManageEvents.asStateFlow()
+
     private var communityId: String? = null
 
     init {
@@ -67,6 +81,10 @@ class CommunityDetailViewModel @Inject constructor(
         _isAdmin.value = false
         _isCreator.value = false
         _roleCatalog.value = null
+        _communityProfile.value = null
+        _communityProfiles.value = emptyMap()
+        _events.value = emptyList()
+        _canManageEvents.value = false
         
         // 1. Force Sync
         viewModelScope.launch {
@@ -90,6 +108,7 @@ class CommunityDetailViewModel @Inject constructor(
             if (userId != null) {
                 communityRepository.isUserMemberFlow(id, userId).collect { isMem ->
                     _isMember.value = isMem
+                    if (isMem) refreshCommunityFeatures(silent = true)
                 }
             }
         }
@@ -199,6 +218,107 @@ class CommunityDetailViewModel @Inject constructor(
         }
     }
 
+    fun saveCommunityProfile(
+        alias: String,
+        bio: String,
+        distinctive: String,
+        onSuccess: () -> Unit
+    ) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            val result = communityRepository.updateCommunityMemberProfile(
+                communityId = id,
+                alias = alias,
+                bio = bio,
+                distinctive = distinctive
+            )
+            if (result.isSuccess) {
+                val profile = result.getOrThrow()
+                _communityProfile.value = profile
+                _communityProfiles.value = _communityProfiles.value + (
+                    profile.userId.trim().lowercase() to profile
+                )
+                _actionMessage.value = "Tu perfil de la comunidad se guardó."
+                onSuccess()
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo guardar tu perfil de la comunidad."
+            }
+        }
+    }
+
+    fun createCommunityEvent(
+        title: String,
+        description: String,
+        startsAt: String,
+        location: String,
+        onSuccess: () -> Unit
+    ) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            val result = communityRepository.createCommunityEvent(
+                communityId = id,
+                title = title,
+                description = description,
+                startsAt = startsAt,
+                endsAt = null,
+                location = location
+            )
+            if (result.isSuccess) {
+                val event = result.getOrThrow()
+                _events.value = (_events.value + event)
+                    .distinctBy { it.id }
+                    .sortedBy { it.startsAt }
+                _actionMessage.value = "Evento creado."
+                onSuccess()
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo crear el evento."
+            }
+        }
+    }
+
+    fun setEventAttendance(
+        event: CommunityEvent,
+        attending: Boolean,
+        reminderMinutes: Int?
+    ) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            val result = communityRepository.updateCommunityEventAttendance(
+                communityId = id,
+                eventId = event.id,
+                attending = attending,
+                reminderMinutes = reminderMinutes
+            )
+            if (result.isSuccess) {
+                replaceEvent(result.getOrThrow())
+                _actionMessage.value = when {
+                    !attending -> "Ya no asistirás a este evento."
+                    reminderMinutes != null -> "Asistencia y recordatorio guardados."
+                    else -> "Tu asistencia quedó confirmada."
+                }
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo actualizar tu asistencia."
+            }
+        }
+    }
+
+    fun cancelCommunityEvent(event: CommunityEvent) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            val result = communityRepository.cancelCommunityEvent(id, event.id)
+            if (result.isSuccess) {
+                replaceEvent(result.getOrThrow())
+                _actionMessage.value = "Evento cancelado."
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo cancelar el evento."
+            }
+        }
+    }
+
     fun updateCommunityInfo(
         name: String,
         description: String?,
@@ -244,8 +364,50 @@ class CommunityDetailViewModel @Inject constructor(
             if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
                 recomputePermissions()
+                val myId = _currentUserId.value
+                val isIncluded = _members.value.any { sameCommunityUserId(it.user_id, myId) }
+                if (isIncluded || sameCommunityUserId(_community.value?.creator_id, myId)) {
+                    refreshCommunityFeatures(silent = true)
+                }
             }
         }
+    }
+
+    private fun refreshCommunityFeatures(silent: Boolean) {
+        val id = communityId ?: return
+        viewModelScope.launch {
+            val profileResult = communityRepository.getCommunityMemberProfiles(id)
+            if (profileResult.isSuccess) {
+                val catalog = profileResult.getOrThrow()
+                _communityProfile.value = catalog.profile
+                _communityProfiles.value = catalog.profiles.associateBy {
+                    it.userId.trim().lowercase()
+                }
+            } else if (!silent) {
+                _actionMessage.value = profileResult.exceptionOrNull()?.message
+                    ?: "No se pudo cargar tu perfil de la comunidad."
+            }
+        }
+        viewModelScope.launch {
+            val eventsResult = communityRepository.getCommunityEvents(id)
+            if (eventsResult.isSuccess) {
+                val catalog = eventsResult.getOrThrow()
+                _events.value = catalog.events
+                _canManageEvents.value = catalog.canManageEvents
+            } else if (!silent) {
+                _actionMessage.value = eventsResult.exceptionOrNull()?.message
+                    ?: "No se pudieron cargar los eventos."
+            }
+        }
+    }
+
+    private fun replaceEvent(event: CommunityEvent) {
+        _events.value = _events.value
+            .map { if (it.id == event.id) event else it }
+            .let { current ->
+                if (current.none { it.id == event.id }) current + event else current
+            }
+            .sortedBy { it.startsAt }
     }
 
     private fun recomputePermissions() {

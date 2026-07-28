@@ -5,7 +5,11 @@ const express = require('express')
 const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
-const { ensureLocalDataTables, registerDataRoutes } = require('./data-routes')
+const {
+  ensureLocalDataTables,
+  processDueCommunityEventReminders,
+  registerDataRoutes,
+} = require('./data-routes')
 const { ensurePostgrestCompatTables, registerPostgrestCompatRoutes } = require('./postgrest-compat-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
@@ -2059,6 +2063,7 @@ if (process.env.ROUTE_CHECK_ONLY === '1') {
 let server
 let scheduledMessageTimer
 let notificationDigestTimer
+let communityEventReminderTimer
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
@@ -2089,6 +2094,16 @@ ensureAuthMetadataColumns()
     runNotificationDigests()
     notificationDigestTimer = setInterval(runNotificationDigests, 60_000)
     notificationDigestTimer.unref?.()
+    const runCommunityEventReminders = () => {
+      void processDueCommunityEventReminders(pool).catch((error) => {
+        console.error('[community-event-reminders] worker failed', {
+          message: String(error?.message || error).slice(0, 240),
+        })
+      })
+    }
+    runCommunityEventReminders()
+    communityEventReminderTimer = setInterval(runCommunityEventReminders, 30_000)
+    communityEventReminderTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -2099,6 +2114,7 @@ async function shutdown(signal) {
   console.log(`received ${signal}, shutting down`)
   if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)
   if (notificationDigestTimer) clearInterval(notificationDigestTimer)
+  if (communityEventReminderTimer) clearInterval(communityEventReminderTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

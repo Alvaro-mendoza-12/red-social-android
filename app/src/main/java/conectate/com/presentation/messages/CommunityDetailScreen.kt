@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +33,12 @@ import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.CommunityRoleCapabilities
+import conectate.com.data.model.CommunityEvent
+import conectate.com.data.model.CommunityMemberProfile
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +54,10 @@ fun CommunityDetailScreen(
     val currentUserId by viewModel.currentUserId.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val roleCatalog by viewModel.roleCatalog.collectAsState()
+    val communityProfile by viewModel.communityProfile.collectAsState()
+    val communityProfiles by viewModel.communityProfiles.collectAsState()
+    val events by viewModel.events.collectAsState()
+    val canManageEvents by viewModel.canManageEvents.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
@@ -52,6 +65,8 @@ fun CommunityDetailScreen(
     var showDeletedByOtherAlert by remember { mutableStateOf(false) }
     var showEditCommunityDialog by remember { mutableStateOf(false) }
     var showRolePreviewDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var showCreateEventDialog by remember { mutableStateOf(false) }
     
     val normalizedCurrentUserId = currentUserId?.trim()?.lowercase().orEmpty()
     val normalizedCreatorId = community?.creator_id?.trim()?.lowercase().orEmpty()
@@ -113,6 +128,19 @@ fun CommunityDetailScreen(
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Visibility, contentDescription = null)
+                                }
+                            )
+                            Divider()
+                        }
+                        if (isMember) {
+                            DropdownMenuItem(
+                                text = { Text("Mi perfil en la comunidad") },
+                                onClick = {
+                                    showMenu = false
+                                    showProfileDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Person, contentDescription = null)
                                 }
                             )
                             Divider()
@@ -277,6 +305,67 @@ fun CommunityDetailScreen(
                     }
                 }
 
+                if (isMember) {
+                    item {
+                        CommunityIdentityCard(
+                            profile = communityProfile,
+                            onEdit = { showProfileDialog = true }
+                        )
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Eventos",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "Encuentros y actividades de la comunidad",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (canManageEvents || isAdmin) {
+                                FilledTonalIconButton(
+                                    onClick = { showCreateEventDialog = true }
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Crear evento")
+                                }
+                            }
+                        }
+                    }
+
+                    if (events.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Todavía no hay próximos eventos.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    } else {
+                        items(events, key = { "event-${it.id}" }) { event ->
+                            CommunityEventCard(
+                                event = event,
+                                onAttendanceChange = { attending, reminderMinutes ->
+                                    viewModel.setEventAttendance(
+                                        event = event,
+                                        attending = attending,
+                                        reminderMinutes = reminderMinutes
+                                    )
+                                },
+                                onCancel = { viewModel.cancelCommunityEvent(event) }
+                            )
+                        }
+                    }
+                }
+
                 // Members Section
                 if (isMember || community?.is_public == true) {
                     item {
@@ -287,6 +376,9 @@ fun CommunityDetailScreen(
                     }
 
                     items(members) { member ->
+                        val memberCommunityProfile = communityProfiles[
+                            member.user_id.trim().lowercase()
+                        ]
                         val memberRole = communityMemberDisplayRole(
                             memberUserId = member.user_id,
                             creatorId = community?.creator_id,
@@ -294,7 +386,14 @@ fun CommunityDetailScreen(
                         )
                         CommunityMemberItem(
                             userId = member.user_id,
-                            userName = member.userName,
+                            userName = memberCommunityProfile?.alias
+                                ?.let { alias ->
+                                    memberCommunityProfile.distinctive
+                                        ?.takeIf(String::isNotBlank)
+                                        ?.let { "$it $alias" }
+                                        ?: alias
+                                }
+                                ?: member.userName,
                             userImage = member.userImage,
                             role = memberRole,
                             isCurrentUser = member.user_id.trim().lowercase() == normalizedCurrentUserId,
@@ -317,6 +416,34 @@ fun CommunityDetailScreen(
         CommunityRolePreviewDialog(
             catalog = roleCatalog,
             onDismiss = { showRolePreviewDialog = false }
+        )
+    }
+
+    if (showProfileDialog) {
+        CommunityProfileDialog(
+            profile = communityProfile,
+            onDismiss = { showProfileDialog = false },
+            onSave = { alias, bio, distinctive ->
+                viewModel.saveCommunityProfile(alias, bio, distinctive) {
+                    showProfileDialog = false
+                }
+            }
+        )
+    }
+
+    if (showCreateEventDialog) {
+        CreateCommunityEventDialog(
+            onDismiss = { showCreateEventDialog = false },
+            onCreate = { title, description, startsAt, location ->
+                viewModel.createCommunityEvent(
+                    title = title,
+                    description = description,
+                    startsAt = startsAt,
+                    location = location
+                ) {
+                    showCreateEventDialog = false
+                }
+            }
         )
     }
 
@@ -378,6 +505,352 @@ fun CommunityDetailScreen(
         )
     }
 }
+
+@Composable
+private fun CommunityIdentityCard(
+    profile: CommunityMemberProfile?,
+    onEdit: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Person, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Mi perfil en esta comunidad",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            val displayAlias = profile?.alias?.takeIf(String::isNotBlank)
+            val displayDistinctive = profile?.distinctive?.takeIf(String::isNotBlank)
+            Text(
+                text = listOfNotNull(displayDistinctive, displayAlias)
+                    .joinToString(" ")
+                    .ifBlank { "Usas tu nombre general" },
+                style = MaterialTheme.typography.bodyLarge
+            )
+            profile?.bio?.takeIf(String::isNotBlank)?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            OutlinedButton(
+                onClick = onEdit,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Editar perfil de la comunidad")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommunityProfileDialog(
+    profile: CommunityMemberProfile?,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Unit
+) {
+    var alias by remember(profile) { mutableStateOf(profile?.alias.orEmpty()) }
+    var bio by remember(profile) { mutableStateOf(profile?.bio.orEmpty()) }
+    var distinctive by remember(profile) { mutableStateOf(profile?.distinctive.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mi perfil en la comunidad") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Este alias, biografía y distintivo solo se mostrarán dentro de esta comunidad.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = alias,
+                    onValueChange = { alias = it.take(50) },
+                    label = { Text("Alias") },
+                    supportingText = { Text("${alias.length}/50") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = bio,
+                    onValueChange = { bio = it.take(240) },
+                    label = { Text("Biografía") },
+                    supportingText = { Text("${bio.length}/240") },
+                    minLines = 3,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = distinctive,
+                    onValueChange = { distinctive = it.take(24) },
+                    label = { Text("Distintivo") },
+                    placeholder = { Text("Ejemplo: 🔭") },
+                    supportingText = { Text("Emoji o texto corto · ${distinctive.length}/24") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(alias, bio, distinctive) }) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+@Composable
+private fun CommunityEventCard(
+    event: CommunityEvent,
+    onAttendanceChange: (Boolean, Int?) -> Unit,
+    onCancel: () -> Unit
+) {
+    var reminderMenuExpanded by remember { mutableStateOf(false) }
+    val attending = event.currentAttendance == "going"
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Event,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = event.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Text(
+                text = formatCommunityEventDate(event.startsAt),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            event.location?.takeIf(String::isNotBlank)?.let {
+                Text("Lugar: $it", style = MaterialTheme.typography.bodyMedium)
+            }
+            event.description?.takeIf(String::isNotBlank)?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(
+                text = "${event.attendanceCount} asistirán",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (event.isCancelled) {
+                Text(
+                    text = "Evento cancelado",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Button(
+                    onClick = {
+                        onAttendanceChange(!attending, if (attending) null else event.reminderMinutes)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (attending) "Cancelar mi asistencia" else "Confirmar asistencia")
+                }
+                if (attending) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { reminderMenuExpanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(communityReminderLabel(event.reminderMinutes))
+                        }
+                        DropdownMenu(
+                            expanded = reminderMenuExpanded,
+                            onDismissRequest = { reminderMenuExpanded = false }
+                        ) {
+                            listOf<Int?>(null, 15, 30, 60, 1440).forEach { minutes ->
+                                DropdownMenuItem(
+                                    text = { Text(communityReminderLabel(minutes)) },
+                                    onClick = {
+                                        reminderMenuExpanded = false
+                                        onAttendanceChange(true, minutes)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                if (event.canManage) {
+                    TextButton(
+                        onClick = onCancel,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Cancelar evento para todos")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateCommunityEventDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String, String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var startsAtMillis by remember { mutableLongStateOf(System.currentTimeMillis() + 86_400_000L) }
+
+    fun openDateTimePicker() {
+        val calendar = Calendar.getInstance().apply { timeInMillis = startsAtMillis }
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                android.app.TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        startsAtMillis = Calendar.getInstance().apply {
+                            set(year, month, day, hour, minute, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                    },
+                    calendar.get(Calendar.HOUR_OF_DAY),
+                    calendar.get(Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            datePicker.minDate = System.currentTimeMillis() - 1_000L
+        }.show()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Crear evento") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it.take(100) },
+                    label = { Text("Título") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it.take(500) },
+                    label = { Text("Descripción") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = location,
+                    onValueChange = { location = it.take(160) },
+                    label = { Text("Lugar o enlace") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedButton(
+                    onClick = ::openDateTimePicker,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Event, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(formatCommunityEventMillis(startsAtMillis))
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onCreate(
+                        title,
+                        description,
+                        Instant.ofEpochMilli(startsAtMillis).toString(),
+                        location
+                    )
+                },
+                enabled = title.isNotBlank() && startsAtMillis > System.currentTimeMillis()
+            ) {
+                Text("Crear")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+private val communityEventFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM/yyyy · HH:mm")
+
+private fun formatCommunityEventDate(value: String): String =
+    runCatching {
+        Instant.parse(value)
+            .atZone(ZoneId.systemDefault())
+            .format(communityEventFormatter)
+    }.getOrDefault("Fecha por confirmar")
+
+private fun formatCommunityEventMillis(value: Long): String =
+    Instant.ofEpochMilli(value)
+        .atZone(ZoneId.systemDefault())
+        .format(communityEventFormatter)
+
+private fun communityReminderLabel(minutes: Int?): String =
+    when (minutes) {
+        15 -> "Recordar 15 minutos antes"
+        30 -> "Recordar 30 minutos antes"
+        60 -> "Recordar 1 hora antes"
+        1440 -> "Recordar 1 día antes"
+        0 -> "Recordar al comenzar"
+        else -> "Sin recordatorio"
+    }
 
 @Composable
 private fun CommunityRolePreviewDialog(

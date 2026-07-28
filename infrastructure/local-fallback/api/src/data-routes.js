@@ -3164,6 +3164,64 @@ function communityChannelPayload(row, { canManage = false, canPause = false } = 
   }
 }
 
+function communityMemberProfilePayload(row, { communityId = '', userId = '' } = {}) {
+  const normalizedRow = normalizeImportedRow(row)
+  return {
+    communityId: textOf(normalizedRow, ['community_id', 'communityId'], communityId),
+    userId: textOf(normalizedRow, ['user_id', 'userId'], userId),
+    alias: textOf(normalizedRow, ['alias'], null),
+    bio: textOf(normalizedRow, ['bio'], null),
+    distinctive: textOf(normalizedRow, ['distinctive'], null),
+    updatedAt: textOf(normalizedRow, ['updated_at', 'updatedAt'], null),
+  }
+}
+
+function normalizeCommunityAttendanceStatus(status) {
+  return String(status || '').trim().toLowerCase() === 'going' ? 'going' : 'not_going'
+}
+
+function communityEventPayload(
+  row,
+  {
+    attendanceCount = 0,
+    currentAttendance = null,
+    reminderMinutes = null,
+    reminderSentAt = null,
+    canManage = false,
+  } = {},
+) {
+  const normalizedRow = normalizeImportedRow(row)
+  const startsAt = textOf(normalizedRow, ['starts_at', 'startsAt'], '')
+  const startsAtMillis = new Date(startsAt).getTime()
+  const reminderAtMillis = currentAttendance === 'going'
+    && Number.isFinite(startsAtMillis)
+    && Number.isFinite(Number(reminderMinutes))
+    ? startsAtMillis - Number(reminderMinutes) * 60_000
+    : Number.NaN
+  const reminderAt = Number.isFinite(reminderAtMillis)
+    ? new Date(reminderAtMillis).toISOString()
+    : null
+  return {
+    id: textOf(normalizedRow, ['id'], ''),
+    communityId: textOf(normalizedRow, ['community_id', 'communityId'], ''),
+    title: textOf(normalizedRow, ['title'], 'Evento'),
+    description: textOf(normalizedRow, ['description'], null),
+    startsAt,
+    endsAt: textOf(normalizedRow, ['ends_at', 'endsAt'], null),
+    location: textOf(normalizedRow, ['location'], null),
+    createdBy: textOf(normalizedRow, ['created_by', 'createdBy'], ''),
+    isCancelled: boolOf(normalizedRow, ['is_cancelled', 'isCancelled'], false),
+    attendanceCount: Math.max(0, Number(attendanceCount) || 0),
+    currentAttendance,
+    reminderMinutes: Number.isFinite(Number(reminderMinutes)) ? Number(reminderMinutes) : null,
+    reminderAt,
+    reminderSentAt: reminderSentAt ? parseCell(reminderSentAt) : null,
+    canManage,
+    createdAt: textOf(normalizedRow, ['created_at', 'createdAt'], null),
+    updatedAt: textOf(normalizedRow, ['updated_at', 'updatedAt'], null),
+  }
+}
+
 async function ensureDefaultCommunityChannel(pool, roomId, actorId = '') {
   const normalizedRoomId = normalizeId(roomId)
   if (!normalizedRoomId) return null
@@ -3999,6 +4057,95 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_community_channels_room_position
      ON fallback_community_channels(lower(community_id), is_deleted, position, created_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_community_member_profiles (
+      community_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      alias TEXT,
+      bio TEXT,
+      distinctive TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (community_id, user_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS community_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS alias TEXT`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS bio TEXT`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS distinctive TEXT`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_community_member_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_community_member_profiles_room
+     ON fallback_community_member_profiles(lower(community_id), lower(user_id))`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_community_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      community_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      starts_at TIMESTAMPTZ NOT NULL,
+      ends_at TIMESTAMPTZ,
+      location TEXT,
+      created_by TEXT NOT NULL,
+      is_cancelled BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS community_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT 'Evento'`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS location TEXT`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_community_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_community_events_room_start
+     ON fallback_community_events(lower(community_id), is_cancelled, starts_at)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_community_event_attendees (
+      event_id UUID NOT NULL,
+      user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'going'
+        CHECK (status IN ('going', 'not_going')),
+      reminder_minutes INTEGER,
+      reminder_sent_at TIMESTAMPTZ,
+      responded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_id, user_id)
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS event_id UUID`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'going'`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_community_event_attendees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_community_event_attendees_due
+     ON fallback_community_event_attendees(status, reminder_sent_at, event_id)
+     WHERE status = 'going' AND reminder_minutes IS NOT NULL AND reminder_sent_at IS NULL`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_collection_rooms (
@@ -7450,7 +7597,318 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         [context.roomId, channelId],
       )
       if (!rows[0]) return res.status(409).json({ error: 'DEFAULT_CHANNEL_CANNOT_BE_DELETED' })
+      await pool.query(
+        `UPDATE fallback_room_messages
+         SET channel_id = $3::uuid, updated_at = NOW()
+         WHERE room_kind = 'community'
+           AND lower(room_id) = $1
+           AND lower(COALESCE(channel_id::text, '')) = $2`,
+        [context.roomId, channelId, context.defaultChannel.id],
+      )
       res.json({ ok: true, channelId })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/messages/communities/:roomId/member-profiles', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const { rows } = await pool.query(
+        `SELECT *
+         FROM fallback_community_member_profiles
+         WHERE lower(community_id) = $1
+         ORDER BY updated_at DESC`,
+        [context.roomId],
+      )
+      res.json({
+        profile: rows
+          .map((row) => communityMemberProfilePayload(row))
+          .find((profile) => context.identity.ids.has(normalizeId(profile.userId)))
+          || communityMemberProfilePayload(null, {
+            communityId: context.roomId,
+            userId: context.identity.displayUserId,
+          }),
+        profiles: rows.map((row) => communityMemberProfilePayload(row)),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/messages/communities/:roomId/member-profile', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const current = await pool.query(
+        `SELECT *
+         FROM fallback_community_member_profiles
+         WHERE lower(community_id) = $1 AND lower(user_id) = ANY($2::text[])
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [context.roomId, Array.from(context.identity.ids)],
+      )
+      const existing = current.rows[0] || {}
+      const has = (key) => Object.prototype.hasOwnProperty.call(req.body || {}, key)
+      const alias = has('alias')
+        ? cleanText(req.body.alias, 50) || null
+        : textOf(existing, ['alias'], null)
+      const bio = has('bio')
+        ? cleanText(req.body.bio, 240) || null
+        : textOf(existing, ['bio'], null)
+      const distinctive = has('distinctive')
+        ? cleanText(req.body.distinctive, 24) || null
+        : textOf(existing, ['distinctive'], null)
+      const persistedUserId = normalizeId(textOf(
+        existing,
+        ['user_id'],
+        context.identity.displayUserId,
+      )) || context.identity.displayUserId
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_community_member_profiles(
+           community_id, user_id, alias, bio, distinctive
+         )
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (community_id, user_id)
+         DO UPDATE SET alias = EXCLUDED.alias,
+           bio = EXCLUDED.bio,
+           distinctive = EXCLUDED.distinctive,
+           updated_at = NOW()
+         RETURNING *`,
+        [context.roomId, persistedUserId, alias, bio, distinctive],
+      )
+      res.json({ profile: communityMemberProfilePayload(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  async function loadCommunityEvent(context, eventId) {
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM fallback_community_events
+       WHERE lower(community_id) = $1 AND lower(id::text) = $2
+       LIMIT 1`,
+      [context.roomId, eventId],
+    )
+    const event = rows[0]
+    if (!event) return null
+    const attendance = await pool.query(
+      `SELECT user_id, status, reminder_minutes, reminder_sent_at
+       FROM fallback_community_event_attendees
+       WHERE event_id = $1::uuid`,
+      [eventId],
+    )
+    const mine = attendance.rows.find((row) =>
+      context.identity.ids.has(normalizeId(row.user_id)),
+    )
+    return communityEventPayload(event, {
+      attendanceCount: attendance.rows.filter((row) => row.status === 'going').length,
+      currentAttendance: mine?.status || null,
+      reminderMinutes: mine?.reminder_minutes ?? null,
+      reminderSentAt: mine?.reminder_sent_at || null,
+      canManage: context.capabilities.canManageEvents,
+    })
+  }
+
+  app.get('/v1/data/messages/communities/:roomId/events', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const { rows } = await pool.query(
+        `SELECT *
+         FROM fallback_community_events
+         WHERE lower(community_id) = $1
+           AND starts_at >= NOW() - INTERVAL '24 hours'
+         ORDER BY is_cancelled ASC, starts_at ASC
+         LIMIT 100`,
+        [context.roomId],
+      )
+      const events = await Promise.all(
+        rows.map((row) => loadCommunityEvent(context, normalizeId(row.id))),
+      )
+      res.json({
+        currentRole: context.role,
+        canManageEvents: context.capabilities.canManageEvents,
+        events: events.filter(Boolean),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/communities/:roomId/events', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageEvents) {
+        return res.status(403).json({ error: 'EVENT_MANAGE_DENIED' })
+      }
+      const title = cleanText(req.body?.title, 100)
+      if (!title) return res.status(400).json({ error: 'EVENT_TITLE_REQUIRED' })
+      const startsAt = new Date(String(req.body?.startsAt || req.body?.starts_at || ''))
+      if (!Number.isFinite(startsAt.getTime()) || startsAt.getTime() < Date.now() - 5 * 60_000) {
+        return res.status(400).json({ error: 'EVENT_START_INVALID' })
+      }
+      const rawEndsAt = req.body?.endsAt || req.body?.ends_at
+      const endsAt = rawEndsAt ? new Date(String(rawEndsAt)) : null
+      if (endsAt && (!Number.isFinite(endsAt.getTime()) || endsAt <= startsAt)) {
+        return res.status(400).json({ error: 'EVENT_END_INVALID' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_community_events(
+           community_id, title, description, starts_at, ends_at, location, created_by
+         )
+         VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7)
+         RETURNING *`,
+        [
+          context.roomId,
+          title,
+          cleanText(req.body?.description, 500) || null,
+          startsAt.toISOString(),
+          endsAt?.toISOString() || null,
+          cleanText(req.body?.location, 160) || null,
+          context.identity.displayUserId,
+        ],
+      )
+      const event = communityEventPayload(rows[0], {
+        canManage: true,
+      })
+      res.status(201).json({ event })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/messages/communities/:roomId/events/:eventId', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageEvents) {
+        return res.status(403).json({ error: 'EVENT_MANAGE_DENIED' })
+      }
+      const eventId = normalizeId(req.params.eventId)
+      if (!validUuid(eventId)) return res.status(400).json({ error: 'EVENT_ID_REQUIRED' })
+      const existing = await loadCommunityEvent(context, eventId)
+      if (!existing) return res.status(404).json({ error: 'EVENT_NOT_FOUND' })
+      const title = Object.prototype.hasOwnProperty.call(req.body || {}, 'title')
+        ? cleanText(req.body.title, 100)
+        : existing.title
+      if (!title) return res.status(400).json({ error: 'EVENT_TITLE_REQUIRED' })
+      const startsAt = new Date(String(req.body?.startsAt || existing.startsAt))
+      if (!Number.isFinite(startsAt.getTime())) {
+        return res.status(400).json({ error: 'EVENT_START_INVALID' })
+      }
+      const rawEndsAt = Object.prototype.hasOwnProperty.call(req.body || {}, 'endsAt')
+        ? req.body.endsAt
+        : existing.endsAt
+      const endsAt = rawEndsAt ? new Date(String(rawEndsAt)) : null
+      if (endsAt && (!Number.isFinite(endsAt.getTime()) || endsAt <= startsAt)) {
+        return res.status(400).json({ error: 'EVENT_END_INVALID' })
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_community_events
+         SET title = $3,
+             description = $4,
+             starts_at = $5::timestamptz,
+             ends_at = $6::timestamptz,
+             location = $7,
+             updated_at = NOW()
+         WHERE lower(community_id) = $1 AND lower(id::text) = $2
+         RETURNING *`,
+        [
+          context.roomId,
+          eventId,
+          title,
+          Object.prototype.hasOwnProperty.call(req.body || {}, 'description')
+            ? cleanText(req.body.description, 500) || null
+            : existing.description,
+          startsAt.toISOString(),
+          endsAt?.toISOString() || null,
+          Object.prototype.hasOwnProperty.call(req.body || {}, 'location')
+            ? cleanText(req.body.location, 160) || null
+            : existing.location,
+        ],
+      )
+      await pool.query(
+        `UPDATE fallback_community_event_attendees
+         SET reminder_sent_at = NULL, updated_at = NOW()
+         WHERE event_id = $1::uuid AND reminder_minutes IS NOT NULL`,
+        [eventId],
+      )
+      res.json({
+        event: communityEventPayload(rows[0], {
+          attendanceCount: existing.attendanceCount,
+          currentAttendance: existing.currentAttendance,
+          reminderMinutes: existing.reminderMinutes,
+          canManage: true,
+        }),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/messages/communities/:roomId/events/:eventId', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageEvents) {
+        return res.status(403).json({ error: 'EVENT_MANAGE_DENIED' })
+      }
+      const eventId = normalizeId(req.params.eventId)
+      if (!validUuid(eventId)) return res.status(400).json({ error: 'EVENT_ID_REQUIRED' })
+      const { rows } = await pool.query(
+        `UPDATE fallback_community_events
+         SET is_cancelled = TRUE, updated_at = NOW()
+         WHERE lower(community_id) = $1 AND lower(id::text) = $2 AND is_cancelled = FALSE
+         RETURNING *`,
+        [context.roomId, eventId],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'EVENT_NOT_FOUND' })
+      res.json({ event: communityEventPayload(rows[0], { canManage: true }) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/messages/communities/:roomId/events/:eventId/attendance', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const eventId = normalizeId(req.params.eventId)
+      if (!validUuid(eventId)) return res.status(400).json({ error: 'EVENT_ID_REQUIRED' })
+      const existing = await loadCommunityEvent(context, eventId)
+      if (!existing || existing.isCancelled) return res.status(404).json({ error: 'EVENT_NOT_FOUND' })
+      const status = normalizeCommunityAttendanceStatus(req.body?.status)
+      const requestedReminder = req.body?.reminderMinutes
+      const reminderMinutes = status === 'going' && requestedReminder != null
+        ? Math.trunc(Number(requestedReminder))
+        : null
+      if (reminderMinutes != null && ![0, 15, 30, 60, 1440].includes(reminderMinutes)) {
+        return res.status(400).json({ error: 'EVENT_REMINDER_INVALID' })
+      }
+      const reminderAt = reminderMinutes == null
+        ? null
+        : new Date(new Date(existing.startsAt).getTime() - reminderMinutes * 60_000)
+      if (reminderAt && reminderAt.getTime() <= Date.now()) {
+        return res.status(400).json({ error: 'EVENT_REMINDER_TOO_LATE' })
+      }
+      await pool.query(
+        `INSERT INTO fallback_community_event_attendees(
+           event_id, user_id, status, reminder_minutes, reminder_sent_at
+         )
+         VALUES ($1::uuid, $2, $3, $4, NULL)
+         ON CONFLICT (event_id, user_id)
+         DO UPDATE SET status = EXCLUDED.status,
+           reminder_minutes = EXCLUDED.reminder_minutes,
+           reminder_sent_at = NULL,
+           responded_at = NOW(),
+           updated_at = NOW()`,
+        [eventId, context.identity.displayUserId, status, reminderMinutes],
+      )
+      res.json({ event: await loadCommunityEvent(context, eventId) })
     } catch (error) {
       next(error)
     }
@@ -7873,6 +8331,18 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
          WHERE room_kind = $1 AND lower(room_id) = $2`,
         [config.kind, roomId],
       )
+      if (config.kind === 'community') {
+        await pool.query(
+          `DELETE FROM fallback_community_event_attendees
+           WHERE event_id IN (
+             SELECT id FROM fallback_community_events WHERE lower(community_id) = $1
+           )`,
+          [roomId],
+        )
+        await pool.query(`DELETE FROM fallback_community_events WHERE lower(community_id) = $1`, [roomId])
+        await pool.query(`DELETE FROM fallback_community_member_profiles WHERE lower(community_id) = $1`, [roomId])
+        await pool.query(`DELETE FROM fallback_community_channels WHERE lower(community_id) = $1`, [roomId])
+      }
 
       res.json({ ok: true, roomId, deleted: true })
     } catch (error) {
@@ -10666,10 +11136,76 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   })
 }
 
+async function processDueCommunityEventReminders(pool, { limit = 100 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500))
+  const client = await pool.connect()
+  let dueRows = []
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `WITH due AS (
+         SELECT a.event_id, a.user_id
+         FROM fallback_community_event_attendees a
+         JOIN fallback_community_events e ON e.id = a.event_id
+         WHERE a.status = 'going'
+           AND a.reminder_minutes IS NOT NULL
+           AND a.reminder_sent_at IS NULL
+           AND e.is_cancelled = FALSE
+           AND e.starts_at > NOW()
+           AND e.starts_at - (a.reminder_minutes * INTERVAL '1 minute') <= NOW()
+         ORDER BY e.starts_at ASC
+         FOR UPDATE OF a SKIP LOCKED
+         LIMIT $1
+       )
+       UPDATE fallback_community_event_attendees a
+       SET reminder_sent_at = NOW(), updated_at = NOW()
+       FROM due
+       WHERE a.event_id = due.event_id AND a.user_id = due.user_id
+       RETURNING a.event_id::text, a.user_id, a.reminder_sent_at`,
+      [safeLimit],
+    )
+    dueRows = rows.map(normalizeImportedRow)
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+
+  for (const due of dueRows) {
+    const eventResult = await pool.query(
+      `SELECT id::text, community_id, title, starts_at
+       FROM fallback_community_events
+       WHERE id = $1::uuid
+       LIMIT 1`,
+      [due.event_id],
+    )
+    const event = normalizeImportedRow(eventResult.rows[0])
+    if (!event?.id) continue
+    await createLocalNotificationBestEffort(pool, {
+      recipientId: due.user_id,
+      type: 'community_event_reminder',
+      targetId: event.id,
+      targetType: 'community_event',
+      content: `Próximamente: ${textOf(event, ['title'], 'evento de la comunidad')}`,
+      extraData: {
+        event_id: event.id,
+        community_id: textOf(event, ['community_id'], ''),
+        starts_at: textOf(event, ['starts_at'], ''),
+        open_path: `/app/messages/community/${textOf(event, ['community_id'], '')}`,
+      },
+    })
+  }
+  return { processed: dueRows.length }
+}
+
 module.exports = {
   buildProfileForUser,
   collectionRoleCapabilities,
   communityChannelPayload,
+  communityEventPayload,
+  communityMemberProfilePayload,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -10692,6 +11228,7 @@ module.exports = {
   sameStorageObjectReference,
   storageObjectExists,
   profileForViewer,
+  processDueCommunityEventReminders,
   recommendationPreferenceScore,
   registerDataRoutes,
   userIdentity,

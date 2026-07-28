@@ -6,6 +6,10 @@ import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.CommunityChannel
 import conectate.com.data.model.CommunityChannelCatalog
+import conectate.com.data.model.CommunityEvent
+import conectate.com.data.model.CommunityEventCatalog
+import conectate.com.data.model.CommunityMemberProfile
+import conectate.com.data.model.CommunityMemberProfileCatalog
 import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
@@ -818,6 +822,38 @@ private data class LocalFallbackCommunityChannelPauseRequest(
 @Serializable
 private data class LocalFallbackCommunityChannelResponse(
     val channel: CommunityChannel
+)
+
+@Serializable
+private data class LocalFallbackCommunityProfileMutationRequest(
+    val alias: String? = null,
+    val bio: String? = null,
+    val distinctive: String? = null
+)
+
+@Serializable
+private data class LocalFallbackCommunityProfileResponse(
+    val profile: CommunityMemberProfile
+)
+
+@Serializable
+private data class LocalFallbackCommunityEventMutationRequest(
+    val title: String,
+    val description: String? = null,
+    val startsAt: String,
+    val endsAt: String? = null,
+    val location: String? = null
+)
+
+@Serializable
+private data class LocalFallbackCommunityEventAttendanceRequest(
+    val status: String,
+    val reminderMinutes: Int? = null
+)
+
+@Serializable
+private data class LocalFallbackCommunityEventResponse(
+    val event: CommunityEvent
 )
 
 @Serializable
@@ -1644,6 +1680,124 @@ class LocalFallbackApiClient @Inject constructor(
             val body = response.bodyAsText()
             if (response.status.isSuccess()) Result.success(Unit)
             else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadCommunityMemberProfiles(
+        accessToken: String,
+        communityId: String
+    ): Result<CommunityMemberProfileCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/member-profiles",
+            accessToken
+        )
+    }
+
+    suspend fun updateCommunityMemberProfile(
+        accessToken: String,
+        communityId: String,
+        alias: String?,
+        bio: String?,
+        distinctive: String?
+    ): Result<CommunityMemberProfile> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/member-profile"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackCommunityProfileMutationRequest(alias, bio, distinctive))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackCommunityProfileResponse>(body).profile)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadCommunityEvents(
+        accessToken: String,
+        communityId: String
+    ): Result<CommunityEventCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/events",
+            accessToken
+        )
+    }
+
+    suspend fun createCommunityEvent(
+        accessToken: String,
+        communityId: String,
+        title: String,
+        description: String?,
+        startsAt: String,
+        endsAt: String?,
+        location: String?
+    ): Result<CommunityEvent> = communityEventMutation {
+        post("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/events") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(
+                LocalFallbackCommunityEventMutationRequest(
+                    title = title,
+                    description = description,
+                    startsAt = startsAt,
+                    endsAt = endsAt,
+                    location = location
+                )
+            )
+        }
+    }
+
+    suspend fun cancelCommunityEvent(
+        accessToken: String,
+        communityId: String,
+        eventId: String
+    ): Result<CommunityEvent> = communityEventMutation {
+        delete(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/events/${urlEncode(eventId)}"
+        ) {
+            localHeaders(accessToken)
+        }
+    }
+
+    suspend fun updateCommunityEventAttendance(
+        accessToken: String,
+        communityId: String,
+        eventId: String,
+        status: String,
+        reminderMinutes: Int?
+    ): Result<CommunityEvent> = communityEventMutation {
+        put(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/events/${urlEncode(eventId)}/attendance"
+        ) {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(LocalFallbackCommunityEventAttendanceRequest(status, reminderMinutes))
+        }
+    }
+
+    private suspend fun communityEventMutation(
+        request: suspend HttpClient.() -> HttpResponse
+    ): Result<CommunityEvent> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.request()
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackCommunityEventResponse>(body).event)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -4381,6 +4535,20 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("Este canal es de voz. Ábrelo para conversar en una sala.")
             "DEFAULT_CHANNEL_CANNOT_BE_DELETED" ->
                 Exception("El canal General no se puede eliminar.")
+            "EVENT_MANAGE_DENIED" ->
+                Exception("No tienes permiso para administrar eventos en esta comunidad.")
+            "EVENT_TITLE_REQUIRED" ->
+                Exception("Escribe un título para el evento.")
+            "EVENT_START_INVALID" ->
+                Exception("Selecciona una fecha futura válida para el evento.")
+            "EVENT_END_INVALID" ->
+                Exception("La fecha de finalización debe ser posterior al inicio.")
+            "EVENT_ID_REQUIRED", "EVENT_NOT_FOUND" ->
+                Exception("Este evento ya no está disponible.")
+            "EVENT_REMINDER_INVALID" ->
+                Exception("Selecciona un recordatorio válido.")
+            "EVENT_REMINDER_TOO_LATE" ->
+                Exception("Ese recordatorio ya habría ocurrido. Elige uno más cercano o ninguno.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty(),
