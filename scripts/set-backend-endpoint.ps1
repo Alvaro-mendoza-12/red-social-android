@@ -13,13 +13,29 @@ if ($normalized -notmatch '^https://[a-zA-Z0-9.-]+(?::\d+)?$') {
 }
 
 $configPath = Join-Path $root 'Conectate-web\public\backend-config.json'
-$payload = [ordered]@{
-    schemaVersion = 1
-    environment = 'beta'
-    backendUrl = $normalized
-    updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$configNeedsUpdate = $true
+if (Test-Path $configPath) {
+    try {
+        $currentConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        $configNeedsUpdate = (
+            [int]$currentConfig.schemaVersion -ne 1 -or
+            [string]$currentConfig.environment -ne 'beta' -or
+            ([string]$currentConfig.backendUrl).Trim().TrimEnd('/') -ne $normalized
+        )
+    } catch {
+        $configNeedsUpdate = $true
+    }
 }
-$payload | ConvertTo-Json | Set-Content -Path $configPath -Encoding utf8
+
+if ($configNeedsUpdate) {
+    $payload = [ordered]@{
+        schemaVersion = 1
+        environment = 'beta'
+        backendUrl = $normalized
+        updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    $payload | ConvertTo-Json | Set-Content -Path $configPath -Encoding utf8
+}
 
 function Set-FileContentWithRetry([string]$Path, [string[]]$Lines) {
     $directory = Split-Path -Parent $Path
@@ -85,6 +101,7 @@ Set-PropertyLines (Join-Path $root 'Conectate-web\.env') $webProperties
 
 Write-Output "ENDPOINT_UPDATED=$normalized"
 Write-Output "DISCOVERY_FILE=$configPath"
+Write-Output "DISCOVERY_CHANGED=$configNeedsUpdate"
 
 if ($PublishDiscovery) {
     $credentialPath = Join-Path $env:LOCALAPPDATA 'Conectate\duckdns-token.dpapi'
