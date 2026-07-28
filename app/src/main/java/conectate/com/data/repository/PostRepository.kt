@@ -850,6 +850,25 @@ class PostRepository @Inject constructor(
         }
     }
 
+    suspend fun summarizePostThread(
+        postId: String,
+        maxBullets: Int = 5
+    ): Result<conectate.com.data.model.PostThreadSummary> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val accessToken = authService.getAccessToken()
+                ?: return@withContext Result.failure(Exception("No hay una sesión activa."))
+            if (!supabaseConfig.isLocalFallbackPrimary) {
+                return@withContext Result.failure(
+                    Exception("El resumen de conversaciones aún no está disponible en este servidor.")
+                )
+            }
+            localFallbackApiClient.summarizePostThread(
+                accessToken = accessToken,
+                postId = postId,
+                maxBullets = maxBullets
+            )
+        }
+
     suspend fun getPostReactions(
         postId: String,
         reactionType: String? = null

@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto')
 const path = require('path')
 const { ConectateChatbot } = require('./chatbot')
 const { SEMANTIC_SEARCH_MODEL, rankSemanticDocuments } = require('./semantic-search')
+const { summarizeThread } = require('./thread-summary')
 
 const port = Number(process.env.PORT || 3010)
 const dataDir = process.env.AI_DATA_DIR || path.resolve(__dirname, '..', 'data-runtime')
@@ -18,11 +19,13 @@ const modelFile = process.env.AI_MODEL_FILE || path.join(dataDir, 'model.json')
 const feedbackFile = process.env.AI_FEEDBACK_FILE || path.join(dataDir, 'feedback.jsonl')
 const MAX_BODY_BYTES = 32_000
 const MAX_SEMANTIC_BODY_BYTES = 2_000_000
+const MAX_THREAD_SUMMARY_BODY_BYTES = 1_000_000
 
 const runtimeMetrics = {
   chatRequests: 0,
   feedbackRequests: 0,
   semanticSearchRequests: 0,
+  threadSummaryRequests: 0,
   requestErrors: 0,
   lastErrorAt: null,
 }
@@ -181,6 +184,26 @@ async function handle(req, res, requestContext) {
       model: SEMANTIC_SEARCH_MODEL,
       results,
     })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/thread-summary') {
+    const body = await readBody(req, MAX_THREAD_SUMMARY_BODY_BYTES)
+    const comments = Array.isArray(body.comments) ? body.comments : []
+    if (comments.length > 500) return sendJson(res, 413, { error: 'THREAD_SUMMARY_COMMENT_LIMIT_EXCEEDED' })
+    const summary = summarizeThread(comments, {
+      maxBullets: body.maxBullets,
+    })
+    runtimeMetrics.threadSummaryRequests += 1
+    logRequestResult({
+      event: 'ai-thread-summary-complete',
+      requestId: requestContext.requestId,
+      durationMs: Date.now() - requestContext.startedAt,
+      commentCount: summary.commentCount,
+      bulletCount: summary.bullets.length,
+      kind: summary.kind,
+      model: summary.model,
+    })
+    return sendJson(res, 200, summary)
   }
 
   return sendJson(res, 404, { error: 'NOT_FOUND' })

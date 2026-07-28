@@ -27,6 +27,7 @@ import androidx.navigation.NavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.presentation.components.PostCard
 import conectate.com.presentation.components.CommentItem
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,20 +66,24 @@ fun PostDetailScreen(
         organizeThreaded(uiState.comments)
     }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val summaryItemVisible = uiState.isSummarizingThread ||
+        uiState.threadSummary != null ||
+        uiState.threadSummaryError != null
     var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
 
     LaunchedEffect(postId) {
         viewModel.loadPost(postId)
     }
 
-    LaunchedEffect(threadedComments, focusCommentId) {
+    LaunchedEffect(threadedComments, focusCommentId, summaryItemVisible) {
         if (focusResolved || focusCommentId.isNullOrBlank()) return@LaunchedEffect
         val idx = threadedComments.indexOfFirst { (comment, _) ->
             comment.id.equals(focusCommentId, ignoreCase = true)
         }
         if (idx >= 0) {
-            // 0 = post, 1 = comments header, 2+ = comments
-            listState.scrollToItem(idx + 2)
+            // 0 = post, 1 = comments header, 2 = optional summary, then comments.
+            listState.scrollToItem(idx + 2 + if (summaryItemVisible) 1 else 0)
             focusResolved = true
         }
     }
@@ -376,12 +381,101 @@ fun PostDetailScreen(
                     }
                     
                     item(key = "header_comments") {
-                        Text(
-                            text = "Comentarios",
-                            modifier = Modifier.padding(16.dp),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Gray
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Comentarios",
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Gray
+                            )
+                            TextButton(
+                                onClick = { viewModel.requestThreadSummary(postId) },
+                                enabled = !state.isSummarizingThread &&
+                                    state.comments.count { it.content.trim().length >= 3 } >= 3
+                            ) {
+                                if (state.isSummarizingThread) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(if (state.threadSummary == null) "Resumir hilo" else "Actualizar resumen")
+                            }
+                        }
+                    }
+
+                    if (summaryItemVisible) {
+                        item(key = "thread_summary") {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Resumen con Novvin IA",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    when {
+                                        state.isSummarizingThread -> Text(
+                                            "Leyendo únicamente los comentarios visibles de esta publicación…",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        state.threadSummaryError != null -> Text(
+                                            state.threadSummaryError,
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        state.threadSummary != null -> {
+                                            state.threadSummary.bullets.forEach { bullet ->
+                                                Text(
+                                                    text = "• ${bullet.text}",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.padding(top = 8.dp)
+                                                )
+                                                bullet.sources.forEach { source ->
+                                                    TextButton(
+                                                        onClick = {
+                                                            val index = threadedComments.indexOfFirst { (comment, _) ->
+                                                                comment.id.equals(source.commentId, ignoreCase = true)
+                                                            }
+                                                            if (index >= 0) {
+                                                                coroutineScope.launch {
+                                                                    listState.animateScrollToItem(index + 3)
+                                                                }
+                                                            }
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 0.dp)
+                                                    ) {
+                                                        Text("Ver fuente · ${source.authorName}")
+                                                    }
+                                                }
+                                            }
+                                            Divider(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.18f)
+                                            )
+                                            Text(
+                                                state.threadSummary.notice,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if (state.isLoadingComments && state.comments.isEmpty()) {

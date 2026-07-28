@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Post
 import conectate.com.data.model.Comment
+import conectate.com.data.model.PostThreadSummary
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.UserRepository
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,9 @@ data class PostDetailUiState(
     val comments: List<Comment> = emptyList(),
     val isLoadingPost: Boolean = false,
     val isLoadingComments: Boolean = true,
+    val threadSummary: PostThreadSummary? = null,
+    val isSummarizingThread: Boolean = false,
+    val threadSummaryError: String? = null,
     val error: String? = null
 )
 
@@ -72,7 +77,13 @@ class PostDetailViewModel @Inject constructor(
         commentsJob?.cancel()
 
         loadJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingPost = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoadingPost = true,
+                threadSummary = null,
+                isSummarizingThread = false,
+                threadSummaryError = null,
+                error = null
+            )
             
             // 1. Load Post
             val postResult = postRepository.getPostById(postId)
@@ -198,7 +209,9 @@ class PostDetailViewModel @Inject constructor(
                     _uiState.value = current.copy(
                         comments = nextComments,
                         post = currentPost?.copy(commentCount = currentPost.commentCount + 1),
-                        isLoadingComments = false
+                        isLoadingComments = false,
+                        threadSummary = null,
+                        threadSummaryError = null
                     )
                     loadComments(postId)
                     refreshPostSnapshot(postId)
@@ -221,7 +234,9 @@ class PostDetailViewModel @Inject constructor(
                     _uiState.value = current.copy(
                         comments = current.comments.filterNot { it.id == newComment.id } + newComment,
                         post = current.post?.copy(commentCount = current.post.commentCount + 1),
-                        isLoadingComments = false
+                        isLoadingComments = false,
+                        threadSummary = null,
+                        threadSummaryError = null
                     )
                     loadComments(postId)
                     refreshPostSnapshot(postId)
@@ -250,7 +265,9 @@ class PostDetailViewModel @Inject constructor(
                         comments = current.comments.filterNot { it.id == commentId || it.parentId == commentId },
                         post = currentPost?.copy(
                             commentCount = maxOf(0, currentPost.commentCount - removedCount.coerceAtLeast(1))
-                        )
+                        ),
+                        threadSummary = null,
+                        threadSummaryError = null
                     )
                     loadComments(postId)
                     refreshPostSnapshot(postId)
@@ -272,7 +289,9 @@ class PostDetailViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         comments = _uiState.value.comments.map {
                             if (it.id == commentId) it.copy(content = newContent) else it
-                        }
+                        },
+                        threadSummary = null,
+                        threadSummaryError = null
                     )
                     loadComments(postId)
                 }
@@ -303,6 +322,52 @@ class PostDetailViewModel @Inject constructor(
                 )
                 android.widget.Toast.makeText(context, "No se pudo guardar la reacción", android.widget.Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    fun requestThreadSummary(postId: String) {
+        val textCommentCount = _uiState.value.comments.count { it.content.trim().length >= 3 }
+        if (textCommentCount < 3) {
+            _uiState.value = _uiState.value.copy(
+                threadSummary = null,
+                isSummarizingThread = false,
+                threadSummaryError = "Se necesitan al menos tres comentarios con texto para preparar un resumen."
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isSummarizingThread = true,
+                threadSummaryError = null
+            )
+            postRepository.summarizePostThread(postId)
+                .onSuccess { summary ->
+                    _uiState.value = _uiState.value.copy(
+                        threadSummary = summary,
+                        isSummarizingThread = false,
+                        threadSummaryError = null
+                    )
+                }
+                .onFailure { error ->
+                    val raw = error.message.orEmpty()
+                    val message = when {
+                        raw.contains("THREAD_SUMMARY_NOT_ENOUGH_CONTENT", ignoreCase = true) ->
+                            "Se necesitan al menos tres comentarios con texto para preparar un resumen."
+                        raw.contains("THREAD_SUMMARY_RATE_LIMITED", ignoreCase = true) ->
+                            "Espera un momento antes de solicitar otro resumen."
+                        raw.contains("THREAD_SUMMARY_UNAVAILABLE", ignoreCase = true) ->
+                            "El resumen no está disponible en este momento. Inténtalo más tarde."
+                        else -> error.toUserFacingMessage(
+                            "No se pudo preparar el resumen. Inténtalo nuevamente."
+                        )
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        threadSummary = null,
+                        isSummarizingThread = false,
+                        threadSummaryError = message
+                    )
+                }
         }
     }
 

@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { mergeProfileRows } = require('./profile-merge')
-const { callAiService } = require('./ai-routes')
+const { callAiService, createFixedWindowRateLimiter } = require('./ai-routes')
 const {
   ensureNotificationDigestTables,
   registerNotificationDigestRoutes,
@@ -2984,7 +2984,7 @@ async function loadPostDetailPayload(pool, user, rawPostId) {
   if (!postId) return null
 
   const identity = userIdentity(user)
-  const [importedProfiles, localProfiles, importedPosts, fallbackPosts, importedLikes, importedReactions, localReactions, importedComments, localComments, importedShares, localShares] =
+  const [importedProfiles, localProfiles, importedPosts, fallbackPosts, importedLikes, importedReactions, localReactions, importedComments, localComments, importedShares, localShares, follows] =
     await Promise.all([
       importedRows(pool, 'profiles', 5000),
       fallbackUserProfileRows(pool, 5000),
@@ -2997,12 +2997,23 @@ async function loadPostDetailPayload(pool, user, rawPostId) {
       localPostComments(pool, [postId], 50_000),
       importedRows(pool, 'shares', 50_000),
       localPostShares(pool, [postId], 50_000),
+      combinedFollows(pool),
     ])
 
   const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
   const posts = [...importedPosts, ...fallbackPosts]
   const post = posts.find((row) => normalizeId(textOf(row, ['id'], '')) === postId)
   if (!post) return null
+  const followingIds = cleanSet(
+    follows
+      .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
+      .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
+  )
+  if (!feedPostVisible(post, {
+    identityIds: identity.ids,
+    followingIds,
+    mode: 'all',
+  })) return null
 
   const relevantLikes = [
     ...importedLikes.filter((row) => postIdOf(row) === postId),
@@ -4724,6 +4735,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
   const { registerLiveRoutes } = require('./live-routes')
   const { registerProximityRoutes } = require('./proximity-routes')
+  const threadSummaryLimiter = createFixedWindowRateLimiter({
+    limit: Math.max(2, Math.min(Number(process.env.AI_THREAD_SUMMARY_RATE_LIMIT_PER_MINUTE) || 10, 60)),
+  })
   registerMomentsRoutes(app, {
     pool,
     authRequired,
@@ -6793,6 +6807,97 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         reaction_counts: state.counts.get(postId) || {},
       })
     } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/feed/posts/:postId/thread-summary', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const rateLimit = threadSummaryLimiter(identity.displayUserId)
+      if (!rateLimit.allowed) {
+        res.set('retry-after', String(rateLimit.retryAfterSeconds))
+        return res.status(429).json({ error: 'THREAD_SUMMARY_RATE_LIMITED' })
+      }
+
+      const postId = normalizeId(req.params.postId)
+      const payload = await loadPostDetailPayload(pool, user, postId)
+      if (!payload) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const comments = payload.comments
+        .filter((comment) => cleanText(comment.content, 4000).length >= 3)
+        .slice(-500)
+      if (comments.length < 3) {
+        return res.status(422).json({ error: 'THREAD_SUMMARY_NOT_ENOUGH_CONTENT' })
+      }
+
+      const summary = await callAiService('/v1/thread-summary', {
+        threadId: `post:${postId}`,
+        maxBullets: Math.max(2, Math.min(Number(req.body?.maxBullets) || 5, 6)),
+        comments: comments.map((comment) => ({
+          id: cleanText(comment.id, 160),
+          parentId: cleanText(comment.parent_id || comment.parentId, 160) || null,
+          authorName: cleanText(comment.user_name || comment.userName, 100) || 'Usuario',
+          content: cleanText(comment.content, 2000),
+          createdAt: cleanText(comment.created_at || comment.createdAt, 80),
+        })),
+      }, process.env.AI_THREAD_SUMMARY_TIMEOUT_MS || 5000)
+
+      const commentsById = new Map(
+        comments.map((comment) => [normalizeId(comment.id), comment]),
+      )
+      const bullets = (Array.isArray(summary.bullets) ? summary.bullets : [])
+        .map((bullet) => {
+          const sources = (Array.isArray(bullet?.sourceIds) ? bullet.sourceIds : [])
+            .map((sourceId) => commentsById.get(normalizeId(sourceId)))
+            .filter(Boolean)
+            .map((source) => ({
+              commentId: cleanText(source.id, 160),
+              authorName: cleanText(source.user_name || source.userName, 100) || 'Usuario',
+              createdAt: cleanText(source.created_at || source.createdAt, 80),
+              deepLink: `novvin://post/${encodeURIComponent(postId)}?focusCommentId=${encodeURIComponent(source.id)}`,
+            }))
+          if (sources.length === 0) return null
+          const primarySource = commentsById.get(normalizeId(sources[0].commentId))
+          const sourceText = cleanText(primarySource?.content, 320)
+          const proposedText = cleanText(bullet?.text, 320)
+          return {
+            text: sourceText.includes(proposedText) || proposedText.includes(sourceText)
+              ? proposedText
+              : sourceText,
+            sources,
+          }
+        })
+        .filter(Boolean)
+
+      if (bullets.length === 0) {
+        return res.status(503).json({ error: 'THREAD_SUMMARY_UNAVAILABLE' })
+      }
+
+      res.set('Cache-Control', 'private, no-store')
+      res.json({
+        summary: {
+          kind: summary.kind === 'extractive' ? 'extractive' : 'extractive',
+          model: cleanText(summary.model, 80) || 'novvin-thread-extractive-v1',
+          notice: cleanText(
+            summary.notice,
+            300,
+          ) || 'Este resumen puede omitir contexto o matices. Revisa las fuentes originales.',
+          generatedAt: new Date().toISOString(),
+          commentCount: comments.length,
+          topics: asArray(summary.topics).map((topic) => cleanText(topic, 40)).filter(Boolean).slice(0, 8),
+          bullets,
+        },
+      })
+    } catch (error) {
+      if (error?.code === 'AI_SERVICE_TIMEOUT' || error?.code === 'AI_SERVICE_UNAVAILABLE') {
+        return res.status(503).json({ error: 'THREAD_SUMMARY_UNAVAILABLE' })
+      }
+      if (error?.payload?.error === 'THREAD_SUMMARY_NOT_ENOUGH_CONTENT') {
+        return res.status(422).json({ error: 'THREAD_SUMMARY_NOT_ENOUGH_CONTENT' })
+      }
       next(error)
     }
   })

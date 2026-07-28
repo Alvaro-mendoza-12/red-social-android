@@ -129,6 +129,23 @@ async function run() {
     assert.strictEqual(semantic.model, 'novvin-semantic-local-v1')
     assert.strictEqual(semantic.results[0].id, 'recipe')
 
+    const summaryResponse = await fetch(`${baseUrl}/v1/thread-summary`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        comments: [
+          { id: 'c1', content: 'La reunión puede comenzar a las ocho.' },
+          { id: 'c2', content: 'Prefiero las nueve por el transporte.' },
+          { id: 'c3', content: 'Compartamos una grabación con quienes falten.' },
+        ],
+      }),
+    })
+    assert.strictEqual(summaryResponse.status, 200)
+    const summary = await summaryResponse.json()
+    assert.strictEqual(summary.kind, 'extractive')
+    assert.strictEqual(summary.model, 'novvin-thread-extractive-v1')
+    assert.ok(summary.bullets.every((bullet) => bullet.sourceIds.length === 1))
+
     const invalidResponse = await fetch(`${baseUrl}/v1/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -147,6 +164,7 @@ async function run() {
     const readyAfterRequests = await (await fetch(`${baseUrl}/ready`)).json()
     assert.ok(readyAfterRequests.requests.chatRequests >= 3)
     assert.ok(readyAfterRequests.requests.semanticSearchRequests >= 1)
+    assert.ok(readyAfterRequests.requests.threadSummaryRequests >= 1)
     assert.ok(readyAfterRequests.requests.requestErrors >= 1)
     assert.ok(readyAfterRequests.requests.lastErrorAt)
   } finally {

@@ -421,6 +421,16 @@ data class LocalFallbackPostDetailResponse(
     val comments: List<Comment> = emptyList()
 )
 
+@Serializable
+private data class LocalFallbackPostThreadSummaryRequest(
+    val maxBullets: Int = 5
+)
+
+@Serializable
+private data class LocalFallbackPostThreadSummaryResponse(
+    val summary: conectate.com.data.model.PostThreadSummary
+)
+
 data class AdminModerationAppeal(
     val id: String,
     val decisionId: String,
@@ -2484,6 +2494,33 @@ class LocalFallbackApiClient @Inject constructor(
                     .getOrNull()
                     ?.let { mapPost(it) }
                 Result.success(post)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun summarizePostThread(
+        accessToken: String,
+        postId: String,
+        maxBullets: Int = 5
+    ): Result<conectate.com.data.model.PostThreadSummary> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/thread-summary"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackPostThreadSummaryRequest(maxBullets.coerceIn(2, 6)))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(
+                    json.decodeFromString<LocalFallbackPostThreadSummaryResponse>(body).summary
+                )
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
