@@ -7,9 +7,7 @@ const databaseUrl = process.env.DATABASE_URL
 const baseUrl = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')
 const signalingUrl = String(process.env.E2E_SIGNALING_URL || baseUrl).replace(/\/+$/, '')
 
-if (!databaseUrl) throw new Error('DATABASE_URL is required')
-
-const pool = new Pool({ connectionString: databaseUrl, max: 2 })
+const pool = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 2 }) : null
 const suffix = crypto.randomUUID()
 const ownerEmail = `voice-caption-owner-${suffix}@novvin.invalid`
 const memberEmail = `voice-caption-member-${suffix}@novvin.invalid`
@@ -18,6 +16,7 @@ const fixtureEmails = [ownerEmail, memberEmail, lateEmail]
 const password = `VoiceCaption-${suffix}!`
 const roomIds = []
 const sockets = []
+const fixtureAccounts = []
 
 async function jsonRequest(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -46,11 +45,14 @@ async function register(email, displayName) {
   assert.equal(result.response.status, 201, JSON.stringify(result.body))
   assert.ok(result.body?.accessToken)
   assert.ok(result.body?.user?.id)
-  return {
+  const account = {
     id: String(result.body.user.id).toLowerCase(),
     token: String(result.body.accessToken),
+    email,
     name: displayName,
   }
+  fixtureAccounts.push(account)
+  return account
 }
 
 async function createRoom(account) {
@@ -147,6 +149,32 @@ async function cleanup() {
     socket.removeAllListeners()
     socket.disconnect()
   })
+
+  if (!pool) {
+    for (const account of fixtureAccounts) {
+      const removed = await jsonRequest('/rest/v1/rpc/delete_own_account', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${account.token}` },
+        body: '{}',
+      })
+      assert.ok(removed.response.ok, `Self cleanup failed: ${JSON.stringify(removed.body)}`)
+
+      const login = await jsonRequest('/v1/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: account.email, password }),
+      })
+      assert.ok(
+        [401, 403, 404].includes(login.response.status),
+        `Deleted fixture can still sign in: ${JSON.stringify(login.body)}`,
+      )
+    }
+    console.log(JSON.stringify({
+      cleanup: true,
+      mode: 'authenticated-self-delete',
+      deletedAccounts: fixtureAccounts.length,
+    }))
+    return
+  }
 
   await pool.query('BEGIN')
   try {
@@ -331,7 +359,7 @@ async function run() {
     }))
   } finally {
     await cleanup()
-    await pool.end()
+    if (pool) await pool.end()
   }
 }
 

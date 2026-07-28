@@ -322,6 +322,12 @@ completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
   rechazó el intento de sustituir al anfitrión del directo. La autoeliminación
   terminó correctamente y PostgreSQL confirmó `0` cuentas ficticias de esa
   ejecución.
+- B16/B17: canario público aprobado contra
+  `genres-twice-trainer-stamps.trycloudflare.com`. Verificó rechazo de texto
+  sin consentimiento, difusión del texto final canónico, estado visible para
+  quien entra tarde, corte al desactivar, aceptación obligatoria del resumen y
+  respuesta extractiva privada. La autoeliminación borró las tres cuentas
+  ficticias y PostgreSQL confirmó `users=0`, `rooms=0` y `participants=0`.
 - Administración: canario de solo lectura aprobado contra la URL pública para
   acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
   apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
@@ -329,6 +335,12 @@ completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
   consumo único del permiso, rechazo de la clave anterior, aceptación de la
   nueva, cambio autenticado posterior, renovación de sesión y persistencia.
   La cuenta y sus tokens de prueba terminaron en `0`.
+- El servidor actualizado quedó marcado con el commit `5d37b32a73bb`, tras el
+  respaldo remoto `/home/alvaro/conectate-backups/20260728T173825Z`. La
+  descarga transitoria de una dependencia de npm agotó el tiempo durante la
+  reconstrucción global; el despliegue escalonado reutilizó el API ya validado
+  y activó la nueva imagen de signaling. Todos los contenedores y la URL
+  pública terminaron saludables.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
   verificados. No había ningún dispositivo visible por ADB durante este cierre.
