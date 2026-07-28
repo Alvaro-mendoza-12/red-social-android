@@ -1858,7 +1858,7 @@ liveIo.on('connection', (socket) => {
                             ? 'El equipo de moderación restringió tu acceso a este directo.'
                             : 'El equipo de moderación te retiró de este directo.'
                     });
-                    const targetSocket = liveIo.sockets.sockets.get(viewerSocketId);
+                    const targetSocket = liveIo.sockets.get(viewerSocketId);
                     if (targetSocket) {
                         targetSocket.data.joinedLiveIds?.delete(liveId);
                         targetSocket.leave(liveId);
