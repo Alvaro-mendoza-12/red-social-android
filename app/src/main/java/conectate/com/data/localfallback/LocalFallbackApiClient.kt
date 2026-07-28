@@ -409,6 +409,13 @@ data class LocalFallbackFeedResponse(
     val items: List<Post> = emptyList()
 )
 
+@Serializable
+data class LocalFallbackSemanticSearchResponse(
+    val items: List<conectate.com.data.model.SemanticSearchResult> = emptyList(),
+    val model: String = "",
+    val publicOnly: Boolean = true
+)
+
 data class LocalFallbackPostDetailResponse(
     val post: Post,
     val comments: List<Comment> = emptyList()
@@ -2275,6 +2282,23 @@ class LocalFallbackApiClient @Inject constructor(
         }
         return requestJson<LocalFallbackRawFeedResponse>(query, accessToken)
             .map { response -> LocalFallbackFeedResponse(response.items.map { mapPost(it) }) }
+    }
+
+    suspend fun searchPublicContent(
+        accessToken: String,
+        query: String,
+        limit: Int = 24
+    ): Result<LocalFallbackSemanticSearchResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanQuery = query.trim()
+        if (cleanQuery.length < 2) {
+            return Result.failure(IllegalArgumentException("Escribe al menos dos caracteres."))
+        }
+        val cleanLimit = limit.coerceIn(1, 50)
+        return requestJson(
+            "$baseUrl/v1/data/search/semantic?q=${urlEncode(cleanQuery)}&limit=$cleanLimit",
+            accessToken
+        )
     }
 
     suspend fun loadPostDetail(accessToken: String, postId: String): Result<LocalFallbackPostDetailResponse> {

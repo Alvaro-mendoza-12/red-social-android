@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { mergeProfileRows } = require('./profile-merge')
+const { callAiService } = require('./ai-routes')
 const {
   ensureNotificationDigestTables,
   registerNotificationDigestRoutes,
@@ -3117,6 +3118,74 @@ function normalizeCollectionRole(role, { isCreator = false } = {}) {
   return 'member'
 }
 
+function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [], maximum = 800 } = {}) {
+  const boundedMaximum = Math.max(1, Math.min(Number(maximum) || 800, 800))
+  const profilesById = indexProfiles(profiles)
+  const hiddenOwnerIds = new Set()
+  for (const profile of profiles) {
+    if (textOf(profile, ['break_mode', 'breakMode'], 'off').toLowerCase() !== 'hidden') continue
+    profileAliasSet(profile).forEach((alias) => hiddenOwnerIds.add(alias))
+  }
+
+  const postDocuments = mergeRowsById(posts)
+    .filter((row) => textOf(row, ['visibility'], 'public').toLowerCase() === 'public')
+    .filter((row) => !hiddenOwnerIds.has(postOwnerId(row)))
+    .map((row) => {
+      const id = normalizeId(textOf(row, ['id', 'post_id'], ''))
+      const authorId = postOwnerId(row)
+      const author = profilesById.get(authorId) || {}
+      const content = cleanText(textOf(row, ['content', 'caption', 'description'], ''), 800)
+      const tags = arrayOf(row, ['tags', 'hashtags'])
+      const mediaUrls = normalizePostMediaUrls(row)
+      return {
+        searchId: `post:${id}`,
+        id,
+        type: 'post',
+        title: cleanText(content, 120) || 'Publicación',
+        text: content,
+        tags,
+        excerpt: cleanText(content, 240),
+        thumbnail_url: mediaUrls[0] || '',
+        author_id: authorId,
+        author_name: profileName(author, textOf(row, ['user_name', 'display_name'], 'Usuario')),
+        author_avatar_url: profileAvatar(author) || textOf(row, ['user_profile_image', 'avatar_url'], ''),
+        created_at: textOf(row, ['created_at', 'updated_at'], ''),
+      }
+    })
+    .filter((document) => document.id && (document.text || document.tags.length > 0))
+
+  const videoDocuments = mergeRowsById(videos)
+    .filter((row) => boolOf(row, ['is_public', 'isPublic'], true))
+    .filter((row) => !hiddenOwnerIds.has(normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id'], ''))))
+    .map((row) => {
+      const id = normalizeId(textOf(row, ['id', 'video_id'], ''))
+      const authorId = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id'], ''))
+      const author = profilesById.get(authorId) || {}
+      const title = cleanText(textOf(row, ['title', 'caption'], ''), 200)
+      const description = cleanText(textOf(row, ['description', 'content'], ''), 800)
+      const tags = arrayOf(row, ['tags', 'hashtags'])
+      return {
+        searchId: `video:${id}`,
+        id,
+        type: 'video',
+        title: title || 'Video',
+        text: [title, description].filter(Boolean).join(' '),
+        tags,
+        excerpt: cleanText(description || title, 240),
+        thumbnail_url: textOf(row, ['thumbnail_url', 'thumbnailUrl', 'poster_url', 'cover_url'], ''),
+        author_id: authorId,
+        author_name: profileName(author, textOf(row, ['user_name', 'display_name'], 'Usuario')),
+        author_avatar_url: profileAvatar(author) || textOf(row, ['user_profile_image', 'avatar_url'], ''),
+        created_at: textOf(row, ['created_at', 'updated_at'], ''),
+      }
+    })
+    .filter((document) => document.id && (document.text || document.tags.length > 0))
+
+  return [...postDocuments, ...videoDocuments]
+    .sort((left, right) => toMillis(right.created_at) - toMillis(left.created_at))
+    .slice(0, boundedMaximum)
+}
+
 function isCollectionAdminRole(role, { isCreator = false } = {}) {
   if (isCreator) return true
   return ['owner', 'admin'].includes(normalizeCollectionRole(role))
@@ -5601,6 +5670,68 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       )
       res.status(201).json({ ok: true })
     } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/search/semantic', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const query = cleanText(req.query.q || req.query.query || '', 200)
+      if (query.length < 2) return res.status(400).json({ error: 'SEMANTIC_QUERY_TOO_SHORT' })
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 24, 50))
+      const [profiles, importedPosts, fallbackPosts, importedVideos, fallbackVideos] = await Promise.all([
+        allPublicProfiles(pool),
+        importedRows(pool, 'posts', 5000),
+        localPosts(pool, 5000),
+        importedRows(pool, 'videos', 5000),
+        localVideos(pool, 5000),
+      ])
+      const mergedVideos = mergeRowsById([...importedVideos, ...fallbackVideos])
+      const videoIds = mergedVideos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+      const deletedVideoIds = await localVideoDeletionIds(pool, videoIds)
+      const corpus = buildPublicSemanticSearchCorpus({
+        profiles,
+        posts: [...importedPosts, ...fallbackPosts],
+        videos: mergedVideos.filter((row) =>
+          !deletedVideoIds.has(normalizeId(textOf(row, ['id'], ''))),
+        ),
+      })
+      const ranked = await callAiService('/v1/semantic-rank', {
+        query,
+        limit,
+        documents: corpus.map((document) => ({
+          id: document.searchId,
+          title: document.title,
+          text: document.text,
+          tags: document.tags,
+        })),
+      }, process.env.AI_SEMANTIC_SEARCH_TIMEOUT_MS || 5000)
+      const bySearchId = new Map(corpus.map((document) => [document.searchId, document]))
+      const items = (Array.isArray(ranked.results) ? ranked.results : [])
+        .map((result) => {
+          const document = bySearchId.get(String(result?.id || ''))
+          if (!document) return null
+          const { searchId, text, tags, ...publicDocument } = document
+          return {
+            ...publicDocument,
+            score: Number(result.score) || 0,
+            reason: cleanText(result.reason, 40) || 'semantic_similarity',
+          }
+        })
+        .filter(Boolean)
+      setPrivateShortCache(res, 10)
+      res.json({
+        items,
+        model: cleanText(ranked.model, 80) || 'novvin-semantic-local-v1',
+        publicOnly: true,
+      })
+    } catch (error) {
+      if (new Set(['AI_SERVICE_TIMEOUT', 'AI_SERVICE_UNAVAILABLE']).has(error?.code)) {
+        return res.status(503).json({ error: 'SEMANTIC_SEARCH_UNAVAILABLE' })
+      }
       next(error)
     }
   })
@@ -11623,6 +11754,7 @@ async function processDueCommunityEventReminders(pool, { limit = 100 } = {}) {
 }
 
 module.exports = {
+  buildPublicSemanticSearchCorpus,
   buildProfileForUser,
   collectionRoleCapabilities,
   communityChannelPayload,

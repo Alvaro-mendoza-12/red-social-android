@@ -13,8 +13,11 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +29,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import conectate.com.data.model.User
+import conectate.com.data.model.SemanticSearchResult
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.UserItem
 
@@ -37,12 +41,15 @@ fun SearchUsersScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val searchResults by viewModel.searchResults.collectAsState()
+    val contentResults by viewModel.contentResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Nuevo Chat") },
+                title = { Text("Buscar en Novvin") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
@@ -65,6 +72,19 @@ fun SearchUsersScreen(
             )
             Divider()
 
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Personas") }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Contenido") }
+                )
+            }
+
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
@@ -79,7 +99,9 @@ fun SearchUsersScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                placeholder = { Text("Buscar por nombre...") },
+                placeholder = {
+                    Text(if (selectedTab == 0) "Buscar personas..." else "Buscar por significado...")
+                },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
@@ -100,23 +122,123 @@ fun SearchUsersScreen(
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp)
-            ) {
-                items(searchResults) { user ->
-                    UserItem(
-                        user = user,
-                        onClick = {
-                            navController.navigate(Screen.Chat.createRoute(user.id))
-                        }
-                    )
-                    Divider()
+            errorMessage?.takeIf { selectedTab == 1 }?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            if (selectedTab == 0) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    items(searchResults, key = { it.id }) { user ->
+                        UserItem(
+                            user = user,
+                            onClick = {
+                                navController.navigate(Screen.Chat.createRoute(user.id))
+                            }
+                        )
+                        Divider()
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(contentResults, key = { "${it.type}:${it.id}" }) { result ->
+                        SemanticContentResultCard(
+                            result = result,
+                            onClick = {
+                                val route = if (result.type == "video") {
+                                    Screen.VideoPlayer.createRoute(result.id)
+                                } else {
+                                    Screen.PostDetail.createRoute(result.id)
+                                }
+                                navController.navigate(route)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-// Local UserItem removed, using shared component
+@Composable
+private fun SemanticContentResultCard(
+    result: SemanticSearchResult,
+    onClick: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (result.thumbnailUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(result.thumbnailUrl)
+                        .crossfade(false)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(74.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                )
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.size(74.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (result.type == "video") Icons.Default.PlayCircle else Icons.Default.Public,
+                            contentDescription = null
+                        )
+                    }
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title.ifBlank { if (result.type == "video") "Video" else "Publicación" },
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2
+                )
+                if (result.excerpt.isNotBlank() && result.excerpt != result.title) {
+                    Text(
+                        text = result.excerpt,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2
+                    )
+                }
+                Text(
+                    text = "${if (result.type == "video") "Video" else "Publicación"} · ${result.authorName}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Coincidencia por significado",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = "Abrir")
+        }
+    }
+}
 

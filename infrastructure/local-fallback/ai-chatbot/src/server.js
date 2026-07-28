@@ -2,6 +2,7 @@ const http = require('http')
 const { randomUUID } = require('crypto')
 const path = require('path')
 const { ConectateChatbot } = require('./chatbot')
+const { SEMANTIC_SEARCH_MODEL, rankSemanticDocuments } = require('./semantic-search')
 
 const port = Number(process.env.PORT || 3010)
 const dataDir = process.env.AI_DATA_DIR || path.resolve(__dirname, '..', 'data-runtime')
@@ -16,10 +17,12 @@ const knowledgeFile = process.env.AI_KNOWLEDGE_FILE || path.resolve(
 const modelFile = process.env.AI_MODEL_FILE || path.join(dataDir, 'model.json')
 const feedbackFile = process.env.AI_FEEDBACK_FILE || path.join(dataDir, 'feedback.jsonl')
 const MAX_BODY_BYTES = 32_000
+const MAX_SEMANTIC_BODY_BYTES = 2_000_000
 
 const runtimeMetrics = {
   chatRequests: 0,
   feedbackRequests: 0,
+  semanticSearchRequests: 0,
   requestErrors: 0,
   lastErrorAt: null,
 }
@@ -46,7 +49,7 @@ function sendJson(res, status, payload) {
   res.end(body)
 }
 
-function readBody(req) {
+function readBody(req, maximumBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let body = ''
     let bodyBytes = 0
@@ -54,7 +57,7 @@ function readBody(req) {
     req.on('data', (chunk) => {
       if (settled) return
       bodyBytes += Buffer.byteLength(chunk)
-      if (bodyBytes > MAX_BODY_BYTES) {
+      if (bodyBytes > maximumBytes) {
         settled = true
         reject(Object.assign(new Error('PAYLOAD_TOO_LARGE'), {
           code: 'PAYLOAD_TOO_LARGE',
@@ -145,6 +148,39 @@ async function handle(req, res, requestContext) {
       hasComment: Boolean(String(body.comment || '').trim()),
     })
     return sendJson(res, 202, result)
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/semantic-rank') {
+    const body = await readBody(req, MAX_SEMANTIC_BODY_BYTES)
+    const query = String(body.query || '').trim()
+    const documents = Array.isArray(body.documents) ? body.documents : []
+    if (query.length < 2) return sendJson(res, 400, { error: 'SEMANTIC_QUERY_TOO_SHORT' })
+    if (query.length > 200) return sendJson(res, 413, { error: 'SEMANTIC_QUERY_TOO_LONG' })
+    if (documents.length > 800) return sendJson(res, 413, { error: 'SEMANTIC_DOCUMENT_LIMIT_EXCEEDED' })
+    const sanitizedDocuments = documents.map((document) => ({
+      id: String(document?.id || '').trim().slice(0, 160),
+      title: String(document?.title || '').trim().slice(0, 500),
+      text: String(document?.text || '').trim().slice(0, 5000),
+      tags: Array.isArray(document?.tags)
+        ? document.tags.map((tag) => String(tag || '').trim().slice(0, 80)).slice(0, 30)
+        : [],
+    }))
+    const results = rankSemanticDocuments(query, sanitizedDocuments, {
+      limit: body.limit,
+    })
+    runtimeMetrics.semanticSearchRequests += 1
+    logRequestResult({
+      event: 'ai-semantic-search-complete',
+      requestId: requestContext.requestId,
+      durationMs: Date.now() - requestContext.startedAt,
+      queryLength: query.length,
+      documentCount: sanitizedDocuments.length,
+      resultCount: results.length,
+    })
+    return sendJson(res, 200, {
+      model: SEMANTIC_SEARCH_MODEL,
+      results,
+    })
   }
 
   return sendJson(res, 404, { error: 'NOT_FOUND' })

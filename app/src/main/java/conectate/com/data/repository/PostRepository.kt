@@ -113,6 +113,19 @@ class PostRepository @Inject constructor(
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
 
+    suspend fun searchPublicContent(
+        query: String,
+        limit: Int = 24
+    ): Result<List<conectate.com.data.model.SemanticSearchResult>> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val accessToken = authService.getAccessToken()
+                ?: return@withContext Result.failure(
+                    IllegalStateException("Necesitas iniciar sesión para buscar contenido.")
+                )
+            localFallbackApiClient.searchPublicContent(accessToken, query, limit)
+                .map { response -> response.items }
+        }
+
     suspend fun getSavedLibrary(query: String = ""): Result<SavedLibraryResponse> {
         val accessToken = authService.getAccessToken()
             ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para ver tus guardados."))

@@ -1,6 +1,7 @@
 const assert = require('assert')
 const {
   buildProfileForUser,
+  buildPublicSemanticSearchCorpus,
   collectionRoleCapabilities,
   communityChannelPayload,
   communityEventPayload,
@@ -27,6 +28,26 @@ const {
   storageObjectExists,
   userIdentity,
 } = require('../src/data-routes')
+
+const semanticCorpus = buildPublicSemanticSearchCorpus({
+  profiles: [
+    { id: 'public-owner', display_name: 'Pública', break_mode: 'off' },
+    { id: 'hidden-owner', display_name: 'Oculta', break_mode: 'hidden' },
+  ],
+  posts: [
+    { id: 'post-public', user_id: 'public-owner', content: 'Recetas nutritivas', visibility: 'public' },
+    { id: 'post-private', user_id: 'public-owner', content: 'Secreto', visibility: 'private' },
+    { id: 'post-hidden', user_id: 'hidden-owner', content: 'No indexar', visibility: 'public' },
+  ],
+  videos: [
+    { id: 'video-public', user_id: 'public-owner', title: 'Cocina saludable', is_public: true },
+    { id: 'video-private', user_id: 'public-owner', title: 'Privado', is_public: false },
+  ],
+})
+assert.deepStrictEqual(
+  semanticCorpus.map((item) => item.searchId).sort(),
+  ['post:post-public', 'video:video-public'],
+)
 
 assert.strictEqual(normalizeCollectionRole('creator'), 'owner')
 assert.strictEqual(normalizeCollectionRole('MOD'), 'moderator')

@@ -113,6 +113,22 @@ async function run() {
     assert.strictEqual(diagnosticResponse.status, 200)
     assert.strictEqual((await diagnosticResponse.json()).intent, 'videos_subida_error')
 
+    const semanticResponse = await fetch(`${baseUrl}/v1/semantic-rank`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: 'alimentación saludable',
+        documents: [
+          { id: 'recipe', title: 'Recetas nutritivas', text: 'Cocina para tu bienestar', tags: ['comida'] },
+          { id: 'code', title: 'Desarrollo Android', text: 'Programación móvil', tags: ['software'] },
+        ],
+      }),
+    })
+    assert.strictEqual(semanticResponse.status, 200)
+    const semantic = await semanticResponse.json()
+    assert.strictEqual(semantic.model, 'novvin-semantic-local-v1')
+    assert.strictEqual(semantic.results[0].id, 'recipe')
+
     const invalidResponse = await fetch(`${baseUrl}/v1/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -130,6 +146,7 @@ async function run() {
 
     const readyAfterRequests = await (await fetch(`${baseUrl}/ready`)).json()
     assert.ok(readyAfterRequests.requests.chatRequests >= 3)
+    assert.ok(readyAfterRequests.requests.semanticSearchRequests >= 1)
     assert.ok(readyAfterRequests.requests.requestErrors >= 1)
     assert.ok(readyAfterRequests.requests.lastErrorAt)
   } finally {
