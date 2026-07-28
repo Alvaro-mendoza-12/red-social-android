@@ -4,6 +4,8 @@ import conectate.com.BuildConfig
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
+import conectate.com.data.model.CommunityChannel
+import conectate.com.data.model.CommunityChannelCatalog
 import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
@@ -24,6 +26,7 @@ import conectate.com.data.model.VideoComment
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.SupabaseConfig
+import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
@@ -568,6 +571,7 @@ private data class LocalFallbackSendMessageRequest(
     val thumbnailUrl: String = "",
     val mediaSize: Long = 0L,
     val replyToId: String = "",
+    val channelId: String? = null,
     val isForwarded: Boolean = false,
     val forwardedFromMessageId: String? = null,
     val forwardedFromUserId: String? = null
@@ -793,6 +797,27 @@ private data class LocalFallbackReactionRequest(
 private data class LocalFallbackModerationEvidence(
     val source: String = "",
     val label: String = ""
+)
+
+@Serializable
+private data class LocalFallbackCommunityChannelMutationRequest(
+    val name: String,
+    val description: String? = null,
+    val type: String,
+    val position: Int = 100
+)
+
+@Serializable
+private data class LocalFallbackCommunityChannelPauseRequest(
+    val paused: Boolean,
+    val minutes: Int = 60,
+    val reason: String? = null,
+    val pausedUntil: String? = null
+)
+
+@Serializable
+private data class LocalFallbackCommunityChannelResponse(
+    val channel: CommunityChannel
 )
 
 @Serializable
@@ -1545,6 +1570,100 @@ class LocalFallbackApiClient @Inject constructor(
             "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/roles",
             accessToken
         )
+    }
+
+    suspend fun loadCommunityChannels(
+        accessToken: String,
+        communityId: String
+    ): Result<CommunityChannelCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels",
+            accessToken
+        )
+    }
+
+    suspend fun createCommunityChannel(
+        accessToken: String,
+        communityId: String,
+        name: String,
+        description: String?,
+        type: String,
+        position: Int = 100
+    ): Result<CommunityChannel> = communityChannelMutation {
+        post("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(LocalFallbackCommunityChannelMutationRequest(name, description, type, position))
+        }
+    }
+
+    suspend fun updateCommunityChannel(
+        accessToken: String,
+        communityId: String,
+        channelId: String,
+        name: String,
+        description: String?,
+        type: String,
+        position: Int
+    ): Result<CommunityChannel> = communityChannelMutation {
+        patch("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels/${urlEncode(channelId)}") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(LocalFallbackCommunityChannelMutationRequest(name, description, type, position))
+        }
+    }
+
+    suspend fun pauseCommunityChannel(
+        accessToken: String,
+        communityId: String,
+        channelId: String,
+        paused: Boolean,
+        minutes: Int,
+        reason: String?
+    ): Result<CommunityChannel> = communityChannelMutation {
+        post("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels/${urlEncode(channelId)}/pause") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(LocalFallbackCommunityChannelPauseRequest(paused, minutes, reason))
+        }
+    }
+
+    suspend fun deleteCommunityChannel(
+        accessToken: String,
+        communityId: String,
+        channelId: String
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete(
+                "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels/${urlEncode(channelId)}"
+            ) {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private suspend fun communityChannelMutation(
+        request: suspend HttpClient.() -> HttpResponse
+    ): Result<CommunityChannel> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.request()
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackCommunityChannelResponse>(body).channel)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun loadCurrentProfile(accessToken: String): Result<LocalFallbackProfileResponse> {
@@ -3438,6 +3557,7 @@ class LocalFallbackApiClient @Inject constructor(
         mediaUrl: String?,
         mediaSize: Long,
         replyToId: String?,
+        channelId: String? = null,
         messageId: String? = null,
         isForwarded: Boolean = false,
         forwardedFromMessageId: String? = null,
@@ -3456,6 +3576,7 @@ class LocalFallbackApiClient @Inject constructor(
                         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
                         mediaSize = mediaSize,
                         replyToId = replyToId ?: "",
+                        channelId = channelId,
                         isForwarded = isForwarded,
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
@@ -4237,6 +4358,29 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("No tienes permiso para gestionar roles en esta comunidad.")
             "CREATOR_ROLE_IMMUTABLE" ->
                 Exception("El rol de la persona propietaria no se puede cambiar.")
+            "CHANNEL_MANAGE_DENIED" ->
+                Exception("No tienes permiso para administrar los canales de esta comunidad.")
+            "CHANNEL_PAUSE_DENIED" ->
+                Exception("No tienes permiso para pausar este canal.")
+            "CHANNEL_NAME_REQUIRED" ->
+                Exception("Escribe un nombre para el canal.")
+            "CHANNEL_TYPE_INVALID" ->
+                Exception("Selecciona un tipo de canal válido.")
+            "CHANNEL_NOT_FOUND" ->
+                Exception("Este canal ya no está disponible.")
+            "CHANNEL_PAUSE_REASON_REQUIRED" ->
+                Exception("Escribe el motivo de la pausa.")
+            "CHANNEL_PAUSE_UNTIL_INVALID" ->
+                Exception("La duración de la pausa no es válida.")
+            "CHANNEL_PAUSED" ->
+                Exception(
+                    error.message?.takeIf { it.isNotBlank() }
+                        ?: "Este canal está pausado temporalmente."
+                )
+            "VOICE_CHANNEL_DOES_NOT_ACCEPT_MESSAGES" ->
+                Exception("Este canal es de voz. Ábrelo para conversar en una sala.")
+            "DEFAULT_CHANNEL_CANNOT_BE_DELETED" ->
+                Exception("El canal General no se puede eliminar.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty(),

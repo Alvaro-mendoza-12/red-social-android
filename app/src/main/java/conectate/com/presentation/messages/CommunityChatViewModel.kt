@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import android.net.Uri
 import conectate.com.core.messaging.UnreadPolicy
 import conectate.com.data.model.Community
+import conectate.com.data.model.CommunityChannel
 import conectate.com.data.model.CommunityMember
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.MessagePollOptionState
@@ -162,6 +163,12 @@ class CommunityChatViewModel @Inject constructor(
     private val _myRole = MutableStateFlow<String?>(null)
     val myRole: StateFlow<String?> = _myRole.asStateFlow()
 
+    private val _channels = MutableStateFlow<List<CommunityChannel>>(emptyList())
+    val channels: StateFlow<List<CommunityChannel>> = _channels.asStateFlow()
+
+    private val _selectedChannel = MutableStateFlow<CommunityChannel?>(null)
+    val selectedChannel: StateFlow<CommunityChannel?> = _selectedChannel.asStateFlow()
+
     fun init(communityId: String) {
         val cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return
@@ -173,11 +180,102 @@ class CommunityChatViewModel @Inject constructor(
         voiceMessageManager.reset()
         
         loadCommunity()
+        loadChannels()
         viewModelScope.launch {
             communityRepository.setActiveCommunity(cleanId)
             communityRepository.markMessagesAsDelivered(cleanId)
             communityRepository.markAsRead(cleanId)
         }
+    }
+
+    fun loadChannels() {
+        val id = communityId.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch {
+            communityRepository.getCommunityChannels(id)
+                .onSuccess { catalog ->
+                    _channels.value = catalog.channels
+                    val selectedId = _selectedChannel.value?.id
+                    _selectedChannel.value = catalog.channels.firstOrNull { it.id == selectedId }
+                        ?: catalog.channels.firstOrNull { it.isDefault }
+                        ?: catalog.channels.firstOrNull()
+                }
+                .onFailure {
+                    _errorMessage.value = it.toUserFacingMessage("No se pudieron cargar los canales.")
+                }
+        }
+    }
+
+    fun selectChannel(channel: CommunityChannel) {
+        if (_channels.value.none { it.id == channel.id }) return
+        _selectedChannel.value = channel
+        _replyToMessage.value = null
+        _selectedMessage.value = null
+    }
+
+    fun createChannel(name: String, description: String?, type: String) {
+        if (name.isBlank()) {
+            _errorMessage.value = "Escribe un nombre para el canal."
+            return
+        }
+        viewModelScope.launch {
+            _isSending.value = true
+            communityRepository.createCommunityChannel(communityId, name, description, type)
+                .onSuccess {
+                    loadChannels()
+                    _selectedChannel.value = it
+                }
+                .onFailure {
+                    _errorMessage.value = it.toUserFacingMessage("No se pudo crear el canal.")
+                }
+            _isSending.value = false
+        }
+    }
+
+    fun setChannelPaused(channel: CommunityChannel, paused: Boolean, reason: String? = null, minutes: Int = 60) {
+        viewModelScope.launch {
+            _isSending.value = true
+            communityRepository.pauseCommunityChannel(
+                communityId = communityId,
+                channelId = channel.id,
+                paused = paused,
+                minutes = minutes,
+                reason = reason
+            ).onSuccess { updated ->
+                _channels.update { items -> items.map { if (it.id == updated.id) updated else it } }
+                if (_selectedChannel.value?.id == updated.id) _selectedChannel.value = updated
+            }.onFailure {
+                _errorMessage.value = it.toUserFacingMessage("No se pudo actualizar la pausa del canal.")
+            }
+            _isSending.value = false
+        }
+    }
+
+    fun deleteChannel(channel: CommunityChannel) {
+        viewModelScope.launch {
+            _isSending.value = true
+            communityRepository.deleteCommunityChannel(communityId, channel.id)
+                .onSuccess { loadChannels() }
+                .onFailure {
+                    _errorMessage.value = it.toUserFacingMessage("No se pudo eliminar el canal.")
+                }
+            _isSending.value = false
+        }
+    }
+
+    private fun writableChannelOrNull(): CommunityChannel? {
+        val channel = _selectedChannel.value
+        if (channel?.isPaused == true) {
+            _errorMessage.value = channel.pauseReason
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "Este canal está pausado: $it" }
+                ?: "Este canal está pausado temporalmente."
+            return null
+        }
+        if (channel?.type == "voice") {
+            _errorMessage.value = "Este es un canal de voz. Ábrelo para conversar."
+            return null
+        }
+        return channel
     }
 
     private fun backgroundKey(id: String) = "community:${id.trim().lowercase()}"
@@ -367,6 +465,8 @@ class CommunityChatViewModel @Inject constructor(
         val content = _messageText.value
         if (content.isBlank() || _isSending.value) return
 
+        val channel = writableChannelOrNull()
+        if (_selectedChannel.value != null && channel == null) return
         val state = _uiState.value as? CommunityChatUiState.Success
         val onlyAdmins = state?.community?.only_admins_can_talk ?: false
         val isAdmin = _myRole.value == "admin" || _myRole.value == "owner" || (state?.community?.creator_id == getCurrentUserId())
@@ -388,7 +488,8 @@ class CommunityChatViewModel @Inject constructor(
                 communityId,
                 content,
                 replyToId = replyTo?.id,
-                replyTo = replyTo
+                replyTo = replyTo,
+                channelId = channel?.id
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -406,6 +507,8 @@ class CommunityChatViewModel @Inject constructor(
         forcedMessageType: String? = null,
         customContent: String? = null
     ) {
+        val channel = writableChannelOrNull()
+        if (_selectedChannel.value != null && channel == null) return
         val state = _uiState.value as? CommunityChatUiState.Success
         val onlyAdmins = state?.community?.only_admins_can_talk ?: false
         val isAdmin = _myRole.value == "admin" || _myRole.value == "owner" || (state?.community?.creator_id == getCurrentUserId())
@@ -442,7 +545,8 @@ class CommunityChatViewModel @Inject constructor(
                     communityId = communityId,
                     sourceUri = uri,
                     contentType = resolvedType,
-                    content = content
+                    content = content,
+                    channelId = channel?.id
                 )
                 if (sendResult.isFailure) {
                     _errorMessage.value = sendResult.exceptionOrNull()
@@ -457,12 +561,15 @@ class CommunityChatViewModel @Inject constructor(
 
     fun sendRecentGif(mediaUrl: String) {
         if (mediaUrl.isBlank() || communityId.isBlank()) return
+        val channel = writableChannelOrNull()
+        if (_selectedChannel.value != null && channel == null) return
         viewModelScope.launch {
             val result = communityRepository.sendCommunityMessage(
                 communityId = communityId,
                 content = "🌀 GIF",
                 contentType = "gif",
-                mediaUrl = mediaUrl.trim()
+                mediaUrl = mediaUrl.trim(),
+                channelId = channel?.id
             )
             if (result.isFailure) {
                 android.util.Log.e("CommunityChatVM", "Recent GIF send failed", result.exceptionOrNull())
@@ -484,6 +591,8 @@ class CommunityChatViewModel @Inject constructor(
             _errorMessage.value = "Sticker inválido"
             return
         }
+        val channel = writableChannelOrNull()
+        if (_selectedChannel.value != null && channel == null) return
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -491,7 +600,8 @@ class CommunityChatViewModel @Inject constructor(
                 communityId = communityId,
                 content = caption,
                 contentType = "sticker",
-                mediaUrl = cleanUrl
+                mediaUrl = cleanUrl,
+                channelId = channel?.id
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -590,6 +700,8 @@ class CommunityChatViewModel @Inject constructor(
         validationError: String,
         mediaUrl: String? = null
     ) {
+        val channel = writableChannelOrNull()
+        if (_selectedChannel.value != null && channel == null) return
         val state = _uiState.value as? CommunityChatUiState.Success
         val onlyAdmins = state?.community?.only_admins_can_talk ?: false
         val isAdmin = _myRole.value == "admin" || _myRole.value == "owner" || (state?.community?.creator_id == getCurrentUserId())
@@ -609,7 +721,8 @@ class CommunityChatViewModel @Inject constructor(
                 communityId = communityId,
                 content = content.trim(),
                 contentType = contentType,
-                mediaUrl = mediaUrl
+                mediaUrl = mediaUrl,
+                channelId = channel?.id
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -982,6 +1095,11 @@ class CommunityChatViewModel @Inject constructor(
                 }
             }
         }
+        if (_selectedChannel.value?.isDefault == false) {
+            _errorMessage.value = "Por ahora las encuestas se crean en el canal General."
+            return
+        }
+        if (writableChannelOrNull() == null && _selectedChannel.value != null) return
     }
     
     fun sendCurrentRecording() {
@@ -995,6 +1113,8 @@ class CommunityChatViewModel @Inject constructor(
     
     private fun sendVoiceMessage(file: File, durationMs: Long) {
          if (durationMs > 1000) {
+            val channel = writableChannelOrNull()
+            if (_selectedChannel.value != null && channel == null) return
             viewModelScope.launch {
                 _isSending.value = true
                 val bytes = withContext(Dispatchers.IO) { file.readBytes() }
@@ -1006,7 +1126,8 @@ class CommunityChatViewModel @Inject constructor(
                         communityId = communityId,
                         content = durationLabel,
                         contentType = "audio",
-                        mediaUrl = url
+                        mediaUrl = url,
+                        channelId = channel?.id
                     )
                     if (sendResult.isFailure) {
                         val reason = sendResult.exceptionOrNull()?.message ?: "Error desconocido"

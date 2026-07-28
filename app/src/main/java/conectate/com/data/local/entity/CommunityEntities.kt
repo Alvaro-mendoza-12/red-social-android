@@ -106,6 +106,7 @@ data class CommunityMemberEntity(
     ],
     indices = [
         Index(value = ["community_id"]),
+        Index(value = ["channel_id"]),
         Index(value = ["created_at"]),
         Index(value = ["is_synced", "pending_action"]),
         Index(value = ["poll_id"]),
@@ -115,6 +116,7 @@ data class CommunityMemberEntity(
 data class CommunityMessageEntity(
     @PrimaryKey val id: String,
     val community_id: String,
+    val channel_id: String? = null,
     val sender_id: String,
     val content: String,
     val content_type: String,
@@ -149,6 +151,7 @@ data class CommunityMessageEntity(
         return conectate.com.data.model.CommunityMessage(
             id = id,
             community_id = community_id,
+            channel_id = channel_id,
             sender_id = sender_id,
             content = content,
             content_type = content_type,
@@ -184,6 +187,7 @@ data class CommunityMessageEntity(
             return CommunityMessageEntity(
                 id = msg.id,
                 community_id = msg.community_id,
+                channel_id = msg.channel_id,
                 sender_id = msg.sender_id,
                 content = msg.content,
                 content_type = msg.content_type,

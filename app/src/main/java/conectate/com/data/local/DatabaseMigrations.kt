@@ -303,10 +303,11 @@ private object LatestSchemaNormalizer {
 
     private val communityMessagesPlan = TablePlan(
         name = "community_messages",
-        createSql = "CREATE TABLE IF NOT EXISTS `community_messages` (`id` TEXT NOT NULL, `community_id` TEXT NOT NULL, `sender_id` TEXT NOT NULL, `content` TEXT NOT NULL, `content_type` TEXT NOT NULL, `media_url` TEXT, `poll_id` TEXT, `created_at` TEXT NOT NULL, `status` TEXT NOT NULL, `delivered_at` TEXT, `read_at` TEXT, `sender_name` TEXT, `sender_image` TEXT, `reply_to_id` TEXT, `reply_to_json` TEXT, `is_edited` INTEGER NOT NULL, `deleted_for_all` INTEGER NOT NULL, `deleted_by_json` TEXT NOT NULL, `reactions_json` TEXT NOT NULL DEFAULT '{}', `is_forwarded` INTEGER NOT NULL DEFAULT 0, `forwarded_from_message_id` TEXT, `forwarded_from_user_id` TEXT, `is_synced` INTEGER NOT NULL DEFAULT 1, `pending_action` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_retry_at` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`community_id`) REFERENCES `communities`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        createSql = "CREATE TABLE IF NOT EXISTS `community_messages` (`id` TEXT NOT NULL, `community_id` TEXT NOT NULL, `channel_id` TEXT, `sender_id` TEXT NOT NULL, `content` TEXT NOT NULL, `content_type` TEXT NOT NULL, `media_url` TEXT, `poll_id` TEXT, `created_at` TEXT NOT NULL, `status` TEXT NOT NULL, `delivered_at` TEXT, `read_at` TEXT, `sender_name` TEXT, `sender_image` TEXT, `reply_to_id` TEXT, `reply_to_json` TEXT, `is_edited` INTEGER NOT NULL, `deleted_for_all` INTEGER NOT NULL, `deleted_by_json` TEXT NOT NULL, `reactions_json` TEXT NOT NULL DEFAULT '{}', `is_forwarded` INTEGER NOT NULL DEFAULT 0, `forwarded_from_message_id` TEXT, `forwarded_from_user_id` TEXT, `is_synced` INTEGER NOT NULL DEFAULT 1, `pending_action` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_retry_at` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`community_id`) REFERENCES `communities`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("community_id"),
+            ColumnSpec("channel_id", "NULL", coalesceNulls = false),
             ColumnSpec("sender_id", "'unknown'"),
             ColumnSpec("content", "''"),
             ColumnSpec("content_type", "'text'"),
@@ -334,6 +335,7 @@ private object LatestSchemaNormalizer {
         ),
         indexSql = listOf(
             "CREATE INDEX IF NOT EXISTS `index_community_messages_community_id` ON `community_messages` (`community_id`)",
+            "CREATE INDEX IF NOT EXISTS `index_community_messages_channel_id` ON `community_messages` (`channel_id`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_created_at` ON `community_messages` (`created_at`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_is_synced_pending_action` ON `community_messages` (`is_synced`, `pending_action`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_poll_id` ON `community_messages` (`poll_id`)",

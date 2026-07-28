@@ -31,7 +31,7 @@ import conectate.com.data.local.entity.FollowEntity
 import conectate.com.data.local.dao.GroupDao
 import conectate.com.data.local.dao.CommunityDao
 
-const val APP_DATABASE_VERSION = 52
+const val APP_DATABASE_VERSION = 53
 
 @Database(
     entities = [

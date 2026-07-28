@@ -727,6 +727,7 @@ async function localCollectionMessages(pool, kind, roomId) {
         room_id,
         CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
         CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
+        channel_id,
         sender_id,
         content,
         content_type,
@@ -3138,6 +3139,57 @@ function collectionRoleCapabilities(role, { isCreator = false } = {}) {
   }
 }
 
+function normalizeCommunityChannelType(type) {
+  const normalized = String(type || '').trim().toLowerCase()
+  return ['text', 'media', 'voice'].includes(normalized) ? normalized : 'text'
+}
+
+function communityChannelPayload(row, { canManage = false, canPause = false } = {}) {
+  const pausedUntil = textOf(row, ['paused_until', 'pausedUntil'], null)
+  const pausedUntilMillis = pausedUntil ? new Date(pausedUntil).getTime() : 0
+  return {
+    id: textOf(row, ['id'], ''),
+    communityId: textOf(row, ['community_id', 'communityId'], ''),
+    name: textOf(row, ['name'], 'General'),
+    description: textOf(row, ['description'], null),
+    type: normalizeCommunityChannelType(textOf(row, ['channel_type', 'type'], 'text')),
+    position: numberOf(row, ['position'], 0),
+    isDefault: boolOf(row, ['is_default', 'isDefault'], false),
+    pausedUntil,
+    pauseReason: textOf(row, ['pause_reason', 'pauseReason'], null),
+    isPaused: Number.isFinite(pausedUntilMillis) && pausedUntilMillis > Date.now(),
+    canManage,
+    canPause,
+  }
+}
+
+async function ensureDefaultCommunityChannel(pool, roomId, actorId = '') {
+  const normalizedRoomId = normalizeId(roomId)
+  if (!normalizedRoomId) return null
+  await pool.query(
+    `INSERT INTO fallback_community_channels(
+       community_id, name, description, channel_type, position, is_default, created_by
+     )
+     SELECT $1, 'General', 'Conversación principal de la comunidad', 'text', 0, TRUE, $2
+     WHERE NOT EXISTS (
+       SELECT 1
+       FROM fallback_community_channels
+       WHERE lower(community_id) = $1 AND is_default = TRUE AND is_deleted = FALSE
+     )
+     ON CONFLICT DO NOTHING`,
+    [normalizedRoomId, normalizeId(actorId)],
+  )
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM fallback_community_channels
+     WHERE lower(community_id) = $1 AND is_default = TRUE AND is_deleted = FALSE
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [normalizedRoomId],
+  )
+  return rows[0] || null
+}
+
 function roomIdOf(row, key) {
   return normalizeId(textOf(row, [key, 'room_id'], ''))
 }
@@ -3845,6 +3897,7 @@ async function ensureLocalDataTables(pool) {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       room_kind TEXT NOT NULL CHECK (room_kind IN ('group', 'community')),
       room_id TEXT NOT NULL,
+      channel_id TEXT,
       sender_id TEXT NOT NULL,
       content TEXT NOT NULL DEFAULT '',
       content_type TEXT NOT NULL DEFAULT 'text',
@@ -3869,6 +3922,7 @@ async function ensureLocalDataTables(pool) {
   for (const statement of [
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS room_kind TEXT NOT NULL DEFAULT 'group'`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS room_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS channel_id TEXT`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS sender_id TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'text'`,
@@ -3894,6 +3948,56 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_room_messages_room_created
      ON fallback_room_messages(room_kind, lower(room_id), created_at)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_room_messages_channel_created
+     ON fallback_room_messages(lower(channel_id), created_at)
+     WHERE channel_id IS NOT NULL`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_community_channels (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      community_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      channel_type TEXT NOT NULL DEFAULT 'text'
+        CHECK (channel_type IN ('text', 'media', 'voice')),
+      position INTEGER NOT NULL DEFAULT 0,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      paused_until TIMESTAMPTZ,
+      pause_reason TEXT,
+      paused_by TEXT,
+      created_by TEXT NOT NULL DEFAULT '',
+      is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  for (const statement of [
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS community_id TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Canal'`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'text'`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS paused_until TIMESTAMPTZ`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS paused_by TEXT`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  ]) {
+    await pool.query(statement)
+  }
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_community_channels_default
+     ON fallback_community_channels(lower(community_id))
+     WHERE is_default = TRUE AND is_deleted = FALSE`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_community_channels_room_position
+     ON fallback_community_channels(lower(community_id), is_deleted, position, created_at)`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_collection_rooms (
@@ -7154,6 +7258,203 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     }
   })
 
+  async function communityChannelContext(req, res) {
+    const user = await getCurrentUser(pool, req)
+    if (!user) {
+      res.status(404).json({ error: 'USER_NOT_FOUND' })
+      return null
+    }
+    const roomId = normalizeId(req.params.roomId)
+    if (!validUuid(roomId)) {
+      res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+      return null
+    }
+    const payload = await loadCollectionRoomPayload(pool, user, 'community', roomId)
+    if (!payload) {
+      res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+      return null
+    }
+    const identity = userIdentity(user)
+    const room = payload.room || payload.chat || {}
+    const me = (payload.participants || [])
+      .find((participant) => identity.ids.has(normalizeId(participant.id)))
+    const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+    if (!isCreator && !me) {
+      res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
+      return null
+    }
+    const role = normalizeCollectionRole(me?.role, { isCreator })
+    const capabilities = collectionRoleCapabilities(role)
+    const defaultChannel = await ensureDefaultCommunityChannel(pool, roomId, identity.displayUserId)
+    return { user, roomId, identity, role, capabilities, defaultChannel }
+  }
+
+  app.get('/v1/data/messages/communities/:roomId/channels', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const { rows } = await pool.query(
+        `SELECT *
+         FROM fallback_community_channels
+         WHERE lower(community_id) = $1 AND is_deleted = FALSE
+         ORDER BY is_default DESC, position ASC, created_at ASC`,
+        [context.roomId],
+      )
+      res.json({
+        currentRole: context.role,
+        channels: rows.map((row) => communityChannelPayload(row, {
+          canManage: context.capabilities.canManageChannels,
+          canPause: context.capabilities.canPauseChannels,
+        })),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/communities/:roomId/channels', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageChannels) {
+        return res.status(403).json({ error: 'CHANNEL_MANAGE_DENIED' })
+      }
+      const name = cleanText(req.body?.name, 60)
+      const rawType = String(req.body?.type || req.body?.channelType || '').trim().toLowerCase()
+      if (!name) return res.status(400).json({ error: 'CHANNEL_NAME_REQUIRED' })
+      if (!['text', 'media', 'voice'].includes(rawType)) {
+        return res.status(400).json({ error: 'CHANNEL_TYPE_INVALID' })
+      }
+      const description = cleanText(req.body?.description, 240) || null
+      const position = Math.max(1, Math.min(Math.trunc(Number(req.body?.position) || 100), 10_000))
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_community_channels(
+           community_id, name, description, channel_type, position, created_by
+         )
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [context.roomId, name, description, rawType, position, context.identity.displayUserId],
+      )
+      res.status(201).json({
+        channel: communityChannelPayload(rows[0], { canManage: true, canPause: true }),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/messages/communities/:roomId/channels/:channelId', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageChannels) {
+        return res.status(403).json({ error: 'CHANNEL_MANAGE_DENIED' })
+      }
+      const channelId = normalizeId(req.params.channelId)
+      if (!validUuid(channelId)) return res.status(400).json({ error: 'CHANNEL_ID_REQUIRED' })
+      const name = cleanText(req.body?.name, 60)
+      const rawType = String(req.body?.type || req.body?.channelType || '').trim().toLowerCase()
+      if (!name) return res.status(400).json({ error: 'CHANNEL_NAME_REQUIRED' })
+      if (!['text', 'media', 'voice'].includes(rawType)) {
+        return res.status(400).json({ error: 'CHANNEL_TYPE_INVALID' })
+      }
+      const description = cleanText(req.body?.description, 240) || null
+      const position = Math.max(0, Math.min(Math.trunc(Number(req.body?.position) || 0), 10_000))
+      const { rows } = await pool.query(
+        `UPDATE fallback_community_channels
+         SET name = CASE WHEN is_default THEN 'General' ELSE $3 END,
+             description = $4,
+             channel_type = CASE WHEN is_default THEN 'text' ELSE $5 END,
+             position = CASE WHEN is_default THEN 0 ELSE $6 END,
+             updated_at = NOW()
+         WHERE lower(community_id) = $1
+           AND lower(id::text) = $2
+           AND is_deleted = FALSE
+         RETURNING *`,
+        [context.roomId, channelId, name, description, rawType, position],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' })
+      res.json({
+        channel: communityChannelPayload(rows[0], { canManage: true, canPause: true }),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/communities/:roomId/channels/:channelId/pause', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canPauseChannels) {
+        return res.status(403).json({ error: 'CHANNEL_PAUSE_DENIED' })
+      }
+      const channelId = normalizeId(req.params.channelId)
+      if (!validUuid(channelId)) return res.status(400).json({ error: 'CHANNEL_ID_REQUIRED' })
+      const pause = req.body?.paused !== false && req.body?.pausedUntil !== null
+      const reason = pause ? cleanText(req.body?.reason, 240) : null
+      let pausedUntil = null
+      if (pause) {
+        if (!reason) return res.status(400).json({ error: 'CHANNEL_PAUSE_REASON_REQUIRED' })
+        const requestedUntil = req.body?.pausedUntil ? new Date(String(req.body.pausedUntil)) : null
+        const requestedMinutes = Math.trunc(Number(req.body?.minutes) || 60)
+        const fallbackUntil = new Date(Date.now() + Math.max(5, Math.min(requestedMinutes, 43_200)) * 60_000)
+        const chosen = requestedUntil && Number.isFinite(requestedUntil.getTime()) ? requestedUntil : fallbackUntil
+        if (chosen.getTime() <= Date.now() || chosen.getTime() > Date.now() + 30 * 24 * 60 * 60 * 1000) {
+          return res.status(400).json({ error: 'CHANNEL_PAUSE_UNTIL_INVALID' })
+        }
+        pausedUntil = chosen.toISOString()
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_community_channels
+         SET paused_until = $3::timestamptz,
+             pause_reason = $4,
+             paused_by = $5,
+             updated_at = NOW()
+         WHERE lower(community_id) = $1
+           AND lower(id::text) = $2
+           AND is_deleted = FALSE
+         RETURNING *`,
+        [context.roomId, channelId, pausedUntil, reason, pause ? context.identity.displayUserId : null],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' })
+      res.json({
+        channel: communityChannelPayload(rows[0], {
+          canManage: context.capabilities.canManageChannels,
+          canPause: true,
+        }),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/messages/communities/:roomId/channels/:channelId', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      if (!context.capabilities.canManageChannels) {
+        return res.status(403).json({ error: 'CHANNEL_MANAGE_DENIED' })
+      }
+      const channelId = normalizeId(req.params.channelId)
+      if (!validUuid(channelId)) return res.status(400).json({ error: 'CHANNEL_ID_REQUIRED' })
+      const { rows } = await pool.query(
+        `UPDATE fallback_community_channels
+         SET is_deleted = TRUE, updated_at = NOW()
+         WHERE lower(community_id) = $1
+           AND lower(id::text) = $2
+           AND is_default = FALSE
+           AND is_deleted = FALSE
+         RETURNING id::text`,
+        [context.roomId, channelId],
+      )
+      if (!rows[0]) return res.status(409).json({ error: 'DEFAULT_CHANNEL_CANNOT_BE_DELETED' })
+      res.json({ ok: true, channelId })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get(['/v1/data/messages/groups/:roomId/preview', '/v1/data/messages/communities/:roomId/preview'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -7595,6 +7896,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
       const forwardedFromMessageId = String(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id || '').trim() || null
       const forwardedFromUserId = String(req.body?.forwardedFromUserId || req.body?.forwarded_from_user_id || '').trim() || null
+      const requestedChannelId = config?.kind === 'community'
+        ? normalizeId(req.body?.channelId || req.body?.channel_id)
+        : ''
       const requestedId = validUuid(req.body?.id)
       if (!config || !roomId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'ROOM_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
@@ -7611,6 +7915,34 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const myRole = String(myParticipant?.role || '').toLowerCase()
       const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
       const isAdmin = isCollectionAdminRole(myRole, { isCreator })
+      let selectedChannel = null
+      if (config.kind === 'community') {
+        const defaultChannel = await ensureDefaultCommunityChannel(pool, roomId, identity.displayUserId)
+        const channelId = requestedChannelId || normalizeId(defaultChannel?.id)
+        if (!validUuid(channelId)) return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' })
+        const channelResult = await pool.query(
+          `SELECT *
+           FROM fallback_community_channels
+           WHERE lower(community_id) = $1
+             AND lower(id::text) = $2
+             AND is_deleted = FALSE
+           LIMIT 1`,
+          [roomId, channelId],
+        )
+        selectedChannel = channelResult.rows[0] || null
+        if (!selectedChannel) return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' })
+        const pausedUntil = selectedChannel.paused_until ? new Date(selectedChannel.paused_until).getTime() : 0
+        if (Number.isFinite(pausedUntil) && pausedUntil > Date.now()) {
+          return res.status(423).json({
+            error: 'CHANNEL_PAUSED',
+            reason: cleanText(selectedChannel.pause_reason, 240),
+            pausedUntil: new Date(pausedUntil).toISOString(),
+          })
+        }
+        if (normalizeCommunityChannelType(selectedChannel.channel_type) === 'voice') {
+          return res.status(409).json({ error: 'VOICE_CHANNEL_DOES_NOT_ACCEPT_MESSAGES' })
+        }
+      }
       const onlyAdminsCanTalk = boolOf(roomRow, ['only_admins_can_talk', 'onlyAdminsCanTalk'], false)
       if (onlyAdminsCanTalk && !isAdmin) {
         return res.status(403).json({ error: 'ONLY_ADMINS_CAN_TALK' })
@@ -7653,9 +7985,10 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const { rows } = await pool.query(
         `INSERT INTO fallback_room_messages(
             id,
-            room_kind,
-            room_id,
-            sender_id,
+             room_kind,
+             room_id,
+             channel_id,
+             sender_id,
             content,
             content_type,
             media_url,
@@ -7666,10 +7999,11 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             forwarded_from_message_id,
             forwarded_from_user_id
          )
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (id) DO UPDATE SET
             room_kind = EXCLUDED.room_kind,
             room_id = EXCLUDED.room_id,
+            channel_id = EXCLUDED.channel_id,
             sender_id = EXCLUDED.sender_id,
             content = EXCLUDED.content,
             content_type = EXCLUDED.content_type,
@@ -7687,6 +8021,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             room_id,
             CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
             CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
+            channel_id,
             sender_id,
             content,
             content_type,
@@ -7704,6 +8039,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           requestedId,
           config.kind,
           roomId,
+          config.kind === 'community' ? normalizeId(selectedChannel?.id) : null,
           senderId,
           content,
           contentType,
@@ -7752,6 +8088,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             content: content || previewFromMessage({ content_type: contentType }),
             extraData: {
               [`${config.kind}_id`]: roomId,
+              channel_id: textOf(rows[0], ['channel_id'], ''),
               message_id: textOf(rows[0], ['id'], ''),
               content_type: textOf(rows[0], ['content_type'], 'text'),
               media_url: textOf(rows[0], ['media_url'], ''),
@@ -10331,6 +10668,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
 module.exports = {
   buildProfileForUser,
   collectionRoleCapabilities,
+  communityChannelPayload,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -10341,6 +10679,7 @@ module.exports = {
   invalidateImportedDataCache,
   normalizeFeedMode,
   normalizeCollectionRole,
+  normalizeCommunityChannelType,
   normalizeSavedCollectionName,
   normalizeSavedTags,
   normalizeProfileSectionOrder,

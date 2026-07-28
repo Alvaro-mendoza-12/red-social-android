@@ -37,4 +37,23 @@ class CommunityRoleCapabilitiesTest {
             catalog.roles.map { it.role }
         )
     }
+
+    @Test
+    fun pausedAndVoiceChannelsExposeTheirEffectiveState() {
+        val paused = CommunityChannel(
+            id = "paused",
+            communityId = "community",
+            name = "Avisos",
+            pausedUntil = "2099-01-01T00:00:00Z",
+            pauseReason = "Mantenimiento",
+            isPaused = true
+        )
+        val expired = paused.copy(pausedUntil = "2020-01-01T00:00:00Z")
+        val voice = paused.copy(id = "voice", type = "voice", isPaused = false)
+
+        assertTrue(paused.isEffectivelyPaused())
+        assertFalse(expired.isEffectivelyPaused())
+        assertFalse(voice.acceptsMessages())
+        assertTrue(paused.acceptsMessages())
+    }
 }

@@ -350,6 +350,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                             var msg = conectate.com.data.model.CommunityMessage(
                                 id = incomingId,
                                 community_id = chatId,
+                                channel_id = data["channel_id"],
                                 sender_id = senderId ?: "unknown",
                                 content = content,
                                 content_type = contentType,

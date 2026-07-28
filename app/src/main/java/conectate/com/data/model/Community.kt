@@ -36,6 +36,7 @@ data class CommunityMember(
 data class CommunityMessage(
     val id: String = UUID.randomUUID().toString(),
     val community_id: String = "",
+    val channel_id: String? = null,
     val sender_id: String = "",
     val content: String = "",
     val content_type: String = "text",
@@ -115,6 +116,36 @@ data class CommunityRoleCatalog(
     val currentRole: String,
     val roles: List<CommunityRoleCapabilities> = emptyList()
 )
+
+@Serializable
+data class CommunityChannel(
+    val id: String,
+    val communityId: String,
+    val name: String,
+    val description: String? = null,
+    val type: String = "text",
+    val position: Int = 0,
+    val isDefault: Boolean = false,
+    val pausedUntil: String? = null,
+    val pauseReason: String? = null,
+    val isPaused: Boolean = false,
+    val canManage: Boolean = false,
+    val canPause: Boolean = false
+)
+
+@Serializable
+data class CommunityChannelCatalog(
+    val currentRole: String = "member",
+    val channels: List<CommunityChannel> = emptyList()
+)
+
+fun CommunityChannel.acceptsMessages(): Boolean = type != "voice"
+
+fun CommunityChannel.isEffectivelyPaused(nowMillis: Long = System.currentTimeMillis()): Boolean {
+    if (!isPaused) return false
+    val until = pausedUntil?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+    return until == null || until > nowMillis
+}
 
 fun normalizeCommunityRole(role: String?, isCreator: Boolean = false): String {
     if (isCreator) return "owner"

@@ -2,6 +2,7 @@ const assert = require('assert')
 const {
   buildProfileForUser,
   collectionRoleCapabilities,
+  communityChannelPayload,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -11,6 +12,7 @@ const {
   normalizeProfileSectionVisibility,
   normalizeFeedMode,
   normalizeCollectionRole,
+  normalizeCommunityChannelType,
   normalizeSavedCollectionName,
   normalizeSavedTags,
   parsePublicStorageObjectUrl,
@@ -44,6 +46,37 @@ assert.deepStrictEqual(
 )
 assert.strictEqual(collectionRoleCapabilities('owner').canManageRoles, true)
 assert.strictEqual(collectionRoleCapabilities('member').canModerateMessages, false)
+assert.strictEqual(normalizeCommunityChannelType('MEDIA'), 'media')
+assert.strictEqual(normalizeCommunityChannelType('unsupported'), 'text')
+assert.deepStrictEqual(
+  communityChannelPayload(
+    {
+      id: 'channel-1',
+      community_id: 'community-1',
+      name: 'Fotos',
+      channel_type: 'media',
+      position: 2,
+      is_default: false,
+      paused_until: '2099-01-01T00:00:00.000Z',
+      pause_reason: 'Mantenimiento',
+    },
+    { canManage: true, canPause: true },
+  ),
+  {
+    id: 'channel-1',
+    communityId: 'community-1',
+    name: 'Fotos',
+    description: null,
+    type: 'media',
+    position: 2,
+    isDefault: false,
+    pausedUntil: '2099-01-01T00:00:00.000Z',
+    pauseReason: 'Mantenimiento',
+    isPaused: true,
+    canManage: true,
+    canPause: true,
+  },
+)
 
 const localIdentity = userIdentity({
   id: '11111111-1111-4111-8111-111111111111',

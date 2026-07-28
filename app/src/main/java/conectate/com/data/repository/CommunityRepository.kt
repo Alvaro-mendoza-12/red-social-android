@@ -42,6 +42,8 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Community
+import conectate.com.data.model.CommunityChannel
+import conectate.com.data.model.CommunityChannelCatalog
 import conectate.com.data.model.CommunityMember
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.CommunityRoleCatalog
@@ -284,6 +286,96 @@ class CommunityRepository @Inject constructor(
         }
         Result.success(defaultCommunityRoleCatalog(currentRole))
     }
+
+    suspend fun getCommunityChannels(communityId: String): Result<CommunityChannelCatalog> =
+        withContext(Dispatchers.IO) {
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+            if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
+                return@withContext Result.success(
+                    CommunityChannelCatalog(
+                        currentRole = getMemberRole(communityId, authService.getCurrentUserId().orEmpty()) ?: "member",
+                        channels = listOf(
+                            CommunityChannel(
+                                id = "general",
+                                communityId = communityId,
+                                name = "General",
+                                isDefault = true
+                            )
+                        )
+                    )
+                )
+            }
+            localFallbackApiClient.loadCommunityChannels(token, communityId.trim().lowercase())
+        }
+
+    suspend fun createCommunityChannel(
+        communityId: String,
+        name: String,
+        description: String?,
+        type: String
+    ): Result<CommunityChannel> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.createCommunityChannel(
+            token,
+            communityId.trim().lowercase(),
+            name.trim(),
+            description?.trim(),
+            type.trim().lowercase()
+        )
+    }
+
+    suspend fun updateCommunityChannel(
+        communityId: String,
+        channel: CommunityChannel,
+        name: String,
+        description: String?,
+        type: String,
+        position: Int
+    ): Result<CommunityChannel> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.updateCommunityChannel(
+            token,
+            communityId.trim().lowercase(),
+            channel.id,
+            name.trim(),
+            description?.trim(),
+            type.trim().lowercase(),
+            position
+        )
+    }
+
+    suspend fun pauseCommunityChannel(
+        communityId: String,
+        channelId: String,
+        paused: Boolean,
+        minutes: Int = 60,
+        reason: String? = null
+    ): Result<CommunityChannel> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.pauseCommunityChannel(
+            token,
+            communityId.trim().lowercase(),
+            channelId.trim().lowercase(),
+            paused,
+            minutes,
+            reason?.trim()
+        )
+    }
+
+    suspend fun deleteCommunityChannel(communityId: String, channelId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+            localFallbackApiClient.deleteCommunityChannel(
+                token,
+                communityId.trim().lowercase(),
+                channelId.trim().lowercase()
+            )
+        }
 
     // --- REALTIME SUBSCRIPTION (ROBUST) ---
 
@@ -2002,7 +2094,8 @@ class CommunityRepository @Inject constructor(
         isForwarded: Boolean = false,
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null,
-        messageId: String? = null
+        messageId: String? = null,
+        channelId: String? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
@@ -2068,6 +2161,7 @@ class CommunityRepository @Inject constructor(
             var msg = CommunityMessage(
                 id = msgId,
                 community_id = cleanId,
+                channel_id = channelId?.trim()?.lowercase()?.ifBlank { null },
                 sender_id = senderId,
                 content = finalContent,
                 content_type = contentType,
@@ -2079,6 +2173,7 @@ class CommunityRepository @Inject constructor(
                     CommunityMessage(
                         id = it.id,
                         community_id = cleanId,
+                        channel_id = channelId?.trim()?.lowercase()?.ifBlank { null },
                         sender_id = it.sender_id,
                         content = it.content,
                         content_type = it.content_type,
@@ -2156,6 +2251,7 @@ class CommunityRepository @Inject constructor(
             val msgJson = buildJsonObject {
                 put("id", msgId)
                 put("community_id", cleanId)
+                put("channel_id", msg.channel_id)
                 put("sender_id", senderId)
                 put("content", finalContent)
                 put("content_type", contentType)
@@ -2180,6 +2276,7 @@ class CommunityRepository @Inject constructor(
                         mediaUrl = outgoingMediaUrl,
                         mediaSize = 0L,
                         replyToId = replyToId,
+                        channelId = msg.channel_id,
                         messageId = msgId,
                         isForwarded = isForwarded,
                         forwardedFromMessageId = forwardedFromMessageId,
@@ -2187,6 +2284,7 @@ class CommunityRepository @Inject constructor(
                     ).map { serverMessage ->
                         val synced = serverMessage.copy(
                             community_id = cleanId,
+                            channel_id = serverMessage.channel_id ?: msg.channel_id,
                             status = "sent",
                             reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,
                             reply_to = serverMessage.reply_to ?: msg.reply_to
@@ -2470,6 +2568,7 @@ class CommunityRepository @Inject constructor(
             val payload = buildJsonObject {
                 put("id", pendingEntity.id)
                 put("community_id", pendingEntity.community_id)
+                put("channel_id", pendingEntity.channel_id)
                 put("sender_id", pendingEntity.sender_id)
                 put("content", pendingEntity.content)
                 put("content_type", pendingEntity.content_type)
@@ -2492,6 +2591,7 @@ class CommunityRepository @Inject constructor(
                         mediaUrl = pendingEntity.media_url,
                         mediaSize = 0L,
                         replyToId = pendingEntity.reply_to_id,
+                        channelId = pendingEntity.channel_id,
                         messageId = pendingEntity.id,
                         isForwarded = pendingEntity.is_forwarded,
                         forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
@@ -2524,7 +2624,8 @@ class CommunityRepository @Inject constructor(
         communityId: String,
         sourceUri: android.net.Uri,
         contentType: String,
-        content: String
+        content: String,
+        channelId: String? = null
     ): Result<Unit> {
         val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return Result.failure(Exception("Not authenticated"))
@@ -2542,7 +2643,8 @@ class CommunityRepository @Inject constructor(
             content = content,
             contentType = contentType,
             mediaUrl = pending.uri.toString(),
-            messageId = messageId
+            messageId = messageId,
+            channelId = channelId
         )
     }
 

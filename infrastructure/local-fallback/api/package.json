@@ -25,7 +25,8 @@
     "test:system-health": "node tests/system-health.test.js",
     "verify:admin-panel-e2e": "node scripts/verify-admin-panel-e2e.js",
     "verify:password-reset-e2e": "node scripts/verify-password-reset-e2e.js",
-    "verify:community-roles-e2e": "node scripts/verify-community-roles-e2e.js"
+    "verify:community-roles-e2e": "node scripts/verify-community-roles-e2e.js",
+    "verify:community-channels-e2e": "node scripts/verify-community-channels-e2e.js"
   },
   "engines": {
     "node": ">=20"

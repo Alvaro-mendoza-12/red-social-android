@@ -38,6 +38,7 @@ import conectate.com.presentation.components.MessageBubble
 import conectate.com.presentation.messages.VoiceState
 import conectate.com.presentation.components.FullScreenImageDialog
 import conectate.com.presentation.components.MediaItem
+import conectate.com.data.model.CommunityChannel
 import conectate.com.util.Constants
 import kotlinx.coroutines.launch
 import java.io.File
@@ -88,6 +89,8 @@ fun CommunityChatScreen(
     val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsState()
     val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
+    val channels by viewModel.channels.collectAsState()
+    val selectedChannel by viewModel.selectedChannel.collectAsState()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
@@ -104,6 +107,9 @@ fun CommunityChatScreen(
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var showCreateChannelDialog by remember { mutableStateOf(false) }
+    var showChannelActionsDialog by remember { mutableStateOf(false) }
+    var showPauseChannelDialog by remember { mutableStateOf(false) }
     var backgroundImageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         backgroundImageToCrop = uri
@@ -123,7 +129,17 @@ fun CommunityChatScreen(
     }
 
     // FULL SCREEN MEDIA VIEWER STATE
-    val messages = (uiState as? CommunityChatUiState.Success)?.messages ?: emptyList()
+    val allMessages = (uiState as? CommunityChatUiState.Success)?.messages ?: emptyList()
+    val messages = remember(allMessages, selectedChannel?.id, selectedChannel?.isDefault) {
+        val channel = selectedChannel
+        when {
+            channel == null -> allMessages
+            channel.isDefault -> allMessages.filter {
+                it.channel_id.isNullOrBlank() || it.channel_id.equals(channel.id, ignoreCase = true)
+            }
+            else -> allMessages.filter { it.channel_id.equals(channel.id, ignoreCase = true) }
+        }
+    }
     val chatMessages = remember(messages) { messages.map { it.asChatMessage() } }
     val recentGifUrls = remember(messages) {
         messages.asReversed()
@@ -413,6 +429,54 @@ fun CommunityChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (channels.isNotEmpty()) {
+                Surface(tonalElevation = 1.dp) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(channels, key = { it.id }) { channel ->
+                            FilterChip(
+                                selected = selectedChannel?.id == channel.id,
+                                onClick = { viewModel.selectChannel(channel) },
+                                label = {
+                                    Text(
+                                        text = when (channel.type) {
+                                            "media" -> "▧ ${channel.name}"
+                                            "voice" -> "◉ ${channel.name}"
+                                            else -> "# ${channel.name}"
+                                        },
+                                        maxLines = 1
+                                    )
+                                },
+                                leadingIcon = if (channel.isPaused) {
+                                    { Icon(Icons.Default.Lock, null, modifier = Modifier.size(16.dp)) }
+                                } else null
+                            )
+                        }
+                        val canCreate = channels.any { it.canManage }
+                        if (canCreate) {
+                            item {
+                                AssistChip(
+                                    onClick = { showCreateChannelDialog = true },
+                                    label = { Text("Nuevo") },
+                                    leadingIcon = { Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)) }
+                                )
+                            }
+                        }
+                        val selected = selectedChannel
+                        if (selected != null && (selected.canManage || selected.canPause)) {
+                            item {
+                                IconButton(onClick = { showChannelActionsDialog = true }) {
+                                    Icon(Icons.Default.Settings, "Administrar canal")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Box(modifier = Modifier.weight(1f)) {
                 ChatBackgroundLayer(
                     backgroundType = chatBackgroundSettings.backgroundType,
@@ -542,11 +606,11 @@ fun CommunityChatScreen(
                             }
                         }
                         
-                        if (state.messages.isNotEmpty()) {
-                            val messageIdentity = remember(state.messages) { state.messages.map { it.id } }
+                        if (messages.isNotEmpty()) {
+                            val messageIdentity = remember(messages) { messages.map { it.id } }
                             LaunchedEffect(messageIdentity, focusMessageId) {
                                 if (!focusResolved && !focusMessageId.isNullOrBlank()) {
-                                    val index = state.messages.indexOfFirst {
+                                    val index = messages.indexOfFirst {
                                         it.id.equals(focusMessageId, ignoreCase = true)
                                     }
                                     if (index >= 0) {
@@ -556,14 +620,14 @@ fun CommunityChatScreen(
                                     }
 
                                 }
-                                listState.animateScrollToItem(state.messages.size - 1)
+                                listState.animateScrollToItem(messages.size - 1)
                             }
                             val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
                             LaunchedEffect(imeBottom) {
                                 if (imeBottom > 0 &&
-                                    listState.firstVisibleItemIndex >= (state.messages.lastIndex - 3).coerceAtLeast(0)
+                                    listState.firstVisibleItemIndex >= (messages.lastIndex - 3).coerceAtLeast(0)
                                 ) {
-                                    listState.scrollToItem(state.messages.lastIndex)
+                                    listState.scrollToItem(messages.lastIndex)
                                 }
                             }
                         }
@@ -579,6 +643,47 @@ fun CommunityChatScreen(
             // Input Area
             val successState = uiState as? CommunityChatUiState.Success
             if (successState != null && successState.isMember) {
+                val activeChannel = selectedChannel
+                if (activeChannel?.type == "voice") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(activeChannel.name, fontWeight = FontWeight.Bold)
+                                Text("Canal de voz: entra a las salas para conversar.")
+                            }
+                            Button(onClick = {
+                                navController.navigate(conectate.com.presentation.navigation.Screen.VoiceRooms.route)
+                            }) {
+                                Icon(Icons.Default.Mic, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Abrir")
+                            }
+                        }
+                    }
+                } else if (activeChannel?.isPaused == true) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text("Canal pausado temporalmente", fontWeight = FontWeight.Bold)
+                                activeChannel.pauseReason?.takeIf { it.isNotBlank() }?.let { Text(it) }
+                            }
+                        }
+                    }
+                } else {
                 val myRole by viewModel.myRole.collectAsState()
                 val canTalk = !successState.community.only_admins_can_talk || 
                              myRole == "admin" || myRole == "owner" || 
@@ -762,6 +867,7 @@ fun CommunityChatScreen(
                         }
                     }
                 }
+                }
             } else if (successState != null) {
                 if (successState.community.is_public) {
                     Button(
@@ -793,6 +899,168 @@ fun CommunityChatScreen(
                 }
             }
         }
+    }
+
+    if (showCreateChannelDialog) {
+        var name by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var type by remember { mutableStateOf("text") }
+        AlertDialog(
+            onDismissRequest = { showCreateChannelDialog = false },
+            title = { Text("Nuevo canal") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it.take(60) },
+                        label = { Text("Nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it.take(240) },
+                        label = { Text("Descripción (opcional)") },
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Tipo", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            "text" to "Texto",
+                            "media" to "Multimedia",
+                            "voice" to "Voz"
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = type == value,
+                                onClick = { type = value },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = name.isNotBlank() && !isSending,
+                    onClick = {
+                        viewModel.createChannel(name, description.ifBlank { null }, type)
+                        showCreateChannelDialog = false
+                    }
+                ) { Text("Crear") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateChannelDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showChannelActionsDialog && selectedChannel != null) {
+        val channel = selectedChannel!!
+        AlertDialog(
+            onDismissRequest = { showChannelActionsDialog = false },
+            title = { Text(channel.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        when (channel.type) {
+                            "media" -> "Canal multimedia"
+                            "voice" -> "Canal de voz"
+                            else -> "Canal de texto"
+                        }
+                    )
+                    if (channel.isPaused) {
+                        Text(
+                            channel.pauseReason?.let { "Pausado: $it" } ?: "Canal pausado",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    if (channel.canPause) {
+                        OutlinedButton(
+                            onClick = {
+                                showChannelActionsDialog = false
+                                if (channel.isPaused) {
+                                    viewModel.setChannelPaused(channel, paused = false)
+                                } else {
+                                    showPauseChannelDialog = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(if (channel.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (channel.isPaused) "Reanudar canal" else "Pausar canal")
+                        }
+                    }
+                    if (channel.canManage && !channel.isDefault) {
+                        OutlinedButton(
+                            onClick = {
+                                showChannelActionsDialog = false
+                                viewModel.deleteChannel(channel)
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Delete, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Eliminar canal")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showChannelActionsDialog = false }) { Text("Cerrar") }
+            }
+        )
+    }
+
+    if (showPauseChannelDialog && selectedChannel != null) {
+        val channel = selectedChannel!!
+        var reason by remember { mutableStateOf("") }
+        var minutes by remember { mutableIntStateOf(60) }
+        AlertDialog(
+            onDismissRequest = { showPauseChannelDialog = false },
+            title = { Text("Pausar ${channel.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = reason,
+                        onValueChange = { reason = it.take(240) },
+                        label = { Text("Motivo") },
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Duración")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(30 to "30 min", 60 to "1 h", 1440 to "24 h").forEach { (value, label) ->
+                            FilterChip(
+                                selected = minutes == value,
+                                onClick = { minutes = value },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    Text(
+                        "Durante la pausa el canal queda en modo lectura.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = reason.isNotBlank() && !isSending,
+                    onClick = {
+                        viewModel.setChannelPaused(channel, true, reason, minutes)
+                        showPauseChannelDialog = false
+                    }
+                ) { Text("Pausar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPauseChannelDialog = false }) { Text("Cancelar") }
+            }
+        )
     }
 
     if (showBackgroundSheet) {
