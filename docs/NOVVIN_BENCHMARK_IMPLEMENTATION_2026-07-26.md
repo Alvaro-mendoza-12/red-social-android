@@ -17,6 +17,9 @@ Antes de comenzar se creó y verificó el respaldo local
 Antes de reanudar la Fase 2 también se congeló el hotfix 3.0.9 en
 `backups/post-admin-auth-20260728-11c8a2b`, con fuente, bundle Git, APK Debug
 firmado, APK Release sin firma y hashes SHA-256 verificados.
+El cierre de comunidades B08–B13 se congeló después en
+`backups/post-community-roadmap-20260728-7441aca` con los mismos artefactos y
+una copia íntegra transportable del repositorio.
 
 ## Incrementos implementados
 
@@ -204,9 +207,9 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
   `3E04CA6114E1340329B49462B9096D9562E29FE4C90A35AA9ED37E3D37131B04`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260728T133733Z`, commit
-  `be4ee0749b02`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260728T133743Z`.
+- Servidor: despliegue `conectate-mini-pc-20260728T151140Z`, commit
+  `7441aca990d0`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260728T151145Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - B04: prueba integral pública aprobada con la cuenta ficticia
