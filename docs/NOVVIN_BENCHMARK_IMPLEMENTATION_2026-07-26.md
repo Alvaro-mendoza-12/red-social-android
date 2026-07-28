@@ -186,6 +186,30 @@ completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
   vuelve a intercambiar SDP e ICE. Esta prueba valida servidor y señalización,
   pero no sustituye la matriz física Wi‑Fi↔datos con dos teléfonos.
 
+### Fase 3.3 — subtítulos consentidos y resumen bajo solicitud
+
+- **B16, subtítulos en voz:** cada orador decide si activa sus propios
+  subtítulos. Antes de comenzar se muestra un consentimiento explícito y
+  permanente mientras la función está activa. Android usa el servicio de
+  reconocimiento disponible en el dispositivo; Novvin no graba ni recibe el
+  audio crudo.
+- El servidor no acepta texto de una persona que no haya activado su
+  consentimiento o que no tenga permiso vigente para hablar. Los textos
+  parciales se limitan para evitar saturación y solo los fragmentos finales se
+  conservan temporalmente, con un máximo acotado, en la memoria del proceso.
+- **B17, resumen de sala:** cualquier participante conectado puede solicitar
+  de forma explícita un resumen privado. El MVP es extractivo y verificable:
+  usa como máximo los últimos fragmentos finales consentidos, no inventa
+  contenido y no se presenta como un resumen generado por IA.
+- El resultado se envía únicamente al socket que lo solicitó. Ni el texto ni
+  el resumen se escriben en base de datos, archivos o almacenamiento; ambos se
+  eliminan de memoria cuando la sala queda vacía. La interfaz explica estas
+  condiciones antes de activar subtítulos y antes de solicitar un resumen.
+- La prueba E2E usa cuentas ficticias y verifica rechazo sin consentimiento,
+  autorización por rol, normalización y difusión canónica, estado para quien
+  entra tarde, desactivación efectiva, aceptación obligatoria del resumen y
+  limpieza completa de los registros de prueba.
+
 ### Corrección operativa 3.0.9 — administración y contraseñas
 
 - El host temporal que llevaba el APK había caducado. El túnel administrado
@@ -227,7 +251,8 @@ completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
 | B13 | Implementado en este incremento | Pausa temporal con motivo, duración y bloqueo en servidor |
 | B14 | Implementado en este incremento | Sala casual y escenario con público, solicitud de palabra y moderación validada por servidor |
 | B15 | Implementado técnicamente; falta matriz física | Detectar cambio de red, renovar TURN, reiniciar ICE y restaurar estado |
-| B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
+| B16 | Implementado técnicamente; falta prueba física por fabricante | Opt-in por orador, consentimiento visible, texto acotado y audio no almacenado |
+| B17 | Implementado como MVP extractivo | Solicitud explícita, respuesta privada y retención solo en memoria hasta cerrar la sala |
 | B18–B20 | Fase 3 | Moderación en vivo, repeticiones y remix con atribución |
 | B21–B25 | Fase 4 | IA aislada, opcional, auditable y con borrado |
 | B26 | Implementado en este incremento | Contratos en CI |

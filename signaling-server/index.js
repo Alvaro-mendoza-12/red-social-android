@@ -738,9 +738,52 @@ async function getLiveStreamMeta(liveId, accessToken) {
 }
 
 // Track active voice rooms and their participants
-// room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing, isScreenSharing })
+// room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing,
+// isScreenSharing, captionsEnabled })
 const rooms = new Map();
 const voiceRoomCleanupTimers = new Map();
+const voiceCaptionTranscripts = new Map();
+const VOICE_CAPTION_MAX_TEXT_LENGTH = 500;
+const VOICE_CAPTION_MAX_FINAL_SEGMENTS = 200;
+const VOICE_CAPTION_PARTIAL_THROTTLE_MS = 120;
+
+function normalizedCaptionText(value) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, VOICE_CAPTION_MAX_TEXT_LENGTH);
+}
+
+function appendFinalVoiceCaption(roomId, caption) {
+    const current = voiceCaptionTranscripts.get(roomId) || [];
+    current.push(caption);
+    voiceCaptionTranscripts.set(
+        roomId,
+        current.slice(-VOICE_CAPTION_MAX_FINAL_SEGMENTS)
+    );
+}
+
+function buildExtractiveVoiceSummary(roomId) {
+    const transcript = voiceCaptionTranscripts.get(roomId) || [];
+    if (transcript.length === 0) return null;
+
+    const participantIds = new Set();
+    const bullets = [];
+    for (const caption of transcript) {
+        participantIds.add(caption.userId);
+        const prefix = `${caption.userName || 'Usuario'}: `;
+        const text = normalizedCaptionText(caption.text);
+        if (!text) continue;
+        const bullet = `${prefix}${text}`.slice(0, VOICE_CAPTION_MAX_TEXT_LENGTH + prefix.length);
+        if (bullets[bullets.length - 1] !== bullet) bullets.push(bullet);
+    }
+
+    return {
+        segmentCount: transcript.length,
+        participantCount: participantIds.size,
+        bullets: bullets.slice(-6)
+    };
+}
 
 function voiceParticipantCanPublish(roomId, socketId) {
     const role = String(rooms.get(roomId)?.get(socketId)?.role || 'speaker').toLowerCase();
@@ -791,6 +834,7 @@ function clearPendingVoiceRoomCleanup(roomId) {
 async function finalizeEmptyVoiceRoom(roomId) {
     clearPendingVoiceRoomCleanup(roomId);
     rooms.delete(roomId);
+    voiceCaptionTranscripts.delete(roomId);
     console.log(`[SOCKET_DEBUG] [ROOM] ${roomId} finalized in signaling memory. Ubuntu API participant rows are synced through join/leave.`);
 }
 
@@ -849,7 +893,8 @@ io.on('connection', (socket) => {
             isMuted: Boolean(data.isMuted),
             handRaised: false,
             isCameraSharing: false,
-            isScreenSharing: false
+            isScreenSharing: false,
+            captionsEnabled: false
         });
         socket.data.joinedRoomIds.add(roomId);
 
@@ -875,7 +920,8 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             userId: userId,
             name: name,
-            avatarUrl: avatarUrl
+            avatarUrl: avatarUrl,
+            captionsEnabled: false
         });
 
         // Send current participants back to the new user
@@ -888,7 +934,8 @@ io.on('connection', (socket) => {
                     name: data.name,
                     avatarUrl: data.avatarUrl,
                     isCameraSharing: data.isCameraSharing || false,
-                    isScreenSharing: data.isScreenSharing || false
+                    isScreenSharing: data.isScreenSharing || false,
+                    captionsEnabled: data.captionsEnabled === true
                 });
             }
         });
@@ -948,6 +995,141 @@ io.on('connection', (socket) => {
             userId,
             reactionId: data?.reactionId || crypto.randomUUID(),
             timestamp: Number(data?.timestamp) || Date.now()
+        });
+    });
+
+    socket.on('caption-consent', async (data) => {
+        const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'caption-consent');
+        const userId = requireSocketUser(socket, data?.userId);
+        if (!roomId || !userId) return;
+
+        const enabled = data?.enabled === true;
+        if (enabled && !(await refreshVoiceParticipantAccess(socket, roomId))) {
+            socket.emit('caption-error', {
+                roomId,
+                error: 'VOICE_CAPTION_PUBLISH_DENIED'
+            });
+            return;
+        }
+
+        const participant = rooms.get(roomId)?.get(socket.id);
+        if (!participant) {
+            socket.emit('caption-error', { roomId, error: 'VOICE_CAPTION_NOT_JOINED' });
+            return;
+        }
+        participant.captionsEnabled = enabled;
+        if (!enabled) {
+            socket.data.lastCaptionAt = 0;
+        }
+
+        io.to(roomId).emit('caption-consent', {
+            roomId,
+            socketId: socket.id,
+            userId,
+            enabled
+        });
+    });
+
+    socket.on('live-caption', async (data) => {
+        const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'live-caption');
+        const userId = requireSocketUser(socket, data?.userId);
+        if (!roomId || !userId) return;
+
+        const participant = rooms.get(roomId)?.get(socket.id);
+        if (!participant?.captionsEnabled) {
+            socket.emit('caption-error', { roomId, error: 'VOICE_CAPTION_CONSENT_REQUIRED' });
+            return;
+        }
+
+        const isFinal = data?.isFinal === true;
+        if (!voiceParticipantCanPublish(roomId, socket.id) ||
+            (isFinal && !(await refreshVoiceParticipantAccess(socket, roomId)))) {
+            participant.captionsEnabled = false;
+            io.to(roomId).emit('caption-consent', {
+                roomId,
+                socketId: socket.id,
+                userId,
+                enabled: false
+            });
+            socket.emit('caption-error', {
+                roomId,
+                error: 'VOICE_CAPTION_PUBLISH_DENIED'
+            });
+            return;
+        }
+
+        const text = normalizedCaptionText(data?.text);
+        if (!text) return;
+
+        const now = Date.now();
+        const lastCaptionAt = Number(socket.data.lastCaptionAt || 0);
+        if (!isFinal && now - lastCaptionAt < VOICE_CAPTION_PARTIAL_THROTTLE_MS) return;
+        socket.data.lastCaptionAt = now;
+
+        const caption = {
+            id: data?.captionId?.toString().trim() || crypto.randomUUID(),
+            roomId,
+            socketId: socket.id,
+            userId,
+            userName: participant.name || 'Usuario',
+            text,
+            isFinal,
+            timestamp: now
+        };
+        if (isFinal) appendFinalVoiceCaption(roomId, caption);
+        io.to(roomId).emit('live-caption', caption);
+    });
+
+    socket.on('voice-summary-request', (data) => {
+        const roomId = requireJoinedScope(
+            socket,
+            'joinedRoomIds',
+            data?.roomId,
+            'room',
+            'voice-summary-request'
+        );
+        if (!roomId) return;
+
+        const requestId = data?.requestId?.toString().trim() || crypto.randomUUID();
+        if (data?.accepted !== true) {
+            socket.emit('voice-summary-error', {
+                roomId,
+                requestId,
+                error: 'VOICE_SUMMARY_ACCEPTANCE_REQUIRED'
+            });
+            return;
+        }
+
+        const now = Date.now();
+        const lastSummaryAt = Number(socket.data.lastVoiceSummaryAt || 0);
+        if (now - lastSummaryAt < 3_000) {
+            socket.emit('voice-summary-error', {
+                roomId,
+                requestId,
+                error: 'VOICE_SUMMARY_RATE_LIMITED'
+            });
+            return;
+        }
+        socket.data.lastVoiceSummaryAt = now;
+
+        const summary = buildExtractiveVoiceSummary(roomId);
+        if (!summary) {
+            socket.emit('voice-summary-error', {
+                roomId,
+                requestId,
+                error: 'VOICE_SUMMARY_NOT_AVAILABLE'
+            });
+            return;
+        }
+
+        // Private response: a requested summary must not reveal the transcript
+        // to anyone who did not explicitly ask for it.
+        socket.emit('voice-summary-result', {
+            roomId,
+            requestId,
+            kind: 'extractive',
+            generatedAt: now,
+            ...summary
         });
     });
 

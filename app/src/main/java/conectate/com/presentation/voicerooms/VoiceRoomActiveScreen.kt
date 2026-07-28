@@ -13,6 +13,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -57,6 +58,8 @@ import conectate.com.data.model.VoiceStageRoles
 import conectate.com.data.model.canPublishOnStage
 import conectate.com.data.model.isStageMode
 import conectate.com.data.repository.VoiceRoomRepository
+import conectate.com.data.repository.VoiceCaption
+import conectate.com.data.repository.VoiceRoomSummary
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -138,6 +141,13 @@ fun VoiceRoomActiveScreen(
     val fullScreenParticipantId by viewModel.fullScreenParticipantId.collectAsState()
     val joinError by viewModel.joinError.collectAsStateWithLifecycle()
     val videoError by viewModel.videoError.collectAsStateWithLifecycle()
+    val captionsEnabled by viewModel.captionsEnabled.collectAsStateWithLifecycle()
+    val captionConsentUserIds by viewModel.captionConsentUserIds.collectAsStateWithLifecycle()
+    val liveCaptions by viewModel.liveCaptions.collectAsStateWithLifecycle()
+    val captionError by viewModel.captionError.collectAsStateWithLifecycle()
+    val voiceSummary by viewModel.voiceSummary.collectAsStateWithLifecycle()
+    val voiceSummaryError by viewModel.voiceSummaryError.collectAsStateWithLifecycle()
+    val isVoiceSummaryLoading by viewModel.isVoiceSummaryLoading.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val isStage = room?.isStageMode() == true
     val selfParticipant = participants.firstOrNull {
@@ -151,9 +161,14 @@ fun VoiceRoomActiveScreen(
             selfParticipant?.role?.equals(VoiceStageRoles.MODERATOR, ignoreCase = true) == true
         )
 
-    LaunchedEffect(joinError, videoError) {
-        val message = videoError?.takeIf { it.isNotBlank() } ?: joinError?.takeIf { it.isNotBlank() }
+    LaunchedEffect(joinError, videoError, captionError, voiceSummaryError) {
+        val message = voiceSummaryError?.takeIf { it.isNotBlank() }
+            ?: captionError?.takeIf { it.isNotBlank() }
+            ?: videoError?.takeIf { it.isNotBlank() }
+            ?: joinError?.takeIf { it.isNotBlank() }
         if (message != null) snackbarHostState.showSnackbar(message)
+        if (!captionError.isNullOrBlank()) viewModel.clearCaptionError()
+        if (!voiceSummaryError.isNullOrBlank()) viewModel.clearVoiceSummaryError()
     }
     
     val cinemaState by viewModel.cinemaState.collectAsState()
@@ -161,6 +176,8 @@ fun VoiceRoomActiveScreen(
     
     var showEditDialog by remember { mutableStateOf(false) }
     var showContentBrowser by remember { mutableStateOf(false) }
+    var showCaptionConsent by remember { mutableStateOf(false) }
+    var showSummaryConsent by remember { mutableStateOf(false) }
     
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     
@@ -316,6 +333,16 @@ fun VoiceRoomActiveScreen(
                  },
                  onShowChat = { showChat = true },
                  onShowReactions = { showReactions = true },
+                 captionsEnabled = captionsEnabled,
+                 onToggleCaptions = {
+                     if (captionsEnabled) {
+                         viewModel.disableCaptions()
+                     } else {
+                         showCaptionConsent = true
+                     }
+                 },
+                 isSummaryLoading = isVoiceSummaryLoading,
+                 onRequestSummary = { showSummaryConsent = true },
                  onToggleHandRaised = {
                      viewModel.setHandRaised(selfParticipant?.handRaised != true)
                  },
@@ -369,6 +396,16 @@ fun VoiceRoomActiveScreen(
         ) {
             val showPasswordPrompt by viewModel.showPasswordPrompt.collectAsState()
             val passwordError by viewModel.passwordError.collectAsState()
+
+            if (showCaptionConsent) {
+                VoiceCaptionConsentDialog(
+                    onAccept = {
+                        showCaptionConsent = false
+                        viewModel.enableCaptions()
+                    },
+                    onDismiss = { showCaptionConsent = false }
+                )
+            }
             
             if (showPasswordPrompt) {
                 PasswordPromptDialog(
@@ -542,6 +579,31 @@ fun VoiceRoomActiveScreen(
                     },
                     onDismiss = { showContentBrowser = false },
                     onResolveUrl = { url -> viewModel.resolveUniversalLink(url) }
+                )
+            }
+
+            VoiceCaptionsOverlay(
+                captions = liveCaptions,
+                enabledUserCount = captionConsentUserIds.size,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 12.dp, vertical = 112.dp)
+            )
+
+            if (showSummaryConsent) {
+                VoiceSummaryConsentDialog(
+                    onAccept = {
+                        showSummaryConsent = false
+                        viewModel.requestVoiceSummary()
+                    },
+                    onDismiss = { showSummaryConsent = false }
+                )
+            }
+
+            voiceSummary?.let { summary ->
+                VoiceSummaryDialog(
+                    summary = summary,
+                    onDismiss = viewModel::clearVoiceSummary
                 )
             }
 
@@ -1016,6 +1078,177 @@ fun ParticipantCard(
     }
 }
 
+@Composable
+private fun VoiceCaptionConsentDialog(
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.ClosedCaption, contentDescription = null) },
+        title = { Text("Activar mis subtítulos") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "El servicio de reconocimiento de voz de tu dispositivo procesará tu micrófono mientras esta opción esté activa."
+                )
+                Text(
+                    "Novvin comparte únicamente el texto con la sala; no graba ni guarda tu audio. Los fragmentos finales permanecen temporalmente en memoria para un resumen solicitado y se eliminan al cerrar la sala.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Puedes desactivarlos en cualquier momento.",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onAccept) {
+                Text("Aceptar y activar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+private fun VoiceCaptionsOverlay(
+    captions: List<VoiceCaption>,
+    enabledUserCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val visibleCaptions = captions.takeLast(3)
+    AnimatedVisibility(
+        visible = enabledUserCount > 0 || visibleCaptions.isNotEmpty(),
+        modifier = modifier
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 720.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Black.copy(alpha = 0.78f),
+            tonalElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Icon(
+                        Icons.Default.ClosedCaption,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (enabledUserCount == 1) {
+                            "Subtítulos en vivo · 1 persona"
+                        } else {
+                            "Subtítulos en vivo · $enabledUserCount personas"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White
+                    )
+                }
+                visibleCaptions.forEach { caption ->
+                    Text(
+                        text = "${caption.userName}: ${caption.text}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (caption.isFinal) FontWeight.Medium else FontWeight.Normal,
+                        color = Color.White.copy(alpha = if (caption.isFinal) 1f else 0.78f),
+                        maxLines = 2
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceSummaryConsentDialog(
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Notes, contentDescription = null) },
+        title = { Text("Solicitar resumen de la sala") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "El resumen usará únicamente los fragmentos finales que las personas compartieron con subtítulos activados."
+                )
+                Text(
+                    "Es un resumen extractivo privado para ti: no graba audio, no se publica en la sala y no se guarda en el servidor. El texto temporal se elimina al cerrar la sala.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onAccept) {
+                Text("Aceptar y resumir")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+private fun VoiceSummaryDialog(
+    summary: VoiceRoomSummary,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Notes, contentDescription = null) },
+        title = { Text("Resumen de la sala") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 440.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "${summary.segmentCount} fragmentos · ${summary.participantCount} participantes",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                summary.bullets.forEach { bullet ->
+                    Text(
+                        text = "• $bullet",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Text(
+                    "Resumen extractivo del texto consentido. Puede omitir contexto y no sustituye la conversación original.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ControlBar(
@@ -1031,6 +1264,10 @@ fun ControlBar(
     onToggleScreenShare: () -> Unit,
     onShowChat: () -> Unit,
     onShowReactions: () -> Unit,
+    captionsEnabled: Boolean,
+    onToggleCaptions: () -> Unit,
+    isSummaryLoading: Boolean,
+    onRequestSummary: () -> Unit,
     onToggleHandRaised: () -> Unit,
     onToggleCinema: () -> Unit,
     isCinemaActive: Boolean,
@@ -1076,6 +1313,22 @@ fun ControlBar(
                  icon = Icons.Default.AddReaction,
                  isActive = false,
                  onClick = onShowReactions
+            )
+
+            ControlIcon(
+                icon = Icons.Default.ClosedCaption,
+                isActive = captionsEnabled,
+                activeColor = MaterialTheme.colorScheme.tertiary,
+                enabled = canPublishMedia,
+                onClick = onToggleCaptions
+            )
+
+            ControlIcon(
+                icon = Icons.Default.Notes,
+                isActive = isSummaryLoading,
+                activeColor = MaterialTheme.colorScheme.tertiary,
+                enabled = !isSummaryLoading,
+                onClick = onRequestSummary
             )
             
             // Camera

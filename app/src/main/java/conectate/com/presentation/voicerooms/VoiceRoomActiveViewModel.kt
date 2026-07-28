@@ -9,6 +9,8 @@ import conectate.com.data.model.VoiceStageRoles
 import conectate.com.data.model.canPublishOnStage
 import conectate.com.data.model.isStageMode
 import conectate.com.data.repository.VoiceRoomRepository
+import conectate.com.data.repository.VoiceCaption
+import conectate.com.data.repository.VoiceRoomSummary
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +103,13 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _activeReactions = MutableStateFlow<List<ReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<ReactionEvent>> = _activeReactions.asStateFlow()
+    val captionsEnabled = voiceRoomRepository.captionsEnabled
+    val captionConsentUserIds = voiceRoomRepository.captionConsentUserIds
+    val liveCaptions: StateFlow<List<VoiceCaption>> = voiceRoomRepository.liveCaptions
+    val captionError = voiceRoomRepository.captionError
+    val voiceSummary: StateFlow<VoiceRoomSummary?> = voiceRoomRepository.voiceSummary
+    val voiceSummaryError = voiceRoomRepository.voiceSummaryError
+    val isVoiceSummaryLoading = voiceRoomRepository.isVoiceSummaryLoading
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
     private var videoActionJob: Job? = null
 
@@ -132,6 +141,10 @@ class VoiceRoomActiveViewModel @Inject constructor(
                     _isMuted.value = participants.firstOrNull {
                         it.id.trim().lowercase() == selfId
                     }?.isMuted ?: _isMuted.value
+                }
+                if (voiceRoomRepository.captionsEnabled.value && !canCurrentUserPublish()) {
+                    voiceRoomRepository.disableCaptions()
+                    _joinError.value = "Los subtítulos se detuvieron porque ya no tienes permiso para hablar."
                 }
             }
         }
@@ -274,6 +287,37 @@ class VoiceRoomActiveViewModel @Inject constructor(
         val next = !_isSpeaker.value
         _isSpeaker.value = next
         voiceRoomRepository.toggleSpeaker(next)
+    }
+
+    fun enableCaptions() {
+        voiceRoomRepository.enableCaptions().fold(
+            onSuccess = { _joinError.value = null },
+            onFailure = {
+                _joinError.value = it.message ?: "No se pudieron activar los subtítulos."
+            }
+        )
+    }
+
+    fun disableCaptions() {
+        voiceRoomRepository.disableCaptions()
+    }
+
+    fun clearCaptionError() {
+        voiceRoomRepository.clearCaptionError()
+    }
+
+    fun requestVoiceSummary() {
+        voiceRoomRepository.requestVoiceSummary(accepted = true).onFailure {
+            _joinError.value = it.message ?: "No se pudo solicitar el resumen."
+        }
+    }
+
+    fun clearVoiceSummary() {
+        voiceRoomRepository.clearVoiceSummary()
+    }
+
+    fun clearVoiceSummaryError() {
+        voiceRoomRepository.clearVoiceSummaryError()
     }
 
     fun toggleCamera() {

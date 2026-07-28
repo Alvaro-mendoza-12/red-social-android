@@ -24,6 +24,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import conectate.com.data.webrtc.WebRTCManager
+import conectate.com.data.voice.VoiceCaptionRecognizer
 import conectate.com.services.VoiceForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -45,6 +46,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.json.JSONArray
 import org.webrtc.VideoTrack
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
@@ -173,6 +175,146 @@ class VoiceRoomRepository @Inject constructor(
         _videoError.value = null
     }
 
+    fun clearCaptionError() {
+        _captionError.value = null
+    }
+
+    fun clearVoiceSummary() {
+        _voiceSummary.value = null
+        _voiceSummaryError.value = null
+    }
+
+    fun clearVoiceSummaryError() {
+        _voiceSummaryError.value = null
+    }
+
+    fun requestVoiceSummary(accepted: Boolean): Result<Unit> {
+        val roomId = activeRoomId?.trim().orEmpty()
+        val activeSocket = socket
+        if (roomId.isBlank() || activeSocket?.connected() != true) {
+            return Result.failure(IllegalStateException("Espera a que la sala termine de conectar."))
+        }
+        if (!accepted) {
+            return Result.failure(
+                IllegalStateException("Debes aceptar el uso del texto temporal para solicitar el resumen.")
+            )
+        }
+
+        _voiceSummary.value = null
+        _voiceSummaryError.value = null
+        _isVoiceSummaryLoading.value = true
+        activeSocket.emit("voice-summary-request", JSONObject().apply {
+            put("roomId", roomId)
+            put("requestId", UUID.randomUUID().toString())
+            put("accepted", true)
+        })
+        return Result.success(Unit)
+    }
+
+    fun enableCaptions(languageTag: String? = null): Result<Unit> {
+        val roomId = activeRoomId?.trim().orEmpty()
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (roomId.isBlank() || userId.isBlank() || socket?.connected() != true) {
+            return Result.failure(IllegalStateException("Espera a que la sala termine de conectar."))
+        }
+        if (!canCurrentUserPublishMedia()) {
+            return Result.failure(
+                IllegalStateException("Solicita la palabra antes de activar tus subtítulos.")
+            )
+        }
+        if (!captionRecognizer.isAvailable()) {
+            return Result.failure(
+                IllegalStateException("Este dispositivo no tiene reconocimiento de voz disponible.")
+            )
+        }
+        if (_captionsEnabled.value) return Result.success(Unit)
+
+        _captionError.value = null
+        _captionsEnabled.value = true
+        _captionConsentUserIds.update { it + userId.lowercase() }
+        emitCaptionConsent(roomId, userId, enabled = true)
+        captionRecognizer.start(languageTag, object : VoiceCaptionRecognizer.Listener {
+            override fun onPartial(text: String) {
+                emitLocalCaption(text = text, isFinal = false)
+            }
+
+            override fun onFinal(text: String) {
+                emitLocalCaption(text = text, isFinal = true)
+            }
+
+            override fun onUnavailable(message: String) {
+                scope.launch {
+                    disableCaptionsInternal(announce = true)
+                    _captionError.value = message
+                }
+            }
+        })
+        return Result.success(Unit)
+    }
+
+    fun disableCaptions() {
+        disableCaptionsInternal(announce = true)
+    }
+
+    private fun disableCaptionsInternal(announce: Boolean) {
+        val wasEnabled = _captionsEnabled.value
+        _captionsEnabled.value = false
+        currentLocalCaptionId = null
+        captionRecognizer.stop()
+
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (userId.isNotBlank()) {
+            _captionConsentUserIds.update { it - userId.lowercase() }
+        }
+        val roomId = activeRoomId?.trim().orEmpty()
+        if (announce && wasEnabled && roomId.isNotBlank() && userId.isNotBlank()) {
+            emitCaptionConsent(roomId, userId, enabled = false)
+        }
+    }
+
+    private fun emitCaptionConsent(roomId: String, userId: String, enabled: Boolean) {
+        socket?.takeIf { it.connected() }?.emit("caption-consent", JSONObject().apply {
+            put("roomId", roomId)
+            put("userId", userId)
+            put("enabled", enabled)
+        })
+    }
+
+    private fun emitLocalCaption(text: String, isFinal: Boolean) {
+        if (!_captionsEnabled.value) return
+        val normalizedText = text.replace(Regex("\\s+"), " ").trim().take(500)
+        if (normalizedText.isBlank()) return
+        val roomId = activeRoomId?.trim().orEmpty()
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (roomId.isBlank() || userId.isBlank() || socket?.connected() != true) return
+
+        val captionId = currentLocalCaptionId ?: UUID.randomUUID().toString().also {
+            currentLocalCaptionId = it
+        }
+        socket?.emit("live-caption", JSONObject().apply {
+            put("roomId", roomId)
+            put("userId", userId)
+            put("captionId", captionId)
+            put("text", normalizedText)
+            put("isFinal", isFinal)
+        })
+        if (isFinal) currentLocalCaptionId = null
+    }
+
+    private fun applyIncomingCaption(caption: VoiceCaption) {
+        _liveCaptions.update { current ->
+            val withoutSameDraft = current.filterNot {
+                !it.isFinal && (
+                    it.id == caption.id ||
+                        it.userId.equals(caption.userId, ignoreCase = true)
+                    )
+            }
+            (withoutSameDraft + caption)
+                .distinctBy { it.id to it.isFinal }
+                .takeLast(24)
+        }
+    }
+
     private val _incomingMessages = MutableSharedFlow<conectate.com.presentation.voicerooms.ChatMessage>()
     val incomingMessages = _incomingMessages.asSharedFlow()
 
@@ -181,6 +323,23 @@ class VoiceRoomRepository @Inject constructor(
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     )
     val incomingReactions = _incomingReactions.asSharedFlow()
+
+    private val captionRecognizer = VoiceCaptionRecognizer(context)
+    private val _captionsEnabled = MutableStateFlow(false)
+    val captionsEnabled = _captionsEnabled.asStateFlow()
+    private val _captionConsentUserIds = MutableStateFlow<Set<String>>(emptySet())
+    val captionConsentUserIds = _captionConsentUserIds.asStateFlow()
+    private val _liveCaptions = MutableStateFlow<List<VoiceCaption>>(emptyList())
+    val liveCaptions = _liveCaptions.asStateFlow()
+    private val _captionError = MutableStateFlow<String?>(null)
+    val captionError = _captionError.asStateFlow()
+    private var currentLocalCaptionId: String? = null
+    private val _voiceSummary = MutableStateFlow<VoiceRoomSummary?>(null)
+    val voiceSummary = _voiceSummary.asStateFlow()
+    private val _voiceSummaryError = MutableStateFlow<String?>(null)
+    val voiceSummaryError = _voiceSummaryError.asStateFlow()
+    private val _isVoiceSummaryLoading = MutableStateFlow(false)
+    val isVoiceSummaryLoading = _isVoiceSummaryLoading.asStateFlow()
 
     private val _connectionState = MutableStateFlow(VoiceConnectionState.IDLE)
     var connectionState = _connectionState.asStateFlow()
@@ -1133,6 +1292,15 @@ class VoiceRoomRepository @Inject constructor(
         var isSocketConnected = socket?.connected() == true
         val isWebResHealthy = webRTCManager?.isHealthy() == true
         val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
+        if (!activeRoomId.equals(signalRoom, ignoreCase = true)) {
+            disableCaptionsInternal(announce = true)
+            _captionConsentUserIds.value = emptySet()
+            _liveCaptions.value = emptyList()
+            _captionError.value = null
+            _voiceSummary.value = null
+            _voiceSummaryError.value = null
+            _isVoiceSummaryLoading.value = false
+        }
         
         if (isReentry) {
             android.util.Log.w("VoiceRoomRepository", "♻️ RE-ENTRY DETECTED: Already in room $signalRoom. Skipping reset.")
@@ -1434,6 +1602,9 @@ class VoiceRoomRepository @Inject constructor(
                 pendingConnectStartedAtMs = null
                 updateConnectionState(VoiceConnectionState.CONNECTED)
                 flushPendingRoomSocketEvents(roomId)
+                if (_captionsEnabled.value) {
+                    emitCaptionConsent(roomId, userId, enabled = true)
+                }
                 restoreActiveSession("room_joined")
             }
 
@@ -1508,6 +1679,9 @@ class VoiceRoomRepository @Inject constructor(
                 
                 // v7.2-MVP: Host Disconnect Safety
                 val leavingParticipant = _currentParticipants.value.find { it.socketId == socketId }
+                leavingParticipant?.id?.trim()?.lowercase()?.takeIf(String::isNotBlank)?.let { leavingUserId ->
+                    _captionConsentUserIds.update { it - leavingUserId }
+                }
                 scope.launch {
                     var room = activeRoomId?.let { getRoomById(it).getOrNull() }
                     if (room != null && leavingParticipant?.id == room.creatorId) {
@@ -1539,6 +1713,7 @@ class VoiceRoomRepository @Inject constructor(
                 val remoteParticipants = mutableListOf<conectate.com.data.model.VoiceParticipant>()
                 val remoteSocketIds = mutableSetOf<String>()
                 val rebuiltSharingStates = mutableMapOf<String, Pair<Boolean, Boolean>>()
+                val rebuiltCaptionConsentUserIds = mutableSetOf<String>()
                 val pendingNewSockets = mutableListOf<Pair<String, String>>()
 
                 for (i in 0 until participantsJson.length()) {
@@ -1561,6 +1736,9 @@ class VoiceRoomRepository @Inject constructor(
                             p.optBoolean("isScreenSharing", false)
                         rebuiltSharingStates[sid.trim()] = sharingState
                         rebuiltSharingStates[uid.trim().lowercase()] = sharingState
+                        if (p.optBoolean("captionsEnabled", false)) {
+                            rebuiltCaptionConsentUserIds += uid.lowercase()
+                        }
 
                         if (sid.isNotBlank() && sid !in currentSocketIds) {
                             pendingNewSockets += sid to uid
@@ -1569,6 +1747,12 @@ class VoiceRoomRepository @Inject constructor(
                 }
 
                 _sharingStates.value = rebuiltSharingStates
+                if (_captionsEnabled.value) {
+                    selfId?.trim()?.lowercase()?.takeIf(String::isNotBlank)?.let {
+                        rebuiltCaptionConsentUserIds += it
+                    }
+                }
+                _captionConsentUserIds.value = rebuiltCaptionConsentUserIds
                 _currentParticipants.value = buildList {
                     selfParticipant?.let(::add)
                     addAll(
@@ -1696,6 +1880,90 @@ class VoiceRoomRepository @Inject constructor(
                     timestamp = data.optLong("timestamp", System.currentTimeMillis())
                 )
                 scope.launch { _incomingReactions.emit(reaction) }
+            }
+
+            socket?.on("caption-consent") { args ->
+                val data = extractJsonPayload(args) ?: return@on
+                val captionUserId = data.optString("userId").trim().lowercase()
+                if (captionUserId.isBlank()) return@on
+                if (data.optBoolean("enabled", false)) {
+                    _captionConsentUserIds.update { it + captionUserId }
+                } else {
+                    _captionConsentUserIds.update { it - captionUserId }
+                }
+            }
+
+            socket?.on("live-caption") { args ->
+                val data = extractJsonPayload(args) ?: return@on
+                val captionId = data.optString("id").trim()
+                val captionUserId = data.optString("userId").trim()
+                val captionText = data.optString("text").replace(Regex("\\s+"), " ").trim().take(500)
+                if (captionId.isBlank() || captionUserId.isBlank() || captionText.isBlank()) return@on
+                applyIncomingCaption(
+                    VoiceCaption(
+                        id = captionId,
+                        userId = captionUserId,
+                        userName = data.optString("userName", "Usuario").trim().ifBlank { "Usuario" },
+                        text = captionText,
+                        isFinal = data.optBoolean("isFinal", false),
+                        timestamp = data.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
+            }
+
+            socket?.on("caption-error") { args ->
+                val data = extractJsonPayload(args) ?: return@on
+                val message = when (data.optString("error")) {
+                    "VOICE_CAPTION_CONSENT_REQUIRED" ->
+                        "Activa y acepta los subtítulos antes de compartir texto."
+                    "VOICE_CAPTION_PUBLISH_DENIED" ->
+                        "Necesitas permiso para hablar antes de usar subtítulos."
+                    else -> "No se pudieron continuar los subtítulos."
+                }
+                disableCaptionsInternal(announce = false)
+                _captionError.value = message
+            }
+
+            socket?.on("voice-summary-result") { args ->
+                val data = extractJsonPayload(args) ?: return@on
+                val resultRoomId = data.optString("roomId").trim()
+                if (!resultRoomId.equals(activeRoomId, ignoreCase = true)) return@on
+                val bulletsJson = data.optJSONArray("bullets") ?: JSONArray()
+                val bullets = buildList {
+                    for (index in 0 until bulletsJson.length()) {
+                        bulletsJson.optString(index)
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+                            .take(560)
+                            .takeIf(String::isNotBlank)
+                            ?.let(::add)
+                    }
+                }
+                _isVoiceSummaryLoading.value = false
+                _voiceSummaryError.value = null
+                _voiceSummary.value = VoiceRoomSummary(
+                    roomId = resultRoomId,
+                    bullets = bullets,
+                    segmentCount = data.optInt("segmentCount", bullets.size),
+                    participantCount = data.optInt("participantCount", 0),
+                    generatedAt = data.optLong("generatedAt", System.currentTimeMillis()),
+                    isExtractive = data.optString("kind") == "extractive"
+                )
+            }
+
+            socket?.on("voice-summary-error") { args ->
+                val data = extractJsonPayload(args) ?: return@on
+                _isVoiceSummaryLoading.value = false
+                _voiceSummary.value = null
+                _voiceSummaryError.value = when (data.optString("error")) {
+                    "VOICE_SUMMARY_ACCEPTANCE_REQUIRED" ->
+                        "Debes aceptar el uso del texto temporal antes de solicitar el resumen."
+                    "VOICE_SUMMARY_NOT_AVAILABLE" ->
+                        "Aún no hay suficientes subtítulos finales para crear un resumen."
+                    "VOICE_SUMMARY_RATE_LIMITED" ->
+                        "Espera unos segundos antes de solicitar otro resumen."
+                    else -> "No se pudo preparar el resumen de esta sala."
+                }
             }
 
             socket?.on("speaking-status") { args ->
@@ -2099,6 +2367,7 @@ class VoiceRoomRepository @Inject constructor(
             pendingConnectStartedAtMs = null
             reconnectFailureCount = 0
             isAudioSessionPrepared = false
+            disableCaptionsInternal(announce = true)
 
             if (!actualRoomId.isNullOrBlank() && authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 authService.getAccessTokenAwait()?.let { token ->
@@ -2129,6 +2398,12 @@ class VoiceRoomRepository @Inject constructor(
             _peerConnectionStates.value = emptyMap()
             _signalingStates.value = emptyMap()
             _sharingStates.value = emptyMap()
+            _captionConsentUserIds.value = emptySet()
+            _liveCaptions.value = emptyList()
+            _captionError.value = null
+            _voiceSummary.value = null
+            _voiceSummaryError.value = null
+            _isVoiceSummaryLoading.value = false
             _debugInfo.value = emptyMap()
             _currentVideoMode.value = VideoMode.NONE
             _localVideoTrack.value = null
@@ -2639,6 +2914,24 @@ data class VoiceSessionState(
     val hasActiveSession: Boolean
         get() = !roomId.isNullOrBlank() && connectionState != VoiceConnectionState.IDLE
 }
+
+data class VoiceCaption(
+    val id: String,
+    val userId: String,
+    val userName: String,
+    val text: String,
+    val isFinal: Boolean,
+    val timestamp: Long
+)
+
+data class VoiceRoomSummary(
+    val roomId: String,
+    val bullets: List<String>,
+    val segmentCount: Int,
+    val participantCount: Int,
+    val generatedAt: Long,
+    val isExtractive: Boolean
+)
 
 
 
