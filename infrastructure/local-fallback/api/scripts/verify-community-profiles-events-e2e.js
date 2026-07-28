@@ -78,6 +78,25 @@ async function cleanup() {
       await pool.query('DELETE FROM fallback_users WHERE id = $1::uuid', [userId])
     }
     await pool.query('COMMIT')
+    const audit = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM fallback_users
+          WHERE email LIKE 'profile-event-%@novvin.invalid') AS users,
+         (SELECT COUNT(*)::int FROM fallback_collection_rooms
+          WHERE description = 'Fixture temporal B11-B12') AS rooms,
+         (SELECT COUNT(*)::int FROM fallback_community_member_profiles
+          WHERE bio = 'Ciencia dentro de esta comunidad') AS profiles,
+         (SELECT COUNT(*)::int FROM fallback_community_events
+          WHERE description = 'Validación de asistencia y recordatorios') AS events,
+         (SELECT COUNT(*)::int FROM fallback_notifications
+          WHERE type = 'community_event_reminder'
+            AND content = 'Próximamente: Encuentro B12') AS notifications`,
+    )
+    const counts = audit.rows[0] || {}
+    if (Object.values(counts).some((value) => Number(value) !== 0)) {
+      throw new Error(`E2E cleanup left orphan rows: ${JSON.stringify(counts)}`)
+    }
+    console.log(JSON.stringify({ cleanup: true, ...counts }))
   } catch (error) {
     await pool.query('ROLLBACK')
     throw error

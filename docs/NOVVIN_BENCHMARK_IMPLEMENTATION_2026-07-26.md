@@ -116,6 +116,30 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
 - Los errores de rol inválido, permiso insuficiente y rol propietario inmutable
   se muestran como mensajes comprensibles.
 
+### Fase 2.2 — canales, identidad y eventos de comunidades
+
+- **B10, canales temáticos:** cada comunidad tiene un canal General compatible
+  con mensajes históricos y puede añadir canales de texto, multimedia y voz.
+  Los permisos del servidor se derivan de los roles B08; un cliente no puede
+  crear, editar o borrar canales elevando permisos desde la interfaz.
+- Los mensajes guardan su canal. Un canal de voz abre la experiencia de sala y
+  no acepta mensajes de texto. Al borrar un canal temático, sus mensajes se
+  reasignan a General para conservar el historial.
+- **B13, pausa temporal:** propietario, administrador o moderador pueden pausar
+  un canal con motivo y duración. La API rechaza escrituras durante la pausa y
+  Android presenta el motivo en modo de solo lectura; no se usa un retraso ni
+  un bloqueo exclusivamente visual.
+- **B11, perfil por comunidad:** cada miembro puede definir alias, biografía y
+  distintivo exclusivos para una comunidad. La actualización es parcial en el
+  servidor: cambiar un solo campo no borra los restantes. El alias y distintivo
+  se reutilizan en la lista de integrantes.
+- **B12, eventos y asistencia:** propietarios y administradores crean o
+  cancelan eventos; cualquier miembro confirma o retira asistencia y elige un
+  recordatorio. Un trabajador idempotente genera la notificación una sola vez
+  en el momento configurado.
+- La eliminación de una comunidad o cuenta limpia canales, perfiles, eventos,
+  asistentes y recordatorios antes de borrar sus referencias principales.
+
 ### Corrección operativa 3.0.9 — administración y contraseñas
 
 - El host temporal que llevaba el APK había caducado. El túnel administrado
@@ -151,7 +175,10 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
 | B07 | Implementado en este incremento | Token restringido, apelación única, cola humana y reactivación atómica |
 | B08 | Implementado en este incremento | Propietario, administrador, moderador y miembro con permisos coherentes |
 | B09 | Implementado en este incremento | Vista segura de permisos sin alterar el rol real |
-| B10–B13 | Fase 2 pendiente | Canales temáticos, identidad local, eventos y pausa temporal |
+| B10 | Implementado en este incremento | Canales General, texto, multimedia y voz con historial conservado |
+| B11 | Implementado en este incremento | Alias, biografía y distintivo persistentes por comunidad |
+| B12 | Implementado en este incremento | Eventos, asistencia y recordatorio idempotente |
+| B13 | Implementado en este incremento | Pausa temporal con motivo, duración y bloqueo en servidor |
 | B14 | Fase 3 | Añadir modo escenario sin reemplazar las salas casuales |
 | B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
 | B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
@@ -167,13 +194,14 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
   seguridad, todas aprobadas.
-- Android: 34 suites, 142 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
+- Android: 34 suites, 143 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
   aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
   declaró aprobado porque se detuvo por tiempo sin errores visibles.
-- Debug: `app-debug.apk`, firmado con la clave Debug. Su hash final queda
-  registrado en el manifiesto del respaldo local post-B05.
-- Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados. Su
-  hash final queda registrado en el manifiesto del respaldo local post-B05.
+- Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
+  `6A85C33B70C433A0B14FE28295CAB40952242DE5006DD9658C10EA7BBA80DD2C`.
+- Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
+  SHA-256
+  `3E04CA6114E1340329B49462B9096D9562E29FE4C90A35AA9ED37E3D37131B04`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
 - Servidor: despliegue `conectate-mini-pc-20260728T133733Z`, commit
@@ -203,6 +231,14 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
   asignación del rol propietario, denegación de la vista a moderadores y acceso
   de propietario y administrador. La limpieza posterior confirmó `users=0` y
   `rooms=0`.
+- B10/B13: canario público aprobado para creación de canales temáticos,
+  permisos, pausa por moderador, rechazo de escritura pausada, persistencia por
+  canal y protección del canal de voz. La limpieza posterior confirmó
+  `users=0`, `rooms=0`, `channels=0` y `messages=0`.
+- B11/B12: canario público aprobado para perfil persistente, actualización
+  parcial sin pérdida, permisos de creación de eventos, asistencia y
+  recordatorio entregado exactamente una vez. La limpieza confirmó `users=0`,
+  `rooms=0`, `profiles=0`, `events=0` y `notifications=0`.
 - Administración: canario de solo lectura aprobado contra la URL pública para
   acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
   apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
