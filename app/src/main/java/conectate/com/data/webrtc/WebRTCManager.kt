@@ -5,6 +5,8 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaRecorder
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.util.Log
 import conectate.com.core.concurrency.newSafeScope
@@ -193,6 +195,39 @@ class WebRTCManager(
 
     private val statsScope = newSafeScope("WebRTCManagerStats", Dispatchers.Default)
     private val asyncScope = newSafeScope("WebRTCManagerAsync", Dispatchers.Default)
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val networkStateLock = Any()
+    private var activeNetworkHandle: Long? = connectivityManager.activeNetwork?.networkHandle
+    private var networkCallbackRegistered = false
+    private var networkRecoveryJob: Job? = null
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val currentHandle = network.networkHandle
+            val previousHandle = synchronized(networkStateLock) {
+                activeNetworkHandle.also { activeNetworkHandle = currentHandle }
+            }
+            if (
+                NetworkHandoffPolicy.shouldRecover(
+                    previousNetworkHandle = previousHandle,
+                    currentNetworkHandle = currentHandle,
+                    hasActivePeers = peerConnections.isNotEmpty()
+                )
+            ) {
+                recoverAfterNetworkChange(
+                    reason = if (previousHandle == null) "network-restored" else "network-handoff"
+                )
+            }
+        }
+
+        override fun onLost(network: Network) {
+            synchronized(networkStateLock) {
+                if (activeNetworkHandle == network.networkHandle) {
+                    activeNetworkHandle = null
+                }
+            }
+        }
+    }
     
     init {
         try {
@@ -230,6 +265,7 @@ class WebRTCManager(
             } else {
                 Log.i("WebRTC", "Managed TURN not configured. Using fallback ICE servers only.")
             }
+            registerNetworkHandoffMonitor()
             
             // v22.0: Background Stats Monitor for Audio Levels
             statsScope.launch {
@@ -387,6 +423,9 @@ class WebRTCManager(
     
     private fun destroyInternal() {
         Log.d("WebRTCManager", "Internal cleanup starting...")
+        unregisterNetworkHandoffMonitor()
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
         
         // Stop all captures first
         videoCapturer?.stopCapture()
@@ -434,6 +473,84 @@ class WebRTCManager(
         statsScope.cancel()
         managedIceRefreshJob?.cancel()
         asyncScope.cancel()
+    }
+
+    private fun registerNetworkHandoffMonitor() {
+        if (networkCallbackRegistered) return
+        runCatching {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+            networkCallbackRegistered = true
+            Log.i("WebRTCManager", "Default network handoff monitor registered")
+        }.onFailure { error ->
+            Log.w("WebRTCManager", "Could not register network handoff monitor", error)
+        }
+    }
+
+    private fun unregisterNetworkHandoffMonitor() {
+        if (!networkCallbackRegistered) return
+        runCatching {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        }.onFailure { error ->
+            Log.w("WebRTCManager", "Could not unregister network handoff monitor", error)
+        }
+        networkCallbackRegistered = false
+    }
+
+    /**
+     * Refreshes TURN credentials and sends an ICE-restart offer for every
+     * current peer. It keeps the same local audio/video tracks, mute state and
+     * camera/screen capture instead of rebuilding the whole media engine.
+     */
+    fun recoverAfterNetworkChange(reason: String = "network-handoff") {
+        if (peerConnections.isEmpty()) return
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = asyncScope.launch {
+            // Coalesce the short burst of callbacks produced by Wi-Fi/mobile
+            // handoffs, then use credentials valid on the new path.
+            delay(350L)
+            if (peerConnections.isEmpty()) return@launch
+
+            ensureLocalTracks()
+            refreshManagedIceServers(force = true)
+            activeManagedIceRefreshLatch()?.await(
+                managedIceWaitTimeoutMs,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+
+            executor.execute {
+                val servers = currentIceServersSnapshot()
+                peerConnections.forEach { (peerKey, pc) ->
+                    if (pc.signalingState() == PeerConnection.SignalingState.CLOSED) {
+                        return@forEach
+                    }
+                    runCatching {
+                        pc.setConfiguration(buildRtcConfiguration(servers))
+
+                        getOrAddAudioTransceiver(pc).apply {
+                            sender.setTrack(localAudioTrack, false)
+                            direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+                        }
+                        getOrAddVideoTransceiver(pc).apply {
+                            sender.setTrack(activeOutgoingVideoTrack(), false)
+                            direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+                        }
+
+                        iceRetryCount[peerKey] = 0
+                        disconnectRecoveryJobs.remove(peerKey)?.cancel()
+                        requestOffer(
+                            socketId = peerKey,
+                            pc = pc,
+                            iceRestart = true,
+                            reason = reason,
+                            retryDelayMs = 600L
+                        )
+                        updateDebugInfo(peerKey, "Recuperando conexión tras cambio de red")
+                    }.onFailure { error ->
+                        Log.e("WebRTCManager", "Network recovery failed for $peerKey", error)
+                    }
+                }
+            }
+        }
     }
 
     private var localAudioSource: AudioSource? = null

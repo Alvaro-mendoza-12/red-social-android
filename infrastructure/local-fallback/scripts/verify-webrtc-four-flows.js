@@ -100,7 +100,7 @@ async function verifySignalExchange(first, second, firstAccount, secondAccount) 
 }
 
 async function verifyPairNamespace(namespace, joinEvent, joinedEvent, scopeField, accountA, accountB) {
-  const first = await connect(namespace, accountA)
+  let first = await connect(namespace, accountA)
   const second = await connect(namespace, accountB)
   const scopeId = `${namespace.replace('/', '') || 'voice'}-${runId}`
   try {
@@ -113,6 +113,35 @@ async function verifyPairNamespace(namespace, joinEvent, joinedEvent, scopeField
     second.emit(joinEvent, { [scopeField]: scopeId, userId: accountB.id, name: 'WebRTC B' })
     await secondJoined
     await firstSawSecond
+    await verifySignalExchange(first, second, accountA, accountB)
+
+    const previousSocketId = first.id
+    const secondSawDisconnect = waitForEvent(second, 'user-left', (socketId) => socketId === previousSocketId)
+    first.disconnect()
+    await secondSawDisconnect
+
+    first = await connect(namespace, accountA)
+    const rejoined = waitForEvent(first, joinedEvent, (data) => data?.[scopeField] === scopeId)
+    const rebuiltParticipants = waitForEvent(
+      first,
+      'current-participants',
+      (participants) => (
+        Array.isArray(participants)
+        && participants.some((participant) => (
+          participant?.socketId === second.id
+          && participant?.userId === accountB.id
+        ))
+      ),
+    )
+    const secondSawReconnect = waitForEvent(
+      second,
+      'user-joined',
+      (data) => data?.userId === accountA.id && data?.socketId === first.id,
+    )
+    first.emit(joinEvent, { [scopeField]: scopeId, userId: accountA.id, name: 'WebRTC A reconnected' })
+    await rejoined
+    await rebuiltParticipants
+    await secondSawReconnect
     await verifySignalExchange(first, second, accountA, accountB)
   } finally {
     second.disconnect()
@@ -128,7 +157,7 @@ async function verifyLive(accountA, accountB) {
     body: { title: `WebRTC live ${runId}`, source: 'camera', hashtags: ['webrtc'] },
   })
   const liveId = created.stream.id
-  const host = await connect('/live', accountA)
+  let host = await connect('/live', accountA)
   const viewer = await connect('/live', accountB)
   try {
     const initialCount = waitForEvent(host, 'viewer-count', (data) => data?.liveId === liveId && data?.viewerCount === 0)
@@ -156,6 +185,41 @@ async function verifyLive(accountA, accountB) {
     await viewerJoined
     await verifySignalExchange(host, viewer, accountA, accountB)
 
+    const previousHostSocketId = host.id
+    host.disconnect()
+
+    host = await connect('/live', accountA)
+    assert.notEqual(host.id, previousHostSocketId)
+    const restoredViewerList = waitForEvent(
+      host,
+      'current-viewers',
+      (viewers) => (
+        Array.isArray(viewers)
+        && viewers.some((currentViewer) => (
+          currentViewer?.socketId === viewer.id
+          && currentViewer?.userId === accountB.id
+        ))
+      ),
+    )
+    const viewerSawRestoredHost = waitForEvent(
+      viewer,
+      'host-info',
+      (data) => data?.socketId === host.id && data?.userId === accountA.id,
+    )
+    host.emit('join-live', {
+      liveId,
+      userId: accountA.id,
+      name: 'WebRTC host reconnected',
+      role: 'host',
+      source: 'camera',
+      isPaused: false,
+      videoEnabled: true,
+      micEnabled: true,
+    })
+    await restoredViewerList
+    await viewerSawRestoredHost
+    await verifySignalExchange(host, viewer, accountA, accountB)
+
     const ended = waitForEvent(viewer, 'live-ended')
     host.emit('end-live', { liveId, userId: accountA.id })
     await ended
@@ -166,32 +230,51 @@ async function verifyLive(accountA, accountB) {
   }
 }
 
+async function deleteOwnAccount(account) {
+  if (!account?.token) return
+  await request('/rest/v1/rpc/delete_own_account', {
+    token: account.token,
+    method: 'POST',
+    body: {},
+  })
+}
+
 async function main() {
-  const accountA = await register('a')
-  const accountB = await register('b')
-  const turn = await request('/turn-credentials', { token: accountA.token })
-  const turnUrls = turn.iceServers.flatMap((server) => server.urls || [])
-  assert.equal(turn.provider, 'coturn-rest')
-  assert.ok(turn.expiresAtEpochSeconds > Math.floor(Date.now() / 1000))
-  assert.ok(turnUrls.includes('turns:turn.198-251-72-174.sslip.io:443?transport=tcp'))
-  assert.ok(turnUrls.includes('turn:turn.198-251-72-174.sslip.io:3478?transport=udp'))
-  assert.ok(turnUrls.includes('turn:turn.198-251-72-174.sslip.io:3478?transport=tcp'))
+  let accountA
+  let accountB
+  try {
+    accountA = await register('a')
+    accountB = await register('b')
+    const turn = await request('/turn-credentials', { token: accountA.token })
+    const turnUrls = turn.iceServers.flatMap((server) => server.urls || [])
+    assert.equal(turn.provider, 'coturn-rest')
+    assert.ok(turn.expiresAtEpochSeconds > Math.floor(Date.now() / 1000))
+    assert.ok(turnUrls.includes('turns:turn.198-251-72-174.sslip.io:443?transport=tcp'))
+    assert.ok(turnUrls.includes('turn:turn.198-251-72-174.sslip.io:3478?transport=udp'))
+    assert.ok(turnUrls.includes('turn:turn.198-251-72-174.sslip.io:3478?transport=tcp'))
 
-  await verifyPairNamespace('', 'join-room', 'room-joined', 'roomId', accountA, accountB)
-  await verifyPairNamespace('/call', 'join-call', 'call-joined', 'callId', accountA, accountB)
-  await verifyLive(accountA, accountB)
+    await verifyPairNamespace('', 'join-room', 'room-joined', 'roomId', accountA, accountB)
+    await verifyPairNamespace('/call', 'join-call', 'call-joined', 'callId', accountA, accountB)
+    await verifyLive(accountA, accountB)
 
-  process.stdout.write(JSON.stringify({
-    ok: true,
-    runId,
-    testAccountEmails: [accountA.email, accountB.email],
-    turnCredentials: true,
-    voiceRoomSignaling: true,
-    callSignaling: true,
-    liveHostSignaling: true,
-    liveViewerSignaling: true,
-    liveHostTakeoverRejected: true,
-  }))
+    process.stdout.write(JSON.stringify({
+      ok: true,
+      runId,
+      testAccountEmails: [accountA.email, accountB.email],
+      turnCredentials: true,
+      voiceRoomSignaling: true,
+      voiceRoomReconnection: true,
+      callSignaling: true,
+      callReconnection: true,
+      liveHostSignaling: true,
+      liveHostReconnection: true,
+      liveViewerSignaling: true,
+      liveHostTakeoverRejected: true,
+    }))
+  } finally {
+    await deleteOwnAccount(accountB)
+    await deleteOwnAccount(accountA)
+  }
 }
 
 main().catch((error) => {

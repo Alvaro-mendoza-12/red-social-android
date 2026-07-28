@@ -105,6 +105,7 @@ class CallRepository @Inject constructor(
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
         private const val SOCKET_RECONNECT_DELAY_MS = 1_000L
         private const val SOCKET_RECONNECT_DELAY_MAX_MS = 12_000L
+        private const val REMOTE_RECONNECT_GRACE_MS = 30_000L
     }
 
     private val scope = newSafeScope("CallRepository", Dispatchers.IO)
@@ -1081,7 +1082,7 @@ class CallRepository @Inject constructor(
                 val sid = args.getOrNull(0) as? String ?: return@on
                 _participants.update { list -> list.filterNot { it.socketId == sid } }
                 webRTCManager?.onUserLeft(sid)
-                autoEndIfAlone(graceMs = 8_000)
+                autoEndIfAlone(graceMs = REMOTE_RECONNECT_GRACE_MS)
             }
 
             socket?.on("current-participants") { args ->

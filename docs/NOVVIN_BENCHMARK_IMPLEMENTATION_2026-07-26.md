@@ -164,6 +164,25 @@ completo y los hashes de fuente y APK fueron verificados.
   moderador. Un moderador delegado no puede degradar a otro moderador ni
   entregar privilegios equivalentes.
 
+### Fase 3.2 — reconexión de voz y medios
+
+- **B15, cambio de red:** Android observa la red predeterminada del sistema.
+  Cuando una sesión activa cambia entre Wi‑Fi y datos móviles, o recupera la
+  conexión después de quedar sin red, renueva las credenciales TURN y solicita
+  un reinicio ICE a cada par sin destruir el motor de medios.
+- La recuperación conserva las pistas locales y su estado: micrófono
+  silenciado, cámara, pantalla y reproducción de audio. Las notificaciones
+  consecutivas del sistema se agrupan para evitar varias renegociaciones por
+  un mismo cambio de red.
+- Las llamadas conceden 30 segundos para que el participante remoto vuelva a
+  señalización antes de terminar automáticamente. Las salas reconstruyen la
+  lista autoritativa de participantes y los directos conservan la emisión
+  durante su ventana existente de 90 segundos para que el anfitrión reingrese.
+- La prueba automática pública corta y vuelve a crear el socket de voz,
+  llamada y anfitrión de directo; en los tres casos recompone participantes y
+  vuelve a intercambiar SDP e ICE. Esta prueba valida servidor y señalización,
+  pero no sustituye la matriz física Wi‑Fi↔datos con dos teléfonos.
+
 ### Corrección operativa 3.0.9 — administración y contraseñas
 
 - El host temporal que llevaba el APK había caducado. El túnel administrado
@@ -204,7 +223,7 @@ completo y los hashes de fuente y APK fueron verificados.
 | B12 | Implementado en este incremento | Eventos, asistencia y recordatorio idempotente |
 | B13 | Implementado en este incremento | Pausa temporal con motivo, duración y bloqueo en servidor |
 | B14 | Implementado en este incremento | Sala casual y escenario con público, solicitud de palabra y moderación validada por servidor |
-| B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
+| B15 | Implementado técnicamente; falta matriz física | Detectar cambio de red, renovar TURN, reiniciar ICE y restaurar estado |
 | B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
 | B18–B20 | Fase 3 | Moderación en vivo, repeticiones y remix con atribución |
 | B21–B25 | Fase 4 | IA aislada, opcional, auditable y con borrado |
@@ -218,14 +237,15 @@ completo y los hashes de fuente y APK fueron verificados.
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
   seguridad, todas aprobadas.
-- Android: 35 suites, 145 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
-  aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
-  declaró aprobado porque se detuvo por tiempo sin errores visibles.
+- Android: 36 suites, 148 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
+  aprobó; Debug, Release con R8 y `lintVitalRelease` terminaron correctamente
+  en 17 min 48 s. `lintDebug` completo no se declaró aprobado porque se detuvo
+  por tiempo sin errores visibles.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `32A85F424F09517E5820E2065C2819369A8ADD50AE0865E29CB4AD09FCCE595D`.
+  `E79CAE2025A7B649C0187026EABE46680E598051A42F53CE7132A22CDA02B86D`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `5DC8533C21F7638E980C3AE69EF5F45AEBC5D3BFE0B2AFFFEF4FA1194A64D378`.
+  `587561E8F8DD1EF91F8C47732B7BB528EE843554E87CBD84B1275FCF2E07BEEA`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
 - Servidor: despliegue `conectate-mini-pc-20260728T160010Z`, commit
@@ -268,6 +288,12 @@ completo y los hashes de fuente y APK fueron verificados.
   solicitud de palabra, autoascenso denegado, promoción a orador, silencio,
   regreso a audiencia y compatibilidad de la sala casual. La limpieza confirmó
   `users=0`, `rooms=0` y `participants=0`.
+- B15: canario público `1785257177571` aprobado para señalización de voz,
+  llamada y directo. En cada flujo desconectó una sesión, creó un socket nuevo,
+  reconstruyó la lista autoritativa y volvió a intercambiar SDP e ICE. También
+  rechazó el intento de sustituir al anfitrión del directo. La autoeliminación
+  terminó correctamente y PostgreSQL confirmó `0` cuentas ficticias de esa
+  ejecución.
 - Administración: canario de solo lectura aprobado contra la URL pública para
   acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
   apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
