@@ -68,6 +68,19 @@ internal fun Throwable?.toUserFacingMessage(
             rawMessage.contains("EMAIL_AND_STRONG_PASSWORD_REQUIRED", ignoreCase = true) ->
             "La contraseña debe tener al menos 8 caracteres."
 
+        rawMessage.contains("LIVE_CHAT_PAUSED", ignoreCase = true) ->
+            "El chat está pausado temporalmente por el equipo de moderación."
+
+        rawMessage.contains("LIVE_COMMENT_BLOCKED", ignoreCase = true) ->
+            "Ese comentario contiene una palabra que el equipo del directo bloqueó."
+
+        rawMessage.contains("LIVE_BANNED", ignoreCase = true) ->
+            "El equipo de moderación restringió tu acceso a este directo."
+
+        rawMessage.contains("LIVE_MODERATOR_REQUIRED", ignoreCase = true) ||
+            rawMessage.contains("LIVE_HOST_REQUIRED", ignoreCase = true) ->
+            "No tienes permisos para realizar esa acción en el directo."
+
         rawMessage.contains("job was cancelled", ignoreCase = true) ||
             rawMessage.contains("job was canceled", ignoreCase = true) ||
             rawMessage.contains("cancellationexception", ignoreCase = true) ->

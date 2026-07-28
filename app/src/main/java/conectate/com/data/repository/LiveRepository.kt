@@ -13,9 +13,11 @@ import conectate.com.data.model.ActiveLiveSession
 import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveQuality
 import conectate.com.data.model.LiveReaction
+import conectate.com.data.model.LiveModerationState
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
 import conectate.com.data.model.LiveStream
+import conectate.com.data.model.LiveViewerParticipant
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
@@ -131,6 +133,12 @@ class LiveRepository @Inject constructor(
 
     private val _viewerCount = MutableStateFlow(0)
     val viewerCount: StateFlow<Int> = _viewerCount.asStateFlow()
+
+    private val _liveViewers = MutableStateFlow<List<LiveViewerParticipant>>(emptyList())
+    val liveViewers: StateFlow<List<LiveViewerParticipant>> = _liveViewers.asStateFlow()
+
+    private val _moderationState = MutableStateFlow(LiveModerationState())
+    val moderationState: StateFlow<LiveModerationState> = _moderationState.asStateFlow()
 
     private val _isMicEnabled = MutableStateFlow(true)
     val isMicEnabled: StateFlow<Boolean> = _isMicEnabled.asStateFlow()
@@ -875,6 +883,11 @@ class LiveRepository @Inject constructor(
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         var text = content.trim()
         if (text.isBlank()) return@withContext Result.success(Unit)
+        if (_moderationState.value.chatPaused && !_moderationState.value.canModerate) {
+            return@withContext Result.failure(
+                Exception("El chat está pausado temporalmente por el equipo de moderación.")
+            )
+        }
 
         if (usesUbuntuPersistence()) {
             val token = localAccessToken()
@@ -925,6 +938,50 @@ class LiveRepository @Inject constructor(
             put("emoji", emoji)
         }
         runCatching { socket?.emit("send-reaction", payload) }
+    }
+
+    fun updateLiveModerationSettings(
+        chatPaused: Boolean? = null,
+        blockedWords: List<String>? = null
+    ) {
+        val session = _activeSession.value ?: return
+        val payload = org.json.JSONObject().apply {
+            put("liveId", session.stream.id)
+            put("command", "settings")
+            chatPaused?.let { put("chatPaused", it) }
+            blockedWords?.let { words ->
+                put("blockedWords", org.json.JSONArray(words.map { it.trim() }.filter { it.isNotBlank() }))
+            }
+        }
+        runCatching { socket?.emit("live-moderation-command", payload) }
+            .onFailure { _runtimeErrors.tryEmit("No se pudo actualizar la moderación del directo.") }
+    }
+
+    fun setLiveModerator(userId: String, enabled: Boolean) {
+        val session = _activeSession.value ?: return
+        val targetUserId = userId.trim()
+        if (targetUserId.isBlank()) return
+        val payload = org.json.JSONObject().apply {
+            put("liveId", session.stream.id)
+            put("command", if (enabled) "assign-moderator" else "remove-moderator")
+            put("targetUserId", targetUserId)
+        }
+        runCatching { socket?.emit("live-moderation-command", payload) }
+            .onFailure { _runtimeErrors.tryEmit("No se pudo cambiar el rol de moderación.") }
+    }
+
+    fun moderateLiveViewer(userId: String, ban: Boolean, reason: String = "") {
+        val session = _activeSession.value ?: return
+        val targetUserId = userId.trim()
+        if (targetUserId.isBlank()) return
+        val payload = org.json.JSONObject().apply {
+            put("liveId", session.stream.id)
+            put("command", if (ban) "ban" else "kick")
+            put("targetUserId", targetUserId)
+            put("reason", reason.trim().take(300))
+        }
+        runCatching { socket?.emit("live-moderation-command", payload) }
+            .onFailure { _runtimeErrors.tryEmit("No se pudo moderar a esta persona.") }
     }
 
 
@@ -1078,12 +1135,20 @@ class LiveRepository @Inject constructor(
                 runCatching {
                     val arr = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
                     val currentSocketIds = mutableSetOf<String>()
+                    val currentViewers = mutableListOf<LiveViewerParticipant>()
                     for (i in 0 until arr.length()) {
                         val viewer = arr.optJSONObject(i) ?: continue
                         val sid = viewer.optString("socketId").trim()
                         val uid = viewer.optString("userId").trim()
                         if (sid.isNotBlank()) {
                             currentSocketIds += sid
+                            currentViewers += LiveViewerParticipant(
+                                socketId = sid,
+                                userId = uid,
+                                name = viewer.optString("name", "Usuario").ifBlank { "Usuario" },
+                                avatarUrl = viewer.optString("avatarUrl").takeIf { it.isNotBlank() },
+                                isModerator = _moderationState.value.moderatorUserIds.contains(uid)
+                            )
                             webRTCManager?.onUserJoined(sid, uid)
                         }
                     }
@@ -1091,6 +1156,7 @@ class LiveRepository @Inject constructor(
                     staleSocketIds.forEach { webRTCManager?.onUserLeft(it) }
                     knownViewerSocketIds.clear()
                     knownViewerSocketIds.addAll(currentSocketIds)
+                    _liveViewers.value = currentViewers
                     if (currentSocketIds.isNotEmpty()) {
                         scheduleLiveMediaTimeout()
                     }
@@ -1105,6 +1171,16 @@ class LiveRepository @Inject constructor(
                     val uid = data.optString("userId").trim()
                     if (sid.isNotBlank()) {
                         knownViewerSocketIds += sid
+                        _liveViewers.update { current ->
+                            val participant = LiveViewerParticipant(
+                                socketId = sid,
+                                userId = uid,
+                                name = data.optString("name", "Usuario").ifBlank { "Usuario" },
+                                avatarUrl = data.optString("avatarUrl").takeIf { it.isNotBlank() },
+                                isModerator = _moderationState.value.moderatorUserIds.contains(uid)
+                            )
+                            (current.filterNot { it.socketId == sid } + participant)
+                        }
                         webRTCManager?.onUserJoined(sid, uid)
                         scheduleLiveMediaTimeout()
                     }
@@ -1117,6 +1193,7 @@ class LiveRepository @Inject constructor(
                     val sid = (args.firstOrNull() as? String)?.trim().orEmpty()
                     if (sid.isNotBlank()) {
                         knownViewerSocketIds -= sid
+                        _liveViewers.update { viewers -> viewers.filterNot { it.socketId == sid } }
                         webRTCManager?.onUserLeft(sid)
                     }
                 }.onFailure { logMalformedSignal("viewer-left", it) }
@@ -1160,6 +1237,94 @@ class LiveRepository @Inject constructor(
 
             socket?.on("live-ended") {
                 disconnectAndClear()
+            }
+
+            socket?.on("live-moderation-state") { args ->
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val moderatorIds = buildSet {
+                        val moderators = data.optJSONArray("moderators")
+                        if (moderators != null) {
+                            for (index in 0 until moderators.length()) {
+                                val entry = moderators.opt(index)
+                                val userId = when (entry) {
+                                    is org.json.JSONObject -> entry.optString("user_id")
+                                    is String -> entry
+                                    else -> ""
+                                }.trim()
+                                if (userId.isNotBlank()) add(userId)
+                            }
+                        } else {
+                            addAll(_moderationState.value.moderatorUserIds)
+                        }
+                    }
+                    _moderationState.value = LiveModerationState(
+                        chatPaused = data.optBoolean("chatPaused", false),
+                        blockedWords = buildList {
+                            val words = data.optJSONArray("blockedWords")
+                            if (words != null) {
+                                for (index in 0 until words.length()) {
+                                    words.optString(index).trim().takeIf { it.isNotBlank() }?.let(::add)
+                                }
+                            } else {
+                                addAll(_moderationState.value.blockedWords)
+                            }
+                        },
+                        canModerate = data.optBoolean("canModerate", false),
+                        isModerator = data.optBoolean("isModerator", false),
+                        isHost = data.optBoolean("isHost", role == LiveRole.HOST),
+                        moderatorUserIds = moderatorIds
+                    )
+                    _liveViewers.update { viewers ->
+                        viewers.map { viewer ->
+                            viewer.copy(isModerator = moderatorIds.contains(viewer.userId))
+                        }
+                    }
+                }.onFailure { logMalformedSignal("live-moderation-state", it) }
+            }
+
+            socket?.on("live-moderation-viewers") { args ->
+                runCatching {
+                    val viewers = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
+                    _liveViewers.value = buildList {
+                        for (index in 0 until viewers.length()) {
+                            val viewer = viewers.optJSONObject(index) ?: continue
+                            val socketId = viewer.optString("socketId").trim()
+                            val viewerUserId = viewer.optString("userId").trim()
+                            if (socketId.isBlank() || viewerUserId.isBlank()) continue
+                            add(
+                                LiveViewerParticipant(
+                                    socketId = socketId,
+                                    userId = viewerUserId,
+                                    name = viewer.optString("name", "Usuario").ifBlank { "Usuario" },
+                                    avatarUrl = viewer.optString("avatarUrl").takeIf { it.isNotBlank() },
+                                    isModerator = viewer.optBoolean("isModerator", false)
+                                )
+                            )
+                        }
+                    }
+                }.onFailure { logMalformedSignal("live-moderation-viewers", it) }
+            }
+
+            socket?.on("live-moderated") { args ->
+                val message = runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject
+                    data?.optString("message")?.trim().orEmpty()
+                }.getOrDefault("").ifBlank {
+                    "El equipo de moderación te retiró de este directo."
+                }
+                disconnectAndClear()
+                _runtimeErrors.tryEmit(message)
+            }
+
+            socket?.on("live-moderation-error") { args ->
+                val message = runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject
+                    data?.optString("error")?.trim().orEmpty()
+                }.getOrDefault("").ifBlank {
+                    "No se pudo completar la acción de moderación."
+                }
+                _runtimeErrors.tryEmit(message)
             }
 
             socket?.on("reaction") { args ->
@@ -1502,6 +1667,8 @@ class LiveRepository @Inject constructor(
         _comments.value = emptyList()
         _reactions.value = emptyList()
         _viewerCount.value = 0
+        _liveViewers.value = emptyList()
+        _moderationState.value = LiveModerationState()
         _isMicEnabled.value = true
         _isMediaReady.value = false
         _isPaused.value = false

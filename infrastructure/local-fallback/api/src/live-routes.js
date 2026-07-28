@@ -24,6 +24,31 @@ function cleanHashtags(value) {
     .slice(0, 10)
 }
 
+function cleanBlockedWords(value) {
+  const entries = Array.isArray(value) ? value : []
+  return [...new Set(entries
+    .map((entry) => cleanText(entry, 40).toLocaleLowerCase('es'))
+    .filter((entry) => entry.length >= 2))]
+    .slice(0, 50)
+}
+
+function normalizedContent(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+function containsBlockedWord(content, blockedWords) {
+  const haystack = ` ${normalizedContent(content)} `
+  return cleanBlockedWords(blockedWords).some((word) => {
+    const needle = normalizedContent(word)
+    return needle && haystack.includes(` ${needle} `)
+  })
+}
+
 function sourceOf(value) {
   return normalizeId(value) === 'screen' ? 'screen' : 'camera'
 }
@@ -56,12 +81,22 @@ async function ensureLiveTables(pool) {
       peak_viewer_count INT NOT NULL DEFAULT 0,
       total_comments INT NOT NULL DEFAULT 0,
       total_reactions INT NOT NULL DEFAULT 0,
+      chat_paused BOOLEAN NOT NULL DEFAULT FALSE,
+      blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb,
       is_active BOOLEAN NOT NULL DEFAULT FALSE,
       started_at TIMESTAMPTZ,
       ended_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    ADD COLUMN IF NOT EXISTS chat_paused BOOLEAN NOT NULL DEFAULT FALSE
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    ADD COLUMN IF NOT EXISTS blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb
   `)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_live_streams_active_created
@@ -85,6 +120,49 @@ async function ensureLiveTables(pool) {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_live_comments_live_created
     ON fallback_live_comments(live_id, created_at DESC)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_moderators (
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      assigned_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (live_id, user_id)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_moderators_user
+    ON fallback_live_moderators(lower(user_id), created_at DESC)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_bans (
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      banned_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (live_id, user_id)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_bans_user
+    ON fallback_live_bans(lower(user_id), created_at DESC)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_moderation_audit (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      actor_user_id TEXT NOT NULL,
+      target_user_id TEXT,
+      action TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_moderation_audit_live
+    ON fallback_live_moderation_audit(live_id, created_at DESC)
   `)
 }
 
@@ -115,7 +193,8 @@ function ownsStream(stream, identity) {
 async function streamById(pool, liveId) {
   const { rows } = await pool.query(
     `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
-            viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+            viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+            blocked_words, is_active,
             started_at, ended_at, created_at, updated_at
      FROM fallback_live_streams
      WHERE id = $1::uuid
@@ -123,6 +202,76 @@ async function streamById(pool, liveId) {
     [liveId],
   )
   return rows[0] || null
+}
+
+async function moderationMembership(pool, stream, identity) {
+  const isHost = ownsStream(stream, identity)
+  if (isHost) return { isHost: true, isModerator: false, canModerate: true }
+  const { rows } = await pool.query(
+    `SELECT 1
+     FROM fallback_live_moderators
+     WHERE live_id = $1::uuid
+       AND lower(user_id) = ANY($2::text[])
+     LIMIT 1`,
+    [stream.id, identity.values],
+  )
+  const isModerator = rows.length > 0
+  return { isHost: false, isModerator, canModerate: isModerator }
+}
+
+async function isLiveBanned(pool, liveId, identity) {
+  const { rows } = await pool.query(
+    `SELECT 1
+     FROM fallback_live_bans
+     WHERE live_id = $1::uuid
+       AND lower(user_id) = ANY($2::text[])
+     LIMIT 1`,
+    [liveId, identity.values],
+  )
+  return rows.length > 0
+}
+
+async function appendModerationAudit(pool, {
+  liveId,
+  actorUserId,
+  targetUserId = null,
+  action,
+  reason = '',
+  metadata = {},
+}) {
+  await pool.query(
+    `INSERT INTO fallback_live_moderation_audit(
+       live_id, actor_user_id, target_user_id, action, reason, metadata
+     )
+     VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb)`,
+    [liveId, actorUserId, targetUserId, action, reason, JSON.stringify(metadata)],
+  )
+}
+
+async function moderationState(pool, stream, identity) {
+  const membership = await moderationMembership(pool, stream, identity)
+  const banned = membership.isHost ? false : await isLiveBanned(pool, stream.id, identity)
+  let moderators = []
+  if (membership.canModerate) {
+    const result = await pool.query(
+      `SELECT user_id, assigned_by, created_at
+       FROM fallback_live_moderators
+       WHERE live_id = $1::uuid
+       ORDER BY created_at ASC`,
+      [stream.id],
+    )
+    moderators = result.rows
+  }
+  return {
+    live_id: stream.id,
+    chat_paused: Boolean(stream.chat_paused),
+    blocked_words: membership.canModerate ? cleanBlockedWords(stream.blocked_words) : [],
+    is_host: membership.isHost,
+    is_moderator: membership.isModerator,
+    can_moderate: membership.canModerate,
+    is_banned: banned,
+    moderators,
+  }
 }
 
 function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
@@ -133,7 +282,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const limit = intBetween(req.query.limit, 1, 100, 60)
       const { rows } = await pool.query(
         `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
-                viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+                viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+                is_active,
                 started_at, ended_at, created_at, updated_at
          FROM fallback_live_streams
          WHERE is_active = TRUE
@@ -194,7 +344,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
          )
          VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, 0, FALSE, NOW(), NOW())
          RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
-                   viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+                   viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+                   is_active,
                    started_at, ended_at, created_at, updated_at`,
         [liveId, identity.displayUserId, profile.name, profile.avatarUrl, title, source, JSON.stringify(hashtags)],
       )
@@ -248,7 +399,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
              updated_at = NOW()
          WHERE id = $1::uuid
          RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
-                   viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+                   viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+                   is_active,
                    started_at, ended_at, created_at, updated_at`,
         [liveId, hasActive, isActive, hasActive && !isActive ? 0 : viewerCount, peakViewerCount, totalComments, totalReactions],
       )
@@ -270,6 +422,202 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (stream.is_active) return res.status(409).json({ error: 'LIVE_STILL_ACTIVE' })
       await pool.query(`DELETE FROM fallback_live_streams WHERE id = $1::uuid`, [liveId])
       res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/live/:liveId/moderation', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const state = await moderationState(pool, stream, userIdentity(user))
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ moderation: state })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/live/:liveId/moderation/settings', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const membership = await moderationMembership(pool, stream, identity)
+      if (!membership.canModerate) return res.status(403).json({ error: 'LIVE_MODERATOR_REQUIRED' })
+
+      const hasChatPaused = req.body?.chatPaused !== undefined || req.body?.chat_paused !== undefined
+      const hasBlockedWords = req.body?.blockedWords !== undefined || req.body?.blocked_words !== undefined
+      if (!hasChatPaused && !hasBlockedWords) {
+        return res.status(400).json({ error: 'LIVE_MODERATION_SETTINGS_REQUIRED' })
+      }
+      if (hasBlockedWords && !membership.isHost) {
+        return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      }
+      const chatPaused = Boolean(req.body?.chatPaused ?? req.body?.chat_paused)
+      const blockedWords = hasBlockedWords
+        ? cleanBlockedWords(req.body?.blockedWords ?? req.body?.blocked_words)
+        : cleanBlockedWords(stream.blocked_words)
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_streams
+         SET chat_paused = CASE WHEN $2 THEN $3 ELSE chat_paused END,
+             blocked_words = CASE WHEN $4 THEN $5::jsonb ELSE blocked_words END,
+             updated_at = NOW()
+         WHERE id = $1::uuid
+         RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                   viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+                   blocked_words, is_active, started_at, ended_at, created_at, updated_at`,
+        [liveId, hasChatPaused, chatPaused, hasBlockedWords, JSON.stringify(blockedWords)],
+      )
+      await appendModerationAudit(pool, {
+        liveId,
+        actorUserId: identity.displayUserId,
+        action: 'settings_updated',
+        metadata: {
+          ...(hasChatPaused ? { chatPaused } : {}),
+          ...(hasBlockedWords ? { blockedWordCount: blockedWords.length } : {}),
+        },
+      })
+      const state = await moderationState(pool, rows[0], identity)
+      await publishRealtimeEvent(`live-moderation:${liveId}`, {
+        event: 'live_moderation_updated',
+        liveId,
+        chatPaused: state.chat_paused,
+      })
+      res.json({ moderation: state })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/live/:liveId/moderators/:userId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const targetUserId = cleanText(req.params.userId, 200)
+      if (!liveId || !targetUserId) return res.status(400).json({ error: 'LIVE_MODERATOR_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      if (identity.ids.has(normalizeId(targetUserId))) {
+        return res.status(409).json({ error: 'LIVE_HOST_ALREADY_MODERATES' })
+      }
+      await pool.query(
+        `INSERT INTO fallback_live_moderators(live_id, user_id, assigned_by)
+         VALUES ($1::uuid, $2, $3)
+         ON CONFLICT (live_id, user_id)
+         DO UPDATE SET assigned_by = EXCLUDED.assigned_by`,
+        [liveId, targetUserId, identity.displayUserId],
+      )
+      await appendModerationAudit(pool, {
+        liveId,
+        actorUserId: identity.displayUserId,
+        targetUserId,
+        action: 'moderator_assigned',
+      })
+      res.json({ moderation: await moderationState(pool, await streamById(pool, liveId), identity) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/live/:liveId/moderators/:userId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const targetUserId = cleanText(req.params.userId, 200)
+      if (!liveId || !targetUserId) return res.status(400).json({ error: 'LIVE_MODERATOR_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      await pool.query(
+        `DELETE FROM fallback_live_moderators
+         WHERE live_id = $1::uuid AND lower(user_id) = lower($2)`,
+        [liveId, targetUserId],
+      )
+      await appendModerationAudit(pool, {
+        liveId,
+        actorUserId: identity.displayUserId,
+        targetUserId,
+        action: 'moderator_removed',
+      })
+      res.json({ moderation: await moderationState(pool, await streamById(pool, liveId), identity) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/moderation/actions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const action = normalizeId(req.body?.action)
+      const targetUserId = cleanText(req.body?.targetUserId ?? req.body?.target_user_id, 200)
+      const reason = cleanText(req.body?.reason, 300)
+      if (!liveId || !['kick', 'ban', 'unban'].includes(action) || !targetUserId) {
+        return res.status(400).json({ error: 'LIVE_MODERATION_ACTION_INVALID' })
+      }
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const membership = await moderationMembership(pool, stream, identity)
+      if (!membership.canModerate) return res.status(403).json({ error: 'LIVE_MODERATOR_REQUIRED' })
+      if (normalizeId(stream.host_user_id) === normalizeId(targetUserId)) {
+        return res.status(409).json({ error: 'LIVE_HOST_CANNOT_BE_MODERATED' })
+      }
+      if (!membership.isHost) {
+        const targetModerator = await pool.query(
+          `SELECT 1 FROM fallback_live_moderators
+           WHERE live_id = $1::uuid AND lower(user_id) = lower($2)
+           LIMIT 1`,
+          [liveId, targetUserId],
+        )
+        if (targetModerator.rows.length > 0) {
+          return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+        }
+      }
+      if (action === 'ban') {
+        await pool.query(
+          `INSERT INTO fallback_live_bans(live_id, user_id, reason, banned_by)
+           VALUES ($1::uuid, $2, $3, $4)
+           ON CONFLICT (live_id, user_id)
+           DO UPDATE SET reason = EXCLUDED.reason, banned_by = EXCLUDED.banned_by, created_at = NOW()`,
+          [liveId, targetUserId, reason, identity.displayUserId],
+        )
+      } else if (action === 'unban') {
+        await pool.query(
+          `DELETE FROM fallback_live_bans
+           WHERE live_id = $1::uuid AND lower(user_id) = lower($2)`,
+          [liveId, targetUserId],
+        )
+      }
+      await appendModerationAudit(pool, {
+        liveId,
+        actorUserId: identity.displayUserId,
+        targetUserId,
+        action: action === 'kick' ? 'viewer_kicked' : `viewer_${action}ned`,
+        reason,
+      })
+      res.json({
+        ok: true,
+        action,
+        target_user_id: targetUserId,
+        moderation: await moderationState(pool, await streamById(pool, liveId), identity),
+      })
     } catch (error) {
       next(error)
     }
@@ -313,6 +661,16 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const stream = await streamById(pool, liveId)
       if (!stream?.is_active) return res.status(409).json({ error: 'LIVE_NOT_ACTIVE' })
       const identity = userIdentity(user)
+      const membership = await moderationMembership(pool, stream, identity)
+      if (!membership.isHost && await isLiveBanned(pool, liveId, identity)) {
+        return res.status(403).json({ error: 'LIVE_BANNED' })
+      }
+      if (stream.chat_paused && !membership.canModerate) {
+        return res.status(423).json({ error: 'LIVE_CHAT_PAUSED' })
+      }
+      if (!membership.canModerate && containsBlockedWord(content, stream.blocked_words)) {
+        return res.status(422).json({ error: 'LIVE_COMMENT_BLOCKED' })
+      }
       const profile = await resolvedProfile(pool, user)
       const { rows } = await pool.query(
         `INSERT INTO fallback_live_comments(live_id, user_id, user_name, avatar_url, content)
@@ -347,13 +705,14 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       const identity = userIdentity(user)
+      const membership = await moderationMembership(pool, stream, identity)
       const { rows } = await pool.query(
         `DELETE FROM fallback_live_comments
          WHERE id = $1::uuid
            AND live_id = $2::uuid
            AND (lower(user_id) = ANY($3::text[]) OR $4::boolean)
          RETURNING id::text`,
-        [commentId, liveId, identity.values, ownsStream(stream, identity)],
+        [commentId, liveId, identity.values, membership.canModerate],
       )
       if (rows.length === 0) return res.status(404).json({ error: 'LIVE_COMMENT_NOT_FOUND' })
       await publishRealtimeEvent(`live-comments:${liveId}`, {
@@ -369,6 +728,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
 }
 
 module.exports = {
+  cleanBlockedWords,
+  containsBlockedWord,
   ensureLiveTables,
   registerLiveRoutes,
 }

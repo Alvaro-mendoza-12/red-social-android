@@ -71,6 +71,8 @@ fun LiveSessionScaffold(
     reactions: List<conectate.com.data.model.LiveReaction>,
     onSendComment: (String) -> Unit,
     onSendReaction: () -> Unit,
+    commentingEnabled: Boolean = true,
+    commentingDisabledReason: String = "El chat está pausado",
     modifier: Modifier = Modifier,
     videoScalingType: RendererCommon.ScalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL,
     stateOverlayText: String? = null,
@@ -174,13 +176,16 @@ fun LiveSessionScaffold(
 
         LiveCommentComposer(
             value = message,
-            onValueChange = { message = it },
+            onValueChange = { if (commentingEnabled) message = it },
             onSend = {
+                if (!commentingEnabled) return@LiveCommentComposer
                 if (message.isBlank()) return@LiveCommentComposer
                 onSendComment(message)
                 message = ""
             },
             onSendReaction = onSendReaction,
+            enabled = commentingEnabled,
+            disabledReason = commentingDisabledReason,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -477,6 +482,8 @@ private fun LiveCommentComposer(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onSendReaction: () -> Unit,
+    enabled: Boolean,
+    disabledReason: String,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -502,7 +509,8 @@ private fun LiveCommentComposer(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Comentar…") },
+            enabled = enabled,
+            placeholder = { Text(if (enabled) "Comentar…" else disabledReason) },
             shape = RoundedCornerShape(20.dp),
             singleLine = false,
             maxLines = 3
@@ -510,6 +518,7 @@ private fun LiveCommentComposer(
 
         Button(
             onClick = onSend,
+            enabled = enabled,
             shape = RoundedCornerShape(20.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
         ) {

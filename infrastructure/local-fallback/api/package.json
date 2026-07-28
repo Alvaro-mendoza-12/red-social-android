@@ -21,6 +21,7 @@
     "test:notification-digest": "node tests/notification-digest-routes.test.js",
     "test:admin": "node tests/admin-moderation-routes.test.js",
     "test:proximity": "node tests/proximity-routes.test.js",
+    "test:live-moderation": "node tests/live-moderation-routes.test.js",
     "test:security": "node tests/request-security.test.js && node tests/account-status.test.js && node tests/postgrest-security.test.js",
     "test:system-health": "node tests/system-health.test.js",
     "verify:admin-panel-e2e": "node scripts/verify-admin-panel-e2e.js",
@@ -30,6 +31,7 @@
     "verify:community-profiles-events-e2e": "node scripts/verify-community-profiles-events-e2e.js",
     "verify:voice-stage-e2e": "node scripts/verify-voice-stage-e2e.js",
     "verify:voice-captions-e2e": "node scripts/verify-voice-captions-e2e.js",
+    "verify:live-moderation-e2e": "node scripts/verify-live-moderation-e2e.js",
     "verify:webrtc-e2e": "node ../scripts/verify-webrtc-four-flows.js"
   },
   "engines": {

@@ -40,6 +40,8 @@ class LiveSessionViewModel @Inject constructor(
     val comments = liveRepository.comments
     val reactions = liveRepository.reactions
     val viewerCount = liveRepository.viewerCount
+    val liveViewers = liveRepository.liveViewers
+    val moderationState = liveRepository.moderationState
     val isMicEnabled = liveRepository.isMicEnabled
     val isMediaReady = liveRepository.isMediaReady
     val isPaused = liveRepository.isPaused
@@ -225,6 +227,25 @@ class LiveSessionViewModel @Inject constructor(
 
     fun sendReaction(emoji: String = "❤️") {
         liveRepository.sendReaction(emoji)
+    }
+
+    fun updateModerationSettings(chatPaused: Boolean, blockedWords: List<String>) {
+        liveRepository.updateLiveModerationSettings(
+            chatPaused = chatPaused,
+            blockedWords = blockedWords
+        )
+    }
+
+    fun updateModerationPause(chatPaused: Boolean) {
+        liveRepository.updateLiveModerationSettings(chatPaused = chatPaused)
+    }
+
+    fun setModerator(userId: String, enabled: Boolean) {
+        liveRepository.setLiveModerator(userId, enabled)
+    }
+
+    fun moderateViewer(userId: String, ban: Boolean) {
+        liveRepository.moderateLiveViewer(userId, ban)
     }
 
     fun clearError() {

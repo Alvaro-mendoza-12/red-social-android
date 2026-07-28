@@ -4,6 +4,22 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UserFacingErrorMessageTest {
+    @Test
+    fun `live moderation errors are explained without backend codes`() {
+        assertEquals(
+            "El chat está pausado temporalmente por el equipo de moderación.",
+            Exception("423 - {\"error\":\"LIVE_CHAT_PAUSED\"}").toUserFacingMessage()
+        )
+        assertEquals(
+            "Ese comentario contiene una palabra que el equipo del directo bloqueó.",
+            Exception("422 - {\"error\":\"LIVE_COMMENT_BLOCKED\"}").toUserFacingMessage()
+        )
+        assertEquals(
+            "El equipo de moderación restringió tu acceso a este directo.",
+            Exception("403 - {\"error\":\"LIVE_BANNED\"}").toUserFacingMessage()
+        )
+    }
+
 
     @Test
     fun restrictionMessageBecomesFriendly() {

@@ -90,12 +90,15 @@ fun LiveHostScreen(
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
     val hostPreparation by viewModel.hostPreparation.collectAsStateWithLifecycle()
+    val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
+    val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
     var autoStarted by remember(liveId) { mutableStateOf(false) }
     var showEndDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showModerationDialog by remember { mutableStateOf(false) }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var pendingSettingsDraft by remember { mutableStateOf<HostLiveSettingsDraft?>(null) }
     var pendingResume by remember { mutableStateOf(false) }
@@ -451,6 +454,18 @@ fun LiveHostScreen(
         )
     }
 
+    if (showModerationDialog) {
+        LiveModerationDialog(
+            moderation = moderation,
+            viewers = liveViewers,
+            onDismiss = { showModerationDialog = false },
+            onSaveSettings = viewModel::updateModerationSettings,
+            onSetModerator = viewModel::setModerator,
+            onKick = { viewModel.moderateViewer(it, false) },
+            onBan = { viewModel.moderateViewer(it, true) }
+        )
+    }
+
     val stateOverlayText = when {
         !isMediaReady -> "Preparando transmisión…"
         !isVideoEnabled && currentSource == LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
@@ -481,6 +496,8 @@ fun LiveHostScreen(
         reactions = reactions,
         onSendComment = viewModel::sendComment,
         onSendReaction = { viewModel.sendReaction("❤️") },
+        commentingEnabled = !moderation.chatPaused || moderation.canModerate,
+        commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
         topStatusBannerText = if (isPaused) {
             "Live pausado. Los espectadores no ven tu transmisión."
@@ -537,6 +554,10 @@ fun LiveHostScreen(
             LiveActionChip(
                 text = "Configuración",
                 onClick = { showSettingsDialog = true }
+            )
+            LiveActionChip(
+                text = "Moderación",
+                onClick = { showModerationDialog = true }
             )
             LiveActionChip(
                 text = if (floatingChatEnabled) "Cerrar chat" else "Chat flotante",

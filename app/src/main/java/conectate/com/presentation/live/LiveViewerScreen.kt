@@ -38,12 +38,15 @@ fun LiveViewerScreen(
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
+    val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
+    val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val hostTrack = remoteTracks.values.firstOrNull()
     val stream = session?.stream
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
+    var showModerationDialog by remember(liveId) { mutableStateOf(false) }
 
     fun leaveViewer() {
         manualLeaveRequested = true
@@ -102,6 +105,18 @@ fun LiveViewerScreen(
         leaveViewer()
     }
 
+    if (showModerationDialog && moderation.canModerate) {
+        LiveModerationDialog(
+            moderation = moderation,
+            viewers = liveViewers,
+            onDismiss = { showModerationDialog = false },
+            onSaveSettings = { chatPaused, _ -> viewModel.updateModerationPause(chatPaused) },
+            onSetModerator = { _, _ -> },
+            onKick = { viewModel.moderateViewer(it, false) },
+            onBan = { viewModel.moderateViewer(it, true) }
+        )
+    }
+
     val stateOverlayText = when {
         isPaused -> "LIVE EN PAUSA"
         !isVideoEnabled && currentSource == conectate.com.data.model.LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
@@ -124,6 +139,8 @@ fun LiveViewerScreen(
         reactions = reactions,
         onSendComment = viewModel::sendComment,
         onSendReaction = { viewModel.sendReaction("❤️") },
+        commentingEnabled = !moderation.chatPaused || moderation.canModerate,
+        commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
         placeholderText = if (currentSource == conectate.com.data.model.LiveSource.SCREEN) {
             "Esperando pantalla del creador…"
@@ -166,6 +183,14 @@ fun LiveViewerScreen(
                 text = "Salir",
                 onClick = ::leaveViewer
             )
+        },
+        creatorControls = {
+            if (moderation.canModerate) {
+                LiveActionChip(
+                    text = "Moderar",
+                    onClick = { showModerationDialog = true }
+                )
+            }
         }
     )
 }

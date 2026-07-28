@@ -50,6 +50,23 @@ data class LiveReaction(
     val createdAtMs: Long = System.currentTimeMillis()
 )
 
+data class LiveViewerParticipant(
+    val socketId: String,
+    val userId: String,
+    val name: String,
+    val avatarUrl: String? = null,
+    val isModerator: Boolean = false
+)
+
+data class LiveModerationState(
+    val chatPaused: Boolean = false,
+    val blockedWords: List<String> = emptyList(),
+    val canModerate: Boolean = false,
+    val isModerator: Boolean = false,
+    val isHost: Boolean = false,
+    val moderatorUserIds: Set<String> = emptySet()
+)
+
 data class ActiveLiveSession(
     val stream: LiveStream,
     val role: LiveRole,

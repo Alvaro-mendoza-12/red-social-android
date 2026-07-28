@@ -737,6 +737,58 @@ async function getLiveStreamMeta(liveId, accessToken) {
     }
 }
 
+async function getLiveModerationState(liveId, accessToken) {
+    const payload = await callUbuntuApi(
+        `/v1/data/live/${encodeURIComponent(liveId)}/moderation`,
+        { accessToken }
+    );
+    return payload?.moderation || {};
+}
+
+function publicLiveModerationState(session, viewer) {
+    return {
+        chatPaused: Boolean(session?.moderation?.chatPaused),
+        canModerate: Boolean(viewer?.isModerator),
+        isModerator: Boolean(viewer?.isModerator),
+        isHost: false,
+        blockedWords: viewer?.isModerator
+            ? Array.from(session?.moderation?.blockedWords || [])
+            : []
+    };
+}
+
+function emitLiveModerationState(liveId, session) {
+    const moderationViewers = [];
+    session?.viewers?.forEach((viewer, socketId) => {
+        moderationViewers.push({
+            socketId,
+            userId: viewer.userId,
+            name: viewer.name,
+            avatarUrl: viewer.avatarUrl,
+            isModerator: Boolean(viewer.isModerator)
+        });
+    });
+    if (session?.host?.socketId) {
+        liveIo.to(session.host.socketId).emit('live-moderation-state', {
+            chatPaused: Boolean(session.moderation?.chatPaused),
+            canModerate: true,
+            isModerator: false,
+            isHost: true,
+            moderators: Array.from(session.moderation?.moderators || []),
+            blockedWords: Array.from(session.moderation?.blockedWords || [])
+        });
+    }
+    session?.viewers?.forEach((viewer, socketId) => {
+        liveIo.to(socketId).emit(
+            'live-moderation-state',
+            publicLiveModerationState(session, viewer)
+        );
+        if (viewer.isModerator) {
+            liveIo.to(socketId).emit('live-moderation-viewers', moderationViewers);
+        }
+    });
+}
+
 // Track active voice rooms and their participants
 // room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing,
 // isScreenSharing, captionsEnabled })
@@ -1434,7 +1486,8 @@ callIo.on('connection', (socket) => {
 // live_id -> {
 //   host: {socketId,userId,name,avatarUrl} | null,
 //   viewers: Map(socketId -> {...}),
-//   state: { source, isPaused, videoEnabled, micEnabled }
+//   state: { source, isPaused, videoEnabled, micEnabled },
+//   moderation: { chatPaused, moderators: Set<userId> }
 // }
 const lives = new Map();
 const liveEndTimers = new Map();
@@ -1539,6 +1592,11 @@ liveIo.on('connection', (socket) => {
                     isPaused: false,
                     videoEnabled: true,
                     micEnabled: true
+                },
+                moderation: {
+                    chatPaused: false,
+                    moderators: new Set(),
+                    blockedWords: []
                 }
             });
         }
@@ -1558,6 +1616,21 @@ liveIo.on('connection', (socket) => {
         }
 
         const session = lives.get(liveId);
+        let requestedModeration;
+        try {
+            requestedModeration = await getLiveModerationState(liveId, socket.data.authToken);
+        } catch (error) {
+            console.error(`[SOCKET_DEBUG] [LIVE][MODERATION] Could not authorize ${userId} for ${liveId}:`, error.message || error);
+            socket.emit('live-moderation-error', { error: 'No se pudo validar tu acceso al directo.' });
+            return;
+        }
+        if (role !== 'host' && requestedModeration?.is_banned) {
+            socket.emit('live-moderated', {
+                action: 'ban',
+                message: 'El equipo de moderación restringió tu acceso a este directo.'
+            });
+            return;
+        }
         socket.join(liveId);
         socket.data.joinedLiveIds.add(liveId);
         socket.data.liveRole = role;
@@ -1572,6 +1645,17 @@ liveIo.on('connection', (socket) => {
                 isPaused: Boolean(data.isPaused),
                 videoEnabled: data.videoEnabled !== false,
                 micEnabled: data.micEnabled !== false
+            };
+            session.moderation = {
+                chatPaused: Boolean(requestedModeration?.chat_paused),
+                moderators: new Set(
+                    Array.isArray(requestedModeration?.moderators)
+                        ? requestedModeration.moderators.map((entry) => String(entry?.user_id || '').trim()).filter(Boolean)
+                        : []
+                ),
+                blockedWords: Array.isArray(requestedModeration?.blocked_words)
+                    ? requestedModeration.blocked_words.map((word) => String(word || '').trim()).filter(Boolean)
+                    : []
             };
             console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${userId} is hosting ${liveId}`);
 
@@ -1598,11 +1682,18 @@ liveIo.on('connection', (socket) => {
             liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
             await setLiveStreamActive(liveId, session.hostAuthToken);
             await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
+            emitLiveModerationState(liveId, session);
             return;
         }
 
         // Viewer join
-        session.viewers.set(socket.id, { userId, name, avatarUrl });
+        session.viewers.set(socket.id, {
+            userId,
+            name,
+            avatarUrl,
+            authToken: socket.data.authToken,
+            isModerator: Boolean(requestedModeration?.is_moderator)
+        });
         console.log(`[SOCKET_DEBUG] [LIVE][VIEWER] ${userId} joined ${liveId}. Viewers: ${session.viewers.size}`);
 
         // Notify host and provide host info to viewer
@@ -1626,6 +1717,7 @@ liveIo.on('connection', (socket) => {
         const viewerCount = session.viewers.size;
         liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
         await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
+        emitLiveModerationState(liveId, session);
     });
 
     socket.on('end-live', async (data) => {
@@ -1680,6 +1772,120 @@ liveIo.on('connection', (socket) => {
         };
 
         liveIo.to(liveId).emit('live-state', session.state);
+    });
+
+    socket.on('live-moderation-command', async (rawData) => {
+        const data = (rawData && typeof rawData === 'object') ? rawData : {};
+        const liveId = requireJoinedScope(
+            socket,
+            'joinedLiveIds',
+            data.liveId || socket.data.liveId,
+            'live',
+            'live-moderation-command'
+        );
+        if (!liveId) return;
+        const session = lives.get(liveId);
+        if (!session) return;
+
+        const command = String(data.command || '').trim().toLowerCase();
+        const targetUserId = String(data.targetUserId || '').trim();
+        try {
+            let payload;
+            if (command === 'settings') {
+                payload = await callUbuntuApi(
+                    `/v1/data/live/${encodeURIComponent(liveId)}/moderation/settings`,
+                    {
+                        method: 'PATCH',
+                        accessToken: socket.data.authToken,
+                        body: {
+                            ...(data.chatPaused !== undefined ? { chatPaused: Boolean(data.chatPaused) } : {}),
+                            ...(Array.isArray(data.blockedWords) ? { blockedWords: data.blockedWords } : {})
+                        }
+                    }
+                );
+            } else if ((command === 'assign-moderator' || command === 'remove-moderator') && targetUserId) {
+                payload = await callUbuntuApi(
+                    `/v1/data/live/${encodeURIComponent(liveId)}/moderators/${encodeURIComponent(targetUserId)}`,
+                    {
+                        method: command === 'assign-moderator' ? 'PUT' : 'DELETE',
+                        accessToken: socket.data.authToken
+                    }
+                );
+            } else if (['kick', 'ban', 'unban'].includes(command) && targetUserId) {
+                payload = await callUbuntuApi(
+                    `/v1/data/live/${encodeURIComponent(liveId)}/moderation/actions`,
+                    {
+                        method: 'POST',
+                        accessToken: socket.data.authToken,
+                        body: {
+                            action: command,
+                            targetUserId,
+                            reason: String(data.reason || '').trim().slice(0, 300)
+                        }
+                    }
+                );
+            } else {
+                socket.emit('live-moderation-error', { error: 'La acción de moderación no es válida.' });
+                return;
+            }
+
+            const moderation = payload?.moderation || {};
+            if (moderation.chat_paused !== undefined) {
+                session.moderation.chatPaused = Boolean(moderation.chat_paused);
+            }
+            if (Array.isArray(moderation.moderators)) {
+                session.moderation.moderators = new Set(
+                    moderation.moderators
+                        .map((entry) => String(entry?.user_id || '').trim())
+                        .filter(Boolean)
+                );
+            }
+            if (Array.isArray(moderation.blocked_words)) {
+                session.moderation.blockedWords = moderation.blocked_words
+                    .map((word) => String(word || '').trim())
+                    .filter(Boolean);
+            }
+            session.viewers.forEach((viewer) => {
+                viewer.isModerator = session.moderation.moderators.has(viewer.userId);
+            });
+
+            if (['kick', 'ban'].includes(command)) {
+                for (const [viewerSocketId, viewer] of session.viewers.entries()) {
+                    if (viewer.userId !== targetUserId) continue;
+                    liveIo.to(viewerSocketId).emit('live-moderated', {
+                        action: command,
+                        message: command === 'ban'
+                            ? 'El equipo de moderación restringió tu acceso a este directo.'
+                            : 'El equipo de moderación te retiró de este directo.'
+                    });
+                    const targetSocket = liveIo.sockets.sockets.get(viewerSocketId);
+                    if (targetSocket) {
+                        targetSocket.data.joinedLiveIds?.delete(liveId);
+                        targetSocket.leave(liveId);
+                    }
+                    session.viewers.delete(viewerSocketId);
+                    if (session.host?.socketId) {
+                        liveIo.to(session.host.socketId).emit('viewer-left', viewerSocketId);
+                    }
+                }
+                const viewerCount = session.viewers.size;
+                liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
+                await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
+            }
+
+            emitLiveModerationState(liveId, session);
+            socket.emit('live-moderation-confirmed', { command, targetUserId });
+        } catch (error) {
+            console.error(`[SOCKET_DEBUG] [LIVE][MODERATION] ${command} failed for ${liveId}:`, error.message || error);
+            const messageByCode = {
+                LIVE_HOST_REQUIRED: 'Solo el anfitrión puede realizar esta acción.',
+                LIVE_MODERATOR_REQUIRED: 'No tienes permisos para moderar este directo.',
+                LIVE_HOST_CANNOT_BE_MODERATED: 'No se puede moderar al anfitrión del directo.'
+            };
+            socket.emit('live-moderation-error', {
+                error: messageByCode[error.message] || 'No se pudo completar la acción de moderación.'
+            });
+        }
     });
 
     // WebRTC signaling (scoped to /live namespace)
