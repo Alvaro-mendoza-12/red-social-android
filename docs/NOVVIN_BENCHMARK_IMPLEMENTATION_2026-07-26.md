@@ -20,6 +20,9 @@ firmado, APK Release sin firma y hashes SHA-256 verificados.
 El cierre de comunidades B08–B13 se congeló después en
 `backups/post-community-roadmap-20260728-7441aca` con los mismos artefactos y
 una copia íntegra transportable del repositorio.
+El cierre del escenario de voz B14 quedó respaldado en
+`backups/post-voice-stage-20260728-a4b2a86`; su bundle contiene el historial
+completo y los hashes de fuente y APK fueron verificados.
 
 ## Incrementos implementados
 
