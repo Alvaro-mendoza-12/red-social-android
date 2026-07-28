@@ -51,6 +51,17 @@ class SocialViewModel @Inject constructor(
                     is PostMutationEvent.VisibilityUpdated -> _posts.value.map { post ->
                         if (post.id == event.postId) post.copy(visibility = event.visibility) else post
                     }
+                    is PostMutationEvent.RemixPermissionUpdated -> _posts.value.map { post ->
+                        if (post.id == event.postId) {
+                            post.copy(
+                                remixAllowed = event.allowed,
+                                remixAudience = event.audience,
+                                remixRevokedAt = if (event.allowed) null else post.remixRevokedAt
+                            )
+                        } else {
+                            post
+                        }
+                    }
                 }
             }
         }
@@ -550,6 +561,35 @@ class SocialViewModel @Inject constructor(
                 android.widget.Toast.makeText(context, "Visibilidad actualizada", android.widget.Toast.LENGTH_SHORT).show()
             } else {
                 val message = result.exceptionOrNull().toUserFacingMessage("No se pudo actualizar la visibilidad.")
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun createRemix(post: Post, content: String) {
+        viewModelScope.launch {
+            val result = postRepository.createRemix(post.id, content)
+            if (result.isSuccess) {
+                val created = result.getOrThrow()
+                _posts.value = listOf(created) + _posts.value.filterNot { it.id == created.id }
+                android.widget.Toast.makeText(context, "Remix publicado con atribución", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo crear el remix.")
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun updateRemixPermission(post: Post, allowed: Boolean, audience: String = post.remixAudience) {
+        viewModelScope.launch {
+            val result = postRepository.updateRemixPermission(post.id, allowed, audience)
+            if (result.isSuccess) {
+                val updated = result.getOrThrow()
+                _posts.value = _posts.value.map { item -> if (item.id == updated.id) updated else item }
+                val message = if (updated.remixAllowed) "Remixes permitidos" else "Remixes desactivados"
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo cambiar el permiso de remix.")
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         }

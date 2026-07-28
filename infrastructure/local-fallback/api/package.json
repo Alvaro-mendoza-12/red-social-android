@@ -33,6 +33,7 @@
     "verify:voice-captions-e2e": "node scripts/verify-voice-captions-e2e.js",
     "verify:live-moderation-e2e": "node scripts/verify-live-moderation-e2e.js",
     "verify:live-replay-e2e": "node scripts/verify-live-replay-e2e.js",
+    "verify:post-remix-e2e": "node scripts/verify-post-remix-e2e.js",
     "verify:webrtc-e2e": "node ../scripts/verify-webrtc-four-flows.js"
   },
   "engines": {

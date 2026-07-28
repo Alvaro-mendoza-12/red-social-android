@@ -22,5 +22,13 @@ data class Post(
     @SerialName("my_reaction") val myReaction: String? = null,
     @SerialName("reaction_counts") val reactionCounts: Map<String, Int> = emptyMap(),
     @SerialName("is_verified") val isVerified: Boolean = false,
-    @SerialName("visibility") val visibility: String = "public"
+    @SerialName("visibility") val visibility: String = "public",
+    @SerialName("remix_allowed") val remixAllowed: Boolean = false,
+    @SerialName("remix_audience") val remixAudience: String = "public",
+    @SerialName("remix_revoked_at") val remixRevokedAt: String? = null,
+    @SerialName("remix_source_post_id") val remixSourcePostId: String? = null,
+    @SerialName("remix_root_post_id") val remixRootPostId: String? = null,
+    @SerialName("remix_source_user_id") val remixSourceUserId: String? = null,
+    @SerialName("remix_source_user_name") val remixSourceUserName: String? = null,
+    @SerialName("remix_depth") val remixDepth: Int = 0
 )

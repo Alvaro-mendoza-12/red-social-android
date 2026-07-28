@@ -60,16 +60,22 @@ fun PostCard(
     onWhyThisPost: () -> Unit = {},
     onSaveClick: () -> Unit = {},
     onReportClick: () -> Unit = {},
+    onRemixClick: (String) -> Unit = {},
+    onRemixPermissionClick: (Boolean, String) -> Unit = { _, _ -> },
+    onOriginalPostClick: (String) -> Unit = {},
     showOwnerActions: Boolean = true,
     showReportAction: Boolean = false
 ) {
     val context = LocalContext.current
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
     var showReactionPicker by remember(post.id) { mutableStateOf(false) }
+    var showRemixDialog by remember(post.id) { mutableStateOf(false) }
+    var remixComment by remember(post.id) { mutableStateOf("") }
     val reactionTotal = remember(post.reactionCounts, post.likeCount) {
         post.reactionCounts.values.sum().takeIf { it > 0 } ?: post.likeCount
     }
     val currentReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
+    val remixAvailable = post.remixAllowed && post.remixRevokedAt.isNullOrBlank()
 
     val images = remember(post.mediaUrls, post.mediaUrlLegacy) {
         UbuntuStorageUrl.rewriteAll(
@@ -155,6 +161,45 @@ fun PostCard(
                 }
             },
             onDismiss = { fullScreenImageIndex = null }
+        )
+    }
+
+    if (showRemixDialog) {
+        AlertDialog(
+            onDismissRequest = { showRemixDialog = false },
+            title = { Text("Crear remix") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "La publicación original y su autor quedarán enlazados de forma visible.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = remixComment,
+                        onValueChange = { remixComment = it.take(5000) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Añade tu comentario (opcional)") },
+                        minLines = 3,
+                        maxLines = 6
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRemixClick(remixComment.trim())
+                        remixComment = ""
+                        showRemixDialog = false
+                    }
+                ) {
+                    Text("Publicar remix")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemixDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
         )
     }
 
@@ -247,6 +292,16 @@ fun PostCard(
                                     leadingIcon = { Icon(Icons.Default.Edit, null) }
                                 )
                                 DropdownMenuItem(
+                                    text = {
+                                        Text(if (remixAvailable) "Desactivar remixes" else "Permitir remixes")
+                                    },
+                                    onClick = {
+                                        onRemixPermissionClick(!remixAvailable, post.remixAudience)
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Repeat, null) }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Eliminar") },
                                     onClick = {
                                         onDeleteClick()
@@ -280,6 +335,18 @@ fun PostCard(
                                         )
                                     }
                                 )
+                                if (remixAvailable) {
+                                    DropdownMenuItem(
+                                        text = { Text("Crear remix") },
+                                        onClick = {
+                                            showRemixDialog = true
+                                            showMenu = false
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Repeat, contentDescription = null)
+                                        }
+                                    )
+                                }
                             }
                             DropdownMenuItem(
                                 text = { Text("Guardar en colección") },
@@ -292,6 +359,42 @@ fun PostCard(
                                 }
                             )
                         }
+                    }
+                }
+            }
+
+            post.remixSourcePostId?.takeIf { it.isNotBlank() }?.let { sourcePostId ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clickable { onOriginalPostClick(sourcePostId) },
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Repeat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Remix de ${post.remixSourceUserName ?: "publicación original"}",
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                "Ver publicación original",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null)
                     }
                 }
             }

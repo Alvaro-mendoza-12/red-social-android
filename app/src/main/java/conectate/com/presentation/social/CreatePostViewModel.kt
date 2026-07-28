@@ -26,19 +26,27 @@ class CreatePostViewModel @Inject constructor(
     fun createPost(
         caption: String,
         mediaUris: List<Uri>,
-        visibility: String = "public"
+        visibility: String = "public",
+        remixAllowed: Boolean = false,
+        remixAudience: String = "public"
     ) {
         viewModelScope.launch {
             _isCreating.value = true
             try {
-                val result = postRepository.createPost(caption, mediaUris, visibility)
+                val result = postRepository.createPost(
+                    content = caption,
+                    mediaUris = mediaUris,
+                    visibility = visibility,
+                    remixAllowed = remixAllowed,
+                    remixAudience = remixAudience
+                )
                 if (result.isSuccess) {
                     _uploadSuccess.emit(Unit)
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Error desconocido"
                 }
             } catch (e: Exception) {
-                _error.value = "Error creating post: ${e.message}"
+                _error.value = e.message ?: "No se pudo crear la publicación."
             } finally {
                 _isCreating.value = false
             }

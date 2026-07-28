@@ -39,6 +39,8 @@ fun CreatePostScreen(
     viewModel: CreatePostViewModel = hiltViewModel()
 ) {
     var caption by remember { mutableStateOf("") }
+    var remixAllowed by remember { mutableStateOf(false) }
+    var remixAudience by remember { mutableStateOf("public") }
     val selectedMediaUris = remember { mutableStateListOf<Uri>() }
     var pendingCropUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -92,7 +94,14 @@ fun CreatePostScreen(
                 },
                 actions = {
                     TextButton(
-                        onClick = { viewModel.createPost(caption, selectedMediaUris) },
+                        onClick = {
+                            viewModel.createPost(
+                                caption = caption,
+                                mediaUris = selectedMediaUris,
+                                remixAllowed = remixAllowed,
+                                remixAudience = remixAudience
+                            )
+                        },
                         enabled = !isCreating && (caption.isNotBlank() || selectedMediaUris.isNotEmpty())
                     ) {
                         if (isCreating) {
@@ -174,6 +183,50 @@ fun CreatePostScreen(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Permitir remixes", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Siempre se mostrará la publicación y el autor originales.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = remixAllowed,
+                            onCheckedChange = { remixAllowed = it }
+                        )
+                    }
+                    if (remixAllowed) {
+                        Row(
+                            modifier = Modifier.padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = remixAudience == "public",
+                                onClick = { remixAudience = "public" },
+                                label = { Text("Todos") }
+                            )
+                            FilterChip(
+                                selected = remixAudience == "followers",
+                                onClick = { remixAudience = "followers" },
+                                label = { Text("Solo seguidores") }
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

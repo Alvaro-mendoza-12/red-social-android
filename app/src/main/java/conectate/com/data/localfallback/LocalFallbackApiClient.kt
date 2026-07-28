@@ -787,13 +787,27 @@ private data class LocalFallbackCreatePostRequest(
     val mediaUrl: String? = null,
     val mediaUrls: List<String> = emptyList(),
     val mediaType: String? = null,
-    val visibility: String = "public"
+    val visibility: String = "public",
+    val remixAllowed: Boolean = false,
+    val remixAudience: String = "public"
 )
 
 @Serializable
 private data class LocalFallbackPatchPostRequest(
     val content: String? = null,
     val visibility: String? = null
+)
+
+@Serializable
+private data class LocalFallbackRemixPermissionRequest(
+    val allowed: Boolean,
+    val audience: String = "public"
+)
+
+@Serializable
+private data class LocalFallbackCreateRemixRequest(
+    val content: String = "",
+    val visibility: String = "public"
 )
 
 @Serializable
@@ -2282,7 +2296,9 @@ class LocalFallbackApiClient @Inject constructor(
         content: String,
         mediaUrls: List<String>,
         mediaType: String?,
-        visibility: String
+        visibility: String,
+        remixAllowed: Boolean = false,
+        remixAudience: String = "public"
     ): Result<Post> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2296,7 +2312,9 @@ class LocalFallbackApiClient @Inject constructor(
                         mediaUrl = normalizedMediaUrls.firstOrNull(),
                         mediaUrls = normalizedMediaUrls,
                         mediaType = mediaType,
-                        visibility = visibility
+                        visibility = visibility,
+                        remixAllowed = remixAllowed,
+                        remixAudience = remixAudience
                     )
                 )
             }
@@ -2442,6 +2460,62 @@ class LocalFallbackApiClient @Inject constructor(
                     .getOrNull()
                     ?.let { mapPost(it) }
                 Result.success(post)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun createRemix(
+        accessToken: String,
+        postId: String,
+        content: String,
+        visibility: String = "public"
+    ): Result<Post> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/remix"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackCreateRemixRequest(content = content, visibility = visibility))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post
+                    ?: return Result.failure(Exception("El servidor Ubuntu no devolvió el remix."))
+                Result.success(mapPost(post))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateRemixPermission(
+        accessToken: String,
+        postId: String,
+        allowed: Boolean,
+        audience: String = "public"
+    ): Result<Post> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/remix-permission"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackRemixPermissionRequest(allowed = allowed, audience = audience))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post
+                    ?: return Result.failure(Exception("El servidor Ubuntu no devolvió la publicación."))
+                Result.success(mapPost(post))
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
@@ -4636,6 +4710,18 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("Escribe tu contraseña actual y una contraseña nueva de al menos 8 caracteres.")
             "NEW_PASSWORD_MUST_BE_DIFFERENT" ->
                 Exception("La contraseña nueva debe ser diferente de la actual.")
+            "REMIX_NOT_ALLOWED" ->
+                Exception("El autor ya no permite crear remixes de esta publicación.")
+            "REMIX_FOLLOWERS_ONLY" ->
+                Exception("Solo los seguidores del autor pueden crear un remix de esta publicación.")
+            "REMIX_SOURCE_NOT_VISIBLE" ->
+                Exception("Ya no tienes acceso a la publicación original.")
+            "REMIX_CHAIN_LIMIT_REACHED" ->
+                Exception("Esta cadena de remixes alcanzó su límite.")
+            "REMIX_PERMISSION_REQUIRES_OWNER" ->
+                Exception("Solo el autor puede cambiar el permiso de remix.")
+            "INVALID_REMIX_AUDIENCE" ->
+                Exception("Elige quién puede crear remixes: todos o solo seguidores.")
             "AUTH_REQUIRED" -> Exception("Tu sesión Ubuntu no llegó a la API. Cierra sesión e inicia sesión otra vez contra Ubuntu.")
             "INVALID_TOKEN" -> Exception("Tu sesión Ubuntu ya no es válida para este servidor. Inicia sesión otra vez; si cambiaste JWT_SECRET o reparaste la VM, los tokens anteriores quedan invalidados.")
             "ACCOUNT_DELETED" -> {
@@ -5061,7 +5147,15 @@ class LocalFallbackApiClient @Inject constructor(
             myReaction = textOf(row, "my_reaction", "myReaction").ifBlank { null },
             reactionCounts = reactionCounts,
             isVerified = boolOf(row, "is_verified", "verified"),
-            visibility = textOf(row, "visibility").ifBlank { "public" }
+            visibility = textOf(row, "visibility").ifBlank { "public" },
+            remixAllowed = boolOf(row, "remix_allowed", "remixAllowed"),
+            remixAudience = textOf(row, "remix_audience", "remixAudience").ifBlank { "public" },
+            remixRevokedAt = textOf(row, "remix_revoked_at", "remixRevokedAt").ifBlank { null },
+            remixSourcePostId = textOf(row, "remix_source_post_id", "remixSourcePostId").ifBlank { null },
+            remixRootPostId = textOf(row, "remix_root_post_id", "remixRootPostId").ifBlank { null },
+            remixSourceUserId = textOf(row, "remix_source_user_id", "remixSourceUserId").ifBlank { null },
+            remixSourceUserName = textOf(row, "remix_source_user_name", "remixSourceUserName").ifBlank { null },
+            remixDepth = intOf(row, "remix_depth", "remixDepth")
         )
     }
 

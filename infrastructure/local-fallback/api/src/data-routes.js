@@ -832,6 +832,14 @@ async function localPosts(pool, limit = 5000) {
         media_urls,
         media_type,
         visibility,
+        remix_allowed,
+        remix_audience,
+        remix_revoked_at,
+        remix_source_post_id,
+        remix_root_post_id,
+        remix_source_user_id,
+        remix_source_user_name,
+        remix_depth,
         created_at,
         updated_at,
         0::int AS like_count,
@@ -3694,17 +3702,44 @@ async function ensureLocalDataTables(pool) {
       media_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
       media_type TEXT,
       visibility TEXT NOT NULL DEFAULT 'public',
+      remix_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+      remix_audience TEXT NOT NULL DEFAULT 'public',
+      remix_revoked_at TIMESTAMPTZ,
+      remix_source_post_id TEXT,
+      remix_root_post_id TEXT,
+      remix_source_user_id TEXT,
+      remix_source_user_name TEXT,
+      remix_depth INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(
-    `ALTER TABLE fallback_posts
-     ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'`,
-  )
+  for (const statement of [
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_allowed BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_audience TEXT NOT NULL DEFAULT 'public'`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_revoked_at TIMESTAMPTZ`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_source_post_id TEXT`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_root_post_id TEXT`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_source_user_id TEXT`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_source_user_name TEXT`,
+    `ALTER TABLE fallback_posts ADD COLUMN IF NOT EXISTS remix_depth INTEGER NOT NULL DEFAULT 0`,
+  ]) {
+    await pool.query(statement)
+  }
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_posts_created
      ON fallback_posts(created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_posts_remix_source
+     ON fallback_posts(lower(remix_source_post_id))
+     WHERE remix_source_post_id IS NOT NULL`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_posts_remix_root
+     ON fallback_posts(lower(remix_root_post_id))
+     WHERE remix_root_post_id IS NOT NULL`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_saved_collections (
@@ -5955,6 +5990,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const mediaType = String(req.body?.mediaType || '').trim() || null
       const rawVisibility = String(req.body?.visibility || 'public').trim().toLowerCase()
       const visibility = ['public', 'followers', 'private'].includes(rawVisibility) ? rawVisibility : 'public'
+      const remixAllowed = req.body?.remixAllowed === true || req.body?.remix_allowed === true
+      const rawRemixAudience = String(req.body?.remixAudience || req.body?.remix_audience || 'public').trim().toLowerCase()
+      const remixAudience = ['public', 'followers'].includes(rawRemixAudience) ? rawRemixAudience : 'public'
       if (!content && !mediaUrl) {
         return res.status(400).json({ error: 'POST_CONTENT_OR_MEDIA_REQUIRED' })
       }
@@ -5974,9 +6012,11 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             media_url,
             media_urls,
             media_type,
-            visibility
+            visibility,
+            remix_allowed,
+            remix_audience
          )
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
          RETURNING
             id::text,
             user_id,
@@ -5987,6 +6027,14 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
             media_urls,
             media_type,
             visibility,
+            remix_allowed,
+            remix_audience,
+            remix_revoked_at,
+            remix_source_post_id,
+            remix_root_post_id,
+            remix_source_user_id,
+            remix_source_user_name,
+            remix_depth,
             created_at,
             updated_at,
             0::int AS like_count,
@@ -6001,9 +6049,175 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           JSON.stringify(mediaUrls.map((url) => ({ url, media_type: mediaType || 'file' }))),
           mediaType,
           visibility,
+          remixAllowed,
+          remixAudience,
         ],
       )
 
+      res.status(201).json({ post: normalizeImportedRow(rows[0]) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/feed/posts/:postId/remix-permission', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      if (typeof req.body?.allowed !== 'boolean') {
+        return res.status(400).json({ error: 'REMIX_PERMISSION_ALLOWED_REQUIRED' })
+      }
+
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!canMutatePost(existing.post, identity)) {
+        return res.status(403).json({ error: 'REMIX_PERMISSION_REQUIRES_OWNER' })
+      }
+      if (!existing.post.local_only) {
+        return res.status(409).json({ error: 'REMIX_PERMISSION_IMPORT_UNSUPPORTED' })
+      }
+
+      const rawAudience = String(req.body?.audience || 'public').trim().toLowerCase()
+      if (!['public', 'followers'].includes(rawAudience)) {
+        return res.status(400).json({ error: 'INVALID_REMIX_AUDIENCE' })
+      }
+
+      await pool.query(
+        `UPDATE fallback_posts
+         SET remix_allowed = $1,
+             remix_audience = $2,
+             remix_revoked_at = CASE WHEN $1 THEN NULL ELSE NOW() END,
+             updated_at = NOW()
+         WHERE lower(id::text) = $3`,
+        [req.body.allowed, rawAudience, postId],
+      )
+      const payload = await loadPostDetailPayload(pool, user, postId)
+      res.json({ post: payload?.post || existing.post })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/feed/posts/:postId/remix', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const postId = normalizeId(req.params.postId)
+      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
+      const existing = await loadPostDetailPayload(pool, user, postId)
+      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+
+      const source = existing.post
+      const identity = userIdentity(user)
+      const sourceOwnerId = postOwnerId(source)
+      const isSourceOwner = Boolean(sourceOwnerId && identity.ids.has(sourceOwnerId))
+      const follows = await combinedFollows(pool)
+      const followsSource = follows.some((row) =>
+        rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids) &&
+        normalizeId(textOf(row, ['following_id', 'target_user_id'], '')) === sourceOwnerId,
+      )
+      const sourceVisibility = textOf(source, ['visibility'], 'public').toLowerCase()
+      const canViewSource = isSourceOwner ||
+        sourceVisibility === 'public' ||
+        (sourceVisibility === 'followers' && followsSource)
+      if (!canViewSource) {
+        return res.status(403).json({ error: 'REMIX_SOURCE_NOT_VISIBLE' })
+      }
+      if (!boolOf(source, ['remix_allowed', 'remixAllowed'], false) ||
+          textOf(source, ['remix_revoked_at', 'remixRevokedAt'], '')) {
+        return res.status(409).json({ error: 'REMIX_NOT_ALLOWED' })
+      }
+      const remixAudience = textOf(source, ['remix_audience', 'remixAudience'], 'public').toLowerCase()
+      if (remixAudience === 'followers' && !isSourceOwner && !followsSource) {
+        return res.status(403).json({ error: 'REMIX_FOLLOWERS_ONLY' })
+      }
+
+      const sourceDepth = Math.max(0, numberOf(source, ['remix_depth', 'remixDepth'], 0))
+      if (sourceDepth >= 20) {
+        return res.status(409).json({ error: 'REMIX_CHAIN_LIMIT_REACHED' })
+      }
+      const content = cleanText(req.body?.content, 5000)
+      const rawVisibility = cleanText(req.body?.visibility || 'public', 40).toLowerCase()
+      if (!['public', 'followers', 'private'].includes(rawVisibility)) {
+        return res.status(400).json({ error: 'INVALID_POST_VISIBILITY' })
+      }
+      const mediaUrls = normalizePostMediaUrls(source)
+      const mediaType = textOf(source, ['media_type', 'mediaType'], '') || null
+      const sourceUserName = textOf(source, ['user_name', 'display_name'], 'Usuario')
+      const sourceRootId = normalizeId(textOf(source, ['remix_root_post_id', 'remixRootPostId'], '')) || postId
+
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_posts(
+            user_id,
+            user_name,
+            user_profile_image,
+            content,
+            media_url,
+            media_urls,
+            media_type,
+            visibility,
+            remix_source_post_id,
+            remix_root_post_id,
+            remix_source_user_id,
+            remix_source_user_name,
+            remix_depth
+         )
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING
+            id::text,
+            user_id,
+            user_name,
+            user_profile_image,
+            content,
+            media_url,
+            media_urls,
+            media_type,
+            visibility,
+            remix_allowed,
+            remix_audience,
+            remix_revoked_at,
+            remix_source_post_id,
+            remix_root_post_id,
+            remix_source_user_id,
+            remix_source_user_name,
+            remix_depth,
+            created_at,
+            updated_at,
+            0::int AS like_count,
+            0::int AS comment_count,
+            TRUE AS local_only`,
+        [
+          identity.displayUserId,
+          user.display_name || user.email || 'Usuario',
+          user.avatar_url || null,
+          content,
+          mediaUrls[0] || null,
+          JSON.stringify(mediaUrls.map((url) => ({ url, media_type: mediaType || 'file' }))),
+          mediaType,
+          rawVisibility,
+          postId,
+          sourceRootId,
+          sourceOwnerId,
+          sourceUserName,
+          sourceDepth + 1,
+        ],
+      )
+      await createLocalNotificationBestEffort(pool, {
+        recipientId: sourceOwnerId,
+        actorId: identity.displayUserId,
+        actorName: user.display_name || user.email || 'Usuario',
+        actorAvatarUrl: user.avatar_url || '',
+        type: 'remix_post',
+        targetId: textOf(rows[0], ['id'], ''),
+        targetType: 'post',
+        content: 'Creó un remix de tu publicación.',
+        extraData: { source_post_id: postId, remix_post_id: textOf(rows[0], ['id'], '') },
+      })
       res.status(201).json({ post: normalizeImportedRow(rows[0]) })
     } catch (error) {
       next(error)

@@ -127,6 +127,12 @@ class ProfileViewModel @Inject constructor(
                     is PostMutationEvent.VisibilityUpdated -> updatePostInLists(event.postId) { post ->
                         post.copy(visibility = event.visibility)
                     }
+                    is PostMutationEvent.RemixPermissionUpdated -> updatePostInLists(event.postId) { post ->
+                        post.copy(
+                            remixAllowed = event.allowed,
+                            remixAudience = event.audience
+                        )
+                    }
                 }
             }
         }

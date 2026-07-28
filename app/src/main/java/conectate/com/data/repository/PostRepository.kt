@@ -55,6 +55,11 @@ sealed interface PostMutationEvent {
     data class Deleted(override val postId: String) : PostMutationEvent
     data class ContentUpdated(override val postId: String, val content: String) : PostMutationEvent
     data class VisibilityUpdated(override val postId: String, val visibility: String) : PostMutationEvent
+    data class RemixPermissionUpdated(
+        override val postId: String,
+        val allowed: Boolean,
+        val audience: String
+    ) : PostMutationEvent
 }
 
 @Singleton
@@ -542,7 +547,13 @@ class PostRepository @Inject constructor(
         return normalized.takeIf { it in supportedPostReactions }
     }
 
-    suspend fun createPost(content: String, mediaUris: List<Uri>, visibility: String = "public"): Result<Post> {
+    suspend fun createPost(
+        content: String,
+        mediaUris: List<Uri>,
+        visibility: String = "public",
+        remixAllowed: Boolean = false,
+        remixAudience: String = "public"
+    ): Result<Post> {
         var startedAt = System.currentTimeMillis()
         val uploadedObjects = mutableListOf<Pair<String, String>>()
         var metadataPersisted = false
@@ -663,7 +674,9 @@ class PostRepository @Inject constructor(
                     content = sanitizedContent,
                     mediaUrls = mediaUrls,
                     mediaType = firstMediaType,
-                    visibility = visibility
+                    visibility = visibility,
+                    remixAllowed = remixAllowed,
+                    remixAudience = remixAudience
                 )
                 if (created.isSuccess) {
                     metadataPersisted = true
@@ -690,6 +703,8 @@ class PostRepository @Inject constructor(
                 mediaUrls = mediaUrls,
                 isVerified = isVerified,
                 visibility = visibility,
+                remixAllowed = remixAllowed,
+                remixAudience = remixAudience,
                 tags = extractedHashtags
             )
 
@@ -1036,6 +1051,56 @@ class PostRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun createRemix(
+        postId: String,
+        content: String,
+        visibility: String = "public"
+    ): Result<Post> {
+        return try {
+            val accessToken = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            if (!supabaseConfig.isLocalFallbackPrimary) {
+                return Result.failure(Exception("Los remixes requieren el servidor Novvin actualizado."))
+            }
+            localFallbackApiClient.createRemix(
+                accessToken = accessToken,
+                postId = postId,
+                content = content.trim(),
+                visibility = visibility
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateRemixPermission(
+        postId: String,
+        allowed: Boolean,
+        audience: String = "public"
+    ): Result<Post> {
+        return try {
+            val accessToken = authService.getAccessToken()
+                ?: return Result.failure(Exception("No token"))
+            if (!supabaseConfig.isLocalFallbackPrimary) {
+                return Result.failure(Exception("Los permisos de remix requieren el servidor Novvin actualizado."))
+            }
+            val result = localFallbackApiClient.updateRemixPermission(
+                accessToken = accessToken,
+                postId = postId,
+                allowed = allowed,
+                audience = audience
+            )
+            result.onSuccess {
+                _mutationEvents.tryEmit(
+                    PostMutationEvent.RemixPermissionUpdated(postId, it.remixAllowed, it.remixAudience)
+                )
+            }
+            result
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -1816,6 +1881,8 @@ class PostRepository @Inject constructor(
         @SerialName("media_urls") val mediaUrls: List<String>,
         @SerialName("is_verified") val isVerified: Boolean,
         @SerialName("visibility") val visibility: String = "public",
+        @SerialName("remix_allowed") val remixAllowed: Boolean = false,
+        @SerialName("remix_audience") val remixAudience: String = "public",
         @SerialName("tags") val tags: List<String> = emptyList()
     )
 

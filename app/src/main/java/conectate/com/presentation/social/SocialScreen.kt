@@ -1678,7 +1678,14 @@ fun SocialScreen(
                                             isOwner = post.userId == viewModel.currentUserId,
                                             onDeleteClick = { viewModel.deletePost(post.id) },
                                             onVisibilityClick = { newVis -> viewModel.updatePostVisibility(post.id, newVis) },
-                                            onEditClick = { postToEdit = post }
+                                            onEditClick = { postToEdit = post },
+                                            onRemixClick = { comment -> viewModel.createRemix(post, comment) },
+                                            onRemixPermissionClick = { allowed, audience ->
+                                                viewModel.updateRemixPermission(post, allowed, audience)
+                                            },
+                                            onOriginalPostClick = { originalPostId ->
+                                                navController.navigate(Screen.PostDetail.createRoute(originalPostId))
+                                            }
                                         )
                                     }
                                 }
