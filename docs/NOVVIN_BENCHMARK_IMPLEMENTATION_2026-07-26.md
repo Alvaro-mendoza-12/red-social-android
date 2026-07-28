@@ -14,6 +14,9 @@ integrarán en una sola experiencia conservando sus datos y permisos.
 Antes de comenzar se creó y verificó el respaldo local
 `backups/pre-roadmap-20260726-2b2c81d` y el respaldo del servidor
 `/home/alvaro/conectate-backups/20260726T191221Z`.
+Antes de reanudar la Fase 2 también se congeló el hotfix 3.0.9 en
+`backups/post-admin-auth-20260728-11c8a2b`, con fuente, bundle Git, APK Debug
+firmado, APK Release sin firma y hashes SHA-256 verificados.
 
 ## Incrementos implementados
 
@@ -173,9 +176,9 @@ Antes de comenzar se creó y verificó el respaldo local
   hash final queda registrado en el manifiesto del respaldo local post-B05.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260727T004331Z`, commit
-  `6865837e6750`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260727T004346Z`.
+- Servidor: despliegue `conectate-mini-pc-20260728T133733Z`, commit
+  `be4ee0749b02`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260728T133743Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - B04: prueba integral pública aprobada con la cuenta ficticia
@@ -195,6 +198,11 @@ Antes de comenzar se creó y verificó el respaldo local
   y publicación de `notification_digest_v1`. Después de la prueba PostgreSQL
   confirmó `users=0` y `notifications=0` para sus cuentas y contenidos
   ficticios.
+- B08/B09: canario público aprobado con dos cuentas y una comunidad ficticias.
+  Cubrió catálogo de cuatro roles, persistencia del moderador, rechazo de
+  asignación del rol propietario, denegación de la vista a moderadores y acceso
+  de propietario y administrador. La limpieza posterior confirmó `users=0` y
+  `rooms=0`.
 - Administración: canario de solo lectura aprobado contra la URL pública para
   acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
   apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
