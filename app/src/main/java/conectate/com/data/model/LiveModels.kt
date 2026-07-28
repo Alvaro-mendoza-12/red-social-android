@@ -20,6 +20,17 @@ enum class LiveQuality(val label: String, val width: Int, val height: Int) {
 }
 
 @Serializable
+data class LiveChapter(
+    val id: String = UUID.randomUUID().toString(),
+    @SerialName("live_id") val liveId: String = "",
+    val title: String = "",
+    @SerialName("offset_ms") val offsetMs: Long = 0,
+    @SerialName("is_highlight") val isHighlight: Boolean = true,
+    @SerialName("created_by") val createdBy: String = "",
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
 data class LiveStream(
     val id: String = UUID.randomUUID().toString(),
     val title: String = "",
@@ -29,7 +40,15 @@ data class LiveStream(
     val source: String = "camera",
     @SerialName("viewer_count") val viewerCount: Int = 0,
     @SerialName("is_active") val isActive: Boolean = true,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("started_at") val startedAt: String? = null,
+    @SerialName("ended_at") val endedAt: String? = null,
+    @SerialName("replay_url") val replayUrl: String? = null,
+    @SerialName("replay_thumbnail_url") val replayThumbnailUrl: String? = null,
+    @SerialName("replay_duration_ms") val replayDurationMs: Long = 0,
+    @SerialName("replay_published") val replayPublished: Boolean = false,
+    @SerialName("replay_updated_at") val replayUpdatedAt: String? = null,
+    val chapters: List<LiveChapter> = emptyList()
 )
 
 @Serializable

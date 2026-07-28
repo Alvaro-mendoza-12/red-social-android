@@ -12,6 +12,7 @@ object UbuntuStorageUrl {
         "Multimedia-Conectate",
         "avatars",
         "videos",
+        "live-replays",
         "images",
         "audios",
         "thumbnails",

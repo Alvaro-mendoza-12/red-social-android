@@ -184,6 +184,11 @@ class MediaUploadGuard @Inject constructor() {
             allowedContentTypes = setOf("video/mp4"),
             allowedExtensions = setOf("mp4", "mov")
         ),
+        "live-replays" to BucketPolicy(
+            maxBytes = 512L * 1024 * 1024,
+            allowedContentTypes = setOf("video/mp4"),
+            allowedExtensions = setOf("mp4", "mov")
+        ),
         "thumbnails" to BucketPolicy(
             maxBytes = 10L * 1024 * 1024,
             allowedContentTypes = setOf("image/jpeg", "image/png", "image/webp"),

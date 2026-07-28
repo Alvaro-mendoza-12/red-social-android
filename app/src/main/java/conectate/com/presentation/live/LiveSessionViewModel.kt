@@ -248,6 +248,16 @@ class LiveSessionViewModel @Inject constructor(
         liveRepository.moderateLiveViewer(userId, ban)
     }
 
+    fun markReplayMoment(title: String, onSaved: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.addLiveChapter(title)
+                .onSuccess { onSaved() }
+                .onFailure {
+                    _uiError.value = it.toUserFacingMessage("No se pudo guardar el momento.")
+                }
+        }
+    }
+
     fun clearError() {
         _uiError.value = null
     }

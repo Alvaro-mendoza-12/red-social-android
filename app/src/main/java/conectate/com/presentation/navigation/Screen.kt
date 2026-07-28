@@ -163,6 +163,10 @@ sealed class Screen(val route: String) {
         fun createRoute(streamId: String) = "live_viewer/$streamId"
     }
 
+    object LiveReplay : Screen("live_replay/{liveId}") {
+        fun createRoute(liveId: String) = "live_replay/$liveId"
+    }
+
     object LiveSetup : Screen("live_setup")
     object LiveDiscovery : Screen("live_discovery")
     

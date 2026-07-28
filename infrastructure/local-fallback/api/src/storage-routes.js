@@ -13,6 +13,7 @@ const defaultBuckets = [
   'post-media',
   'moment-media',
   'videos',
+  'live-replays',
   'thumbnails',
   'group-media',
   'community-media',
@@ -51,6 +52,7 @@ const bucketUploadLimits = new Map([
   ['moment-media', 35 * 1024 * 1024],
   ['challenges', 30 * 1024 * 1024],
   ['videos', 100 * 1024 * 1024],
+  ['live-replays', 512 * 1024 * 1024],
   ['thumbnails', 10 * 1024 * 1024],
   ['video-comments-media', 20 * 1024 * 1024],
   ['post-comments-media', 20 * 1024 * 1024],
@@ -239,7 +241,7 @@ function allowedTypesForBucket(bucket) {
     allowed.delete('image/gif')
     allowed.add('video/mp4')
   }
-  if (bucket === 'videos') allowed.add('video/mp4')
+  if (bucket === 'videos' || bucket === 'live-replays') allowed.add('video/mp4')
   if (['video-comments-media', 'post-comments-media', 'group-audio'].includes(bucket)) {
     audioTypes.forEach((type) => allowed.add(type))
   }

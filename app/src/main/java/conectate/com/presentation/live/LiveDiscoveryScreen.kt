@@ -1,5 +1,7 @@
 package conectate.com.presentation.live
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,6 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +38,8 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import conectate.com.data.model.LiveStream
 import conectate.com.presentation.navigation.Screen
+import conectate.com.presentation.common.AppFeedbackBus
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,9 +48,25 @@ fun LiveDiscoveryScreen(
     viewModel: LiveViewModel = hiltViewModel()
 ) {
     val activeStreams by viewModel.activeStreams.collectAsState()
+    val replays by viewModel.liveReplays.collectAsStateWithLifecycle()
+    val myHistory by viewModel.myLiveHistory.collectAsStateWithLifecycle()
+    val uploadProgress by viewModel.replayUploadProgress.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var pendingReplayLiveId by remember { mutableStateOf<String?>(null) }
+    val replayPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val liveId = pendingReplayLiveId
+        pendingReplayLiveId = null
+        if (uri != null && liveId != null) viewModel.publishReplay(liveId, uri)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.refreshStreams()
+    }
+    LaunchedEffect(error) {
+        val message = error ?: return@LaunchedEffect
+        AppFeedbackBus.showError(message)
+        viewModel.clearError()
     }
 
     Scaffold(
@@ -57,11 +81,35 @@ fun LiveDiscoveryScreen(
             )
         }
     ) { padding ->
-        if (activeStreams.isEmpty()) {
+        val visibleItems = when (selectedTab) {
+            1 -> replays
+            2 -> myHistory
+            else -> activeStreams
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            TabRow(selectedTabIndex = selectedTab) {
+                listOf("En vivo", "Repeticiones", "Mis directos").forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { Text(title, maxLines = 1) }
+                    )
+                }
+            }
+            if (uploadProgress > 0f) {
+                LinearProgressIndicator(
+                    progress = uploadProgress,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        if (visibleItems.isEmpty()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                    .fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -73,7 +121,11 @@ fun LiveDiscoveryScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "No hay transmisiones activas",
+                        text = when (selectedTab) {
+                            1 -> "Todavía no hay repeticiones publicadas"
+                            2 -> "Aún no has finalizado ningún directo"
+                            else -> "No hay transmisiones activas"
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -81,23 +133,37 @@ fun LiveDiscoveryScreen(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Adaptive(156.dp),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
             ) {
-                items(activeStreams) { stream ->
+                items(visibleItems, key = { it.id }) { stream ->
                     LiveStreamItem(
                         stream = stream,
+                        badgeText = when {
+                            selectedTab == 0 -> "LIVE"
+                            !stream.replayUrl.isNullOrBlank() -> "REPETICIÓN"
+                            else -> "PUBLICAR"
+                        },
                         onClick = {
-                            navController.navigate(Screen.LiveViewer.createRoute(stream.id))
+                            when {
+                                selectedTab == 0 ->
+                                    navController.navigate(Screen.LiveViewer.createRoute(stream.id))
+                                !stream.replayUrl.isNullOrBlank() ->
+                                    navController.navigate(Screen.LiveReplay.createRoute(stream.id))
+                                selectedTab == 2 -> {
+                                    pendingReplayLiveId = stream.id
+                                    replayPicker.launch("video/mp4")
+                                }
+                            }
                         }
                     )
                 }
             }
+        }
         }
     }
 }
@@ -105,6 +171,7 @@ fun LiveDiscoveryScreen(
 @Composable
 fun LiveStreamItem(
     stream: LiveStream,
+    badgeText: String = "LIVE",
     onClick: () -> Unit
 ) {
     Card(
@@ -135,9 +202,9 @@ fun LiveStreamItem(
                     )
             )
 
-            // LIVE Badge
+            // Estado del directo o de la repetición
             Surface(
-                color = Color.Red,
+                color = if (badgeText == "LIVE") Color.Red else Color(0xFF5B4BE8),
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier
                     .padding(8.dp)
@@ -155,7 +222,7 @@ fun LiveStreamItem(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "LIVE",
+                        text = badgeText,
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -163,8 +230,7 @@ fun LiveStreamItem(
                 }
             }
 
-            // Viewer Count
-            Surface(
+            if (badgeText == "LIVE") Surface(
                 color = Color.Black.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(4.dp),
                 modifier = Modifier

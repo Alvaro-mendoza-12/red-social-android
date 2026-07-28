@@ -118,6 +118,19 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     }
 
     composable(
+        route = Screen.LiveReplay.route,
+        arguments = listOf(navArgument("liveId") { type = NavType.StringType })
+    ) { backStackEntry ->
+        val liveId = backStackEntry.arguments?.getString("liveId") ?: return@composable
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.live.LiveReplayScreen(
+                navController = navController,
+                liveId = liveId
+            )
+        }
+    }
+
+    composable(
         route = Screen.FollowList.route,
         arguments = listOf(
             navArgument("userId") { type = NavType.StringType },

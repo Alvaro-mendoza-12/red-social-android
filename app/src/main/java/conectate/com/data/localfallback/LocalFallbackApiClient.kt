@@ -18,6 +18,7 @@ import conectate.com.data.model.MomentView
 import conectate.com.data.model.Notification
 import conectate.com.data.model.Post
 import conectate.com.data.model.LiveComment
+import conectate.com.data.model.LiveChapter
 import conectate.com.data.model.LiveStream
 import conectate.com.data.model.ActiveChallenge
 import conectate.com.data.model.Chat
@@ -369,6 +370,16 @@ private data class LocalFallbackLiveCommentsResponse(
 @Serializable
 private data class LocalFallbackLiveCommentResponse(
     val comment: LiveComment? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveReplayResponse(
+    val replay: LiveStream? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveChapterResponse(
+    val chapter: LiveChapter? = null
 )
 
 @Serializable
@@ -3567,6 +3578,94 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(error)
             }
+        }
+    }
+
+    suspend fun loadLiveReplays(
+        accessToken: String,
+        mine: Boolean = false,
+        limit: Int = 40
+    ): Result<List<LiveStream>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveStreamsResponse>(
+            "$baseUrl/v1/data/live/replays?mine=$mine&limit=${limit.coerceIn(1, 100)}",
+            accessToken
+        ).map { it.items }
+    }
+
+    suspend fun loadLiveReplay(accessToken: String, liveId: String): Result<LiveStream> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveReplayResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/replay",
+            accessToken
+        ).mapCatching { response ->
+            response.replay ?: throw IllegalStateException("Repetición no encontrada")
+        }
+    }
+
+    suspend fun publishLiveReplay(
+        accessToken: String,
+        liveId: String,
+        replayUrl: String,
+        thumbnailUrl: String?,
+        durationMs: Long
+    ): Result<LiveStream> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/replay"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("replayUrl", replayUrl)
+                    thumbnailUrl?.let { put("thumbnailUrl", it) }
+                    put("durationMs", durationMs)
+                    put("published", true)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val replay = json.decodeFromString<LocalFallbackLiveReplayResponse>(body).replay
+                    ?: return Result.failure(Exception("El servidor no devolvió la repetición."))
+                Result.success(replay)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun createLiveChapter(
+        accessToken: String,
+        liveId: String,
+        title: String,
+        offsetMs: Long
+    ): Result<LiveChapter> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/chapters"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("title", title)
+                    put("offsetMs", offsetMs)
+                    put("isHighlight", true)
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val chapter = json.decodeFromString<LocalFallbackLiveChapterResponse>(body).chapter
+                    ?: return Result.failure(Exception("El servidor no devolvió el capítulo."))
+                Result.success(chapter)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 

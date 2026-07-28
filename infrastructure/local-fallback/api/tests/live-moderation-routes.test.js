@@ -31,6 +31,10 @@ async function testDurableModerationSchema() {
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_moderators/)
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_bans/)
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_moderation_audit/)
+  assert.match(schema, /replay_url TEXT/)
+  assert.match(schema, /replay_duration_ms BIGINT NOT NULL DEFAULT 0/)
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_chapters/)
+  assert.match(schema, /offset_ms BIGINT NOT NULL CHECK \(offset_ms >= 0\)/)
   assert.match(schema, /REFERENCES fallback_live_streams\(id\) ON DELETE CASCADE/)
 }
 

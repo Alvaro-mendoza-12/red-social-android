@@ -39,4 +39,16 @@ class UbuntuStorageUrlTest {
             UbuntuStorageUrl.stableCacheKey(second.replace("width=720", "width=1080"))
         )
     }
+
+    @Test
+    fun `live replay storage references retain a stable cache identity`() {
+        val first = "https://old.example/storage/v1/object/public/live-replays/user/replay.mp4?v=1"
+        val second = "https://new.example/storage/v1/object/public/live-replays/user/replay.mp4?v=2"
+
+        assertEquals(UbuntuStorageUrl.stableCacheKey(first), UbuntuStorageUrl.stableCacheKey(second))
+        assertEquals(
+            "ubuntu-storage:/storage/v1/object/public/live-replays/user/replay.mp4",
+            UbuntuStorageUrl.stableCacheKey(first)
+        )
+    }
 }

@@ -20,6 +20,9 @@ class LiveViewModel @Inject constructor(
 ) : ViewModel() {
 
     val activeStreams = liveRepository.activeStreams
+    val liveReplays = liveRepository.liveReplays
+    val myLiveHistory = liveRepository.myLiveHistory
+    val replayUploadProgress = liveRepository.replayUploadProgress
     val activeSession = liveRepository.activeSession
     val comments = liveRepository.comments
     val reactions = liveRepository.reactions
@@ -38,6 +41,14 @@ class LiveViewModel @Inject constructor(
     fun refreshStreams() {
         viewModelScope.launch {
             liveRepository.refreshActiveStreams()
+            liveRepository.refreshLiveReplays()
+        }
+    }
+
+    fun publishReplay(liveId: String, uri: android.net.Uri) {
+        viewModelScope.launch {
+            liveRepository.publishLiveReplay(liveId, uri)
+                .onFailure { _error.value = it.message ?: "No se pudo publicar la repetición." }
         }
     }
 

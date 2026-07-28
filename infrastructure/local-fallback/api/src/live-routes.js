@@ -83,6 +83,11 @@ async function ensureLiveTables(pool) {
       total_reactions INT NOT NULL DEFAULT 0,
       chat_paused BOOLEAN NOT NULL DEFAULT FALSE,
       blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb,
+      replay_url TEXT,
+      replay_thumbnail_url TEXT,
+      replay_duration_ms BIGINT NOT NULL DEFAULT 0,
+      replay_published BOOLEAN NOT NULL DEFAULT FALSE,
+      replay_updated_at TIMESTAMPTZ,
       is_active BOOLEAN NOT NULL DEFAULT FALSE,
       started_at TIMESTAMPTZ,
       ended_at TIMESTAMPTZ,
@@ -98,6 +103,17 @@ async function ensureLiveTables(pool) {
     ALTER TABLE fallback_live_streams
     ADD COLUMN IF NOT EXISTS blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb
   `)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS replay_url TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS replay_thumbnail_url TEXT`)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    ADD COLUMN IF NOT EXISTS replay_duration_ms BIGINT NOT NULL DEFAULT 0
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    ADD COLUMN IF NOT EXISTS replay_published BOOLEAN NOT NULL DEFAULT FALSE
+  `)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS replay_updated_at TIMESTAMPTZ`)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_live_streams_active_created
     ON fallback_live_streams(is_active, created_at DESC)
@@ -164,6 +180,21 @@ async function ensureLiveTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_live_moderation_audit_live
     ON fallback_live_moderation_audit(live_id, created_at DESC)
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_chapters (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      offset_ms BIGINT NOT NULL CHECK (offset_ms >= 0),
+      is_highlight BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_chapters_timeline
+    ON fallback_live_chapters(live_id, offset_ms ASC, created_at ASC)
+  `)
 }
 
 async function resolvedProfile(pool, user) {
@@ -194,7 +225,9 @@ async function streamById(pool, liveId) {
   const { rows } = await pool.query(
     `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
             viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
-            blocked_words, is_active,
+            blocked_words, replay_url, replay_thumbnail_url,
+            replay_duration_ms::float8 AS replay_duration_ms,
+            replay_published, replay_updated_at, is_active,
             started_at, ended_at, created_at, updated_at
      FROM fallback_live_streams
      WHERE id = $1::uuid
@@ -202,6 +235,37 @@ async function streamById(pool, liveId) {
     [liveId],
   )
   return rows[0] || null
+}
+
+async function chaptersForLive(pool, liveId) {
+  const { rows } = await pool.query(
+    `SELECT id::text, live_id::text, title, offset_ms::float8 AS offset_ms,
+            is_highlight, created_by, created_at
+     FROM fallback_live_chapters
+     WHERE live_id = $1::uuid
+     ORDER BY offset_ms ASC, created_at ASC`,
+    [liveId],
+  )
+  return rows
+}
+
+async function ownsStoredObject(pool, userId, objectUrl, buckets) {
+  const cleanUrl = cleanText(objectUrl, 2_000)
+  if (!cleanUrl) return false
+  const { rows } = await pool.query(
+    `SELECT 1
+     FROM fallback_storage_objects
+     WHERE owner_id = $1::uuid
+       AND bucket_id = ANY($2::text[])
+       AND (
+         public_url = $3 OR
+         name = $3 OR
+         $3 LIKE ('%/storage/v1/object/public/' || bucket_id || '/' || name)
+       )
+     LIMIT 1`,
+    [userId, buckets, cleanUrl],
+  )
+  return rows.length > 0
 }
 
 async function moderationMembership(pool, stream, identity) {
@@ -293,6 +357,40 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       )
       res.setHeader('Cache-Control', 'private, no-store')
       res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/live/replays', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const mine = String(req.query.mine || '').toLowerCase() === 'true'
+      const limit = intBetween(req.query.limit, 1, 100, 40)
+      const { rows } = await pool.query(
+        `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+                started_at, ended_at, created_at, updated_at, replay_url, replay_thumbnail_url,
+                replay_duration_ms::float8 AS replay_duration_ms,
+                replay_published, replay_updated_at
+         FROM fallback_live_streams
+         WHERE is_active = FALSE
+           AND (
+             ($1::boolean AND lower(host_user_id) = ANY($2::text[])) OR
+             (NOT $1::boolean AND replay_published = TRUE AND replay_url IS NOT NULL)
+           )
+         ORDER BY COALESCE(replay_updated_at, ended_at, created_at) DESC
+         LIMIT $3`,
+        [mine, identity.values, limit],
+      )
+      const items = await Promise.all(rows.map(async (stream) => ({
+        ...stream,
+        chapters: await chaptersForLive(pool, stream.id),
+      })))
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ items })
     } catch (error) {
       next(error)
     }
@@ -405,6 +503,168 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         [liveId, hasActive, isActive, hasActive && !isActive ? 0 : viewerCount, peakViewerCount, totalComments, totalReactions],
       )
       res.json({ stream: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/live/:liveId/replay', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const isOwner = ownsStream(stream, userIdentity(user))
+      if ((!stream.replay_published || !stream.replay_url) && !isOwner) {
+        return res.status(404).json({ error: 'LIVE_REPLAY_NOT_FOUND' })
+      }
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ replay: { ...stream, chapters: await chaptersForLive(pool, liveId) } })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/live/:liveId/replay', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      if (!ownsStream(stream, userIdentity(user))) return res.status(403).json({ error: 'LIVE_FORBIDDEN' })
+      if (stream.is_active) return res.status(409).json({ error: 'LIVE_REPLAY_REQUIRES_ENDED_STREAM' })
+
+      const replayUrl = cleanText(req.body?.replayUrl ?? req.body?.replay_url, 2_000)
+      const thumbnailUrl = cleanText(req.body?.thumbnailUrl ?? req.body?.thumbnail_url, 2_000) || null
+      const durationMs = Number(req.body?.durationMs ?? req.body?.duration_ms)
+      const published = req.body?.published !== false
+      if (!replayUrl || !Number.isSafeInteger(durationMs) || durationMs < 1_000 || durationMs > 43_200_000) {
+        return res.status(400).json({ error: 'LIVE_REPLAY_INVALID' })
+      }
+      if (!(await ownsStoredObject(pool, user.id, replayUrl, ['live-replays']))) {
+        return res.status(403).json({ error: 'LIVE_REPLAY_STORAGE_OWNERSHIP_REQUIRED' })
+      }
+      if (thumbnailUrl && !(await ownsStoredObject(pool, user.id, thumbnailUrl, ['thumbnails']))) {
+        return res.status(403).json({ error: 'LIVE_REPLAY_THUMBNAIL_OWNERSHIP_REQUIRED' })
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_streams
+         SET replay_url = $2,
+             replay_thumbnail_url = $3,
+             replay_duration_ms = $4,
+             replay_published = $5,
+             replay_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1::uuid
+         RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                   viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
+                   started_at, ended_at, created_at, updated_at, replay_url, replay_thumbnail_url,
+                   replay_duration_ms::float8 AS replay_duration_ms,
+                   replay_published, replay_updated_at`,
+        [liveId, replayUrl, thumbnailUrl, durationMs, published],
+      )
+      await publishRealtimeEvent('live-replays', {
+        event: 'live_replay_updated',
+        liveId,
+        published,
+      })
+      res.json({ replay: { ...rows[0], chapters: await chaptersForLive(pool, liveId) } })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/live/:liveId/replay', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      if (!ownsStream(stream, userIdentity(user))) return res.status(403).json({ error: 'LIVE_FORBIDDEN' })
+      await pool.query(
+        `UPDATE fallback_live_streams
+         SET replay_url = NULL,
+             replay_thumbnail_url = NULL,
+             replay_duration_ms = 0,
+             replay_published = FALSE,
+             replay_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1::uuid`,
+        [liveId],
+      )
+      res.json({ ok: true })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/chapters', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const title = cleanText(req.body?.title, 80)
+      const offsetMs = Number(req.body?.offsetMs ?? req.body?.offset_ms)
+      if (!liveId || !title || !Number.isSafeInteger(offsetMs) || offsetMs < 0 || offsetMs > 43_200_000) {
+        return res.status(400).json({ error: 'LIVE_CHAPTER_INVALID' })
+      }
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const membership = await moderationMembership(pool, stream, identity)
+      if (!membership.canModerate) return res.status(403).json({ error: 'LIVE_MODERATOR_REQUIRED' })
+      const timelineEndMs = stream.is_active
+        ? Math.max(0, Date.now() - new Date(stream.started_at || stream.created_at).getTime()) + 30_000
+        : Number(stream.replay_duration_ms || Math.max(
+          0,
+          new Date(stream.ended_at || stream.updated_at).getTime() -
+            new Date(stream.started_at || stream.created_at).getTime(),
+        ))
+      if (offsetMs > timelineEndMs) return res.status(400).json({ error: 'LIVE_CHAPTER_OUT_OF_RANGE' })
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_live_chapters(
+           live_id, title, offset_ms, is_highlight, created_by
+         )
+         VALUES ($1::uuid, $2, $3, $4, $5)
+         RETURNING id::text, live_id::text, title, offset_ms::float8 AS offset_ms,
+                   is_highlight, created_by, created_at`,
+        [
+          liveId,
+          title,
+          offsetMs,
+          req.body?.isHighlight !== false && req.body?.is_highlight !== false,
+          identity.displayUserId,
+        ],
+      )
+      res.status(201).json({ chapter: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.delete('/v1/data/live/:liveId/chapters/:chapterId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const chapterId = validUuid(req.params.chapterId)
+      if (!liveId || !chapterId) return res.status(400).json({ error: 'LIVE_CHAPTER_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      if (!ownsStream(stream, userIdentity(user))) return res.status(403).json({ error: 'LIVE_FORBIDDEN' })
+      const removed = await pool.query(
+        `DELETE FROM fallback_live_chapters
+         WHERE id = $1::uuid AND live_id = $2::uuid`,
+        [chapterId, liveId],
+      )
+      if (removed.rowCount === 0) return res.status(404).json({ error: 'LIVE_CHAPTER_NOT_FOUND' })
+      res.json({ ok: true })
     } catch (error) {
       next(error)
     }

@@ -93,6 +93,33 @@ class MediaUploadGuardTest {
     }
 
     @Test
+    fun `live replay accepts owned mp4 up to replay limit`() {
+        val header = byteArrayOf(
+            0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+            0x69, 0x73, 0x6F, 0x6D
+        )
+
+        assertTrue(
+            guard.validateMetadata(
+                bucketName = "live-replays",
+                fileName = "user/replays/live/replay.mp4",
+                sizeBytes = 256L * 1024 * 1024,
+                contentType = "video/mp4",
+                headerBytes = header
+            ).allowed
+        )
+        assertFalse(
+            guard.validateMetadata(
+                bucketName = "live-replays",
+                fileName = "user/replays/live/replay.mp4",
+                sizeBytes = 512L * 1024 * 1024 + 1,
+                contentType = "video/mp4",
+                headerBytes = header
+            ).allowed
+        )
+    }
+
+    @Test
     fun `accepts gif and common document signatures in messaging buckets`() {
         val gif = byteArrayOf(
             0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00

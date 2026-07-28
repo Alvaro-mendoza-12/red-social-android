@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -99,6 +100,8 @@ fun LiveHostScreen(
     var showEndDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showModerationDialog by remember { mutableStateOf(false) }
+    var showMomentDialog by remember { mutableStateOf(false) }
+    var momentTitle by remember { mutableStateOf("") }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var pendingSettingsDraft by remember { mutableStateOf<HostLiveSettingsDraft?>(null) }
     var pendingResume by remember { mutableStateOf(false) }
@@ -466,6 +469,41 @@ fun LiveHostScreen(
         )
     }
 
+    if (showMomentDialog) {
+        AlertDialog(
+            onDismissRequest = { showMomentDialog = false },
+            title = { Text("Marcar momento") },
+            text = {
+                OutlinedTextField(
+                    value = momentTitle,
+                    onValueChange = { momentTitle = it.take(80) },
+                    label = { Text("Nombre del capítulo") },
+                    placeholder = { Text("Ej.: Preguntas del público") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = momentTitle.isNotBlank(),
+                    onClick = {
+                        viewModel.markReplayMoment(momentTitle) {
+                            momentTitle = ""
+                            showMomentDialog = false
+                        }
+                    }
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMomentDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     val stateOverlayText = when {
         !isMediaReady -> "Preparando transmisión…"
         !isVideoEnabled && currentSource == LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
@@ -558,6 +596,10 @@ fun LiveHostScreen(
             LiveActionChip(
                 text = "Moderación",
                 onClick = { showModerationDialog = true }
+            )
+            LiveActionChip(
+                text = "Marcar momento",
+                onClick = { showMomentDialog = true }
             )
             LiveActionChip(
                 text = if (floatingChatEnabled) "Cerrar chat" else "Chat flotante",

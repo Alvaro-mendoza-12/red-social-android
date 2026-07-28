@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.SystemClock
+import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
@@ -23,6 +25,7 @@ import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.data.supabase.StorageService
 import conectate.com.data.webrtc.WebRTCManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
@@ -66,6 +69,7 @@ import conectate.com.services.LiveForegroundService
 import java.time.Instant
 import java.net.HttpURLConnection
 import java.net.URL
+import conectate.com.util.VideoUtils
 
 @Singleton
 class LiveRepository @Inject constructor(
@@ -73,7 +77,8 @@ class LiveRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val userRepository: UserRepository,
-    private val localFallbackApiClient: LocalFallbackApiClient
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val storageService: StorageService
 ) {
     private companion object {
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
@@ -105,6 +110,7 @@ class LiveRepository @Inject constructor(
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
     private val knownViewerSocketIds = mutableSetOf<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
+    private var hostSessionStartedElapsedMs: Long = 0L
     @Volatile
     private var lastGhostReconciliationUserId: String? = null
 
@@ -121,6 +127,15 @@ class LiveRepository @Inject constructor(
             streams.map { it.hostUserId }.filter { it.isNotBlank() }.toSet()
         }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    private val _liveReplays = MutableStateFlow<List<LiveStream>>(emptyList())
+    val liveReplays: StateFlow<List<LiveStream>> = _liveReplays.asStateFlow()
+
+    private val _myLiveHistory = MutableStateFlow<List<LiveStream>>(emptyList())
+    val myLiveHistory: StateFlow<List<LiveStream>> = _myLiveHistory.asStateFlow()
+
+    private val _replayUploadProgress = MutableStateFlow(0f)
+    val replayUploadProgress: StateFlow<Float> = _replayUploadProgress.asStateFlow()
 
     private val _activeSession = MutableStateFlow<ActiveLiveSession?>(null)
     val activeSession: StateFlow<ActiveLiveSession?> = _activeSession.asStateFlow()
@@ -579,6 +594,7 @@ class LiveRepository @Inject constructor(
             webRTCManager?.ensureLocalTracks()
             webRTCManager?.setAudioEnabled(_isMicEnabled.value)
             _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.HOST, viewerCount = stream.viewerCount)
+            hostSessionStartedElapsedMs = SystemClock.elapsedRealtime()
             startAdaptiveQualityMonitor()
             startService(stream = stream, role = LiveRole.HOST)
 
@@ -938,6 +954,166 @@ class LiveRepository @Inject constructor(
             put("emoji", emoji)
         }
         runCatching { socket?.emit("send-reaction", payload) }
+    }
+
+    suspend fun refreshLiveReplays() = withContext(Dispatchers.IO) {
+        if (!usesUbuntuPersistence()) {
+            _liveReplays.value = emptyList()
+            _myLiveHistory.value = emptyList()
+            return@withContext
+        }
+        val token = localAccessToken()
+        if (token.isBlank()) {
+            _liveReplays.value = emptyList()
+            _myLiveHistory.value = emptyList()
+            return@withContext
+        }
+        localFallbackApiClient.loadLiveReplays(token, mine = false)
+            .onSuccess { _liveReplays.value = it }
+            .onFailure { android.util.Log.w("LiveRepository", "Unable to load public replays", it) }
+        localFallbackApiClient.loadLiveReplays(token, mine = true)
+            .onSuccess { _myLiveHistory.value = it }
+            .onFailure { android.util.Log.w("LiveRepository", "Unable to load owned live history", it) }
+    }
+
+    suspend fun loadLiveReplay(liveId: String): Result<LiveStream> = withContext(Dispatchers.IO) {
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Tu sesión ya no es válida."))
+        localFallbackApiClient.loadLiveReplay(token, liveId)
+    }
+
+    suspend fun addLiveChapter(title: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val session = _activeSession.value
+            ?: return@withContext Result.failure(Exception("No hay un directo activo."))
+        if (!_moderationState.value.canModerate) {
+            return@withContext Result.failure(Exception("No tienes permisos para marcar momentos."))
+        }
+        val cleanTitle = title.trim().take(80)
+        if (cleanTitle.isBlank()) return@withContext Result.failure(Exception("Escribe un nombre para el momento."))
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Tu sesión ya no es válida."))
+        val elapsedMs = (SystemClock.elapsedRealtime() - hostSessionStartedElapsedMs)
+            .coerceAtLeast(0L)
+        localFallbackApiClient.createLiveChapter(
+            accessToken = token,
+            liveId = session.stream.id,
+            title = cleanTitle,
+            offsetMs = elapsedMs
+        ).map { chapter ->
+            _activeSession.update { current ->
+                current?.copy(
+                    stream = current.stream.copy(
+                        chapters = (current.stream.chapters + chapter).sortedBy { it.offsetMs }
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun publishLiveReplay(
+        liveId: String,
+        sourceUri: android.net.Uri
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!usesUbuntuPersistence()) {
+            return@withContext Result.failure(Exception("Las repeticiones requieren el servidor Novvin actualizado."))
+        }
+        val token = localAccessToken()
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (token.isBlank() || userId.isBlank()) {
+            return@withContext Result.failure(Exception("Tu sesión ya no es válida."))
+        }
+        val replay = _myLiveHistory.value.firstOrNull { it.id.equals(liveId, ignoreCase = true) }
+            ?: localFallbackApiClient.loadLiveReplay(token, liveId).getOrElse {
+                return@withContext Result.failure(it)
+            }
+        if (replay.isActive || !replay.hostUserId.equals(userId, ignoreCase = true)) {
+            return@withContext Result.failure(Exception("Solo puedes publicar la repetición de un directo finalizado propio."))
+        }
+
+        val resolver = context.contentResolver
+        val contentType = resolver.getType(sourceUri)?.lowercase().orEmpty()
+        if (contentType != "video/mp4") {
+            return@withContext Result.failure(Exception("Selecciona un video MP4 para la repetición."))
+        }
+        val sizeBytes = resolver.query(
+            sourceUri,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        } ?: 0L
+        if (sizeBytes <= 0L || sizeBytes > 512L * 1024 * 1024) {
+            return@withContext Result.failure(Exception("La repetición debe pesar menos de 512 MB."))
+        }
+        val durationMs = runCatching {
+            android.media.MediaMetadataRetriever().use { retriever ->
+                retriever.setDataSource(context, sourceUri)
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?: 0L
+            }
+        }.getOrDefault(0L)
+        if (durationMs < 1_000L || durationMs > 43_200_000L) {
+            return@withContext Result.failure(Exception("La duración de la repetición no es válida."))
+        }
+
+        _replayUploadProgress.value = 0.01f
+        val replayPath = "$userId/replays/$liveId/${UUID.randomUUID()}.mp4"
+        val upload = storageService.uploadFileFromUri(
+            bucketName = "live-replays",
+            fileName = replayPath,
+            sourceUri = sourceUri,
+            sizeBytes = sizeBytes,
+            contentType = "video/mp4",
+            allowOverwrite = false,
+            onProgress = { _replayUploadProgress.value = it.coerceIn(0f, 0.9f) }
+        )
+        if (upload.isFailure) {
+            _replayUploadProgress.value = 0f
+            return@withContext Result.failure(upload.exceptionOrNull() ?: Exception("No se pudo subir la repetición."))
+        }
+        val storedReplayPath = upload.getOrThrow().Key ?: replayPath
+        val replayUrl = storageService.getPublicUrl("live-replays", storedReplayPath)
+        var thumbnailUrl: String? = null
+        var thumbnailPath: String? = null
+        runCatching {
+            VideoUtils.generateVideoThumbnail(context, sourceUri)
+        }.getOrNull()?.let { bytes ->
+            thumbnailPath = "$userId/replays/$liveId/${UUID.randomUUID()}.jpg"
+            storageService.uploadFile(
+                bucketName = "thumbnails",
+                fileName = thumbnailPath!!,
+                bytes = bytes,
+                contentType = "image/jpeg",
+                allowOverwrite = false
+            ).onSuccess { stored ->
+                val actualPath = stored.Key ?: thumbnailPath!!
+                thumbnailPath = actualPath
+                thumbnailUrl = storageService.getPublicUrl("thumbnails", actualPath)
+            }
+        }
+
+        val published = localFallbackApiClient.publishLiveReplay(
+            accessToken = token,
+            liveId = liveId,
+            replayUrl = replayUrl,
+            thumbnailUrl = thumbnailUrl,
+            durationMs = durationMs
+        )
+        if (published.isFailure) {
+            storageService.deleteFileByPublicUrl(replayUrl)
+            thumbnailUrl?.let { storageService.deleteFileByPublicUrl(it) }
+            _replayUploadProgress.value = 0f
+            return@withContext Result.failure(
+                published.exceptionOrNull() ?: Exception("No se pudo publicar la repetición.")
+            )
+        }
+        _replayUploadProgress.value = 1f
+        refreshLiveReplays()
+        _replayUploadProgress.value = 0f
+        Result.success(Unit)
     }
 
     fun updateLiveModerationSettings(
@@ -1678,6 +1854,7 @@ class LiveRepository @Inject constructor(
         _localVideoTrack.value = null
         _remoteVideoTracks.value = emptyMap()
         screenCaptureActive = false
+        hostSessionStartedElapsedMs = 0L
     }
 
     private fun scheduleReactionExpiry(reaction: LiveReaction) {
