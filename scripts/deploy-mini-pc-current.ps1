@@ -23,8 +23,15 @@ $release = "conectate-mini-pc-$stamp"
 $commit = (& git -C $repoRoot rev-parse --short=12 HEAD 2>$null).Trim()
 if ([string]::IsNullOrWhiteSpace($commit)) { $commit = "unknown" }
 $target = "$User@$HostName"
-$ssh = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=accept-new")
-$scp = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=accept-new")
+$connectionOptions = @(
+  "-o", "StrictHostKeyChecking=accept-new",
+  "-o", "ConnectTimeout=20",
+  "-o", "ServerAliveInterval=15",
+  "-o", "ServerAliveCountMax=20",
+  "-o", "TCPKeepAlive=yes"
+)
+$ssh = @("-i", $KeyPath) + $connectionOptions
+$scp = @("-i", $KeyPath) + $connectionOptions
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("conectate-deploy-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 
