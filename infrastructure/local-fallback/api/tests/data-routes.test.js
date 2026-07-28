@@ -1,6 +1,7 @@
 const assert = require('assert')
 const {
   buildProfileForUser,
+  collectionRoleCapabilities,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -9,6 +10,7 @@ const {
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   normalizeFeedMode,
+  normalizeCollectionRole,
   normalizeSavedCollectionName,
   normalizeSavedTags,
   parsePublicStorageObjectUrl,
@@ -21,6 +23,27 @@ const {
   storageObjectExists,
   userIdentity,
 } = require('../src/data-routes')
+
+assert.strictEqual(normalizeCollectionRole('creator'), 'owner')
+assert.strictEqual(normalizeCollectionRole('MOD'), 'moderator')
+assert.strictEqual(normalizeCollectionRole('unknown'), 'member')
+assert.deepStrictEqual(
+  collectionRoleCapabilities('moderator'),
+  {
+    role: 'moderator',
+    label: 'Moderador',
+    canPost: true,
+    canModerateMessages: true,
+    canManageMembers: false,
+    canManageRoles: false,
+    canManageChannels: false,
+    canManageEvents: false,
+    canEditCommunity: false,
+    canPauseChannels: true,
+  },
+)
+assert.strictEqual(collectionRoleCapabilities('owner').canManageRoles, true)
+assert.strictEqual(collectionRoleCapabilities('member').canModerateMessages, false)
 
 const localIdentity = userIdentity({
   id: '11111111-1111-4111-8111-111111111111',

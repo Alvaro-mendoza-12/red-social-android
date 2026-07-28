@@ -3102,13 +3102,40 @@ function memberUserId(row) {
 function normalizeCollectionRole(role, { isCreator = false } = {}) {
   if (isCreator) return 'owner'
   const cleanRole = String(role || '').trim().toLowerCase()
+  if (cleanRole === 'owner' || cleanRole === 'creator') return 'owner'
   if (cleanRole === 'admin') return 'admin'
+  if (cleanRole === 'moderator' || cleanRole === 'mod') return 'moderator'
   return 'member'
 }
 
 function isCollectionAdminRole(role, { isCreator = false } = {}) {
   if (isCreator) return true
-  return normalizeCollectionRole(role) === 'admin'
+  return ['owner', 'admin'].includes(normalizeCollectionRole(role))
+}
+
+function collectionRoleCapabilities(role, { isCreator = false } = {}) {
+  const normalizedRole = normalizeCollectionRole(role, { isCreator })
+  const isOwner = normalizedRole === 'owner'
+  const isAdmin = normalizedRole === 'admin'
+  const isModerator = normalizedRole === 'moderator'
+  return {
+    role: normalizedRole,
+    label: normalizedRole === 'owner'
+      ? 'Propietario'
+      : normalizedRole === 'admin'
+        ? 'Administrador'
+        : normalizedRole === 'moderator'
+          ? 'Moderador'
+          : 'Miembro',
+    canPost: true,
+    canModerateMessages: isOwner || isAdmin || isModerator,
+    canManageMembers: isOwner || isAdmin,
+    canManageRoles: isOwner || isAdmin,
+    canManageChannels: isOwner || isAdmin,
+    canManageEvents: isOwner || isAdmin,
+    canEditCommunity: isOwner || isAdmin,
+    canPauseChannels: isOwner || isAdmin || isModerator,
+  }
 }
 
 function roomIdOf(row, key) {
@@ -7097,6 +7124,36 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     }
   })
 
+  app.get('/v1/data/messages/communities/:roomId/roles', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const roomId = normalizeId(req.params.roomId)
+      if (!validUuid(roomId)) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
+
+      const payload = await loadCollectionRoomPayload(pool, user, 'community', roomId)
+      if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+
+      const identity = userIdentity(user)
+      const room = payload.room || payload.chat || {}
+      const me = (payload.participants || [])
+        .find((participant) => identity.ids.has(normalizeId(participant.id)))
+      const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+      if (!isCollectionAdminRole(me?.role, { isCreator })) {
+        return res.status(403).json({ error: 'ROLE_PREVIEW_DENIED' })
+      }
+
+      res.json({
+        currentRole: normalizeCollectionRole(me?.role, { isCreator }),
+        roles: ['owner', 'admin', 'moderator', 'member']
+          .map((role) => collectionRoleCapabilities(role)),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get(['/v1/data/messages/groups/:roomId/preview', '/v1/data/messages/communities/:roomId/preview'], authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -7308,9 +7365,14 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
 
       const identity = userIdentity(user)
       const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
-      const hasRequestedRole = Object.prototype.hasOwnProperty.call(req.body || {}, 'role')
       const requestedRole = cleanText(req.body?.role, 40).toLowerCase()
-      const role = requestedRole === 'admin' ? 'admin' : 'member'
+      const hasRequestedRole = requestedRole.length > 0
+      if (hasRequestedRole && !['admin', 'moderator', 'member'].includes(requestedRole)) {
+        return res.status(400).json({ error: 'ROLE_INVALID' })
+      }
+      const role = ['admin', 'moderator', 'member'].includes(requestedRole)
+        ? requestedRole
+        : 'member'
       const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
       if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
       const roomRow = room.room || room.chat || {}
@@ -7334,6 +7396,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         if (!isAdmin) return res.status(403).json({ error: 'ADD_MEMBER_DENIED' })
       }
       const effectiveRole = isSelf && role !== 'member' ? 'member' : role
+      const mayReplaceExistingRole = !isSelf && hasRequestedRole
       await pool.query(
         `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
          VALUES ($1, $2, $3, $4, NOW(), FALSE)
@@ -7341,12 +7404,12 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
          DO UPDATE SET
             role = CASE
               WHEN $5::boolean THEN EXCLUDED.role
-              WHEN EXCLUDED.role = 'member' AND fallback_collection_members.role IN ('owner', 'admin', 'creator')
+              WHEN EXCLUDED.role = 'member' AND fallback_collection_members.role IN ('owner', 'admin', 'moderator', 'creator')
               THEN fallback_collection_members.role
               ELSE EXCLUDED.role
             END,
             is_deleted = FALSE`,
-        [config.kind, roomId, targetUserId, effectiveRole, isSelf || hasRequestedRole],
+        [config.kind, roomId, targetUserId, effectiveRole, mayReplaceExistingRole],
       )
 
       if (targetUserId && !identity.ids.has(targetUserId)) {
@@ -10267,6 +10330,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
 
 module.exports = {
   buildProfileForUser,
+  collectionRoleCapabilities,
   createLocalNotificationBestEffort,
   currentUserMayUseReportEvidence,
   currentUserOwnsStorageObject,
@@ -10276,6 +10340,7 @@ module.exports = {
   feedPostVisible,
   invalidateImportedDataCache,
   normalizeFeedMode,
+  normalizeCollectionRole,
   normalizeSavedCollectionName,
   normalizeSavedTags,
   normalizeProfileSectionOrder,

@@ -94,6 +94,25 @@ Antes de comenzar se creó y verificó el respaldo local
   corresponde. La app muestra el estado del resumen y permite cambiarlo desde
   la bandeja de notificaciones.
 
+### Fase 2.1 — roles de comunidades
+
+- **B08, roles predefinidos:** las comunidades conservan cuatro roles
+  coherentes en servidor y Android: propietario, administrador, moderador y
+  miembro. El rol propietario se deriva de la persona creadora y no se puede
+  asignar ni degradar desde la gestión de miembros.
+- Administradores y propietarios pueden asignar administrador, moderador o
+  miembro. Un moderador puede moderar mensajes y pausar futuros canales, pero
+  no puede administrar integrantes, roles, canales ni configuración.
+- Volver a unirse a una comunidad no degrada accidentalmente un rol existente.
+  El servidor normaliza roles históricos (`creator` y `mod`) sin perder su
+  significado.
+- **B09, vista como rol:** la administración de una comunidad incluye una
+  previsualización de permisos para los cuatro roles. La vista indica
+  explícitamente que no modifica permisos y obtiene el catálogo del servidor
+  en sesiones Ubuntu; conserva un catálogo equivalente para el modo heredado.
+- Los errores de rol inválido, permiso insuficiente y rol propietario inmutable
+  se muestran como mensajes comprensibles.
+
 ### Corrección operativa 3.0.9 — administración y contraseñas
 
 - El host temporal que llevaba el APK había caducado. El túnel administrado
@@ -127,7 +146,9 @@ Antes de comenzar se creó y verificó el respaldo local
 | B05 | Implementado en este incremento | Resumen diario/semanal configurable con urgentes inmediatas |
 | B06 | Implementado en este incremento | Norma, explicación, evidencia segura, severidad, vigencia y auditoría |
 | B07 | Implementado en este incremento | Token restringido, apelación única, cola humana y reactivación atómica |
-| B08–B13 | Fase 2 | Ampliar comunidades existentes con roles, canales y eventos |
+| B08 | Implementado en este incremento | Propietario, administrador, moderador y miembro con permisos coherentes |
+| B09 | Implementado en este incremento | Vista segura de permisos sin alterar el rol real |
+| B10–B13 | Fase 2 pendiente | Canales temáticos, identidad local, eventos y pausa temporal |
 | B14 | Fase 3 | Añadir modo escenario sin reemplazar las salas casuales |
 | B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
 | B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
@@ -143,7 +164,7 @@ Antes de comenzar se creó y verificó el respaldo local
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
   seguridad, todas aprobadas.
-- Android: 31 suites, 132 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
+- Android: 34 suites, 142 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
   aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
   declaró aprobado porque se detuvo por tiempo sin errores visibles.
 - Debug: `app-debug.apk`, firmado con la clave Debug. Su hash final queda

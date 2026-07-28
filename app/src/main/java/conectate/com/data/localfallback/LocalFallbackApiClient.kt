@@ -4,6 +4,7 @@ import conectate.com.BuildConfig
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.Comment
 import conectate.com.data.model.CommunityMessage
+import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
 import conectate.com.data.model.Moment
@@ -1533,6 +1534,17 @@ class LocalFallbackApiClient @Inject constructor(
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return requestJson<LocalFallbackChatResponse>("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}", accessToken)
             .map { it.normalized() }
+    }
+
+    suspend fun loadCommunityRoleCatalog(
+        accessToken: String,
+        communityId: String
+    ): Result<CommunityRoleCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson(
+            "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/roles",
+            accessToken
+        )
     }
 
     suspend fun loadCurrentProfile(accessToken: String): Result<LocalFallbackProfileResponse> {
@@ -4220,6 +4232,11 @@ class LocalFallbackApiClient @Inject constructor(
             "GROUP_INVITE_INVALID" -> Exception("La invitación del grupo está incompleta o no es válida.")
             "GROUP_INVITE_EXPIRED_OR_USED" -> Exception("La invitación del grupo venció o alcanzó su límite de usos.")
             "ROOM_NOT_FOUND" -> Exception("El grupo o la comunidad ya no existe o no está disponible.")
+            "ROLE_INVALID" -> Exception("Selecciona un rol válido para la comunidad.")
+            "ROLE_PREVIEW_DENIED", "ADD_MEMBER_DENIED" ->
+                Exception("No tienes permiso para gestionar roles en esta comunidad.")
+            "CREATOR_ROLE_IMMUTABLE" ->
+                Exception("El rol de la persona propietaria no se puede cambiar.")
             "MIGRATED_ACCOUNT_PASSWORD_SETUP_REQUIRED" -> LocalFallbackMigratedPasswordSetupRequiredException(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty(),

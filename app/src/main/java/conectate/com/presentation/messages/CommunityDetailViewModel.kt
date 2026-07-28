@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Community
 import conectate.com.data.model.CommunityMember
+import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,6 +48,9 @@ class CommunityDetailViewModel @Inject constructor(
     private val _isCreator = MutableStateFlow(false)
     val isCreator = _isCreator.asStateFlow()
 
+    private val _roleCatalog = MutableStateFlow<CommunityRoleCatalog?>(null)
+    val roleCatalog = _roleCatalog.asStateFlow()
+
     private var communityId: String? = null
 
     init {
@@ -62,6 +66,7 @@ class CommunityDetailViewModel @Inject constructor(
         _isMember.value = false
         _isAdmin.value = false
         _isCreator.value = false
+        _roleCatalog.value = null
         
         // 1. Force Sync
         viewModelScope.launch {
@@ -154,19 +159,35 @@ class CommunityDetailViewModel @Inject constructor(
         }
     }
 
-    fun promoteToAdmin(userId: String) {
+    fun setMemberRole(userId: String, role: String) {
         val id = communityId ?: return
         viewModelScope.launch {
-            communityRepository.updateMemberRole(id, userId, "admin")
-            loadMembers()
+            val result = communityRepository.updateMemberRole(id, userId, role)
+            if (result.isSuccess) {
+                loadMembers()
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo actualizar el rol."
+            }
         }
     }
 
-    fun demoteToMember(userId: String) {
+    fun loadRoleCatalog() {
         val id = communityId ?: return
+        val myId = _currentUserId.value
+        val currentRole = if (_isCreator.value) {
+            "owner"
+        } else {
+            _members.value.firstOrNull { sameCommunityUserId(it.user_id, myId) }?.role
+        }
         viewModelScope.launch {
-            communityRepository.updateMemberRole(id, userId, "member")
-            loadMembers()
+            val result = communityRepository.getCommunityRoleCatalog(id, currentRole)
+            if (result.isSuccess) {
+                _roleCatalog.value = result.getOrNull()
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message
+                    ?: "No se pudo cargar la vista de permisos."
+            }
         }
     }
 

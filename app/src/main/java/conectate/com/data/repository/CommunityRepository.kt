@@ -44,7 +44,9 @@ import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.model.Community
 import conectate.com.data.model.CommunityMember
 import conectate.com.data.model.CommunityMessage
+import conectate.com.data.model.CommunityRoleCatalog
 import conectate.com.data.model.CommunityWithLastMessage
+import conectate.com.data.model.defaultCommunityRoleCatalog
 import conectate.com.data.model.MessagePollOptionState
 import conectate.com.data.model.PollVoteUser
 import conectate.com.data.model.MessageReadReceipt
@@ -266,6 +268,21 @@ class CommunityRepository @Inject constructor(
 
     fun getUserRoleFlow(communityId: String, userId: String): Flow<String?> {
         return communityDao.getUserRoleFlow(communityId.trim().lowercase(), userId.trim().lowercase())
+    }
+
+    suspend fun getCommunityRoleCatalog(
+        communityId: String,
+        currentRole: String?
+    ): Result<CommunityRoleCatalog> = withContext(Dispatchers.IO) {
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            val token = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("Sesión Ubuntu no disponible"))
+            return@withContext localFallbackApiClient.loadCommunityRoleCatalog(
+                accessToken = token,
+                communityId = communityId.trim().lowercase()
+            )
+        }
+        Result.success(defaultCommunityRoleCatalog(currentRole))
     }
 
     // --- REALTIME SUBSCRIPTION (ROBUST) ---

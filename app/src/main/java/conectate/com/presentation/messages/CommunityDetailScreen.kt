@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExitToApp
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.data.model.CommunityRoleCatalog
+import conectate.com.data.model.CommunityRoleCapabilities
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,10 +44,14 @@ fun CommunityDetailScreen(
     val isMember by viewModel.isMember.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val roleCatalog by viewModel.roleCatalog.collectAsState()
+    val actionMessage by viewModel.actionMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDeletedByOtherAlert by remember { mutableStateOf(false) }
     var showEditCommunityDialog by remember { mutableStateOf(false) }
+    var showRolePreviewDialog by remember { mutableStateOf(false) }
     
     val normalizedCurrentUserId = currentUserId?.trim()?.lowercase().orEmpty()
     val normalizedCreatorId = community?.creator_id?.trim()?.lowercase().orEmpty()
@@ -58,6 +67,12 @@ fun CommunityDetailScreen(
         viewModel.loadCommunityDetails(communityId)
     }
 
+    LaunchedEffect(actionMessage) {
+        val message = actionMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeActionMessage()
+    }
+
     // Detectar si la comunidad ha sido eliminada o el usuario expulsado
     LaunchedEffect(community, members, isLoading) {
         if (!isLoading && community != null && currentUserId != null) {
@@ -71,6 +86,7 @@ fun CommunityDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(community?.name ?: "Detalles de la comunidad") },
@@ -87,6 +103,20 @@ fun CommunityDetailScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
+                        if (canManageMembers) {
+                            DropdownMenuItem(
+                                text = { Text("Vista como rol") },
+                                onClick = {
+                                    showMenu = false
+                                    showRolePreviewDialog = true
+                                    viewModel.loadRoleCatalog()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Visibility, contentDescription = null)
+                                }
+                            )
+                            Divider()
+                        }
                         if (amICreator) {
                             DropdownMenuItem(
                                 text = { Text("Editar información") },
@@ -272,14 +302,22 @@ fun CommunityDetailScreen(
                                 member.user_id.trim().lowercase() != normalizedCurrentUserId &&
                                 member.user_id.trim().lowercase() != normalizedCreatorId,
                             onRemove = { viewModel.removeMember(member.user_id) },
-                            onPromote = { viewModel.promoteToAdmin(member.user_id) },
-                            onDemote = { viewModel.demoteToMember(member.user_id) },
+                            onRoleChange = { role ->
+                                viewModel.setMemberRole(member.user_id, role)
+                            },
                             navController = navController
                         )
                     }
                 }
             }
         }
+    }
+
+    if (showRolePreviewDialog) {
+        CommunityRolePreviewDialog(
+            catalog = roleCatalog,
+            onDismiss = { showRolePreviewDialog = false }
+        )
     }
 
     if (showEditCommunityDialog) {
@@ -338,6 +376,113 @@ fun CommunityDetailScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun CommunityRolePreviewDialog(
+    catalog: CommunityRoleCatalog?,
+    onDismiss: () -> Unit
+) {
+    var selectedRole by remember(catalog?.currentRole) {
+        mutableStateOf(catalog?.currentRole ?: "member")
+    }
+    val selected = catalog?.roles?.firstOrNull { it.role == selectedRole }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Vista como rol") },
+        text = {
+            if (catalog == null) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 560.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Tu rol actual: ${
+                            catalog.roles.firstOrNull { it.role == catalog.currentRole }?.label
+                                ?: communityRoleLabel(catalog.currentRole)
+                        }",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Esta vista solo previsualiza permisos; no cambia ningún rol.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    catalog.roles.forEach { role ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedRole = role.role }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedRole == role.role,
+                                onClick = { selectedRole = role.role }
+                            )
+                            Text(role.label)
+                        }
+                    }
+                    Divider()
+                    selected?.let { CommunityRolePermissionList(it) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
+@Composable
+private fun CommunityRolePermissionList(role: CommunityRoleCapabilities) {
+    val permissions = listOf(
+        "Publicar y participar" to role.canPost,
+        "Moderar mensajes" to role.canModerateMessages,
+        "Gestionar miembros" to role.canManageMembers,
+        "Asignar roles" to role.canManageRoles,
+        "Gestionar canales" to role.canManageChannels,
+        "Gestionar eventos" to role.canManageEvents,
+        "Editar la comunidad" to role.canEditCommunity,
+        "Pausar canales" to role.canPauseChannels
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Permisos de ${role.label}",
+            style = MaterialTheme.typography.titleSmall
+        )
+        permissions.forEach { (label, allowed) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(label, modifier = Modifier.weight(1f))
+                Text(
+                    text = if (allowed) "Permitido" else "No permitido",
+                    color = if (allowed) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
     }
 }
 
@@ -437,8 +582,7 @@ fun CommunityMemberItem(
     role: String,
     isCurrentUser: Boolean,
     canManageMember: Boolean,
-    onPromote: () -> Unit,
-    onDemote: () -> Unit,
+    onRoleChange: (String) -> Unit,
     onRemove: () -> Unit,
     navController: NavController
 ) {
@@ -482,10 +626,24 @@ fun CommunityMemberItem(
                     Icon(Icons.Default.MoreVert, contentDescription = "Opciones")
                 }
                 DropdownMenu(expanded = showOptions, onDismissRequest = { showOptions = false }) {
-                    if (role == "member") {
-                        DropdownMenuItem(text = { Text("Promover a Admin") }, onClick = { showOptions = false; onPromote() })
-                    } else if (role == "admin") {
-                        DropdownMenuItem(text = { Text("Degradar a Miembro") }, onClick = { showOptions = false; onDemote() })
+                    val normalizedRole = normalizedCommunityRole(role)
+                    if (normalizedRole != "admin") {
+                        DropdownMenuItem(
+                            text = { Text("Asignar Administrador") },
+                            onClick = { showOptions = false; onRoleChange("admin") }
+                        )
+                    }
+                    if (normalizedRole != "moderator") {
+                        DropdownMenuItem(
+                            text = { Text("Asignar Moderador") },
+                            onClick = { showOptions = false; onRoleChange("moderator") }
+                        )
+                    }
+                    if (normalizedRole != "member") {
+                        DropdownMenuItem(
+                            text = { Text("Asignar Miembro") },
+                            onClick = { showOptions = false; onRoleChange("member") }
+                        )
                     }
                     DropdownMenuItem(
                         text = { Text("Expulsar miembro") },
@@ -515,13 +673,15 @@ private fun communityMemberDisplayRole(
     return when (role) {
         "creator", "owner" -> "owner"
         "admin" -> "admin"
+        "moderator", "mod" -> "moderator"
         else -> "member"
     }
 }
 
 private fun communityRoleLabel(role: String): String =
     when (normalizedCommunityRole(role)) {
-        "owner", "creator" -> "Admin principal"
-        "admin" -> "Admin"
+        "owner", "creator" -> "Propietario"
+        "admin" -> "Administrador"
+        "moderator", "mod" -> "Moderador"
         else -> "Miembro"
     }

@@ -96,4 +96,64 @@ data class CommunityWithLastMessage(
     val unreadCount: Int = 0
 )
 
+@Serializable
+data class CommunityRoleCapabilities(
+    val role: String,
+    val label: String,
+    val canPost: Boolean = false,
+    val canModerateMessages: Boolean = false,
+    val canManageMembers: Boolean = false,
+    val canManageRoles: Boolean = false,
+    val canManageChannels: Boolean = false,
+    val canManageEvents: Boolean = false,
+    val canEditCommunity: Boolean = false,
+    val canPauseChannels: Boolean = false
+)
+
+@Serializable
+data class CommunityRoleCatalog(
+    val currentRole: String,
+    val roles: List<CommunityRoleCapabilities> = emptyList()
+)
+
+fun normalizeCommunityRole(role: String?, isCreator: Boolean = false): String {
+    if (isCreator) return "owner"
+    return when (role?.trim()?.lowercase()) {
+        "owner", "creator" -> "owner"
+        "admin" -> "admin"
+        "moderator", "mod" -> "moderator"
+        else -> "member"
+    }
+}
+
+fun communityRoleCapabilities(role: String?): CommunityRoleCapabilities {
+    val normalized = normalizeCommunityRole(role)
+    val isOwner = normalized == "owner"
+    val isAdmin = normalized == "admin"
+    val isModerator = normalized == "moderator"
+    return CommunityRoleCapabilities(
+        role = normalized,
+        label = when (normalized) {
+            "owner" -> "Propietario"
+            "admin" -> "Administrador"
+            "moderator" -> "Moderador"
+            else -> "Miembro"
+        },
+        canPost = true,
+        canModerateMessages = isOwner || isAdmin || isModerator,
+        canManageMembers = isOwner || isAdmin,
+        canManageRoles = isOwner || isAdmin,
+        canManageChannels = isOwner || isAdmin,
+        canManageEvents = isOwner || isAdmin,
+        canEditCommunity = isOwner || isAdmin,
+        canPauseChannels = isOwner || isAdmin || isModerator
+    )
+}
+
+fun defaultCommunityRoleCatalog(currentRole: String?): CommunityRoleCatalog =
+    CommunityRoleCatalog(
+        currentRole = normalizeCommunityRole(currentRole),
+        roles = listOf("owner", "admin", "moderator", "member").map(::communityRoleCapabilities)
+    )
+
 
