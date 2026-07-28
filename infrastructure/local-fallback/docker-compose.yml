@@ -21,6 +21,10 @@ services:
   api:
     build:
       context: ./api
+      # IONOS host DNS is reliable, while Docker's isolated build DNS can
+      # intermittently return EAI_AGAIN and leave npm with a corrupt exit.
+      # This affects only image construction; runtime networking stays isolated.
+      network: host
     container_name: conectate-local-fallback-api-main
     restart: unless-stopped
     env_file:
@@ -68,6 +72,7 @@ services:
   ai-chatbot:
     build:
       context: ./ai-chatbot
+      network: host
     container_name: conectate-local-fallback-ai-main
     restart: unless-stopped
     environment:
@@ -112,6 +117,7 @@ services:
   signaling:
     build:
       context: ${SIGNALING_CONTEXT:-../../signaling-server}
+      network: host
     container_name: conectate-local-fallback-signaling-main
     restart: unless-stopped
     env_file:
@@ -156,6 +162,7 @@ services:
   realtime-gateway:
     build:
       context: ./realtime-gateway
+      network: host
     container_name: conectate-local-fallback-realtime-main
     restart: unless-stopped
     env_file:
