@@ -143,6 +143,24 @@ una copia íntegra transportable del repositorio.
 - La eliminación de una comunidad o cuenta limpia canales, perfiles, eventos,
   asistentes y recordatorios antes de borrar sus referencias principales.
 
+### Fase 3.1 — sala casual y escenario moderado
+
+- **B14, dos plantillas de voz:** al crear una sala se puede conservar la
+  modalidad casual, donde todas las personas pueden hablar, o elegir escenario.
+  La modalidad queda persistida en el servidor y se muestra en el listado y en
+  la sala activa; no reemplaza ni altera las salas casuales existentes.
+- En un escenario, la persona creadora entra como moderadora y las demás entran
+  como público con micrófono, cámara y pantalla desactivados. El público puede
+  solicitar o cancelar la palabra y la moderación puede aceptar, rechazar,
+  silenciar o devolver una persona a la audiencia.
+- Los roles `moderator`, `speaker` y `audience`, el estado de silencio y la mano
+  levantada se validan en la API. El signaling vuelve a comprobar el permiso
+  antes de publicar voz, cámara o pantalla, por lo que modificar únicamente el
+  cliente no permite autoascenderse.
+- La persona creadora queda protegida y solo ella puede conceder el rol de
+  moderador. Un moderador delegado no puede degradar a otro moderador ni
+  entregar privilegios equivalentes.
+
 ### Corrección operativa 3.0.9 — administración y contraseñas
 
 - El host temporal que llevaba el APK había caducado. El túnel administrado
@@ -182,7 +200,7 @@ una copia íntegra transportable del repositorio.
 | B11 | Implementado en este incremento | Alias, biografía y distintivo persistentes por comunidad |
 | B12 | Implementado en este incremento | Eventos, asistencia y recordatorio idempotente |
 | B13 | Implementado en este incremento | Pausa temporal con motivo, duración y bloqueo en servidor |
-| B14 | Fase 3 | Añadir modo escenario sin reemplazar las salas casuales |
+| B14 | Implementado en este incremento | Sala casual y escenario con público, solicitud de palabra y moderación validada por servidor |
 | B15 | Implementación técnica existente; falta matriz física | Reconexionar voz y restaurar estado entre Wi‑Fi/datos |
 | B16–B17 | Fase 3/4 | Solo opt-in, consentimiento visible y política de retención |
 | B18–B20 | Fase 3 | Moderación en vivo, repeticiones y remix con atribución |
@@ -197,19 +215,19 @@ una copia íntegra transportable del repositorio.
 
 - Backend: comprobación sintáctica y pruebas de salud, feed, administración y
   seguridad, todas aprobadas.
-- Android: 34 suites, 143 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
+- Android: 35 suites, 145 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
   aprobó; `lintVitalRelease` aprobó durante Release. `lintDebug` completo no se
   declaró aprobado porque se detuvo por tiempo sin errores visibles.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `6A85C33B70C433A0B14FE28295CAB40952242DE5006DD9658C10EA7BBA80DD2C`.
+  `32A85F424F09517E5820E2065C2819369A8ADD50AE0865E29CB4AD09FCCE595D`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `3E04CA6114E1340329B49462B9096D9562E29FE4C90A35AA9ED37E3D37131B04`.
+  `5DC8533C21F7638E980C3AE69EF5F45AEBC5D3BFE0B2AFFFEF4FA1194A64D378`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
-- Servidor: despliegue `conectate-mini-pc-20260728T151140Z`, commit
-  `7441aca990d0`, precedido por el respaldo
-  `/home/alvaro/conectate-backups/20260728T151145Z`.
+- Servidor: despliegue `conectate-mini-pc-20260728T160010Z`, commit
+  `5653a1836bef`, precedido por el respaldo
+  `/home/alvaro/conectate-backups/20260728T160018Z`.
 - La comprobación pública de `/ready` y `/v1/system/health` resultó operativa
   para API, base de datos, almacenamiento, tiempo real, voz y directos.
 - B04: prueba integral pública aprobada con la cuenta ficticia
@@ -242,6 +260,11 @@ una copia íntegra transportable del repositorio.
   parcial sin pérdida, permisos de creación de eventos, asistencia y
   recordatorio entregado exactamente una vez. La limpieza confirmó `users=0`,
   `rooms=0`, `profiles=0`, `events=0` y `notifications=0`.
+- B14: canario público aprobado con dos cuentas ficticias. Cubrió modalidad
+  inválida rechazada, creador moderador, entrada del público en silencio,
+  solicitud de palabra, autoascenso denegado, promoción a orador, silencio,
+  regreso a audiencia y compatibilidad de la sala casual. La limpieza confirmó
+  `users=0`, `rooms=0` y `participants=0`.
 - Administración: canario de solo lectura aprobado contra la URL pública para
   acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
   apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
