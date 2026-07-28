@@ -158,6 +158,7 @@ exit 1
 '@
 
 $remoteScript = $remoteScript.Replace("__LOCAL_URL__", $LocalUrl)
+$remoteScript = $remoteScript.Replace("`r`n", "`n").Replace("`r", "`n")
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
 $remoteCommand = "printf %s $encoded | base64 -d | bash"
 

@@ -1226,6 +1226,7 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun login(email: String, password: String): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         val normalizedEmail = email.trim().lowercase()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/login") {
@@ -1250,6 +1251,7 @@ class LocalFallbackApiClient @Inject constructor(
         displayName: String?
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/register") {
                 localHeaders()
@@ -1279,6 +1281,7 @@ class LocalFallbackApiClient @Inject constructor(
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/change-password") {
                 localHeaders(accessToken)
@@ -1298,6 +1301,7 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun requestPasswordReset(email: String): Result<LocalFallbackPasswordResetResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/request") {
                 localHeaders()
@@ -1320,6 +1324,7 @@ class LocalFallbackApiClient @Inject constructor(
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/confirm") {
                 localHeaders()
@@ -4048,6 +4053,8 @@ class LocalFallbackApiClient @Inject constructor(
         migrationToken: String,
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/complete-migrated-password-reset") {
                 localHeaders()
@@ -4171,6 +4178,10 @@ class LocalFallbackApiClient @Inject constructor(
             "INVALID_EMAIL" -> Exception("Escribe un correo electrónico válido.")
             "PASSWORD_TOO_SHORT", "EMAIL_AND_STRONG_PASSWORD_REQUIRED" ->
                 Exception("La contraseña debe tener al menos 8 caracteres.")
+            "CURRENT_AND_NEW_PASSWORD_REQUIRED" ->
+                Exception("Escribe tu contraseña actual y una contraseña nueva de al menos 8 caracteres.")
+            "NEW_PASSWORD_MUST_BE_DIFFERENT" ->
+                Exception("La contraseña nueva debe ser diferente de la actual.")
             "AUTH_REQUIRED" -> Exception("Tu sesión Ubuntu no llegó a la API. Cierra sesión e inicia sesión otra vez contra Ubuntu.")
             "INVALID_TOKEN" -> Exception("Tu sesión Ubuntu ya no es válida para este servidor. Inicia sesión otra vez; si cambiaste JWT_SECRET o reparaste la VM, los tokens anteriores quedan invalidados.")
             "ACCOUNT_DELETED" -> {
@@ -4203,6 +4214,7 @@ class LocalFallbackApiClient @Inject constructor(
             "ADMIN_REQUIRED" ->
                 Exception("Tu cuenta no tiene permiso de administrador para realizar esta acción.")
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
+            "INVALID_MIGRATION_TOKEN" -> Exception("El permiso para cambiar la contraseña venció. Verifica otra vez tu contraseña actual.")
             "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
             "GROUP_INVITE_INVALID" -> Exception("La invitación del grupo está incompleta o no es válida.")
@@ -5152,6 +5164,7 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun adminCheckAccess(accessToken: String): Result<Boolean> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
             val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/access") {
                 localHeaders(accessToken)

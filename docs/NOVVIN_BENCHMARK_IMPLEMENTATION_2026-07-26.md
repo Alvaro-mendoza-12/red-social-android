@@ -94,6 +94,28 @@ Antes de comenzar se creó y verificó el respaldo local
   corresponde. La app muestra el estado del resumen y permite cambiarlo desde
   la bandeja de notificaciones.
 
+### Corrección operativa 3.0.9 — administración y contraseñas
+
+- El host temporal que llevaba el APK había caducado. El túnel administrado
+  publicó `genres-twice-trainer-stamps.trycloudflare.com`, se actualizó el
+  descriptor web y se confirmó que el TXT de
+  `conectate-alvaro.duckdns.org` apunta al mismo servidor.
+- Inicio de sesión, registro, recuperación, confirmación de contraseña,
+  migración y comprobación administrativa ahora resuelven el endpoint dinámico
+  antes de enviar la solicitud. Una URL Quick Tunnel guardada o compilada ya no
+  se usa a ciegas después de rotar.
+- El botón administrativo navega con el controlador que contiene la ruta en el
+  grafo activo. Una ruta ausente queda contenida, se registra para diagnóstico
+  y presenta un mensaje normal en vez de terminar el proceso.
+- El inicio de sesión incorpora `Olvidé mi contraseña`, conserva el permiso
+  seguro devuelto por Ubuntu y permite completar la contraseña nueva sin
+  exponer el token en pantalla.
+- El cambio autenticado solicita contraseña actual, contraseña nueva y
+  confirmación. Ubuntu verifica la anterior, persiste la nueva, renueva el
+  token y mantiene la sesión activa.
+- Los errores de contraseña actuales, permisos vencidos y reutilización de la
+  misma clave se traducen a mensajes comprensibles.
+
 ## Estado del backlog B01–B30
 
 | ID | Estado | Decisión |
@@ -152,6 +174,13 @@ Antes de comenzar se creó y verificó el respaldo local
   y publicación de `notification_digest_v1`. Después de la prueba PostgreSQL
   confirmó `users=0` y `notifications=0` para sus cuentas y contenidos
   ficticios.
+- Administración: canario de solo lectura aprobado contra la URL pública para
+  acceso, catálogo, búsqueda de usuarios, estadísticas, suspendidos,
+  apelaciones, reportes de usuarios, reportes de videos y salud del sistema.
+- Contraseñas: prueba integral con cuenta ficticia aprobada. Cubrió solicitud,
+  consumo único del permiso, rechazo de la clave anterior, aceptación de la
+  nueva, cambio autenticado posterior, renovación de sesión y persistencia.
+  La cuenta y sus tokens de prueba terminaron en `0`.
 - Dispositivos: las llamadas, salas y directos seguirán requiriendo la matriz
   física entre dos teléfonos y redes distintas antes de declararse totalmente
   verificados. No había ningún dispositivo visible por ADB durante este cierre.

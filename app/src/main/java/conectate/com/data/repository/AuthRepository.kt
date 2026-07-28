@@ -686,6 +686,10 @@ class AuthRepository @Inject constructor(
         return authService.updateUserPassword(newPassword)
     }
 
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> {
+        return authService.changePassword(currentPassword, newPassword)
+    }
+
     suspend fun importSession(accessToken: String, refreshToken: String) {
         authService.importSession(accessToken, refreshToken)
     }

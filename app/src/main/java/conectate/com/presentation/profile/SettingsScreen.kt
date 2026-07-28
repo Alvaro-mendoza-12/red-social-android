@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.compose.ui.platform.LocalContext
+import android.util.Log
 import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
@@ -67,6 +68,7 @@ fun SettingsScreen(
     var showCloseAllWebSessionsDialog by remember { mutableStateOf(false) }
     var showBreakModeDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var adminNavigationError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(accountDeleted) {
         if (accountDeleted) {
@@ -651,12 +653,38 @@ fun SettingsScreen(
             if (adminPanelAccess) {
                 SettingsSection(title = "Administración") {
                     Button(
-                        onClick = { mainNavController.navigate(Screen.AdminPanel.route) },
+                        // Settings can live in the root graph or in Home's nested graph.
+                        // The local controller is the one that always owns the matching
+                        // AdminPanel destination in both cases. Using the root controller
+                        // from the nested graph can throw "destination cannot be found"
+                        // and terminate the app on some entry paths.
+                        onClick = {
+                            adminNavigationError = null
+                            attemptAdminPanelNavigation(
+                                navigate = {
+                                    navController.navigate(Screen.AdminPanel.route) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onFailure = { error ->
+                                    Log.e("SettingsScreen", "No se pudo abrir el panel administrativo", error)
+                                    adminNavigationError =
+                                        "No se pudo abrir el panel de administración. Vuelve a intentarlo."
+                                }
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Settings, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Panel de Administrador")
+                    }
+                    adminNavigationError?.let { message ->
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 

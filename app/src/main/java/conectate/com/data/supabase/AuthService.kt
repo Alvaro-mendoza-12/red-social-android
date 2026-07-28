@@ -709,6 +709,24 @@ class AuthService @Inject constructor(
         return Result.success(Unit)
     }
 
+    suspend fun changePassword(
+        currentPassword: String,
+        newPassword: String
+    ): Result<Unit> {
+        if (!isLocalFallbackModeEnabled()) {
+            return updateUserPassword(newPassword)
+        }
+        val accessToken = ensureValidAccessToken()
+            .getOrElse { return Result.failure(it) }
+        val localSession = localFallbackApiClient.changePassword(
+            accessToken = accessToken,
+            currentPassword = currentPassword,
+            newPassword = newPassword
+        ).getOrElse { return Result.failure(it) }
+        persistLocalFallbackSession(localSession)
+        return Result.success(Unit)
+    }
+
     suspend fun updateUserPassword(newPassword: String): Result<Unit> {
         // Ubuntu backend handles password changes via changePassword endpoint
         if (isLocalFallbackModeEnabled()) {

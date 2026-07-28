@@ -19,8 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import conectate.com.presentation.navigation.Screen
 
 
 @Composable
@@ -28,19 +26,25 @@ fun ChangePasswordScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
+    var currentPassword by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var currentPasswordVisible by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
+    val validationError = passwordChangeValidationError(
+        currentPassword = currentPassword,
+        newPassword = password,
+        confirmPassword = confirmPassword
+    )
 
     LaunchedEffect(authState) {
         if (authState is AuthState.PasswordChanged) {
-            // Ir al login después de cambiar la contraseña con éxito
-            navController.navigate(Screen.Login.route) {
-                popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
-            }
+            // Ubuntu entrega un token renovado y AuthService ya lo persiste.
+            // Mantener la sesión evita expulsar al usuario después de un cambio válido.
+            navController.popBackStack()
         }
     }
 
@@ -62,11 +66,31 @@ fun ChangePasswordScreen(
             )
             
             Text(
-                text = "Ingresa tu nueva clave para acceder a tu cuenta.",
+                text = "Confirma tu contraseña actual y elige una nueva.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
+
+            OutlinedTextField(
+                value = currentPassword,
+                onValueChange = { currentPassword = it },
+                label = { Text("Contraseña actual") },
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                visualTransformation = if (currentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { currentPasswordVisible = !currentPasswordVisible }) {
+                        Icon(
+                            imageVector = if (currentPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (currentPasswordVisible) "Ocultar contraseña actual" else "Ver contraseña actual"
+                        )
+                    }
+                },
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = password,
@@ -108,6 +132,16 @@ fun ChangePasswordScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            if ((currentPassword.isNotBlank() || password.isNotBlank() || confirmPassword.isNotBlank()) &&
+                validationError != null
+            ) {
+                Text(
+                    text = validationError,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+
             if (authState is AuthState.Error) {
                 Text(
                     text = (authState as AuthState.Error).message,
@@ -118,14 +152,14 @@ fun ChangePasswordScreen(
 
             Button(
                 onClick = {
-                    if (password.length >= 8 && password == confirmPassword) {
-                        viewModel.updatePassword(password)
+                    if (validationError == null) {
+                        viewModel.changePassword(currentPassword, password)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                enabled = authState !is AuthState.Loading && password.length >= 8 && password == confirmPassword,
+                enabled = authState !is AuthState.Loading && validationError == null,
                 shape = MaterialTheme.shapes.medium
             ) {
                 if (authState is AuthState.Loading) {

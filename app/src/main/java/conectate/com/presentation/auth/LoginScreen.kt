@@ -65,6 +65,7 @@ fun LoginScreen(
     var migrationNewPassword by rememberSaveable { mutableStateOf("") }
     var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
+    var passwordFlowMode by rememberSaveable { mutableStateOf("migration") }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
     var showAppealForm by rememberSaveable { mutableStateOf(false) }
     var appealStatement by rememberSaveable { mutableStateOf("") }
@@ -99,6 +100,7 @@ fun LoginScreen(
             is AuthState.MigratedPasswordSetupRequired -> {
                 val resolvedEmail = state.email.ifBlank { email.trim().lowercase() }
                 loginType = "email"
+                passwordFlowMode = "migration"
                 migrationEmail = resolvedEmail
                 migrationDisplayName = state.displayName.orEmpty()
                 migrationToken = state.migrationToken.orEmpty()
@@ -109,6 +111,23 @@ fun LoginScreen(
                 if (resolvedEmail.isNotBlank()) email = resolvedEmail
                 password = ""
             }
+            is AuthState.MigrationPasswordCodeSent -> {
+                val resolvedEmail = state.email.ifBlank { email.trim().lowercase() }
+                loginType = "email"
+                passwordFlowMode = "reset"
+                migrationEmail = resolvedEmail
+                migrationDisplayName = ""
+                migrationToken = state.resetToken.orEmpty()
+                migrationNewPassword = ""
+                migrationConfirmPassword = ""
+                migrationInfo = if (state.resetToken.isNullOrBlank()) {
+                    "Te enviamos las instrucciones de recuperación por el canal configurado. El permiso vence en ${state.expiresInMinutes ?: 30} minutos."
+                } else {
+                    "Solicitud verificada por el servidor. Crea ahora una contraseña nueva; el permiso vence en ${state.expiresInMinutes ?: 30} minutos."
+                }
+                if (resolvedEmail.isNotBlank()) email = resolvedEmail
+                password = ""
+            }
             is AuthState.Success -> {
                 migrationEmail = ""
                 migrationDisplayName = ""
@@ -116,6 +135,7 @@ fun LoginScreen(
                 migrationNewPassword = ""
                 migrationConfirmPassword = ""
                 migrationInfo = ""
+                passwordFlowMode = "migration"
             }
             else -> Unit
         }
@@ -510,6 +530,7 @@ fun LoginScreen(
                             migrationNewPassword = ""
                             migrationConfirmPassword = ""
                             migrationInfo = ""
+                            passwordFlowMode = "migration"
                             viewModel.signInWithEmail(trimmedEmail, password)
                         }
                     }
@@ -518,6 +539,31 @@ fun LoginScreen(
             ) {
                 Text(
                     text = "Actualizar contraseña de cuenta migrada",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            TextButton(
+                onClick = {
+                    val trimmedEmail = email.trim().lowercase()
+                    if (trimmedEmail.isBlank()) {
+                        viewModel.setAuthError("Ingresa el correo de tu cuenta.")
+                    } else {
+                        migrationEmail = ""
+                        migrationDisplayName = ""
+                        migrationToken = ""
+                        migrationNewPassword = ""
+                        migrationConfirmPassword = ""
+                        migrationInfo = ""
+                        passwordFlowMode = "reset"
+                        viewModel.requestMigratedPasswordCode(trimmedEmail)
+                    }
+                },
+                enabled = authState !is AuthState.Loading
+            ) {
+                Text(
+                    text = "Olvidé mi contraseña",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -535,6 +581,12 @@ fun LoginScreen(
                     isLoading = authState is AuthState.Loading,
                     onNewPasswordChange = { migrationNewPassword = it },
                     onConfirmPasswordChange = { migrationConfirmPassword = it },
+                    canSubmit = migrationToken.isNotBlank(),
+                    submitLabel = if (passwordFlowMode == "reset") {
+                        "Guardar nueva contraseña y entrar"
+                    } else {
+                        "Guardar contraseña y entrar"
+                    },
                     onSubmit = {
                         val nextPassword = migrationNewPassword.trim()
                         if (nextPassword.length < 8) {
@@ -545,11 +597,18 @@ fun LoginScreen(
                             viewModel.setAuthError("La confirmación no coincide con la contraseña nueva.")
                             return@MigratedPasswordSetupCard
                         }
-                        viewModel.setupMigratedPassword(
-                            email = migrationEmail,
-                            migrationToken = migrationToken,
-                            newPassword = nextPassword
-                        )
+                        if (passwordFlowMode == "reset") {
+                            viewModel.confirmMigratedPasswordCode(
+                                resetToken = migrationToken,
+                                newPassword = nextPassword
+                            )
+                        } else {
+                            viewModel.setupMigratedPassword(
+                                email = migrationEmail,
+                                migrationToken = migrationToken,
+                                newPassword = nextPassword
+                            )
+                        }
                     }
                 )
 
@@ -646,6 +705,8 @@ private fun MigratedPasswordSetupCard(
     isLoading: Boolean,
     onNewPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
+    canSubmit: Boolean,
+    submitLabel: String,
     onSubmit: () -> Unit
 ) {
     Card(
@@ -698,7 +759,7 @@ private fun MigratedPasswordSetupCard(
 
             Button(
                 onClick = onSubmit,
-                enabled = !isLoading,
+                enabled = !isLoading && canSubmit,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isLoading) {
@@ -707,7 +768,7 @@ private fun MigratedPasswordSetupCard(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text("Guardar contraseña y entrar")
+                    Text(submitLabel)
                 }
             }
         }

@@ -481,6 +481,23 @@ class AuthViewModel @Inject constructor(
             )
         }
     }
+
+    fun changePassword(currentPassword: String, newPassword: String) {
+        viewModelScope.launch {
+            val current = currentPassword.trim()
+            val next = newPassword.trim()
+            passwordChangeValidationError(current, next)?.let { validationError ->
+                _authState.value = AuthState.Error(validationError)
+                return@launch
+            }
+
+            _authState.value = AuthState.Loading
+            _authState.value = authRepository.changePassword(current, next).fold(
+                onSuccess = { AuthState.PasswordChanged },
+                onFailure = { AuthState.Error(mapAuthError(it)) }
+            )
+        }
+    }
 }
 
 
