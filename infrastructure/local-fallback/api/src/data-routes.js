@@ -3145,18 +3145,19 @@ function normalizeCommunityChannelType(type) {
 }
 
 function communityChannelPayload(row, { canManage = false, canPause = false } = {}) {
-  const pausedUntil = textOf(row, ['paused_until', 'pausedUntil'], null)
+  const normalizedRow = normalizeImportedRow(row)
+  const pausedUntil = textOf(normalizedRow, ['paused_until', 'pausedUntil'], null)
   const pausedUntilMillis = pausedUntil ? new Date(pausedUntil).getTime() : 0
   return {
-    id: textOf(row, ['id'], ''),
-    communityId: textOf(row, ['community_id', 'communityId'], ''),
-    name: textOf(row, ['name'], 'General'),
-    description: textOf(row, ['description'], null),
-    type: normalizeCommunityChannelType(textOf(row, ['channel_type', 'type'], 'text')),
-    position: numberOf(row, ['position'], 0),
-    isDefault: boolOf(row, ['is_default', 'isDefault'], false),
+    id: textOf(normalizedRow, ['id'], ''),
+    communityId: textOf(normalizedRow, ['community_id', 'communityId'], ''),
+    name: textOf(normalizedRow, ['name'], 'General'),
+    description: textOf(normalizedRow, ['description'], null),
+    type: normalizeCommunityChannelType(textOf(normalizedRow, ['channel_type', 'type'], 'text')),
+    position: numberOf(normalizedRow, ['position'], 0),
+    isDefault: boolOf(normalizedRow, ['is_default', 'isDefault'], false),
     pausedUntil,
-    pauseReason: textOf(row, ['pause_reason', 'pauseReason'], null),
+    pauseReason: textOf(normalizedRow, ['pause_reason', 'pauseReason'], null),
     isPaused: Number.isFinite(pausedUntilMillis) && pausedUntilMillis > Date.now(),
     canManage,
     canPause,
