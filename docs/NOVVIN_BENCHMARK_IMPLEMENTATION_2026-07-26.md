@@ -267,13 +267,13 @@ completo, APK Debug, APK Release sin firma y hashes SHA-256 verificados.
   seguridad, todas aprobadas.
 - Android: 36 suites, 148 pruebas, 0 fallos, 0 errores y 0 omitidas. Kotlin
   aprobó; Debug, Release con R8 y `lintVitalRelease` terminaron correctamente
-  en 17 min 48 s. `lintDebug` completo no se declaró aprobado porque se detuvo
+  para B16/B17 en 19 min 4 s. `lintDebug` completo no se declaró aprobado porque se detuvo
   por tiempo sin errores visibles.
 - Debug: `app-debug.apk`, firmado con la clave Debug, SHA-256
-  `E79CAE2025A7B649C0187026EABE46680E598051A42F53CE7132A22CDA02B86D`.
+  `65B848D09C22122902A0346975C866EDC073C7B20EE2E8FF4388EEFA4E284FB9`.
 - Release: `app-release-unsigned.apk`, R8 y reducción de recursos aprobados,
   SHA-256
-  `587561E8F8DD1EF91F8C47732B7BB528EE843554E87CBD84B1275FCF2E07BEEA`.
+  `000FA3852A470A729C79E37AB491CABE74DA7235480BCBE2299CBE7104216DB5`.
   Continúa sin firma porque la clave oficial de Play Store no está disponible
   en este entorno.
 - Servidor: despliegue `conectate-mini-pc-20260728T160010Z`, commit
