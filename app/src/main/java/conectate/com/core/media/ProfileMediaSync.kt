@@ -115,6 +115,15 @@ internal object ProfileMediaSync {
         return firstCanonical == canonicalReference(second)
     }
 
+    fun confirmedReference(uploadedUrl: String?, persistedUrl: String?): String? {
+        return persistedUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            ?: uploadedUrl
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+    }
+
     fun uploadedObjectPath(
         bucket: String,
         requestedPath: String,

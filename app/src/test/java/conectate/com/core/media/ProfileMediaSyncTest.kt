@@ -36,6 +36,29 @@ class ProfileMediaSyncTest {
     }
 
     @Test
+    fun `signup keeps the avatar url confirmed by the server`() {
+        val uploaded =
+            "https://media.example.com/storage/v1/object/public/avatars/avatar.jpg"
+        val persisted =
+            "https://media.example.com/storage/v1/object/public/avatars/owner-7/avatar.jpg"
+
+        assertEquals(
+            persisted,
+            ProfileMediaSync.confirmedReference(
+                uploadedUrl = uploaded,
+                persistedUrl = persisted
+            )
+        )
+        assertEquals(
+            uploaded,
+            ProfileMediaSync.confirmedReference(
+                uploadedUrl = uploaded,
+                persistedUrl = " "
+            )
+        )
+    }
+
+    @Test
     fun `profile update is not confirmed when server returns previous media`() {
         val mutation = ProfileMediaMutation(
             avatarUrl = "https://media.example.com/storage/v1/object/public/avatars/user-1/new.mp4",

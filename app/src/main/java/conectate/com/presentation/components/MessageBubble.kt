@@ -608,8 +608,17 @@ fun MessageBubble(
                          )
                     }
                 } else {
-                    val mediaPreviewRequest = remember(resolvedUrl, message.media_url) {
-                        MediaImageRequestFactory.preview(context, resolvedUrl ?: message.media_url)
+                    val mediaPreviewRequest = remember(
+                        resolvedUrl,
+                        message.media_url,
+                        message.content_type
+                    ) {
+                        val source = resolvedUrl ?: message.media_url
+                        if (message.content_type == "sticker" || message.content_type == "gif") {
+                            MediaImageRequestFactory.animated(context, source)
+                        } else {
+                            MediaImageRequestFactory.preview(context, source)
+                        }
                     }
                     when (message.content_type) {
                     "view_once_image", "view_once_video" -> {

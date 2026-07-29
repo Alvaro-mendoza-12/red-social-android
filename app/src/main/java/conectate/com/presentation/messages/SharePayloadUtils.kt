@@ -32,7 +32,7 @@ data class DeviceContactPayload(
 
 class PickPhoneContactContract : ActivityResultContract<Unit, Uri?>() {
     override fun createIntent(context: Context, input: Unit): Intent =
-        Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Contactables.CONTENT_URI)
+        Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
 
     override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
         intent?.data?.takeIf { resultCode == Activity.RESULT_OK }
@@ -272,67 +272,88 @@ fun formatCoordinate(value: Double): String {
     return String.format(Locale.US, "%.6f", value)
 }
 
-fun resolvePickedContact(context: Context, uri: Uri): DeviceContactPayload? {
+fun resolvePickedContact(context: Context, uri: Uri): DeviceContactPayload? = runCatching {
+    resolvePickedContactInternal(context, uri)
+}.onFailure { error ->
+    android.util.Log.w(
+        "ContactShare",
+        "No se pudo leer el contacto desde ${uri.authority.orEmpty()}",
+        error
+    )
+}.getOrNull()
+
+private fun resolvePickedContactInternal(context: Context, uri: Uri): DeviceContactPayload? {
     val resolver = context.contentResolver
 
-    // Case 1: Android/providers may return either a phone or an email row from
-    // Contactables. Keep the selected value even when the provider does not grant
-    // permission to enumerate every datum belonging to the contact.
-    val selectedContactable = runCatching<DeviceContactPayload?> {
+    // El selector concede acceso temporal únicamente a la fila elegida. Leer primero
+    // esa fila evita consultar toda la agenda (READ_CONTACTS) y funciona también con
+    // proveedores de contactos de Motorola, Samsung, Xiaomi y Google.
+    val directPhonePayload = runCatching<DeviceContactPayload?> {
         resolver.query(
             uri,
             arrayOf(
-                ContactsContract.Contacts.DISPLAY_NAME,
-                ContactsContract.Data.DATA1,
-                ContactsContract.Data.MIMETYPE,
-                ContactsContract.Data.CONTACT_ID
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
             ),
             null,
             null,
             null
         )?.use { cursor ->
             if (!cursor.moveToFirst()) return@use null
-            val name = cursor.getString(0).orEmpty().trim()
-            val selectedValue = cursor.getString(1).orEmpty().trim()
-            val mimeType = cursor.getString(2).orEmpty()
-            val contactId = cursor.getString(3).orEmpty().trim()
-            val selectedPhone = if (
-                mimeType == ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE
-            ) {
+            val name = cursor.safeString(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.Contacts.DISPLAY_NAME
+            )
+            val phone = normalizePhone(
+                cursor.safeString(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            )
+            if (name.isNotBlank() && phone.isNotBlank()) {
+                DeviceContactPayload(
+                    name = name,
+                    phone = phone,
+                    phones = listOf(phone)
+                )
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+    if (directPhonePayload != null) return directPhonePayload
+
+    // Compatibilidad con proveedores que devuelven una fila Contactables.
+    val selectedContactable = runCatching<DeviceContactPayload?> {
+        resolver.query(
+            uri,
+            arrayOf(
+                ContactsContract.Contacts.DISPLAY_NAME,
+                ContactsContract.Data.DATA1,
+                ContactsContract.Data.MIMETYPE
+            ),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val name = cursor.safeString(ContactsContract.Contacts.DISPLAY_NAME)
+            val selectedValue = cursor.safeString(ContactsContract.Data.DATA1)
+            val mimeType = cursor.safeString(ContactsContract.Data.MIMETYPE)
+            val phone = if (mimeType == ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE) {
                 normalizePhone(selectedValue)
             } else {
                 ""
             }
-            val selectedEmail = if (
-                mimeType == ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE
-            ) {
+            val email = if (mimeType == ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE) {
                 normalizeEmail(selectedValue)
             } else {
                 ""
             }
-            val phones = buildList {
-                selectedPhone.takeIf { it.isNotBlank() }?.let(::add)
-                if (contactId.isNotBlank()) {
-                    queryContactPhones(resolver, contactId).forEach { value ->
-                        if (value.isNotBlank() && !contains(value)) add(value)
-                    }
-                }
-            }
-            val emails = buildList {
-                selectedEmail.takeIf { it.isNotBlank() }?.let(::add)
-                if (contactId.isNotBlank()) {
-                    queryContactEmails(resolver, contactId).forEach { value ->
-                        if (value.isNotBlank() && !contains(value)) add(value)
-                    }
-                }
-            }
-            if (name.isNotBlank() && (phones.isNotEmpty() || emails.isNotEmpty())) {
+            if (name.isNotBlank() && (phone.isNotBlank() || email.isNotBlank())) {
                 DeviceContactPayload(
                     name = name,
-                    phone = phones.firstOrNull().orEmpty(),
-                    email = emails.firstOrNull(),
-                    phones = phones,
-                    emails = emails
+                    phone = phone,
+                    email = email.ifBlank { null },
+                    phones = listOfNotNull(phone.takeIf(String::isNotBlank)),
+                    emails = listOfNotNull(email.takeIf(String::isNotBlank))
                 )
             } else {
                 null
@@ -341,50 +362,7 @@ fun resolvePickedContact(context: Context, uri: Uri): DeviceContactPayload? {
     }.getOrNull()
     if (selectedContactable != null) return selectedContactable
 
-    // Case 2: legacy providers return a dedicated phone row.
-    val directPhonePayload = runCatching<DeviceContactPayload?> {
-        resolver.query(
-            uri,
-            arrayOf(
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.CONTACT_ID
-            ),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val name = cursor.getString(0).orEmpty().trim()
-                val number = cursor.getString(1).orEmpty().trim()
-                val contactId = cursor.getString(2).orEmpty().trim()
-                val normalized = normalizePhone(number)
-                val phones = buildList {
-                    if (normalized.isNotBlank()) add(normalized)
-                    if (contactId.isNotBlank()) {
-                        queryContactPhones(resolver, contactId).forEach { value ->
-                            if (value.isNotBlank() && !contains(value)) add(value)
-                        }
-                    }
-                }
-                val emails = if (contactId.isNotBlank()) queryContactEmails(resolver, contactId) else emptyList()
-                if (name.isNotBlank() && (phones.isNotEmpty() || emails.isNotEmpty())) {
-                    return@use DeviceContactPayload(
-                        name = name,
-                        phone = phones.firstOrNull().orEmpty(),
-                        email = emails.firstOrNull(),
-                        phones = phones,
-                        emails = emails
-                    )
-                }
-            }
-            null
-        }
-        null
-    }.getOrNull()
-    if (directPhonePayload != null) return directPhonePayload
-
-    // Case 3: URI points to a contact.
+    // Último recurso para proveedores que devuelven la URI general del contacto.
     val contactProjection = arrayOf(
         ContactsContract.Contacts._ID,
         ContactsContract.Contacts.DISPLAY_NAME,
@@ -416,6 +394,13 @@ fun resolvePickedContact(context: Context, uri: Uri): DeviceContactPayload? {
         phones = phones,
         emails = emails
     )
+}
+
+private fun android.database.Cursor.safeString(vararg columnNames: String): String {
+    return columnNames.firstNotNullOfOrNull { columnName ->
+        val index = getColumnIndex(columnName)
+        if (index < 0 || isNull(index)) null else runCatching { getString(index) }.getOrNull()
+    }.orEmpty().trim()
 }
 
 private fun normalizePhone(raw: String): String {

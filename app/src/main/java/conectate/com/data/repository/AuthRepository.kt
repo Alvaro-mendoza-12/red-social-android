@@ -35,6 +35,7 @@ import javax.inject.Singleton
 
 import android.content.Context
 import android.net.Uri
+import conectate.com.core.media.ProfileMediaSync
 import dagger.hilt.android.qualifiers.ApplicationContext
 import conectate.com.data.supabase.StorageService
 import java.util.UUID
@@ -203,9 +204,31 @@ class AuthRepository @Inject constructor(
             }
         }
 
+        user = user.copy(avatar_url = uploadedAvatarUrl)
+        val confirmedUser = userRepository.ensureCurrentProfile(user).getOrElse { error ->
+            android.util.Log.w("AuthRepository", "Failed to hydrate current profile after sign up", error)
+            user
+        }
+        // El endpoint puede canonicalizar la ruta del objeto (por ejemplo, añadiendo
+        // el propietario). La URL confirmada por el servidor debe prevalecer sobre
+        // la URL previa a la normalización para que la foto sea visible al entrar.
+        val confirmedAvatarUrl = ProfileMediaSync.confirmedReference(
+            uploadedUrl = uploadedAvatarUrl,
+            persistedUrl = confirmedUser.avatar_url
+        )
+
+        val hydratedUser = confirmedUser.copy(
+            display_name = normalizedName.takeIf { it.isNotBlank() },
+            full_name = normalizedName.takeIf { it.isNotBlank() },
+            country = normalizedCountry.takeIf { it.isNotBlank() },
+            gender = normalizedGender,
+            birth_date = normalizedBirthDate,
+            avatar_url = confirmedAvatarUrl
+        )
+
         authService.updateUserMetadata(
             fullName = normalizedName,
-            avatarUrl = uploadedAvatarUrl,
+            avatarUrl = confirmedAvatarUrl,
             displayName = normalizedName,
             country = normalizedCountry,
             privacyPolicyAccepted = true,
@@ -213,19 +236,6 @@ class AuthRepository @Inject constructor(
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to sync signup metadata", it)
         }
-
-        user = user.copy(avatar_url = uploadedAvatarUrl)
-        val hydratedUser = userRepository.ensureCurrentProfile(user).getOrElse { error ->
-            android.util.Log.w("AuthRepository", "Failed to hydrate current profile after sign up", error)
-            user
-        }.copy(
-            display_name = normalizedName.takeIf { it.isNotBlank() },
-            full_name = normalizedName.takeIf { it.isNotBlank() },
-            country = normalizedCountry.takeIf { it.isNotBlank() },
-            gender = normalizedGender,
-            birth_date = normalizedBirthDate,
-            avatar_url = uploadedAvatarUrl
-        )
 
         accountSessionRepository.captureCurrentAccount(
             displayName = hydratedUser.displayName,

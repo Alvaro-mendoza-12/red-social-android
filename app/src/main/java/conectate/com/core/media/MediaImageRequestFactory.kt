@@ -29,6 +29,25 @@ object MediaImageRequestFactory {
             .build()
     }
 
+    /**
+     * Animated media must use the original object. The Ubuntu thumbnail endpoint
+     * intentionally returns a bounded static WebP, which would freeze GIF/WebP stickers.
+     */
+    fun animated(context: Context, url: String?): ImageRequest? {
+        val data = UbuntuStorageUrl.rewrite(url) ?: return null
+        val sourceKey = UbuntuStorageUrl.stableCacheKey(data)
+        val animatedKey = sourceKey?.let { "animated-source:$it" }
+        return ImageRequest.Builder(context)
+            .data(data)
+            .memoryCacheKey(animatedKey)
+            .diskCacheKey(animatedKey)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(CachePolicy.ENABLED)
+            .crossfade(false)
+            .build()
+    }
+
     fun fullScreen(context: Context, url: String?): ImageRequest? {
         val data = UbuntuStorageUrl.rewrite(url) ?: return null
         val sourceKey = UbuntuStorageUrl.stableCacheKey(data)

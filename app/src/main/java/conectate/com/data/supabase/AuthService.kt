@@ -1360,12 +1360,43 @@ class AuthService @Inject constructor(
         val refreshToken = prefs.getString(KEY_REFRESH_TOKEN, null)?.trim().orEmpty()
         val displayUserId = localFallbackDisplayUserIdFromPrefs() ?: return null
         val email = localFallbackEmailFromPrefs() ?: return null
+        val displayName = prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val avatarUrl = prefs.getString(KEY_LOCAL_FALLBACK_AVATAR_URL, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val country = prefs.getString(KEY_LOCAL_FALLBACK_COUNTRY, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val accountCreatedAt = prefs.getString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
         return AuthResponse(
             accessToken = accessToken,
             refreshToken = refreshToken.ifBlank { accessToken },
             tokenType = "Bearer",
             expiresIn = 7 * 24 * 60 * 60,
-            user = UserData(id = displayUserId, email = email)
+            user = UserData(
+                id = displayUserId,
+                email = email,
+                metadata = kotlinx.serialization.json.buildJsonObject {
+                    put("fallback_auth", kotlinx.serialization.json.JsonPrimitive(true))
+                    displayName?.let {
+                        put("display_name", kotlinx.serialization.json.JsonPrimitive(it))
+                        put("full_name", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    avatarUrl?.let {
+                        put("avatar_url", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    country?.let {
+                        put("country", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    accountCreatedAt?.let {
+                        put("account_created_at", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                }
+            )
         )
     }
 

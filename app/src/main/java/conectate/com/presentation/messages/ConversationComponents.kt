@@ -183,6 +183,11 @@ fun ConversationItem(
                     "image" -> "image.png"
                     "video" -> "video.mp4"
                     "audio" -> "Audio"
+                    "gif" -> "GIF"
+                    "sticker" -> "Sticker"
+                    "contact" -> "Contacto"
+                    "location" -> "Ubicación"
+                    "document", "file" -> "Archivo"
                     else -> lastMessage?.content ?: "Sin actividad reciente"
                 }
                 val previewText = if (isFromMe && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
