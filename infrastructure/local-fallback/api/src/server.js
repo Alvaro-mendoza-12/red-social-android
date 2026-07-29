@@ -35,6 +35,16 @@ const version = '0.1.0'
 const port = Number(process.env.PORT || 3001)
 const jwtSecret = String(process.env.JWT_SECRET || '')
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '7d'
+const jwtPreviousSecrets = String(process.env.JWT_PREVIOUS_SECRETS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length >= 32 && value !== jwtSecret)
+const authRefreshTokenTtlDays = boundedInteger(
+  process.env.AUTH_REFRESH_TOKEN_TTL_DAYS,
+  90,
+  7,
+  365,
+)
 const databaseUrl = process.env.DATABASE_URL
 const corsOrigin = process.env.CORS_ORIGIN || '*'
 const legacySupabaseImportEnabled = /^(1|true|yes|on)$/i.test(
@@ -124,6 +134,13 @@ app.use('/v1/auth/login', createRateLimitMiddleware({
   windowMs: 15 * 60_000,
   code: 'AUTH_LOGIN_RATE_LIMITED',
   key: authCredentialKey,
+  methods: ['POST'],
+}))
+app.use('/v1/auth/refresh', createRateLimitMiddleware({
+  limit: boundedInteger(process.env.AUTH_REFRESH_RATE_LIMIT_PER_15_MINUTES, 60, 10, 300),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_REFRESH_RATE_LIMITED',
+  key: authIpKey,
   methods: ['POST'],
 }))
 app.use('/v1/auth/password-reset/request', createRateLimitMiddleware({
@@ -383,6 +400,21 @@ function signUserToken(user, options = {}) {
   )
 }
 
+function verifyLegacyUserToken(token) {
+  let lastError
+  for (const secret of [jwtSecret, ...jwtPreviousSecrets]) {
+    try {
+      return jwt.verify(token, secret, {
+        issuer: serviceName,
+        audience: 'conectate-clients',
+      })
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('INVALID_TOKEN')
+}
+
 function signAppealToken(userId) {
   return jwt.sign(
     {
@@ -436,6 +468,70 @@ function hashPasswordResetToken(token) {
   return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
 }
 
+function createAuthRefreshToken() {
+  return crypto.randomBytes(48).toString('base64url')
+}
+
+function hashAuthRefreshToken(token) {
+  return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
+}
+
+async function issueUserSession(user, req, options = {}) {
+  const executor = options.executor || pool
+  const client = cleanText(options.client || 'android', 40) || 'android'
+  const refreshToken = createAuthRefreshToken()
+  const { rows } = await executor.query(
+    `INSERT INTO fallback_auth_sessions(
+        user_id,
+        refresh_token_hash,
+        client,
+        ip_address,
+        user_agent,
+        expires_at
+     )
+     VALUES ($1, $2, $3, $4, $5, NOW() + ($6::text || ' days')::interval)
+     RETURNING id`,
+    [
+      user.id,
+      hashAuthRefreshToken(refreshToken),
+      client,
+      requestIpAddress(req),
+      requestUserAgent(req),
+      authRefreshTokenTtlDays,
+    ],
+  )
+  const sessionId = rows[0].id
+
+  await executor.query(
+    `UPDATE fallback_auth_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW()),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND revoked_at IS NULL
+       AND expires_at <= NOW()`,
+    [user.id],
+  )
+
+  return {
+    user,
+    accessToken: signUserToken(user, { sessionId, client }),
+    refreshToken,
+    tokenType: 'Bearer',
+    expiresIn: jwtExpiresIn,
+  }
+}
+
+async function revokeUserAuthSessions(userId, executor = pool) {
+  await executor.query(
+    `UPDATE fallback_auth_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW()),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND revoked_at IS NULL`,
+    [userId],
+  )
+}
+
 function shouldExposePasswordResetToken() {
   return passwordResetDelivery === 'response'
 }
@@ -463,6 +559,23 @@ async function touchWebSessionForAuth(auth, req) {
   const sessionId = String(auth?.sid || '').trim()
   if (!sessionId) return true
   if (!isUuidText(sessionId) || !isUuidText(auth?.sub)) return false
+
+  if (String(auth?.client || '').trim().toLowerCase() !== 'web') {
+    const { rows } = await pool.query(
+      `UPDATE fallback_auth_sessions
+       SET last_used_at = NOW(),
+           ip_address = COALESCE($3, ip_address),
+           user_agent = COALESCE($4, user_agent),
+           updated_at = NOW()
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+         AND expires_at > NOW()
+       RETURNING id`,
+      [sessionId, auth.sub, requestIpAddress(req), requestUserAgent(req)],
+    )
+    return Boolean(rows[0])
+  }
 
   const { rows } = await pool.query(
     `UPDATE fallback_web_sessions
@@ -778,6 +891,30 @@ async function ensureAuthMetadataColumns() {
     CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_active
     ON fallback_password_reset_tokens(expires_at)
     WHERE consumed_at IS NULL
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_auth_sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      refresh_token_hash TEXT NOT NULL UNIQUE,
+      client TEXT NOT NULL DEFAULT 'android',
+      ip_address TEXT,
+      user_agent TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_auth_sessions_user_active
+    ON fallback_auth_sessions(user_id, expires_at DESC)
+    WHERE revoked_at IS NULL
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_auth_sessions_expiry
+    ON fallback_auth_sessions(expires_at)
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_web_login_pairings (
@@ -1310,13 +1447,8 @@ app.post('/v1/auth/register', async (req, res, next) => {
 
     await recordAudit('auth_register', user.id, { email })
 
-    return res.status(201).json({
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-      supabaseSync,
-    })
+    const session = await issueUserSession(user, req)
+    return res.status(201).json({ ...session, supabaseSync })
   } catch (error) {
     if (error.code === '23505') {
       return res.status(409).json({ error: 'EMAIL_ALREADY_EXISTS' })
@@ -1406,14 +1538,114 @@ app.post('/v1/auth/login', async (req, res, next) => {
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_login', user.id, { email })
 
-    return res.json({
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-    })
+    return res.json(await issueUserSession(user, req))
   } catch (error) {
     return next(error)
+  }
+})
+
+app.post('/v1/auth/refresh', async (req, res, next) => {
+  const refreshToken = String(req.body?.refreshToken || '').trim()
+  if (refreshToken.length < 32 || refreshToken.length > 4096) {
+    return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const qualifiedUserColumns = userSelectColumns
+      .split(',')
+      .map((column) => `fallback_users.${column.trim()}`)
+      .join(', ')
+    const tokenHash = hashAuthRefreshToken(refreshToken)
+    const activeSession = await client.query(
+      `SELECT auth_session.id AS auth_session_id, ${qualifiedUserColumns}
+       FROM fallback_auth_sessions auth_session
+       JOIN fallback_users ON fallback_users.id = auth_session.user_id
+       WHERE auth_session.refresh_token_hash = $1
+         AND auth_session.revoked_at IS NULL
+         AND auth_session.expires_at > NOW()
+       LIMIT 1
+       FOR UPDATE OF auth_session`,
+      [tokenHash],
+    )
+
+    let row = activeSession.rows[0]
+    let consumedSessionId = row?.auth_session_id || null
+
+    // One-time migration path for APKs that stored the old access JWT as
+    // their refresh credential. It only accepts a currently valid token
+    // signed by this server; an email alone can never restore a session.
+    if (!row) {
+      let legacyPayload
+      try {
+        legacyPayload = verifyLegacyUserToken(refreshToken)
+      } catch {
+        await client.query('ROLLBACK')
+        return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+      }
+      if (
+        legacyPayload?.provider !== 'local-fallback' ||
+        !isUuidText(legacyPayload?.sub) ||
+        legacyPayload?.client === 'web' ||
+        legacyPayload?.sid
+      ) {
+        await client.query('ROLLBACK')
+        return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+      }
+      const legacyUser = await client.query(
+        `SELECT ${userSelectColumns}
+         FROM fallback_users
+         WHERE id = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [legacyPayload.sub],
+      )
+      row = legacyUser.rows[0]
+    }
+
+    if (!row) {
+      await client.query('ROLLBACK')
+      return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+    }
+
+    const suspension = await findActiveSuspension(client, row.id)
+    if (suspension) {
+      if (consumedSessionId) {
+        await client.query(
+          `UPDATE fallback_auth_sessions
+           SET revoked_at = NOW(), updated_at = NOW()
+           WHERE id = $1`,
+          [consumedSessionId],
+        )
+      }
+      await client.query('COMMIT')
+      return res.status(403).json(accountSuspendedPayload(suspension))
+    }
+
+    if (consumedSessionId) {
+      await client.query(
+        `UPDATE fallback_auth_sessions
+         SET revoked_at = NOW(),
+             last_used_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [consumedSessionId],
+      )
+    }
+
+    const user = sanitizeUser(await hydrateUserRow(row))
+    const session = await issueUserSession(user, req, { executor: client, client: 'android' })
+    await recordAudit('auth_refresh', user.id, {
+      migratedLegacyToken: !consumedSessionId,
+    })
+    await client.query('COMMIT')
+    return res.json(session)
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client.release()
   }
 })
 
@@ -1471,13 +1703,8 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_change_password', user.id, { email: user.email })
-    return res.json({
-      ok: true,
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-    })
+    await revokeUserAuthSessions(user.id)
+    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
   } catch (error) {
     return next(error)
   }
@@ -1598,13 +1825,8 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_password_reset_completed', user.id, { email: user.email })
-    return res.json({
-      ok: true,
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-    })
+    await revokeUserAuthSessions(user.id)
+    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
   } catch (error) {
     return next(error)
   }
@@ -1662,13 +1884,8 @@ app.post('/v1/auth/complete-migrated-password-reset', async (req, res, next) => 
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_complete_migrated_password_reset', user.id, { email: user.email })
-    return res.json({
-      ok: true,
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-    })
+    await revokeUserAuthSessions(user.id)
+    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
   } catch (error) {
     return next(error)
   }
@@ -1964,13 +2181,8 @@ app.post('/v1/auth/activate-local-password', async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(rows[0]))
     await recordAudit('auth_activate_local_password', user.id, { email })
-    return res.json({
-      ok: true,
-      user,
-      accessToken: signUserToken(user),
-      tokenType: 'Bearer',
-      expiresIn: jwtExpiresIn,
-    })
+    await revokeUserAuthSessions(user.id)
+    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
   } catch (error) {
     return next(error)
   }

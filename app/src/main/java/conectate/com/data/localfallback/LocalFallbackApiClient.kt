@@ -198,6 +198,7 @@ data class LocalFallbackUser(
 data class LocalFallbackAuthResponse(
     val user: LocalFallbackUser,
     val accessToken: String = "",
+    val refreshToken: String = "",
     val tokenType: String = "Bearer",
     val expiresIn: String = "7d"
 )
@@ -556,6 +557,11 @@ private data class LocalFallbackStorageListResponse(
 private data class LocalFallbackLoginRequest(
     val email: String,
     val password: String
+)
+
+@Serializable
+private data class LocalFallbackRefreshRequest(
+    val refreshToken: String
 )
 
 @Serializable
@@ -1251,6 +1257,9 @@ class LocalFallbackMigratedPasswordSetupRequiredException(
     val migrationToken: String
 ) : Exception("Por la migración a Ubuntu, esta cuenta necesita crear una contraseña una sola vez.")
 
+class LocalFallbackSessionRenewalRequiredException :
+    Exception("Tu sesión ya no se puede renovar. Inicia sesión nuevamente.")
+
 @Serializable
 data class LocalFallbackPasswordResetResponse(
     val ok: Boolean = true,
@@ -1649,6 +1658,28 @@ class LocalFallbackApiClient @Inject constructor(
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return requestJson<LocalFallbackChatResponse>("$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}", accessToken)
             .map { it.normalized() }
+    }
+
+    suspend fun refreshSession(refreshToken: String): Result<LocalFallbackAuthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val token = refreshToken.trim()
+        if (token.isBlank()) return Result.failure(Exception("No hay una sesión que renovar."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/refresh") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackRefreshRequest(token))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackAuthResponse>(body).normalized())
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun loadCommunityRoleCatalog(
@@ -4783,8 +4814,9 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("Solo el autor puede cambiar el permiso de remix.")
             "INVALID_REMIX_AUDIENCE" ->
                 Exception("Elige quién puede crear remixes: todos o solo seguidores.")
-            "AUTH_REQUIRED" -> Exception("Tu sesión Ubuntu no llegó a la API. Cierra sesión e inicia sesión otra vez contra Ubuntu.")
-            "INVALID_TOKEN" -> Exception("Tu sesión Ubuntu ya no es válida para este servidor. Inicia sesión otra vez; si cambiaste JWT_SECRET o reparaste la VM, los tokens anteriores quedan invalidados.")
+            "AUTH_REQUIRED" -> Exception("Tu sesión necesita renovarse. Vuelve a intentarlo.")
+            "INVALID_TOKEN" -> Exception("Tu sesión venció y no pudo renovarse. Inicia sesión nuevamente.")
+            "INVALID_REFRESH_TOKEN" -> LocalFallbackSessionRenewalRequiredException()
             "ACCOUNT_DELETED" -> {
                 AccountDeletedEvents.notifyAccountDeleted()
                 AccountDeletedException()

@@ -10,6 +10,7 @@ import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackAuthResponse
 import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
+import conectate.com.data.localfallback.LocalFallbackSessionRenewalRequiredException
 import conectate.com.data.localfallback.LocalFallbackUser
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -34,6 +35,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import conectate.com.data.local.AppDatabase
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.gotrue.user.UserSession
@@ -134,6 +137,11 @@ class AuthService @Inject constructor(
             Log.e("AuthService", "Uncaught auth coroutine exception", throwable)
         }
     )
+    private val localSessionRefreshMutex = Mutex()
+    @Volatile
+    private var localSessionRefreshLastAttemptAtMs: Long = 0L
+    @Volatile
+    private var localSessionRefreshLastSuccessAtMs: Long = 0L
 
     fun ensureSecureStorageAvailable(): Result<Unit> {
         var prefs = authPrefsOrNull
@@ -178,7 +186,6 @@ class AuthService @Inject constructor(
         val access = accessToken.trim()
         val refresh = refreshToken.trim()
         if (!isLocalFallbackModeEnabled() || access.isBlank() || refresh.isBlank()) return false
-        if (access != refresh) return false
         return extractJwtClaim(access, "provider") == "local-fallback"
     }
 
@@ -335,7 +342,12 @@ class AuthService @Inject constructor(
             if (localSession != null) {
                 _currentSession.value = localSession
                 authScope.launch {
-                    runCatching { syncLocalFallbackCompatibilitySession(localSession.accessToken) }
+                    val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
+                        .getOrElse {
+                            Log.w("AuthService", "Ubuntu session could not be renewed at startup", it)
+                            localSession.accessToken
+                        }
+                    runCatching { syncLocalFallbackCompatibilitySession(refreshedToken) }
                         .onFailure { Log.e("AuthService", "Ubuntu compatibility session sync failed", it) }
                     _isInitializing.value = false
                 }
@@ -968,7 +980,12 @@ class AuthService @Inject constructor(
     fun getRefreshToken(): String? {
         TestRuntimeOverrides.currentSession(context)?.refreshToken?.let { return it }
         if (isForcedLogout()) return null
-        readLocalFallbackAccessToken()?.let { return it }
+        if (isLocalFallbackSession()) {
+            return authPrefsOrNull
+                ?.getString(KEY_REFRESH_TOKEN, null)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }
         if (isLocalFallbackModeEnabled()) return null
         return supabaseConfig.client.auth.currentSessionOrNull()?.refreshToken
             ?: authPrefsOrNull?.getString(KEY_REFRESH_TOKEN, null)
@@ -984,7 +1001,13 @@ class AuthService @Inject constructor(
         TestRuntimeOverrides.currentSession(context)?.accessToken?.trim()?.takeIf { it.isNotBlank() }?.let {
             return it
         }
-        readLocalFallbackAccessToken()?.let { return it }
+        if (isLocalFallbackSession()) {
+            return refreshPersistedLocalFallbackSessionIfNeeded()
+                .getOrElse { error ->
+                    Log.w("AuthService", "Ubuntu session refresh failed", error)
+                    null
+                }
+        }
         var currentToken = getAccessToken()
         if (currentToken.isNullOrBlank()) {
             if (isLocalFallbackModeEnabled()) return null
@@ -1041,9 +1064,11 @@ class AuthService @Inject constructor(
         if (isForcedLogout()) {
             return Result.failure(Exception("No hay una sesión activa"))
         }
-        readLocalFallbackAccessToken()?.let { token ->
-            recoverPersistedLocalFallbackSession()?.let { _currentSession.value = it }
-            return Result.success(token)
+        if (isLocalFallbackSession()) {
+            return refreshPersistedLocalFallbackSessionIfNeeded().map { token ->
+                recoverPersistedLocalFallbackSession()?.let { _currentSession.value = it }
+                token
+            }
         }
 
         return try {
@@ -1195,9 +1220,64 @@ class AuthService @Inject constructor(
         ) && !prefs.getString(KEY_LOCAL_FALLBACK_EMAIL, null).isNullOrBlank()
     }
 
+    private suspend fun refreshPersistedLocalFallbackSessionIfNeeded(
+        force: Boolean = false
+    ): Result<String> = localSessionRefreshMutex.withLock {
+        if (!isLocalFallbackModeEnabled() || !isLocalFallbackSession()) {
+            return@withLock Result.failure(Exception("No hay una sesión activa."))
+        }
+
+        val prefs = authPrefsOrNull
+            ?: return@withLock Result.failure(Exception("El almacenamiento seguro no está disponible."))
+        val accessToken = prefs.getString(KEY_ACCESS_TOKEN, null)?.trim().orEmpty()
+        val refreshToken = prefs.getString(KEY_REFRESH_TOKEN, null)?.trim().orEmpty()
+            .ifBlank { accessToken }
+        if (accessToken.isBlank() || refreshToken.isBlank()) {
+            return@withLock Result.failure(Exception("No hay una sesión activa."))
+        }
+
+        val now = System.currentTimeMillis()
+        val accessNeedsRefresh = isTokenExpiredOrExpiringSoon(accessToken, withinSeconds = 10 * 60L)
+        val recentlyValidated = now - localSessionRefreshLastSuccessAtMs < 12 * 60 * 60_000L
+        val recentlyAttempted = now - localSessionRefreshLastAttemptAtMs < 60_000L
+        if (!force && !accessNeedsRefresh && (recentlyValidated || recentlyAttempted)) {
+            return@withLock Result.success(accessToken)
+        }
+
+        localSessionRefreshLastAttemptAtMs = now
+        val refreshed = localFallbackApiClient.refreshSession(refreshToken)
+        val refreshedResponse = refreshed.getOrNull()
+        if (refreshedResponse != null) {
+            val response = refreshedResponse
+            persistLocalFallbackSession(response)
+            localSessionRefreshLastSuccessAtMs = System.currentTimeMillis()
+        }
+        return@withLock refreshed.fold(
+            onSuccess = { response -> Result.success(response.accessToken.trim()) },
+            onFailure = { error ->
+                if (error is LocalFallbackSessionRenewalRequiredException) {
+                    forceLocalLogout()
+                    Result.failure(
+                        Exception(
+                            "Por seguridad, esta sesión antigua no pudo renovarse. Inicia sesión una sola vez.",
+                            error
+                        )
+                    )
+                } else if (isTokenExpiredOrExpiringSoon(accessToken, withinSeconds = 0L)) {
+                    Result.failure(Exception("No pudimos renovar tu sesión. Revisa tu conexión e inténtalo otra vez.", error))
+                } else {
+                    // A transient outage must not log out a user whose access token
+                    // is still locally valid. The next foreground request retries.
+                    Result.success(accessToken)
+                }
+            }
+        )
+    }
+
     private suspend fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
         val user = response.user
         val accessToken = response.accessToken.trim()
+        val refreshToken = response.refreshToken.trim().ifBlank { accessToken }
         val localUserId = user.id.trim().lowercase()
         val displayUserId = localFallbackDisplayUserId(user)
         val email = user.email.trim().lowercase()
@@ -1207,7 +1287,7 @@ class AuthService @Inject constructor(
             ?.putBoolean(KEY_FORCED_LOGOUT, false)
             ?.putBoolean(KEY_LOCAL_FALLBACK_SESSION, true)
             ?.putString(KEY_ACCESS_TOKEN, accessToken)
-            ?.putString(KEY_REFRESH_TOKEN, accessToken)
+            ?.putString(KEY_REFRESH_TOKEN, refreshToken)
             ?.putString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, localUserId)
             ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, displayUserId)
             ?.putString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, user.supabaseUserId?.trim()?.lowercase())
@@ -1246,7 +1326,7 @@ class AuthService @Inject constructor(
         val email = user.email.trim().lowercase()
         return AuthResponse(
             accessToken = response.accessToken,
-            refreshToken = response.accessToken,
+            refreshToken = response.refreshToken.trim().ifBlank { response.accessToken },
             tokenType = response.tokenType.ifBlank { "Bearer" },
             expiresIn = 7 * 24 * 60 * 60,
             user = UserData(
@@ -1277,11 +1357,12 @@ class AuthService @Inject constructor(
         if (!isLocalFallbackSession()) return null
         val prefs = authPrefsOrNull ?: return null
         val accessToken = prefs.getString(KEY_ACCESS_TOKEN, null)?.trim().orEmpty()
+        val refreshToken = prefs.getString(KEY_REFRESH_TOKEN, null)?.trim().orEmpty()
         val displayUserId = localFallbackDisplayUserIdFromPrefs() ?: return null
         val email = localFallbackEmailFromPrefs() ?: return null
         return AuthResponse(
             accessToken = accessToken,
-            refreshToken = accessToken,
+            refreshToken = refreshToken.ifBlank { accessToken },
             tokenType = "Bearer",
             expiresIn = 7 * 24 * 60 * 60,
             user = UserData(id = displayUserId, email = email)
