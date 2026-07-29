@@ -14,6 +14,7 @@ import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -93,11 +94,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -247,6 +250,7 @@ fun MessageMediaComposer(
         onDismissRequest = { if (!isSending && !preparing) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        KeepMediaCanvasFixedWhileTyping()
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
             when (step) {
                 "gallery" -> MessageGalleryStep(
@@ -366,6 +370,19 @@ fun MessageMediaComposer(
                 cropTargetUri = null
             }
         )
+    }
+}
+
+@Composable
+private fun KeepMediaCanvasFixedWhileTyping() {
+    val dialogView = LocalView.current
+    DisposableEffect(dialogView) {
+        val window = (dialogView.parent as? DialogWindowProvider)?.window
+        val previousMode = window?.attributes?.softInputMode
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        onDispose {
+            if (previousMode != null) window?.setSoftInputMode(previousMode)
+        }
     }
 }
 

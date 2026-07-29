@@ -1,11 +1,16 @@
 package conectate.com.presentation.components
 
+import android.Manifest
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -114,6 +120,10 @@ fun DeviceAudioPickerDialog(
     initialUri: Uri? = null,
     title: String = "Elegir canción",
     confirmLabel: String = "Listo y guardar",
+    maxClipDurationMs: Long? = PROFILE_AUDIO_MAX_CLIP_MS,
+    defaultClipDurationMs: Long = DEFAULT_PROFILE_AUDIO_CLIP_MS,
+    allowFullTrack: Boolean = false,
+    defaultToFullTrack: Boolean = false,
     onBrowseFiles: () -> Unit,
     onDismiss: () -> Unit,
     onClipReady: (PreparedAudioClip) -> Unit,
@@ -121,9 +131,22 @@ fun DeviceAudioPickerDialog(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val player = remember { ExoPlayer.Builder(context).build() }
+    val audioPermission = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+    }
 
     var tracks by remember { mutableStateOf<List<DeviceAudioTrack>>(emptyList()) }
     var loadingTracks by remember { mutableStateOf(true) }
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, audioPermission) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
     var query by remember { mutableStateOf("") }
     var selectedTrack by remember { mutableStateOf<DeviceAudioTrack?>(null) }
     var trimRangeMs by remember { mutableStateOf(0f..1f) }
@@ -133,6 +156,12 @@ fun DeviceAudioPickerDialog(
     var previewEndMs by remember { mutableLongStateOf(Long.MAX_VALUE) }
     var preparingClip by remember { mutableStateOf(false) }
     var preparationError by remember { mutableStateOf<String?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasAudioPermission = granted
+        if (!granted) loadingTracks = false
+    }
 
     fun pause() {
         player.pause()
@@ -155,7 +184,11 @@ fun DeviceAudioPickerDialog(
     fun choose(track: DeviceAudioTrack) {
         pause()
         selectedTrack = track
-        trimRangeMs = defaultAudioTrimRange(track.durationMs)
+        trimRangeMs = defaultAudioTrimRange(
+            durationMs = track.durationMs,
+            defaultClipDurationMs = defaultClipDurationMs,
+            defaultToFullTrack = defaultToFullTrack,
+        )
         currentPositionMs = trimRangeMs.start.toLong()
         preparationError = null
     }
@@ -189,9 +222,18 @@ fun DeviceAudioPickerDialog(
     }
 
     LaunchedEffect(Unit) {
-        loadingTracks = true
-        tracks = withContext(Dispatchers.IO) { queryDeviceAudioTracks(context) }
-        loadingTracks = false
+        if (!hasAudioPermission) permissionLauncher.launch(audioPermission)
+    }
+
+    LaunchedEffect(hasAudioPermission) {
+        if (hasAudioPermission) {
+            loadingTracks = true
+            tracks = withContext(Dispatchers.IO) { queryDeviceAudioTracks(context) }
+            loadingTracks = false
+        } else {
+            tracks = emptyList()
+            loadingTracks = false
+        }
     }
 
     LaunchedEffect(initialUri) {
@@ -265,6 +307,7 @@ fun DeviceAudioPickerDialog(
                         AudioLibrary(
                             tracks = tracks,
                             loading = loadingTracks,
+                            hasAudioPermission = hasAudioPermission,
                             query = query,
                             playingUri = playingUri,
                             isPlaying = isPlaying,
@@ -273,6 +316,7 @@ fun DeviceAudioPickerDialog(
                                 if (playingUri == track.uri && player.isPlaying) pause() else play(track)
                             },
                             onChoose = ::choose,
+                            onRequestPermission = { permissionLauncher.launch(audioPermission) },
                             onBrowseFiles = onBrowseFiles,
                         )
                     } else {
@@ -288,6 +332,7 @@ fun DeviceAudioPickerDialog(
                                     proposed = proposed,
                                     previous = trimRangeMs,
                                     durationMs = selectedTrack!!.durationMs,
+                                    maxClipDurationMs = maxClipDurationMs,
                                 )
                                 if (player.isPlaying) pause()
                                 player.seekTo(trimRangeMs.start.toLong())
@@ -303,42 +348,67 @@ fun DeviceAudioPickerDialog(
                                     )
                                 }
                             },
+                            allowFullTrack = allowFullTrack,
+                            maxClipDurationMs = maxClipDurationMs,
+                            onUseFullTrack = {
+                                pause()
+                                trimRangeMs = 0f..selectedTrack!!.durationMs
+                                    .coerceAtLeast(MIN_AUDIO_CLIP_MS)
+                                    .toFloat()
+                                player.seekTo(0L)
+                            },
                             onConfirm = {
                                 if (!preparingClip) {
                                     pause()
                                     preparationError = null
-                                    preparingClip = true
-                                    scope.launch {
-                                        val track = selectedTrack!!
-                                        val result = exportAudioClip(
-                                            context = context,
-                                            sourceUri = track.uri,
-                                            startMs = trimRangeMs.start.toLong(),
-                                            endMs = trimRangeMs.endInclusive.toLong(),
+                                    val track = selectedTrack!!
+                                    val selectedWholeTrack =
+                                        trimRangeMs.start <= 50f &&
+                                            trimRangeMs.endInclusive >= track.durationMs - 50f
+                                    if (allowFullTrack && selectedWholeTrack) {
+                                        onClipReady(
+                                            PreparedAudioClip(
+                                                uri = track.uri,
+                                                displayName = track.title.take(140).ifBlank { "audio" },
+                                                mimeType = context.contentResolver.getType(track.uri)
+                                                    ?.takeIf { it.startsWith("audio/") }
+                                                    ?: "audio/*",
+                                            ),
                                         )
-                                        preparingClip = false
-                                        result.fold(
-                                            onSuccess = { uri ->
-                                                val cleanTitle = track.title
-                                                    .substringBeforeLast('.', track.title)
-                                                    .ifBlank { "cancion" }
-                                                    .take(120)
-                                                onClipReady(
-                                                    PreparedAudioClip(
-                                                        uri = uri,
-                                                        displayName = "${cleanTitle}_recorte.m4a",
-                                                    ),
-                                                )
-                                                onDismiss()
-                                            },
-                                            onFailure = { error ->
-                                                preparationError = when {
-                                                    error.message.orEmpty().contains("codec", ignoreCase = true) ->
-                                                        "Este formato no se pudo recortar en el teléfono. Prueba otra canción."
-                                                    else -> "No se pudo preparar el recorte. Inténtalo nuevamente."
-                                                }
-                                            },
-                                        )
+                                        onDismiss()
+                                    } else {
+                                        preparingClip = true
+                                        scope.launch {
+                                            val result = exportAudioClip(
+                                                context = context,
+                                                sourceUri = track.uri,
+                                                startMs = trimRangeMs.start.toLong(),
+                                                endMs = trimRangeMs.endInclusive.toLong(),
+                                            )
+                                            preparingClip = false
+                                            result.fold(
+                                                onSuccess = { uri ->
+                                                    val cleanTitle = track.title
+                                                        .substringBeforeLast('.', track.title)
+                                                        .ifBlank { "cancion" }
+                                                        .take(120)
+                                                    onClipReady(
+                                                        PreparedAudioClip(
+                                                            uri = uri,
+                                                            displayName = "${cleanTitle}_recorte.m4a",
+                                                        ),
+                                                    )
+                                                    onDismiss()
+                                                },
+                                                onFailure = { error ->
+                                                    preparationError = when {
+                                                        error.message.orEmpty().contains("codec", ignoreCase = true) ->
+                                                            "Este formato no se pudo recortar en el teléfono. Prueba otra canción."
+                                                        else -> "No se pudo preparar el recorte. Inténtalo nuevamente."
+                                                    }
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -355,12 +425,14 @@ fun DeviceAudioPickerDialog(
 private fun AudioLibrary(
     tracks: List<DeviceAudioTrack>,
     loading: Boolean,
+    hasAudioPermission: Boolean,
     query: String,
     playingUri: Uri?,
     isPlaying: Boolean,
     onQueryChange: (String) -> Unit,
     onPlay: (DeviceAudioTrack) -> Unit,
     onChoose: (DeviceAudioTrack) -> Unit,
+    onRequestPermission: () -> Unit,
     onBrowseFiles: () -> Unit,
 ) {
     val normalizedQuery = query.trim().lowercase(Locale.getDefault())
@@ -413,10 +485,22 @@ private fun AudioLibrary(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (query.isBlank()) "No se encontraron canciones visibles" else "No hay coincidencias",
+                    when {
+                        query.isNotBlank() -> "No hay coincidencias"
+                        !hasAudioPermission -> "Permite acceso a música para mostrar tu biblioteca"
+                        else -> "No se encontraron canciones visibles"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(12.dp))
+                if (!hasAudioPermission) {
+                    Button(onClick = onRequestPermission) {
+                        Icon(Icons.Default.MusicNote, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Permitir acceso")
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
                 OutlinedButton(onClick = onBrowseFiles) {
                     Icon(Icons.Default.FolderOpen, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -510,8 +594,11 @@ private fun AudioClipEditor(
     preparing: Boolean,
     error: String?,
     confirmLabel: String,
+    allowFullTrack: Boolean,
+    maxClipDurationMs: Long?,
     onRangeChange: (ClosedFloatingPointRange<Float>) -> Unit,
     onPlayPreview: () -> Unit,
+    onUseFullTrack: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     val durationMs = track.durationMs.coerceAtLeast(1_000L)
@@ -612,8 +699,28 @@ private fun AudioClipEditor(
             Text(if (isPlaying) "Pausar previsualización" else "Previsualizar recorte")
         }
 
+        if (allowFullTrack) {
+            OutlinedButton(
+                onClick = onUseFullTrack,
+                enabled = !preparing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+            ) {
+                Icon(Icons.Default.MusicNote, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Usar la canción completa")
+            }
+        }
+
         Text(
-            text = "Mueve los dos controles para elegir un fragmento de hasta 60 segundos.",
+            text = when {
+                maxClipDurationMs == null ->
+                    "Envía la canción completa o mueve los controles para recortar la parte que prefieras."
+                else ->
+                    "Mueve los dos controles para elegir un fragmento de hasta " +
+                        "${maxClipDurationMs / 1_000} segundos."
+            },
             modifier = Modifier.padding(top = 12.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -649,15 +756,25 @@ private fun AudioClipEditor(
     }
 }
 
-private fun defaultAudioTrimRange(durationMs: Long): ClosedFloatingPointRange<Float> {
+private fun defaultAudioTrimRange(
+    durationMs: Long,
+    defaultClipDurationMs: Long,
+    defaultToFullTrack: Boolean,
+): ClosedFloatingPointRange<Float> {
     val safeDuration = durationMs.coerceAtLeast(MIN_AUDIO_CLIP_MS)
-    return 0f..min(safeDuration, DEFAULT_PROFILE_AUDIO_CLIP_MS).toFloat()
+    val selectedDuration = if (defaultToFullTrack) {
+        safeDuration
+    } else {
+        min(safeDuration, defaultClipDurationMs.coerceAtLeast(MIN_AUDIO_CLIP_MS))
+    }
+    return 0f..selectedDuration.toFloat()
 }
 
 private fun constrainAudioRange(
     proposed: ClosedFloatingPointRange<Float>,
     previous: ClosedFloatingPointRange<Float>,
     durationMs: Long,
+    maxClipDurationMs: Long?,
 ): ClosedFloatingPointRange<Float> {
     val duration = durationMs.coerceAtLeast(MIN_AUDIO_CLIP_MS).toFloat()
     val minClip = min(MIN_AUDIO_CLIP_MS.toFloat(), duration)
@@ -665,11 +782,11 @@ private fun constrainAudioRange(
     var end = proposed.endInclusive.coerceIn(start, duration)
     val movedStart = abs(proposed.start - previous.start) > abs(proposed.endInclusive - previous.endInclusive)
 
-    if (end - start > PROFILE_AUDIO_MAX_CLIP_MS.toFloat()) {
+    if (maxClipDurationMs != null && end - start > maxClipDurationMs.toFloat()) {
         if (movedStart) {
-            start = (end - PROFILE_AUDIO_MAX_CLIP_MS.toFloat()).coerceAtLeast(0f)
+            start = (end - maxClipDurationMs.toFloat()).coerceAtLeast(0f)
         } else {
-            end = (start + PROFILE_AUDIO_MAX_CLIP_MS.toFloat()).coerceAtMost(duration)
+            end = (start + maxClipDurationMs.toFloat()).coerceAtMost(duration)
         }
     }
     if (end - start < minClip) {

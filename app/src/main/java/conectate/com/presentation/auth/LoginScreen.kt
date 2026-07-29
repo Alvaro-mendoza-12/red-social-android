@@ -28,6 +28,7 @@ import androidx.navigation.NavController
 import conectate.com.R
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.navigation.Screen
 import java.time.Instant
 import java.time.LocalDateTime
@@ -88,6 +89,8 @@ fun LoginScreen(
     LaunchedEffect(authErrorText, suspendedState) {
         if (isSuspensionError) {
             showSuspendedDialog = true
+        } else if (authErrorText.isNotBlank()) {
+            AppFeedbackBus.showError(authErrorText)
         }
     }
 

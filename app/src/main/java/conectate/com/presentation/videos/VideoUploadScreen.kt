@@ -306,7 +306,9 @@ fun VideoUploadScreen(
                 }
             )
         },
-        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        }
     ) { padding ->
         if (isUploading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {

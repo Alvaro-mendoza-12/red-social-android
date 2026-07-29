@@ -1,5 +1,9 @@
 package conectate.com.presentation.common
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -13,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
@@ -53,6 +58,27 @@ object AppFeedbackBus {
         throwable: Throwable?,
         fallback: String = "Ocurrió un problema. Inténtalo de nuevo."
     ) = showError(throwable.toUserFacingMessage(fallback))
+}
+
+/**
+ * Shared host for screen-local feedback. Scaffold normally anchors snackbars
+ * to the physical bottom of the window, which lets the IME cover them on a
+ * number of OEM keyboards. Applying the IME/navigation insets at the host
+ * keeps validation, upload and permission errors visible while typing.
+ */
+@Composable
+fun KeyboardSafeSnackbarHost(
+    hostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
+    SnackbarHost(
+        hostState = hostState,
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    )
 }
 
 @Composable

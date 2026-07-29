@@ -137,7 +137,9 @@ fun NovvinChatScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {

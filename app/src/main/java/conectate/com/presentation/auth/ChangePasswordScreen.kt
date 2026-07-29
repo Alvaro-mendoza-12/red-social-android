@@ -3,6 +3,8 @@ package conectate.com.presentation.auth
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
@@ -19,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import conectate.com.presentation.common.AppFeedbackBus
 
 
 @Composable
@@ -45,12 +48,17 @@ fun ChangePasswordScreen(
             // Ubuntu entrega un token renovado y AuthService ya lo persiste.
             // Mantener la sesión evita expulsar al usuario después de un cambio válido.
             navController.popBackStack()
+        } else if (authState is AuthState.Error) {
+            AppFeedbackBus.showError((authState as AuthState.Error).message)
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {

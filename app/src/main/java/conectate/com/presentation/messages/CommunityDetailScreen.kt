@@ -101,7 +101,9 @@ fun CommunityDetailScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         topBar = {
             TopAppBar(
                 title = { Text(community?.name ?: "Detalles de la comunidad") },

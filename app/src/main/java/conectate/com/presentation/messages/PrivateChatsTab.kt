@@ -300,11 +300,10 @@ fun PrivateChatsTab(
             }
         }
         }
-        SnackbarHost(
+        conectate.com.presentation.common.KeyboardSafeSnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(12.dp)
         )
 
         if (showCreateFolderDialog) {

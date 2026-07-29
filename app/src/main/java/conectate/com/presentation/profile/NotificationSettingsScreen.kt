@@ -111,7 +111,9 @@ fun NotificationSettingsScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Resumen de notificaciones") },

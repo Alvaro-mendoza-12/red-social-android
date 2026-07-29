@@ -46,6 +46,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -645,26 +646,48 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
         val done = CompletableDeferred<Unit>()
         var failure: Throwable? = null
-        val transformer = Transformer.Builder(context)
-            .setEncoderFactory(encoderFactory)
-            .setTransformationRequest(request)
-            .addListener(object : Transformer.Listener {
-                override fun onCompleted(composition: Composition, result: ExportResult) {
-                    done.complete(Unit)
-                }
-                override fun onError(composition: Composition, result: ExportResult, exception: androidx.media3.transformer.ExportException) {
-                    failure = exception
-                    done.complete(Unit)
-                }
-            })
-            .build()
+        // Media3 Transformer is tied to the Looper where it is created. The
+        // export coordinator runs on IO, so every Transformer call must be
+        // marshalled to Main. Creating/starting it from IO works on a few
+        // devices by accident, but fails on others with "no Looper" or
+        // "accessed on the wrong thread" when exporting the final edit.
+        val transformer = withContext(Dispatchers.Main.immediate) {
+            Transformer.Builder(context)
+                .setEncoderFactory(encoderFactory)
+                .setTransformationRequest(request)
+                .addListener(object : Transformer.Listener {
+                    override fun onCompleted(composition: Composition, result: ExportResult) {
+                        done.complete(Unit)
+                    }
+
+                    override fun onError(
+                        composition: Composition,
+                        result: ExportResult,
+                        exception: androidx.media3.transformer.ExportException
+                    ) {
+                        failure = exception
+                        android.util.Log.e(
+                            "VideoEditorExport",
+                            "Transformer failed: code=${exception.errorCode}",
+                            exception
+                        )
+                        done.complete(Unit)
+                    }
+                })
+                .build()
+        }
 
         try {
             _exportStage.value = EditorExportStage.RENDERING
-            transformer.start(composition, outputFile.absolutePath)
+            withContext(Dispatchers.Main.immediate) {
+                transformer.start(composition, outputFile.absolutePath)
+            }
             val holder = ProgressHolder()
             while (!done.isCompleted) {
-                if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                val progressState = withContext(Dispatchers.Main.immediate) {
+                    transformer.getProgress(holder)
+                }
+                if (progressState == Transformer.PROGRESS_STATE_AVAILABLE) {
                     _exportProgress.value = holder.progress / 100f
                     if (holder.progress >= 95) {
                         _exportStage.value = EditorExportStage.FINALIZING
@@ -673,8 +696,11 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 delay(220)
             }
         } catch (error: Throwable) {
-            runCatching { transformer.cancel() }
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
+                runCatching { transformer.cancel() }
+            }
             runCatching { outputFile.delete() }
+            android.util.Log.e("VideoEditorExport", "Export attempt failed", error)
             throw error
         }
         if (failure != null) throw failure!!

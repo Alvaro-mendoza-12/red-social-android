@@ -97,7 +97,9 @@ fun ConversationsScreen(
         Scaffold(
             containerColor = colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = {
+                conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+            },
             topBar = {
                 Column(modifier = Modifier.background(colorScheme.surface)) {
                     Row(

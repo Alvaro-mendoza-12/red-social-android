@@ -79,7 +79,9 @@ fun FullScreenImageScreen(
                 )
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         containerColor = Color.Black
     ) { padding ->
         Box(

@@ -215,7 +215,9 @@ fun VoiceRoomActiveScreen(
 
     Scaffold(
         containerColor = backgroundColor,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         topBar = {
             // Transparent top bar for video mode, visible otherwise
             // Always show TopBar but style differntly

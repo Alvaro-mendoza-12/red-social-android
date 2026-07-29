@@ -680,7 +680,7 @@ class ChatViewModel @Inject constructor(
     private fun showCreateChatError(error: Throwable?) {
         val message = normalizeSendError(error?.message.orEmpty())
         android.util.Log.e("ChatViewModel", "Create chat failed: $message", error)
-        Toast.makeText(context, "Error al crear chat: $message", Toast.LENGTH_LONG).show()
+        conectate.com.presentation.common.AppFeedbackBus.showError("Error al crear chat: $message")
     }
 
     fun updateMessageText(text: String) {
@@ -727,13 +727,13 @@ class ChatViewModel @Inject constructor(
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
                     _messageText.value = text
                     _replyToMessage.value = replyTo
-                    Toast.makeText(context, "No se pudo enviar: $error", Toast.LENGTH_LONG).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar: $error")
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Send error", e)
-                Toast.makeText(context, "Error al enviar mensaje", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar mensaje")
             } finally {
                 _isSending.value = false
             }
@@ -771,7 +771,7 @@ class ChatViewModel @Inject constructor(
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
-                    Toast.makeText(context, "No se pudo enviar archivo: $error", Toast.LENGTH_LONG).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar archivo: $error")
                 } else if (messageType == "audio") {
                     val sent = result.getOrNull()
                     val mediaUrl = sent?.media_url?.trim().orEmpty()
@@ -783,7 +783,7 @@ class ChatViewModel @Inject constructor(
                 throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Media send error", e)
-                Toast.makeText(context, "Error al enviar archivo", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar archivo")
             } finally {
                 _isSending.value = false
             }
@@ -844,13 +844,13 @@ class ChatViewModel @Inject constructor(
                     } else {
                         "No se pudieron enviar los archivos."
                     }
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError(message)
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Batch media send error", e)
-                Toast.makeText(context, "Error al enviar archivos", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar archivos")
             } finally {
                 _isSending.value = false
             }
@@ -877,7 +877,7 @@ class ChatViewModel @Inject constructor(
                 existingMediaUrl = mediaUrl.trim()
             )
             if (result.isFailure) {
-                Toast.makeText(context, "No se pudo reenviar el GIF", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reenviar el GIF")
             }
             _isSending.value = false
         }
@@ -900,7 +900,7 @@ class ChatViewModel @Inject constructor(
         if (_isSending.value) return
         val cleanUrl = mediaUrl.trim()
         if (cleanUrl.isBlank()) {
-            Toast.makeText(context, "Sticker inválido", Toast.LENGTH_SHORT).show()
+            conectate.com.presentation.common.AppFeedbackBus.showError("Sticker inválido")
             return
         }
         viewModelScope.launch {
@@ -929,11 +929,11 @@ class ChatViewModel @Inject constructor(
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
-                    Toast.makeText(context, "No se pudo enviar sticker: $error", Toast.LENGTH_LONG).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar sticker: $error")
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Sticker send error", e)
-                Toast.makeText(context, "Error al enviar sticker", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar sticker")
             } finally {
                 _isSending.value = false
             }
@@ -945,7 +945,7 @@ class ChatViewModel @Inject constructor(
     fun toggleStickerFavorite(message: Message) {
         val url = message.media_url?.trim().orEmpty()
         if (url.isBlank()) {
-            Toast.makeText(context, "Sticker sin archivo para guardar.", Toast.LENGTH_SHORT).show()
+            conectate.com.presentation.common.AppFeedbackBus.showError("Sticker sin archivo para guardar.")
             return
         }
         viewModelScope.launch {
@@ -981,7 +981,9 @@ class ChatViewModel @Inject constructor(
             .filter { it.isNotBlank() }
             .distinct()
         if (contactName.isBlank() || (normalizedPhones.isEmpty() && normalizedEmails.isEmpty())) {
-            Toast.makeText(context, "Completa nombre y al menos teléfono o correo", Toast.LENGTH_SHORT).show()
+            conectate.com.presentation.common.AppFeedbackBus.showError(
+                "Completa nombre y al menos teléfono o correo"
+            )
             return
         }
         val payload = ChatContactPayload(
@@ -1027,7 +1029,7 @@ class ChatViewModel @Inject constructor(
         val lat = latitude.trim()
         val lon = longitude.trim()
         if (lat.isBlank() || lon.isBlank()) {
-            Toast.makeText(context, "Completa latitud y longitud", Toast.LENGTH_SHORT).show()
+            conectate.com.presentation.common.AppFeedbackBus.showError("Completa latitud y longitud")
             return
         }
         val marker = label?.trim().orEmpty()
@@ -1291,11 +1293,11 @@ class ChatViewModel @Inject constructor(
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
-                    Toast.makeText(context, "$errorPrefix: $error", Toast.LENGTH_LONG).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError("$errorPrefix: $error")
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Structured send error ($contentType)", e)
-                Toast.makeText(context, errorPrefix, Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError(errorPrefix)
             } finally {
                 _isSending.value = false
             }
@@ -1628,7 +1630,7 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val result = messageRepository.toggleMessageReaction(message.id, emoji)
             if (result.isFailure) {
-                Toast.makeText(context, "No se pudo reaccionar", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reaccionar")
             }
             _reactionPickerMessage.value = null
         }
@@ -1684,7 +1686,7 @@ class ChatViewModel @Inject constructor(
     ) {
         val message = _forwardPickerMessage.value ?: return
         if (targetChatIds.isEmpty() && targetUserIds.isEmpty()) {
-            Toast.makeText(context, "Selecciona al menos un chat", Toast.LENGTH_SHORT).show()
+            conectate.com.presentation.common.AppFeedbackBus.showError("Selecciona al menos un chat")
             return
         }
         if (_isForwarding.value) return
@@ -1720,7 +1722,9 @@ class ChatViewModel @Inject constructor(
             }
 
             if (chatTargets.isEmpty()) {
-                Toast.makeText(context, "No hay destino válido para reenviar", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError(
+                    "No hay destino válido para reenviar"
+                )
                 _isForwarding.value = false
                 return@launch
             }
@@ -1744,7 +1748,9 @@ class ChatViewModel @Inject constructor(
                 _forwardUserSearchQuery.value = ""
                 _forwardUserTargets.value = emptyList()
             } else {
-                Toast.makeText(context, "No se pudo reenviar el mensaje", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError(
+                    "No se pudo reenviar el mensaje"
+                )
             }
             _isForwarding.value = false
         }
@@ -1784,7 +1790,7 @@ class ChatViewModel @Inject constructor(
             if (result.isSuccess) {
                 cancelEdit()
             } else {
-                Toast.makeText(context, "Error al editar", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al editar")
             }
             _isSending.value = false
         }
@@ -1801,7 +1807,7 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val result = messageRepository.deleteMessage(message.id, true)
             if (result.isFailure) {
-                Toast.makeText(context, "No se pudo eliminar para todos", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo eliminar para todos")
             }
         }
     }
@@ -1810,7 +1816,7 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val result = messageRepository.deleteMessage(message.id, false)
             if (result.isFailure) {
-                Toast.makeText(context, "No se pudo eliminar para mí", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo eliminar para mí")
             }
         }
     }
@@ -1907,7 +1913,7 @@ class ChatViewModel @Inject constructor(
                 _currentNickname.value = nickname
                 dismissNicknameDialog()
             } else {
-                Toast.makeText(context, "Error al establecer apodo", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al establecer apodo")
             }
         }
     }
@@ -1924,7 +1930,7 @@ class ChatViewModel @Inject constructor(
                 dismissClearChatDialog()
                 Toast.makeText(context, "Chat vaciado", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context, "Error al vaciar chat", Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError("Error al vaciar chat")
             }
         }
     }
@@ -1953,7 +1959,7 @@ class ChatViewModel @Inject constructor(
         } else {
             "Desbloquea al usuario para enviar mensajes."
         }
-        Toast.makeText(context, reason, Toast.LENGTH_SHORT).show()
+        conectate.com.presentation.common.AppFeedbackBus.showError(reason)
         return false
     }
 

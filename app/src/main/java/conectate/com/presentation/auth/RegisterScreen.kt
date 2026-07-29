@@ -37,6 +37,7 @@ import coil.compose.rememberAsyncImagePainter
 import conectate.com.R
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.navigation.Screen
 
 
@@ -65,7 +66,10 @@ fun RegisterScreen(
     val emailIsValid = email.isBlank() || Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
 
     LaunchedEffect(authError) {
-        if (authError.isNotBlank()) scrollState.animateScrollTo(0)
+        if (authError.isNotBlank()) {
+            AppFeedbackBus.showError(authError)
+            scrollState.animateScrollTo(0)
+        }
     }
     
     // Lista de países (principales de América Latina)

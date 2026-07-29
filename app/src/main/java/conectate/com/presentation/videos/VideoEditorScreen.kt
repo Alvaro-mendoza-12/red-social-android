@@ -50,6 +50,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.common.Player
+import conectate.com.presentation.common.AppFeedbackBus
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay
@@ -126,7 +127,7 @@ fun VideoEditorScreen(
 
     LaunchedEffect(editorHint) {
         editorHint?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            AppFeedbackBus.show(it)
             viewModel.dismissEditorHint()
         }
     }
@@ -181,7 +182,7 @@ fun VideoEditorScreen(
                                     navController.popBackStack()
                                 },
                                 onError = { error ->
-                                    android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_LONG).show()
+                                    AppFeedbackBus.showError(error)
                                 }
                             )
                         },

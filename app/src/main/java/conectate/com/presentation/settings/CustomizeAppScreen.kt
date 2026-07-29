@@ -221,7 +221,9 @@ fun CustomizeAppScreen(
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier

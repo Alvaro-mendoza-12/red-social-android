@@ -168,17 +168,23 @@ fun GroupChatScreen(
     }
 
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
+    var showAudioPickerDialog by remember { mutableStateOf(false) }
     var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingContactPayload by remember { mutableStateOf<DeviceContactPayload?>(null) }
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        pendingAudioPreviewUri = uri
+        if (uri != null) {
+            pendingAudioPreviewUri = uri
+            showAudioPickerDialog = true
+        }
     }
 
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { viewModel.sendMediaMessage(it, context, forcedMessageType = "document", customContent = "📎 Archivo") }
+        pendingDocumentUri = uri
     }
 
     val gifPickerLauncher = rememberLauncherForActivityResult(
@@ -216,7 +222,7 @@ fun GroupChatScreen(
     }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
+        contract = PickPhoneContactContract()
     ) { contactUri: Uri? ->
         if (contactUri == null) return@rememberLauncherForActivityResult
         val payload = resolvePickedContact(context, contactUri)
@@ -225,25 +231,7 @@ fun GroupChatScreen(
                 snackbarHostState.showSnackbar("No se pudo leer el contacto seleccionado.")
             }
         } else {
-            viewModel.sendContactMessage(
-                name = payload.name,
-                phone = payload.phone,
-                email = payload.email,
-                phones = payload.phones,
-                emails = payload.emails
-            )
-        }
-    }
-
-    val contactsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            contactPickerLauncher.launch(null)
-        } else {
-            scope.launch {
-                snackbarHostState.showSnackbar("Permiso de contactos denegado.")
-            }
+            pendingContactPayload = payload
         }
     }
 
@@ -300,7 +288,9 @@ fun GroupChatScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
+        },
         topBar = {
             val state = uiState as? GroupChatUiState.Success
             val membersSubtitle = remember(state?.memberIds, state?.memberProfiles, currentUserId) {
@@ -1128,7 +1118,11 @@ fun GroupChatScreen(
                     Spacer(Modifier.width(16.dp))
                     Text("Video", style = MaterialTheme.typography.bodyLarge)
                 }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; audioPickerLauncher.launch("audio/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().clickable {
+                    showAttachmentSheet = false
+                    pendingAudioPreviewUri = null
+                    showAudioPickerDialog = true
+                }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Audiotrack, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Audio")
@@ -1177,15 +1171,7 @@ fun GroupChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.READ_CONTACTS
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                            ) {
-                                contactPickerLauncher.launch(null)
-                            } else {
-                                contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-                            }
+                            contactPickerLauncher.launch(Unit)
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1281,13 +1267,19 @@ fun GroupChatScreen(
         )
     }
 
-    pendingAudioPreviewUri?.let { sourceUri ->
+    if (showAudioPickerDialog) {
         DeviceAudioPickerDialog(
-            initialUri = sourceUri,
-            title = "Previsualizar audio",
+            initialUri = pendingAudioPreviewUri,
+            title = "Elegir música o audio",
             confirmLabel = "Listo y enviar",
+            maxClipDurationMs = null,
+            allowFullTrack = true,
+            defaultToFullTrack = true,
             onBrowseFiles = { audioPickerLauncher.launch("audio/*") },
-            onDismiss = { pendingAudioPreviewUri = null },
+            onDismiss = {
+                showAudioPickerDialog = false
+                pendingAudioPreviewUri = null
+            },
             onClipReady = { clip ->
                 viewModel.sendMediaMessage(
                     clip.uri,
@@ -1295,8 +1287,44 @@ fun GroupChatScreen(
                     forcedMessageType = "audio",
                     customContent = null
                 )
+                showAudioPickerDialog = false
                 pendingAudioPreviewUri = null
             }
+        )
+    }
+
+    pendingDocumentUri?.let { documentUri ->
+        conectate.com.presentation.components.DocumentSharePreviewDialog(
+            uri = documentUri,
+            onDismiss = { pendingDocumentUri = null },
+            onConfirm = {
+                viewModel.sendMediaMessage(
+                    documentUri,
+                    context,
+                    forcedMessageType = "document",
+                    customContent = "📎 Archivo",
+                )
+                pendingDocumentUri = null
+            },
+        )
+    }
+
+    pendingContactPayload?.let { contact ->
+        conectate.com.presentation.components.ContactSharePreviewDialog(
+            name = contact.name,
+            phones = contact.phones.ifEmpty { listOf(contact.phone) },
+            emails = contact.emails.ifEmpty { listOfNotNull(contact.email) },
+            onDismiss = { pendingContactPayload = null },
+            onConfirm = {
+                viewModel.sendContactMessage(
+                    name = contact.name,
+                    phone = contact.phone,
+                    email = contact.email,
+                    phones = contact.phones,
+                    emails = contact.emails,
+                )
+                pendingContactPayload = null
+            },
         )
     }
 
