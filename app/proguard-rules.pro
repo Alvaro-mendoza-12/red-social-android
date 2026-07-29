@@ -21,8 +21,7 @@
 -keep class conectate.com.core.** { *; }
 -keep class conectate.com.di.** { *; }
 -keep class conectate.com.util.** { *; }
--keep class conectate.com.presentation.navigation.Screen { *; }
--keep class conectate.com.presentation.navigation.Screen$* { *; }
+-keep class conectate.com.presentation.** { *; }
 -keepclassmembers enum * { *; }
 -keep class conectate.com.util.ConversationBackgroundCodec** { *; }
 

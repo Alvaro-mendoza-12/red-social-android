@@ -78,7 +78,11 @@ fun VideoEditorScreen(
         mutableStateOf(previewPlayer.playWhenReady)
     }
     val configuration = LocalConfiguration.current
-    val previewHeight = (configuration.screenHeightDp.dp * 0.33f).coerceIn(230.dp, 350.dp)
+    val compactHeight = configuration.screenHeightDp < 700
+    val compactWidth = configuration.screenWidthDp < 380
+    val previewHeight = (configuration.screenHeightDp.dp * if (compactHeight) 0.25f else 0.31f)
+        .coerceIn(if (compactHeight) 150.dp else 210.dp, if (compactHeight) 215.dp else 330.dp)
+    val timelineHeight = if (compactHeight) 132.dp else 168.dp
     val isExporting by viewModel.isExporting.collectAsState()
     val exportProgress by viewModel.exportProgress.collectAsState()
     val timeline by viewModel.timeline.collectAsState()
@@ -134,7 +138,7 @@ fun VideoEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Editar video", fontWeight = FontWeight.Bold) },
+                title = { Text(if (compactWidth) "Editar" else "Editar video", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.Close, "Cerrar")
@@ -147,8 +151,10 @@ fun VideoEditorScreen(
                             enabled = !isExporting
                         ) {
                             Icon(Icons.Default.HighQuality, contentDescription = null, modifier = Modifier.size(17.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(selectedExportQuality.label, maxLines = 1)
+                            if (!compactWidth) {
+                                Spacer(Modifier.width(4.dp))
+                                Text(selectedExportQuality.label, maxLines = 1)
+                            }
                         }
                         DropdownMenu(
                             expanded = showQualityMenu,
@@ -196,7 +202,9 @@ fun VideoEditorScreen(
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(17.dp))
                         }
                         Spacer(Modifier.width(5.dp))
-                        Text(if (isExporting) "Procesando" else "Guardar", color = Color.White)
+                        if (!compactWidth || isExporting) {
+                            Text(if (isExporting) "Procesando" else "Guardar", color = Color.White)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White, navigationIconContentColor = Color.White)
@@ -208,6 +216,7 @@ fun VideoEditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .navigationBarsPadding()
         ) {
             // 1. Preview Area
             Box(
@@ -456,7 +465,7 @@ fun VideoEditorScreen(
             // 2. Professional Timeline
             Box(
                 modifier = Modifier
-                    .height(178.dp)
+                    .height(timelineHeight)
                     .fillMaxWidth()
                     .background(Color(0xFF121212))
             ) {

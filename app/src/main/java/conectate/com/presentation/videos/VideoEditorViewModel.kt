@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -484,44 +485,54 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             onError("No hay clips de video para exportar")
             return
         }
+        if (timeline.durationMs() > MAX_EXPORT_DURATION_MS) {
+            onError("El video supera los 45 segundos. Recórtalo antes de guardarlo.")
+            return
+        }
         val profile = getOrInitProfile(context)
 
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             _exportProgress.value = 0f
             _exportStage.value = EditorExportStage.PREPARING
+            try {
+                val primary = resolveExportConfig(profile, _selectedExportQuality.value)
+                val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 2_400_000), 96_000)
+                val attempts = if (primary == fallback) listOf(primary) else listOf(primary, fallback)
+                var successUri: Uri? = null
+                var lastError: Throwable? = null
 
-            val primary = resolveExportConfig(profile, _selectedExportQuality.value)
-            val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 2_400_000), 96_000)
-            val attempts = if (primary == fallback) listOf(primary) else listOf(primary, fallback)
-            var successUri: Uri? = null
-            var lastError: Throwable? = null
-
-            for ((index, config) in attempts.withIndex()) {
-                try {
-                    if (index > 0) {
-                        _editorHint.value = "Reintentando con perfil compatible."
-                        _exportStage.value = EditorExportStage.OPTIMIZING
+                for ((index, config) in attempts.withIndex()) {
+                    try {
+                        if (index > 0) {
+                            _editorHint.value = "Reintentando con un formato compatible."
+                            _exportStage.value = EditorExportStage.OPTIMIZING
+                        }
+                        successUri = withTimeout(EXPORT_TIMEOUT_MS) {
+                            runExportAttempt(context, timeline, profile, config)
+                        }
+                        break
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        lastError = error
                     }
-                    successUri = runExportAttempt(context, timeline, profile, config)
-                    break
-                } catch (e: Throwable) {
-                    lastError = e
                 }
-            }
 
-            _isExporting.value = false
-            val exportedUri = successUri
-            if (exportedUri != null) {
-                _exportProgress.value = 1f
-                _exportStage.value = EditorExportStage.COMPLETED
-                withContext(Dispatchers.Main) { onSuccess(exportedUri) }
-            } else {
-                _exportProgress.value = 0f
-                _exportStage.value = EditorExportStage.FAILED
-                withContext(Dispatchers.Main) {
-                    onError(lastError?.message ?: "No se pudo exportar el video")
+                val exportedUri = successUri
+                if (exportedUri != null) {
+                    _exportProgress.value = 1f
+                    _exportStage.value = EditorExportStage.COMPLETED
+                    withContext(Dispatchers.Main) { onSuccess(exportedUri) }
+                } else {
+                    _exportProgress.value = 0f
+                    _exportStage.value = EditorExportStage.FAILED
+                    withContext(Dispatchers.Main) {
+                        onError(userFacingExportError(lastError))
+                    }
                 }
+            } finally {
+                _isExporting.value = false
             }
         }
     }
@@ -648,21 +659,40 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             })
             .build()
 
-        _exportStage.value = EditorExportStage.RENDERING
-        transformer.start(composition, outputFile.absolutePath)
-        val holder = ProgressHolder()
-        while (!done.isCompleted) {
-            if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
-                _exportProgress.value = holder.progress / 100f
-                if (holder.progress >= 95) {
-                    _exportStage.value = EditorExportStage.FINALIZING
+        try {
+            _exportStage.value = EditorExportStage.RENDERING
+            transformer.start(composition, outputFile.absolutePath)
+            val holder = ProgressHolder()
+            while (!done.isCompleted) {
+                if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                    _exportProgress.value = holder.progress / 100f
+                    if (holder.progress >= 95) {
+                        _exportStage.value = EditorExportStage.FINALIZING
+                    }
                 }
+                delay(220)
             }
-            delay(220)
+        } catch (error: Throwable) {
+            runCatching { transformer.cancel() }
+            runCatching { outputFile.delete() }
+            throw error
         }
         if (failure != null) throw failure!!
         if (!outputFile.exists() || outputFile.length() <= 0L) throw IllegalStateException("Archivo inválido")
         return Uri.fromFile(outputFile)
+    }
+
+    private fun userFacingExportError(error: Throwable?): String {
+        val normalized = error?.message.orEmpty().lowercase()
+        return when {
+            normalized.contains("timeout") || normalized.contains("timed out") ->
+                "El procesamiento tardó demasiado. Cierra otras aplicaciones e inténtalo otra vez."
+            normalized.contains("encoder") || normalized.contains("codec") ->
+                "Este teléfono no pudo procesar ese formato. Prueba la calidad Compatible."
+            normalized.contains("space") || normalized.contains("storage") ->
+                "No hay espacio suficiente para guardar el video editado."
+            else -> "No se pudo guardar el video. Inténtalo nuevamente con la calidad Compatible."
+        }
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -711,6 +741,11 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 }
             }
         return effects
+    }
+
+    private companion object {
+        const val MAX_EXPORT_DURATION_MS = 45_000L
+        const val EXPORT_TIMEOUT_MS = 4 * 60 * 1_000L
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

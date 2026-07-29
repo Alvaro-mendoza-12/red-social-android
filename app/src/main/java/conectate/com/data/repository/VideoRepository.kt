@@ -54,7 +54,6 @@ import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.StorageService
 import java.io.File
-import java.util.Locale
 import java.util.UUID
 import conectate.com.data.local.dao.VideoStatsDao
 import conectate.com.util.VideoUtils
@@ -166,7 +165,7 @@ class VideoRepository @Inject constructor(
         private const val MAX_UPLOAD_DURATION_SECONDS = 45L
         private const val MIN_UPLOAD_DURATION_SECONDS = 3L
         private const val MIN_UPLOAD_DIMENSION = 360
-        private const val MAX_UPLOAD_FILE_SIZE_BYTES = 100L * 1024L * 1024L
+        private const val MAX_DIRECT_UPLOAD_FILE_SIZE_BYTES = 100L * 1024L * 1024L
     }
 
     private data class UploadVideoMetadata(
@@ -213,10 +212,10 @@ class VideoRepository @Inject constructor(
             return@withContext Result.failure(Exception("No se pudo validar el tamaño del video."))
         }
 
-        if (fileSizeBytes > MAX_UPLOAD_FILE_SIZE_BYTES) {
+        if (fileSizeBytes > MAX_DIRECT_UPLOAD_FILE_SIZE_BYTES) {
             return@withContext Result.failure(
                 Exception(
-                    "El video pesa ${formatUploadBytes(fileSizeBytes)}. Máximo permitido: ${formatUploadBytes(MAX_UPLOAD_FILE_SIZE_BYTES)}."
+                    "Este video necesita optimizarse antes de subirlo. Ábrelo en el editor y toca Guardar."
                 )
             )
         }
@@ -271,15 +270,6 @@ class VideoRepository @Inject constructor(
             Result.failure(Exception("No se pudo analizar el video antes de subirlo: ${error.message}", error))
         } finally {
             runCatching { retriever.release() }
-        }
-    }
-
-    private fun formatUploadBytes(bytes: Long): String {
-        return when {
-            bytes >= 1024L * 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-            bytes >= 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
-            bytes >= 1024L -> String.format(Locale.getDefault(), "%.1f KB", bytes / 1024.0)
-            else -> "$bytes bytes"
         }
     }
 

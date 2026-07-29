@@ -83,25 +83,31 @@ class VideoUploadViewModel @Inject constructor(
     fun setVideoUri(uri: Uri, context: android.content.Context): Boolean {
         val info = readVideoInfo(uri, context)
         val durationMs = info.durationMs
-        val tooLargeForUpload = info.width > 0 && info.height > 0 && (
-            maxOf(info.width, info.height) > 1920 ||
-                minOf(info.width, info.height) > 1080 ||
-                info.width.toLong() * info.height.toLong() > 2_073_600L
-            )
-        val tooManyFrames = info.fps > 31f
-        val mustEdit = durationMs <= 0L || durationMs > MAX_VIDEO_DURATION_MS || tooLargeForUpload || tooManyFrames
+        val decision = evaluateVideoPreparation(
+            durationMs = durationMs,
+            width = info.width,
+            height = info.height,
+            fps = info.fps,
+            fileSizeBytes = info.fileSizeBytes
+        )
 
         _videoUri.value = uri
         _videoDurationMs.value = durationMs
-        _requiresEditing.value = mustEdit
-        _uploadError.value = when {
-            durationMs <= 0L -> "No pudimos validar la duración. Ábrelo en el editor antes de publicar."
-            durationMs > MAX_VIDEO_DURATION_MS -> "El video dura ${formatDuration(durationMs)}. Recorta una parte de máximo 45 segundos."
-            tooLargeForUpload -> "El video supera 1080p. La app lo preparará en el editor antes de publicar."
-            tooManyFrames -> "El video supera 30 FPS. La app lo preparará en el editor antes de publicar."
-            else -> null
+        _requiresEditing.value = decision.requiresEditor
+        _uploadError.value = when (decision.reason) {
+            VideoPreparationReason.UNKNOWN_DURATION ->
+                "No pudimos validar la duración. Ábrelo en el editor antes de publicar."
+            VideoPreparationReason.TOO_LONG ->
+                "El video dura ${formatDuration(durationMs)}. Recórtalo a un máximo de 45 segundos."
+            VideoPreparationReason.HIGH_RESOLUTION ->
+                "Novvin adaptará la resolución del video antes de publicarlo."
+            VideoPreparationReason.HIGH_FRAME_RATE ->
+                "Novvin adaptará la fluidez del video antes de publicarlo."
+            VideoPreparationReason.OPTIMIZE_FILE ->
+                "Novvin optimizará este video antes de publicarlo."
+            VideoPreparationReason.READY -> null
         }
-        return mustEdit
+        return decision.requiresEditor
     }
     
     fun setThumbnailUri(uri: Uri?) { _thumbnailUri.value = uri } // Allow nullable
@@ -110,7 +116,8 @@ class VideoUploadViewModel @Inject constructor(
         val durationMs: Long = 0L,
         val width: Int = 0,
         val height: Int = 0,
-        val fps: Float = 0f
+        val fps: Float = 0f,
+        val fileSizeBytes: Long = -1L
     )
 
     private fun readVideoInfo(uri: Uri, context: android.content.Context): VideoPickInfo {
@@ -130,7 +137,17 @@ class VideoUploadViewModel @Inject constructor(
                 val fps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
                     ?.toFloatOrNull()
                     ?: 0f
-                VideoPickInfo(durationMs = durationMs, width = width, height = height, fps = fps)
+                val fileSizeBytes = context.contentResolver
+                    .openFileDescriptor(uri, "r")
+                    ?.use { descriptor -> descriptor.statSize }
+                    ?: -1L
+                VideoPickInfo(
+                    durationMs = durationMs,
+                    width = width,
+                    height = height,
+                    fps = fps,
+                    fileSizeBytes = fileSizeBytes
+                )
             } finally {
                 retriever.release()
             }
@@ -210,9 +227,6 @@ class VideoUploadViewModel @Inject constructor(
         _uploadProgress.value = 0f
     }
 
-    private companion object {
-        const val MAX_VIDEO_DURATION_MS = 45_000L
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -314,6 +328,8 @@ fun VideoUploadScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .navigationBarsPadding()
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -374,7 +390,7 @@ fun VideoUploadScreen(
                                 Spacer(Modifier.width(10.dp))
                                 Text(
                                     text = if (videoDurationMs > 0L) {
-                                        if (videoDurationMs > 45_000L) {
+                                        if (videoDurationMs > MAX_VIDEO_UPLOAD_DURATION_MS) {
                                             "Selecciona el fragmento de 45 segundos que quieres publicar."
                                         } else {
                                             "Prepara el video para publicarlo en calidad compatible."
