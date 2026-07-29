@@ -1308,7 +1308,9 @@ fun ControlBar(
 ) {
     val context = LocalContext.current
     Surface(
-        modifier = Modifier.navigationBarsPadding(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         tonalElevation = 8.dp
@@ -1316,110 +1318,127 @@ fun ControlBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(vertical = 16.dp, horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(vertical = 10.dp, horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Cinema Button (Premium/Creator only)
-            if (isCreator) {
-                ControlIcon(
-                     icon = if (isCinemaActive) Icons.Default.MovieFilter else Icons.Default.Movie,
-                     isActive = isCinemaActive,
-                     activeColor = Color(0xFFFFD700), // Gold for premium feel
-                     onClick = onToggleCinema
-                )
-            }
-            
-            // Screen Share
-            ControlIcon(
-                 icon = if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) Icons.Rounded.StopScreenShare else Icons.Rounded.ScreenShare,
-                 isActive = videoMode == VoiceRoomRepository.VideoMode.SCREEN,
-                 activeColor = Color.Red, // Make it red when sharing like a "recording" indicator
-                 enabled = canPublishMedia,
-                 onClick = onToggleScreenShare
-            )
-            
-            // Reactions
-            ControlIcon(
-                 icon = Icons.Default.AddReaction,
-                 isActive = false,
-                 onClick = onShowReactions
-            )
-
-            ControlIcon(
-                icon = Icons.Default.ClosedCaption,
-                isActive = captionsEnabled,
-                activeColor = MaterialTheme.colorScheme.tertiary,
-                enabled = canPublishMedia,
-                onClick = onToggleCaptions
-            )
-
-            ControlIcon(
-                icon = Icons.Default.Notes,
-                isActive = isSummaryLoading,
-                activeColor = MaterialTheme.colorScheme.tertiary,
-                enabled = !isSummaryLoading,
-                onClick = onRequestSummary
-            )
-            
-            // Camera
-            ControlIcon(
-                 icon = if (videoMode == VoiceRoomRepository.VideoMode.CAMERA) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff,
-                 isActive = videoMode == VoiceRoomRepository.VideoMode.CAMERA,
-                 enabled = canPublishMedia,
-                 onClick = onToggleCamera
-            )
-
-            if (isStage && !canPublishMedia) {
-                ControlIcon(
-                    icon = Icons.Default.PanTool,
-                    isActive = handRaised,
-                    activeColor = MaterialTheme.colorScheme.tertiary,
-                    onClick = onToggleHandRaised
-                )
-            }
-
-            // Mic
-            ControlIcon(
-                 icon = if (isMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
-                 isActive = !isMuted,
-                 activeColor = MaterialTheme.colorScheme.primary,
-                 inactiveColor = MaterialTheme.colorScheme.error,
-                 filled = true,
-                 enabled = canPublishMedia,
-                 onClick = onToggleMute
-            )
-            
-            // Chat
-            Box {
-                ControlIcon(
-                     icon = Icons.Default.Chat,
-                     isActive = unreadChatCount > 0, // Active tint if unread
-                     activeColor = MaterialTheme.colorScheme.primary,
-                     onClick = onShowChat
-                )
-                if (unreadChatCount > 0) {
-                    Badge(
-                        modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp, y = (4).dp),
-                        containerColor = MaterialTheme.colorScheme.error
+            // The essential controls start the scrollable strip, while hang-up
+            // remains pinned at the right edge. On narrow phones the user can
+            // always leave the room and never loses the primary buttons below
+            // the system navigation bar.
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(end = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    ControlIcon(
+                        icon = if (isMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                        isActive = !isMuted,
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = MaterialTheme.colorScheme.error,
+                        filled = true,
+                        enabled = canPublishMedia,
+                        onClick = onToggleMute
                     )
+                }
+                item {
+                    ControlIcon(
+                        icon = if (videoMode == VoiceRoomRepository.VideoMode.CAMERA) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff,
+                        isActive = videoMode == VoiceRoomRepository.VideoMode.CAMERA,
+                        enabled = canPublishMedia,
+                        onClick = onToggleCamera
+                    )
+                }
+                item {
+                    Box {
+                        ControlIcon(
+                            icon = Icons.Default.Chat,
+                            isActive = unreadChatCount > 0,
+                            activeColor = MaterialTheme.colorScheme.primary,
+                            onClick = onShowChat
+                        )
+                        if (unreadChatCount > 0) {
+                            Badge(
+                                modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp, y = (4).dp),
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+                item {
+                    ControlIcon(
+                        icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        isActive = isSpeaker,
+                        onClick = onToggleSpeaker
+                    )
+                }
+                item {
+                    ControlIcon(
+                        icon = if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) {
+                            Icons.Rounded.StopScreenShare
+                        } else {
+                            Icons.Rounded.ScreenShare
+                        },
+                        isActive = videoMode == VoiceRoomRepository.VideoMode.SCREEN,
+                        activeColor = Color.Red,
+                        enabled = canPublishMedia,
+                        onClick = onToggleScreenShare
+                    )
+                }
+                item {
+                    ControlIcon(
+                        icon = Icons.Default.AddReaction,
+                        isActive = false,
+                        onClick = onShowReactions
+                    )
+                }
+                item {
+                    ControlIcon(
+                        icon = Icons.Default.ClosedCaption,
+                        isActive = captionsEnabled,
+                        activeColor = MaterialTheme.colorScheme.tertiary,
+                        enabled = canPublishMedia,
+                        onClick = onToggleCaptions
+                    )
+                }
+                item {
+                    ControlIcon(
+                        icon = Icons.Default.Notes,
+                        isActive = isSummaryLoading,
+                        activeColor = MaterialTheme.colorScheme.tertiary,
+                        enabled = !isSummaryLoading,
+                        onClick = onRequestSummary
+                    )
+                }
+                if (isStage && !canPublishMedia) {
+                    item {
+                        ControlIcon(
+                            icon = Icons.Default.PanTool,
+                            isActive = handRaised,
+                            activeColor = MaterialTheme.colorScheme.tertiary,
+                            onClick = onToggleHandRaised
+                        )
+                    }
+                }
+                if (isCreator) {
+                    item {
+                        ControlIcon(
+                            icon = if (isCinemaActive) Icons.Default.MovieFilter else Icons.Default.Movie,
+                            isActive = isCinemaActive,
+                            activeColor = Color(0xFFFFD700),
+                            onClick = onToggleCinema
+                        )
+                    }
                 }
             }
 
-            // Speaker
-            ControlIcon(
-                 icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                 isActive = isSpeaker,
-                 onClick = onToggleSpeaker
-            )
-            
-            // End Call
+            Spacer(Modifier.width(4.dp))
             FloatingActionButton(
                 onClick = onLeave,
                 containerColor = MaterialTheme.colorScheme.error,
                 shape = CircleShape,
-                modifier = Modifier.size(56.dp)
+                modifier = Modifier.size(54.dp)
             ) {
                 Icon(Icons.Rounded.CallEnd, contentDescription = "Colgar", tint = Color.White)
             }

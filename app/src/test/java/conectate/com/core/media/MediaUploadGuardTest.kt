@@ -75,7 +75,7 @@ class MediaUploadGuardTest {
     }
 
     @Test
-    fun `stream metadata rejects video above production limit`() {
+    fun `stream metadata accepts short high bitrate source above old 100 MB limit`() {
         val header = byteArrayOf(
             0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
             0x69, 0x73, 0x6F, 0x6D
@@ -84,12 +84,12 @@ class MediaUploadGuardTest {
         val result = guard.validateMetadata(
             bucketName = "videos",
             fileName = "user/video.mp4",
-            sizeBytes = 100L * 1024 * 1024 + 1,
+            sizeBytes = 121L * 1024 * 1024,
             contentType = "video/mp4",
             headerBytes = header
         )
 
-        assertFalse(result.allowed)
+        assertTrue(result.allowed)
     }
 
     @Test

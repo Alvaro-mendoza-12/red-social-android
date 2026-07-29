@@ -1,15 +1,13 @@
 package conectate.com.presentation.videos
 
 internal const val MAX_VIDEO_UPLOAD_DURATION_MS = 45_000L
-internal const val MAX_DIRECT_VIDEO_UPLOAD_BYTES = 100L * 1024L * 1024L
 
 internal enum class VideoPreparationReason {
     READY,
     UNKNOWN_DURATION,
     TOO_LONG,
     HIGH_RESOLUTION,
-    HIGH_FRAME_RATE,
-    OPTIMIZE_FILE
+    HIGH_FRAME_RATE
 }
 
 internal data class VideoPreparationDecision(
@@ -17,6 +15,7 @@ internal data class VideoPreparationDecision(
     val reason: VideoPreparationReason
 )
 
+@Suppress("UNUSED_PARAMETER")
 internal fun evaluateVideoPreparation(
     durationMs: Long,
     width: Int,
@@ -35,7 +34,6 @@ internal fun evaluateVideoPreparation(
         durationMs > MAX_VIDEO_UPLOAD_DURATION_MS -> VideoPreparationReason.TOO_LONG
         exceeds1080p -> VideoPreparationReason.HIGH_RESOLUTION
         fps > 31f -> VideoPreparationReason.HIGH_FRAME_RATE
-        fileSizeBytes > MAX_DIRECT_VIDEO_UPLOAD_BYTES -> VideoPreparationReason.OPTIMIZE_FILE
         else -> VideoPreparationReason.READY
     }
     return VideoPreparationDecision(

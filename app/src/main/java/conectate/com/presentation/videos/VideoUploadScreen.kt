@@ -27,6 +27,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import coil.compose.AsyncImage
 import conectate.com.data.repository.VideoRepository
 import conectate.com.presentation.common.toUserFacingMessage
@@ -103,8 +104,6 @@ class VideoUploadViewModel @Inject constructor(
                 "Novvin adaptará la resolución del video antes de publicarlo."
             VideoPreparationReason.HIGH_FRAME_RATE ->
                 "Novvin adaptará la fluidez del video antes de publicarlo."
-            VideoPreparationReason.OPTIMIZE_FILE ->
-                "Novvin optimizará este video antes de publicarlo."
             VideoPreparationReason.READY -> null
         }
         return decision.requiresEditor
@@ -280,16 +279,19 @@ fun VideoUploadScreen(
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
 
     // Handle result from Editor
-    val editedVideoUri = navController.currentBackStackEntry
+    val uploadBackStackEntry by navController.currentBackStackEntryAsState()
+    val editedVideoUriState = uploadBackStackEntry
         ?.savedStateHandle
-        ?.get<String>("editedVideo")
+        ?.getStateFlow<String?>("editedVideo", null)
+        ?.collectAsState()
+    val editedVideoUri = editedVideoUriState?.value
     
     LaunchedEffect(editedVideoUri) {
         editedVideoUri?.let { uriString ->
             val uri = Uri.parse(uriString)
             viewModel.setVideoUri(uri, context)
             // Clear the handle so it doesn't trigger again
-            navController.currentBackStackEntry?.savedStateHandle?.remove<String>("editedVideo")
+            uploadBackStackEntry?.savedStateHandle?.remove<String>("editedVideo")
         }
     }
 

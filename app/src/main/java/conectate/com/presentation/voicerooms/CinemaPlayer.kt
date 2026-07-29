@@ -391,10 +391,24 @@ fun CinemaPlayer(
                         settings.setSupportMultipleWindows(false) 
                         settings.javaScriptCanOpenWindowsAutomatically = false 
                         
+                        tag = videoUrl
                         loadUrl(videoUrl)
                     }
                 },
-                update = { it.loadUrl(videoUrl) },
+                update = { webView ->
+                    if (webView.tag != videoUrl) {
+                        webView.tag = videoUrl
+                        webView.loadUrl(videoUrl)
+                    }
+                },
+                onRelease = { webView ->
+                    webView.stopLoading()
+                    webView.loadUrl("about:blank")
+                    webView.clearHistory()
+                    webView.removeAllViews()
+                    webView.webChromeClient = null
+                    webView.destroy()
+                },
                 modifier = Modifier.fillMaxSize()
             )
             

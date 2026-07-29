@@ -40,12 +40,15 @@ import coil.decode.ImageDecoderDecoder
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.util.AppDeviceTier
+import conectate.com.util.AppPerformanceProfiles
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -65,6 +68,24 @@ fun CircularProfileImage(
     fallbackName: String? = null
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val performanceProfile = remember(context) { AppPerformanceProfiles.detect(context) }
+    val lifecycleStarted = remember(lifecycleOwner) {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(
+                androidx.lifecycle.Lifecycle.State.STARTED
+            )
+        )
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            lifecycleStarted.value = lifecycleOwner.lifecycle.currentState.isAtLeast(
+                androidx.lifecycle.Lifecycle.State.STARTED
+            )
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val resolvedImageUrl = remember(imageUrl, UbuntuStorageUrl.baseUrl) {
         UbuntuStorageUrl.rewrite(imageUrl)
     }
@@ -94,6 +115,10 @@ fun CircularProfileImage(
             cleanUrl.endsWith(".mov")
     }
     val effectiveMuted = muted || globalAnimatedAvatarsMuted.value || !allowSound
+    val shouldAnimateVideoAvatar =
+        isVideoAvatar &&
+            performanceProfile.tier != AppDeviceTier.LOW &&
+            lifecycleStarted.value
     val fallbackInitial = remember(fallbackName) {
         avatarFallbackInitial(fallbackName)
     }
@@ -139,7 +164,7 @@ fun CircularProfileImage(
                     initial = fallbackInitial,
                     size = size
                 )
-            } else if (isVideoAvatar) {
+            } else if (shouldAnimateVideoAvatar) {
                 val exoPlayerState = remember(resolvedImageUrl) { mutableStateOf<ExoPlayer?>(null) }
                 val playerReleased = remember(resolvedImageUrl) { AtomicBoolean(false) }
                 DisposableEffect(resolvedImageUrl) {

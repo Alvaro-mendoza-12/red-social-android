@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import conectate.com.util.AppDeviceTier
 import conectate.com.util.AppPerformanceProfiles
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
+import conectate.com.data.webrtc.WebRTCManager
 
 @HiltAndroidApp
 class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
@@ -222,6 +223,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                         logger.w("SocialApp", "Image cache trim failed", it)
                     }
                 }
+            WebRTCManager.releaseIdleResources()
         }
     }
 
@@ -239,6 +241,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                     logger.w("SocialApp", "Image cache clear failed", it)
                 }
             }
+        WebRTCManager.releaseIdleResources()
     }
 }
 

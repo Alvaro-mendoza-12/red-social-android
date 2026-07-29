@@ -64,7 +64,7 @@ object AppPerformanceProfiles {
             lowTier -> AppPerformanceProfile(
                 tier = AppDeviceTier.LOW,
                 label = "Rendimiento",
-                memoryCachePercent = 0.12,
+                memoryCachePercent = 0.08,
                 diskCachePercent = 0.02, // v22.4: Reduced from 0.05 to 0.02 to prevent storage exhaustion
                 reduceMotion = true,
                 preferCompactUi = true,

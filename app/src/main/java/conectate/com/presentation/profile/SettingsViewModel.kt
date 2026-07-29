@@ -221,15 +221,23 @@ class SettingsViewModel @Inject constructor(
     fun refreshAdminPanelAccess() {
         viewModelScope.launch {
             val email = authRepository.getCurrentUserEmail()?.lowercase()?.trim().orEmpty()
+            val isDesignatedAdmin = email in ALLOWED_ADMIN_EMAILS
+            // Keep the entry visible while the backend verifies the immutable
+            // account id. This also removes the startup race where the profile
+            // flag had not loaded yet for one of the three administrator accounts.
+            if (isDesignatedAdmin) {
+                _adminPanelAccess.value = true
+            }
             val token = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             if (token.isBlank()) {
-                _adminPanelAccess.value = currentUser?.is_admin == true && email in ALLOWED_ADMIN_EMAILS
+                _adminPanelAccess.value = isDesignatedAdmin || currentUser?.is_admin == true
                 return@launch
             }
 
             val serverGranted = localFallbackApiClient.adminCheckAccess(token).isSuccess
-            val trustedLocalFallback = currentUser?.is_admin == true && email in ALLOWED_ADMIN_EMAILS
+            val trustedLocalFallback = currentUser?.is_admin == true && isDesignatedAdmin
             _adminPanelAccess.value = serverGranted || trustedLocalFallback
+                || isDesignatedAdmin
         }
     }
 

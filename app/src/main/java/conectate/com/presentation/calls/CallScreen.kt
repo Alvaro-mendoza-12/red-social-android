@@ -13,8 +13,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
@@ -449,56 +447,79 @@ fun CallScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { viewModel.toggleMute(!isMuted) }) {
-                            Icon(
-                                imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                                contentDescription = "Mic",
-                                tint = Color.White
-                            )
-                        }
-                        IconButton(onClick = { viewModel.toggleSpeaker(!isSpeaker) }) {
-                            Icon(
-                                imageVector = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                                contentDescription = "Altavoz",
-                                tint = Color.White
-                            )
-                        }
-                        IconButton(onClick = {
+                        LazyRow(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            item {
+                                IconButton(onClick = { viewModel.toggleMute(!isMuted) }) {
+                                    Icon(
+                                        imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                        contentDescription = "Mic",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            item {
+                                IconButton(onClick = { viewModel.toggleSpeaker(!isSpeaker) }) {
+                                    Icon(
+                                        imageVector = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                        contentDescription = "Altavoz",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            item {
+                                IconButton(onClick = {
+                                    if (localVideoTrack != null) {
+                                        viewModel.toggleVideo(false)
+                                    } else if (hasCameraPermission) {
+                                        viewModel.ensureVideoEnabledRepeatedly()
+                                    } else {
+                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = if (localVideoTrack != null) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                        contentDescription = "Cámara",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                             if (localVideoTrack != null) {
-                                viewModel.toggleVideo(false)
-                            } else if (hasCameraPermission) {
-                                viewModel.ensureVideoEnabledRepeatedly()
-                            } else {
-                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                item {
+                                    IconButton(onClick = { viewModel.switchCamera() }) {
+                                        Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar cámara", tint = Color.White)
+                                    }
+                                }
                             }
-                        }) {
-                            Icon(
-                                imageVector = if (localVideoTrack != null) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                                contentDescription = "Cámara",
-                                tint = Color.White
-                            )
-                        }
-                        if (localVideoTrack != null) {
-                            IconButton(onClick = { viewModel.switchCamera() }) {
-                                Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar cámara", tint = Color.White)
+                            item {
+                                IconButton(onClick = { showReactions = !showReactions }) {
+                                    Icon(
+                                        imageVector = Icons.Default.EmojiEmotions,
+                                        contentDescription = "Reacción",
+                                        tint = Color.White
+                                    )
+                                }
                             }
                         }
-                        IconButton(onClick = { showReactions = !showReactions }) {
-                            Icon(
-                                imageVector = Icons.Default.EmojiEmotions,
-                                contentDescription = "Reacción",
-                                tint = Color.White
-                            )
-                        }
-                        IconButton(onClick = { viewModel.hangup() }) {
+
+                        Spacer(Modifier.width(6.dp))
+                        IconButton(
+                            onClick = { viewModel.hangup() },
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.error)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.CallEnd,
                                 contentDescription = "Colgar",
-                                tint = MaterialTheme.colorScheme.error
+                                tint = Color.White
                             )
                         }
                     }

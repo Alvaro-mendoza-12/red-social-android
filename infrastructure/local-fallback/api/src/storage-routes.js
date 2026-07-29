@@ -51,7 +51,10 @@ const bucketUploadLimits = new Map([
   ['post-media', 25 * 1024 * 1024],
   ['moment-media', 35 * 1024 * 1024],
   ['challenges', 30 * 1024 * 1024],
-  ['videos', 100 * 1024 * 1024],
+  // Publishing policy is duration-based (45 seconds). Keep only the global
+  // infrastructure safety ceiling so a short, high-bitrate phone recording is
+  // not rejected merely because it exceeds 100 MB.
+  ['videos', maxUploadBytes],
   ['live-replays', 512 * 1024 * 1024],
   ['thumbnails', 10 * 1024 * 1024],
   ['video-comments-media', 20 * 1024 * 1024],

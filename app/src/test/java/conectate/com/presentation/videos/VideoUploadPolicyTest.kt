@@ -36,7 +36,7 @@ class VideoUploadPolicyTest {
     }
 
     @Test
-    fun largeButShortSource_isOptimizedInsteadOfRejectedByWeight() {
+    fun largeButShortSource_isAcceptedBecauseDurationIsThePublishingLimit() {
         val decision = evaluateVideoPreparation(
             durationMs = 16_000L,
             width = 1080,
@@ -45,7 +45,7 @@ class VideoUploadPolicyTest {
             fileSizeBytes = 121L * 1024L * 1024L
         )
 
-        assertTrue(decision.requiresEditor)
-        assertEquals(VideoPreparationReason.OPTIMIZE_FILE, decision.reason)
+        assertFalse(decision.requiresEditor)
+        assertEquals(VideoPreparationReason.READY, decision.reason)
     }
 }

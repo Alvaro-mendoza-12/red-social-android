@@ -19,6 +19,8 @@ import org.webrtc.audio.JavaAudioDeviceModule
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +50,21 @@ class WebRTCManager(
     private val signalingEvents: SignalingEvents,
     private val accessTokenProvider: (() -> String?)? = null
 ) {
+    companion object {
+        private val liveManagers = Collections.synchronizedMap(
+            WeakHashMap<WebRTCManager, Unit>()
+        )
+
+        /**
+         * Releases native allocations only for managers without active peers
+         * or capture. The engine is recreated automatically on the next use.
+         */
+        fun releaseIdleResources() {
+            val snapshot = synchronized(liveManagers) { liveManagers.keys.toList() }
+            snapshot.forEach { manager -> manager.releaseIdleResourcesAsync() }
+        }
+    }
+
     private val isEmulatorAudioEnvironment = isProbablyRunningOnEmulator()
     private val preferredAudioInputSource =
         if (isEmulatorAudioEnvironment) {
@@ -230,6 +247,7 @@ class WebRTCManager(
     }
     
     init {
+        synchronized(liveManagers) { liveManagers[this] = Unit }
         try {
             Log.w("WebRTCManager", "🚀 WebRTC Initializing (Standard Mode) 🚀")
             if (isEmulatorAudioEnvironment) {
@@ -369,6 +387,7 @@ class WebRTCManager(
      */
     fun ensureLocalTracks() {
         executor.execute {
+            ensureEngineReady()
             var track = localAudioTrack
             if (track == null || track.state() == MediaStreamTrack.State.ENDED) {
                 Log.w("WebRTC", "Audio track invalid - recreating")
@@ -420,6 +439,56 @@ class WebRTCManager(
             })
             .createPeerConnectionFactory()
     }
+
+    private fun ensureEngineReady() {
+        if (rootEglBase == null) {
+            rootEglBase = runCatching { EglBase.create() }
+                .onFailure { error ->
+                    Log.e("WebRTCManager", "Could not restore EGL after memory trim", error)
+                }
+                .getOrNull()
+        }
+        if (factory == null) {
+            initializeFactory()
+        }
+        if (localAudioTrack == null || localAudioTrack?.state() == MediaStreamTrack.State.ENDED) {
+            createLocalAudioTrack()
+        }
+        registerNetworkHandoffMonitor()
+    }
+
+    private fun releaseIdleResourcesAsync() {
+        runCatching {
+            executor.execute {
+                if (
+                    peerConnections.isNotEmpty() ||
+                    videoCapturer != null ||
+                    localSocketId.isNotBlank()
+                ) {
+                    return@execute
+                }
+
+                Log.i("WebRTCManager", "Releasing idle native media engine after memory trim")
+                unregisterNetworkHandoffMonitor()
+                networkRecoveryJob?.cancel()
+                networkRecoveryJob = null
+                managedIceRefreshJob?.cancel()
+                managedIceRefreshJob = null
+
+                localAudioTrack?.dispose()
+                localAudioTrack = null
+                localAudioSource?.dispose()
+                localAudioSource = null
+
+                factory?.dispose()
+                factory = null
+                audioDeviceModule?.release()
+                audioDeviceModule = null
+            }
+        }.onFailure { error ->
+            Log.w("WebRTCManager", "Idle WebRTC trim could not be scheduled", error)
+        }
+    }
     
     private fun destroyInternal() {
         Log.d("WebRTCManager", "Internal cleanup starting...")
@@ -470,9 +539,14 @@ class WebRTCManager(
         localAudioSource?.dispose()
         localAudioSource = null
 
+        rootEglBase?.release()
+        rootEglBase = null
+
         statsScope.cancel()
         managedIceRefreshJob?.cancel()
         asyncScope.cancel()
+        synchronized(liveManagers) { liveManagers.remove(this) }
+        executor.shutdown()
     }
 
     private fun registerNetworkHandoffMonitor() {
@@ -887,6 +961,7 @@ class WebRTCManager(
             return peerConnections[resolvePeerKey(requestedKey, ruid) ?: requestedKey]
         }
         
+        ensureEngineReady()
         remoteUserIds[requestedKey] = ruid
         peerConnections[requestedKey]?.let { return it }
         
@@ -1721,6 +1796,7 @@ class WebRTCManager(
                 var previousTrack = _localVideoTrackFlow.value
 
                 // 1. Build the new pipeline first so source switches do not blank the UI.
+                ensureEngineReady()
                 var screenCapturerRef: VideoCapturer? = null
                 var capturer = if (isScreen) {
                     val projectionIntent = intent ?: run {

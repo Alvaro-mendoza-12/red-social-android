@@ -165,7 +165,6 @@ class VideoRepository @Inject constructor(
         private const val MAX_UPLOAD_DURATION_SECONDS = 45L
         private const val MIN_UPLOAD_DURATION_SECONDS = 3L
         private const val MIN_UPLOAD_DIMENSION = 360
-        private const val MAX_DIRECT_UPLOAD_FILE_SIZE_BYTES = 100L * 1024L * 1024L
     }
 
     private data class UploadVideoMetadata(
@@ -210,14 +209,6 @@ class VideoRepository @Inject constructor(
 
         if (fileSizeBytes <= 0L) {
             return@withContext Result.failure(Exception("No se pudo validar el tamaño del video."))
-        }
-
-        if (fileSizeBytes > MAX_DIRECT_UPLOAD_FILE_SIZE_BYTES) {
-            return@withContext Result.failure(
-                Exception(
-                    "Este video necesita optimizarse antes de subirlo. Ábrelo en el editor y toca Guardar."
-                )
-            )
         }
 
         val retriever = MediaMetadataRetriever()

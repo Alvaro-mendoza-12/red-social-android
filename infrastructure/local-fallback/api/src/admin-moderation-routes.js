@@ -133,8 +133,19 @@ const IMPORT_RELATED_FIELDS = [
 ]
 
 // Email addresses are mutable and registration does not prove ownership in the
-// local fallback. Administrative access therefore comes only from an immutable
-// ADMIN_USER_IDS entry or the server-side moderation row.
+// local fallback. Authorization therefore comes from an immutable ADMIN_USER_IDS
+// entry or a server-side moderation row. The three product-owner accounts below
+// are converted into moderation rows during schema bootstrap; route guards never
+// need to trust their email on every request.
+const DEFAULT_BOOTSTRAP_ADMIN_EMAILS = [
+  'gamergamerff004@gmail.com',
+  'alvaromendozamarin004@gmail.com',
+  'gamergamerff017@gmail.com',
+]
+const BOOTSTRAP_ADMIN_EMAILS = Array.from(new Set([
+  ...DEFAULT_BOOTSTRAP_ADMIN_EMAILS,
+  ...String(process.env.ADMIN_EMAILS || '').split(','),
+].map(normalizeId).filter(Boolean)))
 const DEFAULT_ADMIN_EMAILS = []
 const DESIGNATED_ADMIN_EMAILS = new Set(
   String(
@@ -586,6 +597,18 @@ async function ensureAdminModerationTables(pool) {
     `ALTER TABLE fallback_video_reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
     await pool.query(statement)
+  }
+  if (BOOTSTRAP_ADMIN_EMAILS.length > 0) {
+    await pool.query(
+      `INSERT INTO fallback_profile_moderation(user_id, is_admin, updated_at)
+       SELECT u.id::text, TRUE, NOW()
+       FROM fallback_users u
+       WHERE lower(trim(u.email)) = ANY($1::text[])
+       ON CONFLICT (user_id) DO UPDATE SET
+         is_admin = TRUE,
+         updated_at = NOW()`,
+      [BOOTSTRAP_ADMIN_EMAILS],
+    )
   }
 }
 
