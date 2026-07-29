@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,10 @@ import conectate.com.presentation.voicerooms.ActiveVoiceSessionBar
 import conectate.com.presentation.calls.CallInvitationOverlayHost
 import conectate.com.presentation.calls.ActiveCallSessionBar
 import conectate.com.presentation.live.ActiveLiveSessionBubble
+import conectate.com.presentation.messages.LocalUniversalForwardCoordinator
+import conectate.com.presentation.messages.UniversalForwardCoordinator
+import conectate.com.presentation.messages.UniversalShareHost
+import conectate.com.util.IncomingSharePayload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -64,6 +69,8 @@ import kotlinx.coroutines.launch
 fun MainActivityContent(
     currentIntent: Intent?,
     onIntentConsumed: () -> Unit,
+    incomingShare: IncomingSharePayload?,
+    onIncomingShareConsumed: () -> Unit,
     authRepository: AuthRepository,
     notificationRepository: NotificationRepository,
     voiceRoomRepository: VoiceRoomRepository,
@@ -77,6 +84,7 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         val navController = rememberNavController()
+        val universalForwardCoordinator = remember { UniversalForwardCoordinator() }
 
         LaunchedEffect(currentIntent) {
             currentIntent?.let { incomingIntent ->
@@ -219,13 +227,17 @@ fun MainActivityContent(
             }
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                AppNavGraph(
-                    navController = navController,
-                    isInitializing = isInitializing,
-                    isLoggedIn = isLoggedIn,
-                    isSwitchingAccount = accountSwitchState.isSwitching,
-                    hasPendingIntent = IntentRouter.hasPendingNavigationIntent(currentIntent)
-                )
+                CompositionLocalProvider(
+                    LocalUniversalForwardCoordinator provides universalForwardCoordinator
+                ) {
+                    AppNavGraph(
+                        navController = navController,
+                        isInitializing = isInitializing,
+                        isLoggedIn = isLoggedIn,
+                        isSwitchingAccount = accountSwitchState.isSwitching,
+                        hasPendingIntent = IntentRouter.hasPendingNavigationIntent(currentIntent)
+                    )
+                }
 
                 if (shouldBlockOfflineRoute) {
                     Box(
@@ -287,6 +299,14 @@ fun MainActivityContent(
                                 .navigationBarsPadding()
                         )
                     }
+                }
+
+                if (isLoggedIn) {
+                    UniversalShareHost(
+                        incomingShare = incomingShare,
+                        forwardCoordinator = universalForwardCoordinator,
+                        onIncomingShareConsumed = onIncomingShareConsumed
+                    )
                 }
 
                 ForcedSuspensionAlertDialog(

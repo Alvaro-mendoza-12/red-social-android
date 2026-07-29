@@ -140,14 +140,10 @@ fun ChatScreen(
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showRecentGifSheet by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
-    var pendingMediaUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingMediaType by remember { mutableStateOf<String?>(null) }
-    var pendingMediaCaption by remember { mutableStateOf("") }
-    var pendingMediaQueue by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
-    
     // Full screen media state
     var fullScreenMediaItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var fullScreenImageInitialIndex by remember { mutableStateOf(0) }
+    var isViewingOnceMedia by remember { mutableStateOf(false) }
     
     val voiceState by viewModel.voiceState.collectAsState()
     val recordingDuration by viewModel.recordingDuration.collectAsState()
@@ -162,6 +158,7 @@ fun ChatScreen(
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
 
     fun sendCurrentLocation() {
         val location = getBestLastKnownLocation(context)
@@ -221,42 +218,6 @@ fun ChatScreen(
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
     var pendingContactPayload by remember { mutableStateOf<DeviceContactPayload?>(null) }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        viewModel.sendMediaBatch(
-            uris.take(10).map { uri -> OutgoingMessageMedia(uri = uri, type = "image") }
-        )
-    }
-
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        viewModel.sendMediaBatch(
-            uris.take(10).map { uri -> OutgoingMessageMedia(uri = uri, type = "video") }
-        )
-    }
-
-    val viewOnceImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_image"
-            pendingMediaCaption = ""
-        }
-    }
-
-    val viewOnceVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_video"
-            pendingMediaCaption = ""
-        }
-    }
-    
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
@@ -557,7 +518,17 @@ fun ChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                selectedMessage?.let { viewModel.openForwardPicker(it) }
+                                selectedMessage?.let { message ->
+                                    if (universalForwardCoordinator != null) {
+                                        universalForwardCoordinator.open(
+                                            candidates = listOf(message.toForwardMessagePayload()),
+                                            initiallySelectedIds = setOf(message.id)
+                                        )
+                                        viewModel.dismissMessageActions()
+                                    } else {
+                                        viewModel.openForwardPicker(message)
+                                    }
+                                }
                             }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1116,6 +1087,7 @@ fun ChatScreen(
                                                 selectedMessageId = selectedMessage.id,
                                                 reverseOrder = true
                                             )?.let { selection ->
+                                                isViewingOnceMedia = false
                                                 fullScreenImageInitialIndex = selection.initialIndex
                                                 fullScreenMediaItems = selection.items
                                             }
@@ -1143,6 +1115,7 @@ fun ChatScreen(
                                                 if (oneTimeUrl == null) {
                                                     snackbarHostState.showSnackbar("Este contenido ya fue visto o no está disponible.")
                                                 } else {
+                                                    isViewingOnceMedia = true
                                                     fullScreenMediaItems = listOf(
                                                         conectate.com.presentation.components.MediaItem(
                                                             message.id,
@@ -1160,6 +1133,7 @@ fun ChatScreen(
                                                 selectedMessageId = message.id,
                                                 reverseOrder = true
                                             )?.let { selection ->
+                                                isViewingOnceMedia = false
                                                 fullScreenImageInitialIndex = selection.initialIndex
                                                 fullScreenMediaItems = selection.items
                                             }
@@ -1676,22 +1650,7 @@ fun ChatScreen(
                 ) {
                     Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text("Imagen", style = MaterialTheme.typography.bodyLarge)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            showMediaComposer = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Video", style = MaterialTheme.typography.bodyLarge)
+                    Text("Fotos y videos", style = MaterialTheme.typography.bodyLarge)
                 }
 
                 Row(
@@ -1752,52 +1711,7 @@ fun ChatScreen(
                 ) {
                     Icon(Icons.Default.EmojiEmotions, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text("Sticker", style = MaterialTheme.typography.bodyLarge)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            showStickerCatalogDialog = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Collections, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Sticker Pro (packs)", style = MaterialTheme.typography.bodyLarge)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            viewOnceImagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Foto ver una vez", style = MaterialTheme.typography.bodyLarge)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            viewOnceVideoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Video ver una vez", style = MaterialTheme.typography.bodyLarge)
+                    Text("Stickers y packs", style = MaterialTheme.typography.bodyLarge)
                 }
 
                 Row(
@@ -1876,7 +1790,7 @@ fun ChatScreen(
             snackbarHostState = snackbarHostState,
             onStickerSelected = { sticker ->
                 if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url, sticker.title.ifBlank { "🧩 Sticker" })
+                    viewModel.sendStickerFromUrl(sticker.media_url)
                 } else {
                     viewModel.sendStickerText(sticker.title.ifBlank { "🧩 Sticker" })
                 }
@@ -2113,7 +2027,8 @@ fun ChatScreen(
             mediaItems = fullScreenMediaItems,
             initialIndex = fullScreenImageInitialIndex,
             onResolveUrl = { path -> viewModel.getPlayableUrl(path) },
-            onDownload = { item ->
+            secureContent = isViewingOnceMedia,
+            onDownload = if (isViewingOnceMedia) null else { item ->
                 scope.launch {
                     val resolvedUrl = viewModel.getPlayableUrl(item.url) ?: item.url
                     if (resolvedUrl.startsWith("http")) {
@@ -2137,7 +2052,10 @@ fun ChatScreen(
                     }
                 }
             },
-            onDismiss = { fullScreenMediaItems = emptyList() }
+            onDismiss = {
+                fullScreenMediaItems = emptyList()
+                isViewingOnceMedia = false
+            }
     )
 }
 

@@ -1374,18 +1374,22 @@ class GroupRepository @Inject constructor(
             } else {
                 content.trim().take(InputSecurityPolicy.MAX_TEXT_MESSAGE_LENGTH)
             }
-            val moderation = moderationService.moderate(
-                text = sanitizedContent,
-                context = ModerationContext.GROUP_MESSAGE
-            )
-            if (moderation.verdict == ModerationVerdict.BLOCK) {
-                appMetrics.recordFailure(
-                    metric = "group_message_send",
-                    attributes = mapOf("reason" to "moderation_block")
+            val finalContent = if (contentType == "contact") {
+                sanitizedContent
+            } else {
+                val moderation = moderationService.moderate(
+                    text = sanitizedContent,
+                    context = ModerationContext.GROUP_MESSAGE
                 )
-                return@withContext Result.failure(Exception("Tu mensaje incumple nuestras politicas"))
+                if (moderation.verdict == ModerationVerdict.BLOCK) {
+                    appMetrics.recordFailure(
+                        metric = "group_message_send",
+                        attributes = mapOf("reason" to "moderation_block")
+                    )
+                    return@withContext Result.failure(Exception("Tu mensaje incumple nuestras politicas"))
+                }
+                moderation.sanitizedText
             }
-            val finalContent = moderation.sanitizedText
             if (contentType == "text" && mediaUrl.isNullOrBlank() && finalContent.isBlank()) {
                 return@withContext Result.failure(Exception("El mensaje no puede estar vacio"))
             }

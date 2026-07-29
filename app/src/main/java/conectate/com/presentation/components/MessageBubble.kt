@@ -1092,6 +1092,9 @@ private fun formatIsoTimestamp(isoString: String): String {
 private fun shouldShowMediaCaption(message: Message): Boolean {
     val caption = message.content.trim()
     if (caption.isBlank() || message.deleted_for_all) return false
+    // El título del sticker pertenece al catálogo/selector, no a la burbuja enviada.
+    // Los stickers de texto ya se renderizan dentro de la rama "sticker".
+    if (message.content_type == "sticker") return false
 
     val normalized = caption.lowercase(Locale.getDefault())
     val defaults = when (message.content_type) {
@@ -1100,11 +1103,10 @@ private fun shouldShowMediaCaption(message: Message): Boolean {
         "view_once_image" -> setOf("📷 foto ver una vez", "👁️ foto ver una vez", "foto ver una vez")
         "view_once_video" -> setOf("🎥 video ver una vez", "👁️ video ver una vez", "video ver una vez")
         "gif" -> setOf("🌀 gif", "gif")
-        "sticker" -> setOf("🧩 sticker", "sticker", "🧩")
         else -> emptySet()
     }
 
-    return message.content_type in setOf("image", "video", "view_once_image", "view_once_video", "gif", "sticker") &&
+    return message.content_type in setOf("image", "video", "view_once_image", "view_once_video", "gif") &&
         normalized !in defaults
 }
 

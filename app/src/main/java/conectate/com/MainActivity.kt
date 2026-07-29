@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
                 MainActivityContent(
                     currentIntent = currentIntent,
                     onIntentConsumed = { intentState.value = null },
+                    incomingShare = incomingShare,
+                    onIncomingShareConsumed = ::discardIncomingShare,
                     authRepository = authRepository,
                     notificationRepository = notificationRepository,
                     voiceRoomRepository = voiceRoomRepository,

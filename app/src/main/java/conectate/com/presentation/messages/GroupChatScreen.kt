@@ -62,6 +62,7 @@ fun GroupChatScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
     val currentUserId = viewModel.getCurrentUserId()
     val lifecycleOwner = LocalLifecycleOwner.current
     
@@ -95,10 +96,6 @@ fun GroupChatScreen(
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingMediaUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingMediaType by remember { mutableStateOf<String?>(null) } // "image", "video", "view_once_image", "view_once_video"
-    var pendingMediaCaption by remember { mutableStateOf("") }
-    var pendingMediaQueue by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
     var backgroundImageToCrop by remember { mutableStateOf<Uri?>(null) }
@@ -194,32 +191,6 @@ fun GroupChatScreen(
     }
 
     var showMediaComposer by remember { mutableStateOf(false) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        uris.take(10).forEach { uri ->
-            viewModel.sendMediaMessage(
-                uri = uri,
-                context = context,
-                forcedMessageType = "image",
-                customContent = null
-            )
-        }
-    }
-
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        uris.take(10).forEach { uri ->
-            viewModel.sendMediaMessage(
-                uri = uri,
-                context = context,
-                forcedMessageType = "video",
-                customContent = null
-            )
-        }
-    }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = PickPhoneContactContract()
@@ -817,6 +788,7 @@ fun GroupChatScreen(
         FullScreenImageDialog(
             mediaItems = activeMediaItems,
             initialIndex = fullScreenImageInitialIndex!!,
+            secureContent = oneTimeMediaItems.isNotEmpty(),
             onDismiss = {
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
@@ -955,7 +927,17 @@ fun GroupChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                selectedMessage?.let { viewModel.openForwardPicker(it) }
+                                selectedMessage?.let { message ->
+                                    if (universalForwardCoordinator != null) {
+                                        universalForwardCoordinator.open(
+                                            candidates = listOf(message.toForwardMessagePayload()),
+                                            initiallySelectedIds = setOf(message.id)
+                                        )
+                                        viewModel.dismissMessageActions()
+                                    } else {
+                                        viewModel.openForwardPicker(message)
+                                    }
+                                }
                             }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1111,12 +1093,7 @@ fun GroupChatScreen(
                 Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showMediaComposer = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Imagen", style = MaterialTheme.typography.bodyLarge)
-                }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showMediaComposer = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Video", style = MaterialTheme.typography.bodyLarge)
+                    Text("Fotos y videos", style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(modifier = Modifier.fillMaxWidth().clickable {
                     showAttachmentSheet = false
@@ -1149,21 +1126,7 @@ fun GroupChatScreen(
                 ) {
                     Icon(Icons.Default.EmojiEmotions, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Sticker")
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            showStickerCatalogDialog = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Collections, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Sticker Pro (packs)")
+                    Text("Stickers y packs")
                 }
 
                 Row(
@@ -1229,7 +1192,7 @@ fun GroupChatScreen(
             snackbarHostState = snackbarHostState,
             onStickerSelected = { sticker ->
                 if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url, sticker.title.ifBlank { "🧩 Sticker" })
+                    viewModel.sendStickerFromUrl(sticker.media_url)
                 } else {
                     viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
                 }

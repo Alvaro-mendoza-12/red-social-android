@@ -306,7 +306,7 @@ class StickerRepository @Inject constructor(
             return@withContext Result.failure(Exception("No se pudo generar URL del sticker"))
         }
 
-        val cleanTitle = title?.trim()?.ifBlank { null } ?: "Sticker personalizado"
+        val cleanTitle = title?.trim()?.ifBlank { null } ?: "Sticker"
         val cleanTags = tags.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct().take(12)
         val selectedPack = packId?.trim()?.ifBlank { null } ?: _packs.value.firstOrNull()?.id
         var sticker = StickerItem(

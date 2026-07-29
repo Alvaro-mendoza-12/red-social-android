@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
@@ -192,6 +193,7 @@ fun MessageMediaComposer(
     var preparing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var cropTargetUri by remember { mutableStateOf<Uri?>(null) }
+    var viewOnceEnabled by remember { mutableStateOf(false) }
 
     val permissions = remember {
         when {
@@ -246,6 +248,10 @@ fun MessageMediaComposer(
         isLoading = false
     }
 
+    LaunchedEffect(selected.size) {
+        if (selected.size != 1) viewOnceEnabled = false
+    }
+
     Dialog(
         onDismissRequest = { if (!isSending && !preparing) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -281,10 +287,14 @@ fun MessageMediaComposer(
                     edits = edits,
                     activeIndex = activeIndex.coerceIn(0, (selected.size - 1).coerceAtLeast(0)),
                     caption = caption,
+                    viewOnceEnabled = viewOnceEnabled,
                     isSending = isSending || preparing,
                     error = error,
                     confirmContentDescription = confirmContentDescription,
                     onCaptionChange = { caption = it.take(800) },
+                    onViewOnceChange = { enabled ->
+                        viewOnceEnabled = enabled && selected.size == 1
+                    },
                     onBack = { step = "gallery" },
                     onDismiss = onDismiss,
                     onActiveIndexChange = { activeIndex = it.coerceIn(0, selected.lastIndex) },
@@ -328,7 +338,12 @@ fun MessageMediaComposer(
                                     }
                                     else -> item.uri
                                 }
-                                outgoing += OutgoingMessageMedia(outputUri, item.type)
+                                val outgoingType = if (viewOnceEnabled && selected.size == 1) {
+                                    if (item.type == "video") "view_once_video" else "view_once_image"
+                                } else {
+                                    item.type
+                                }
+                                outgoing += OutgoingMessageMedia(outputUri, outgoingType)
                             }
                             preparing = false
                             onSend(outgoing, caption.trim())
@@ -547,10 +562,12 @@ private fun MessageEditorStep(
     edits: Map<Uri, ComposerEditState>,
     activeIndex: Int,
     caption: String,
+    viewOnceEnabled: Boolean,
     isSending: Boolean,
     error: String?,
     confirmContentDescription: String,
     onCaptionChange: (String) -> Unit,
+    onViewOnceChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
     onActiveIndexChange: (Int) -> Unit,
@@ -694,6 +711,17 @@ private fun MessageEditorStep(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (selected.size == 1) {
+                    item {
+                        RoundToolButton(
+                            icon = Icons.Default.Visibility,
+                            label = "Ver una vez",
+                            selected = viewOnceEnabled
+                        ) {
+                            onViewOnceChange(!viewOnceEnabled)
+                        }
+                    }
+                }
                 if (active.type == "image") {
                     item {
                         RoundToolButton(Icons.Default.RotateRight, "Girar") {
@@ -837,6 +865,15 @@ private fun MessageEditorStep(
                     },
                     valueRange = 0f..active.durationMs.coerceAtLeast(1_000L).toFloat(),
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (viewOnceEnabled) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "👁 Ver una vez: no se podrá abrir nuevamente",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
 

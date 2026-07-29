@@ -1,6 +1,7 @@
 package conectate.com.presentation.components
 
 import android.util.Log
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -57,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -64,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -218,6 +221,7 @@ fun FullScreenImageDialog(
     initialIndex: Int = 0,
     onResolveUrl: (suspend (String) -> String?)? = null,
     onDownload: ((MediaItem) -> Unit)? = null,
+    secureContent: Boolean = false,
     bottomOverlay: (@Composable (page: Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
@@ -240,6 +244,20 @@ fun FullScreenImageDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView, secureContent) {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            val wasAlreadySecure = window?.attributes?.flags
+                ?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
+            if (secureContent && !wasAlreadySecure) {
+                window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            onDispose {
+                if (secureContent && !wasAlreadySecure) {
+                    window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()

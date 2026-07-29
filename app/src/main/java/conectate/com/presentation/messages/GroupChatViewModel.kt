@@ -467,7 +467,7 @@ class GroupChatViewModel @Inject constructor(
         )
     }
 
-    fun sendStickerFromUrl(mediaUrl: String, caption: String = "🧩 Sticker") {
+    fun sendStickerFromUrl(mediaUrl: String, caption: String = "") {
         val cleanUrl = mediaUrl.trim()
         if (cleanUrl.isBlank()) {
             _errorMessage.value = "Sticker inválido"
@@ -819,7 +819,7 @@ class GroupChatViewModel @Inject constructor(
         viewModelScope.launch {
             val isFavorite = stickerRepository.toggleFavoriteByMedia(
                 mediaUrl = url,
-                title = message.content.ifBlank { "Sticker personalizado" }
+                title = message.content.ifBlank { "Sticker" }
             )
             _errorMessage.value = if (isFavorite) {
                 "Sticker añadido a favoritos"

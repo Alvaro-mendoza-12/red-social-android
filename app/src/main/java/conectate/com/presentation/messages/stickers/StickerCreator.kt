@@ -177,5 +177,5 @@ fun exportStickerPng(
 
 fun createStickerTitleFromText(title: String?): String {
     val clean = title?.trim().orEmpty()
-    return if (clean.isBlank()) "Sticker personalizado" else clean.take(60)
+    return if (clean.isBlank()) "Sticker" else clean.take(60)
 }

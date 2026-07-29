@@ -63,6 +63,7 @@ fun CommunityChatScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
     val currentUserId = viewModel.getCurrentUserId()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -99,10 +100,6 @@ fun CommunityChatScreen(
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingMediaUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var pendingMediaType by remember { mutableStateOf<String?>(null) }
-    var pendingMediaCaption by remember { mutableStateOf("") }
-    var pendingMediaQueue by remember { mutableStateOf<List<Pair<android.net.Uri, String>>>(emptyList()) }
     val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
@@ -202,49 +199,6 @@ fun CommunityChatScreen(
     var pendingContactPayload by remember { mutableStateOf<DeviceContactPayload?>(null) }
     var composerInitialUris by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     var composerInitialFilter by remember { mutableStateOf("all") }
-    var composerForcedType by remember { mutableStateOf<String?>(null) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            composerInitialUris = uris.take(10).map { it to "image" }
-            composerInitialFilter = "image"
-            composerForcedType = null
-            showMediaComposer = true
-        }
-    }
-
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            composerInitialUris = uris.take(10).map { it to "video" }
-            composerInitialFilter = "video"
-            composerForcedType = null
-            showMediaComposer = true
-        }
-    }
-
-    val viewOnceImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_image"
-            pendingMediaCaption = ""
-        }
-    }
-
-    val viewOnceVideoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            pendingMediaUri = uri
-            pendingMediaType = "view_once_video"
-            pendingMediaCaption = ""
-        }
-    }
 
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1078,6 +1032,7 @@ fun CommunityChatScreen(
         FullScreenImageDialog(
             mediaItems = activeMediaItems,
             initialIndex = fullScreenImageInitialIndex!!,
+            secureContent = oneTimeMediaItems.isNotEmpty(),
             onDismiss = {
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
@@ -1216,7 +1171,17 @@ fun CommunityChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                selectedMessage?.let { viewModel.openForwardPicker(it) }
+                                selectedMessage?.let { message ->
+                                    if (universalForwardCoordinator != null) {
+                                        universalForwardCoordinator.open(
+                                            candidates = listOf(message.toForwardMessagePayload()),
+                                            initiallySelectedIds = setOf(message.id)
+                                        )
+                                        viewModel.dismissMessageActions()
+                                    } else {
+                                        viewModel.openForwardPicker(message)
+                                    }
+                                }
                             }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1380,16 +1345,13 @@ fun CommunityChatScreen(
                 Text(text = "Compartir", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
                 Row(modifier = Modifier.fillMaxWidth().clickable {
                     showAttachmentSheet = false
-                    imagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    composerInitialUris = emptyList()
+                    composerInitialFilter = "all"
+                    showMediaComposer = true
                 }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Imagen")
-                }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; videoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VideoLibrary, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Video")
+                    Text("Fotos y videos")
                 }
                 Row(
                     modifier = Modifier
@@ -1428,55 +1390,7 @@ fun CommunityChatScreen(
                 ) {
                     Icon(Icons.Default.EmojiEmotions, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
-                    Text("Sticker")
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            showStickerCatalogDialog = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Collections, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Sticker Pro (packs)")
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            composerInitialUris = emptyList()
-                            composerInitialFilter = "image"
-                            composerForcedType = "view_once_image"
-                            showMediaComposer = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Foto ver una vez")
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showAttachmentSheet = false
-                            composerInitialUris = emptyList()
-                            composerInitialFilter = "video"
-                            composerForcedType = "view_once_video"
-                            showMediaComposer = true
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(16.dp))
-                    Text("Video ver una vez")
+                    Text("Stickers y packs")
                 }
                 Row(
                     modifier = Modifier
@@ -1541,7 +1455,7 @@ fun CommunityChatScreen(
             snackbarHostState = snackbarHostState,
             onStickerSelected = { sticker ->
                 if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url, sticker.title.ifBlank { "🧩 Sticker" })
+                    viewModel.sendStickerFromUrl(sticker.media_url)
                 } else {
                     viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
                 }
@@ -1649,7 +1563,6 @@ fun CommunityChatScreen(
             onDismiss = {
                 showMediaComposer = false
                 composerInitialUris = emptyList()
-                composerForcedType = null
             },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
@@ -1657,12 +1570,11 @@ fun CommunityChatScreen(
                     viewModel.sendMediaMessage(
                         uri = outgoingMedia.uri,
                         context = context,
-                        forcedMessageType = composerForcedType ?: outgoingMedia.type,
+                        forcedMessageType = outgoingMedia.type,
                         customContent = if (index == 0 && mediaCaption.isNotBlank()) mediaCaption else ""
                     )
                 }
                 composerInitialUris = emptyList()
-                composerForcedType = null
             }
         )
     }

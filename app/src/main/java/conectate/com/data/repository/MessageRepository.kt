@@ -2236,18 +2236,24 @@ class MessageRepository @Inject constructor(
             } else {
                 content.trim().take(InputSecurityPolicy.MAX_TEXT_MESSAGE_LENGTH)
             }
-            val moderation = moderationService.moderate(
-                text = baseSanitizedContent,
-                context = ModerationContext.CHAT_MESSAGE
-            )
-            if (moderation.verdict == ModerationVerdict.BLOCK) {
-                appMetrics.recordFailure(
-                    metric = "dm_send",
-                    attributes = mapOf("reason" to "moderation_block")
+            val sanitizedContent = if (mediaType == "contact") {
+                // Contactos usan JSON estructurado. Moderar o reescribir ese JSON
+                // puede invalidarlo y hacer que el receptor no pueda abrirlo.
+                baseSanitizedContent
+            } else {
+                val moderation = moderationService.moderate(
+                    text = baseSanitizedContent,
+                    context = ModerationContext.CHAT_MESSAGE
                 )
-                return Result.failure(Exception("Tu mensaje incumple nuestras politicas"))
+                if (moderation.verdict == ModerationVerdict.BLOCK) {
+                    appMetrics.recordFailure(
+                        metric = "dm_send",
+                        attributes = mapOf("reason" to "moderation_block")
+                    )
+                    return Result.failure(Exception("Tu mensaje incumple nuestras politicas"))
+                }
+                moderation.sanitizedText
             }
-            val sanitizedContent = moderation.sanitizedText
             if (mediaType == "text" && mediaUri == null && sanitizedContent.isBlank()) {
                 return Result.failure(Exception("El mensaje no puede estar vacio"))
             }

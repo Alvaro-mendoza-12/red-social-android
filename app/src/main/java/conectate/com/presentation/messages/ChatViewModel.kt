@@ -895,7 +895,7 @@ class ChatViewModel @Inject constructor(
         )
     }
 
-    fun sendStickerFromUrl(mediaUrl: String, caption: String = "🧩 Sticker") {
+    fun sendStickerFromUrl(mediaUrl: String, caption: String = "") {
         if (!ensureNotBlockedForSending()) return
         if (_isSending.value) return
         val cleanUrl = mediaUrl.trim()
@@ -951,7 +951,7 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val isFavorite = stickerRepository.toggleFavoriteByMedia(
                 mediaUrl = url,
-                title = message.content.ifBlank { "Sticker personalizado" }
+                title = message.content.ifBlank { "Sticker" }
             )
             Toast.makeText(
                 context,
