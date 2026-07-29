@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,12 +73,25 @@ enum class ImageCropPreset(val label: String, val aspectRatio: Float?) {
     COVER("Portada", 3f)
 }
 
-private data class NormalizedImageCrop(
+internal data class NormalizedImageCrop(
     val left: Float = 0f,
     val top: Float = 0f,
     val right: Float = 1f,
     val bottom: Float = 1f
 )
+
+internal enum class ImageCropDragTarget {
+    TOP_LEFT,
+    TOP,
+    TOP_RIGHT,
+    RIGHT,
+    BOTTOM_RIGHT,
+    BOTTOM,
+    BOTTOM_LEFT,
+    LEFT,
+    MOVE,
+    NONE
+}
 
 /**
  * Recorte central predecible para imágenes elegidas desde cualquier pantalla.
@@ -121,8 +136,9 @@ fun SimpleImageCropDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .systemBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -176,7 +192,7 @@ fun SimpleImageCropDialog(
                             Modifier
                                 .fillMaxHeight()
                                 .aspectRatio(sourceAspect)
-                        }.clip(RoundedCornerShape(12.dp))
+                        }.clip(RoundedCornerShape(4.dp))
                     ) {
                         AsyncImage(
                             model = sourceUri,
@@ -233,7 +249,7 @@ fun SimpleImageCropDialog(
                     )
                 }
                 Text(
-                    text = "Arrastra las esquinas o mueve el marco para elegir exactamente qué parte usar.",
+                    text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
                     color = Color.White.copy(alpha = 0.75f),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -352,77 +368,112 @@ private fun cropBitmap(source: Bitmap, crop: NormalizedImageCrop): Bitmap {
     return Bitmap.createBitmap(source, left, top, right - left, bottom - top)
 }
 
+internal fun adjustImageCrop(
+    crop: NormalizedImageCrop,
+    target: ImageCropDragTarget,
+    dx: Float,
+    dy: Float,
+    minimumSpan: Float = 0.08f
+): NormalizedImageCrop {
+    val safeMinimum = minimumSpan.coerceIn(0.02f, 0.5f)
+    return when (target) {
+        ImageCropDragTarget.TOP_LEFT -> crop.copy(
+            left = (crop.left + dx).coerceIn(0f, crop.right - safeMinimum),
+            top = (crop.top + dy).coerceIn(0f, crop.bottom - safeMinimum)
+        )
+        ImageCropDragTarget.TOP -> crop.copy(
+            top = (crop.top + dy).coerceIn(0f, crop.bottom - safeMinimum)
+        )
+        ImageCropDragTarget.TOP_RIGHT -> crop.copy(
+            right = (crop.right + dx).coerceIn(crop.left + safeMinimum, 1f),
+            top = (crop.top + dy).coerceIn(0f, crop.bottom - safeMinimum)
+        )
+        ImageCropDragTarget.RIGHT -> crop.copy(
+            right = (crop.right + dx).coerceIn(crop.left + safeMinimum, 1f)
+        )
+        ImageCropDragTarget.BOTTOM_RIGHT -> crop.copy(
+            right = (crop.right + dx).coerceIn(crop.left + safeMinimum, 1f),
+            bottom = (crop.bottom + dy).coerceIn(crop.top + safeMinimum, 1f)
+        )
+        ImageCropDragTarget.BOTTOM -> crop.copy(
+            bottom = (crop.bottom + dy).coerceIn(crop.top + safeMinimum, 1f)
+        )
+        ImageCropDragTarget.BOTTOM_LEFT -> crop.copy(
+            left = (crop.left + dx).coerceIn(0f, crop.right - safeMinimum),
+            bottom = (crop.bottom + dy).coerceIn(crop.top + safeMinimum, 1f)
+        )
+        ImageCropDragTarget.LEFT -> crop.copy(
+            left = (crop.left + dx).coerceIn(0f, crop.right - safeMinimum)
+        )
+        ImageCropDragTarget.MOVE -> {
+            val width = crop.right - crop.left
+            val height = crop.bottom - crop.top
+            val left = (crop.left + dx).coerceIn(0f, 1f - width)
+            val top = (crop.top + dy).coerceIn(0f, 1f - height)
+            NormalizedImageCrop(left, top, left + width, top + height)
+        }
+        ImageCropDragTarget.NONE -> crop
+    }
+}
+
 @Composable
 private fun ManualImageCropOverlay(
     crop: NormalizedImageCrop,
     onCropChange: (NormalizedImageCrop) -> Unit
 ) {
     val handleColor = MaterialTheme.colorScheme.primary
+    val latestCrop by rememberUpdatedState(crop)
+    val latestOnCropChange by rememberUpdatedState(onCropChange)
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(crop) {
-                val minimumSpan = 0.08f
-                var dragTarget = -1
+            .pointerInput(Unit) {
+                var dragTarget = ImageCropDragTarget.NONE
+                var workingCrop = latestCrop
                 detectDragGestures(
                     onDragStart = { point ->
-                        val corners = listOf(
-                            Offset(crop.left * size.width, crop.top * size.height),
-                            Offset(crop.right * size.width, crop.top * size.height),
-                            Offset(crop.left * size.width, crop.bottom * size.height),
-                            Offset(crop.right * size.width, crop.bottom * size.height)
+                        workingCrop = latestCrop
+                        val frame = Rect(
+                            workingCrop.left * size.width,
+                            workingCrop.top * size.height,
+                            workingCrop.right * size.width,
+                            workingCrop.bottom * size.height
                         )
-                        val nearest = corners.indices.minByOrNull { index ->
-                            (corners[index] - point).getDistance()
-                        } ?: -1
+                        val handles = listOf(
+                            ImageCropDragTarget.TOP_LEFT to frame.topLeft,
+                            ImageCropDragTarget.TOP to Offset(frame.center.x, frame.top),
+                            ImageCropDragTarget.TOP_RIGHT to frame.topRight,
+                            ImageCropDragTarget.RIGHT to Offset(frame.right, frame.center.y),
+                            ImageCropDragTarget.BOTTOM_RIGHT to frame.bottomRight,
+                            ImageCropDragTarget.BOTTOM to Offset(frame.center.x, frame.bottom),
+                            ImageCropDragTarget.BOTTOM_LEFT to frame.bottomLeft,
+                            ImageCropDragTarget.LEFT to Offset(frame.left, frame.center.y)
+                        )
+                        val nearest = handles.minByOrNull { (_, handle) ->
+                            (handle - point).getDistance()
+                        }
                         dragTarget = if (
-                            nearest >= 0 &&
-                            (corners[nearest] - point).getDistance() <= 52.dp.toPx()
+                            nearest != null &&
+                            (nearest.second - point).getDistance() <= 44.dp.toPx()
                         ) {
-                            nearest
+                            nearest.first
+                        } else if (frame.contains(point)) {
+                            ImageCropDragTarget.MOVE
                         } else {
-                            val frame = Rect(
-                                crop.left * size.width,
-                                crop.top * size.height,
-                                crop.right * size.width,
-                                crop.bottom * size.height
-                            )
-                            if (frame.contains(point)) 4 else -1
+                            ImageCropDragTarget.NONE
                         }
                     },
-                    onDragEnd = { dragTarget = -1 },
-                    onDragCancel = { dragTarget = -1 }
+                    onDragEnd = { dragTarget = ImageCropDragTarget.NONE },
+                    onDragCancel = { dragTarget = ImageCropDragTarget.NONE }
                 ) { change, dragAmount ->
                     change.consume()
                     val dx = dragAmount.x / size.width.coerceAtLeast(1).toFloat()
                     val dy = dragAmount.y / size.height.coerceAtLeast(1).toFloat()
-                    val updated = when (dragTarget) {
-                        0 -> crop.copy(
-                            left = (crop.left + dx).coerceIn(0f, crop.right - minimumSpan),
-                            top = (crop.top + dy).coerceIn(0f, crop.bottom - minimumSpan)
-                        )
-                        1 -> crop.copy(
-                            right = (crop.right + dx).coerceIn(crop.left + minimumSpan, 1f),
-                            top = (crop.top + dy).coerceIn(0f, crop.bottom - minimumSpan)
-                        )
-                        2 -> crop.copy(
-                            left = (crop.left + dx).coerceIn(0f, crop.right - minimumSpan),
-                            bottom = (crop.bottom + dy).coerceIn(crop.top + minimumSpan, 1f)
-                        )
-                        3 -> crop.copy(
-                            right = (crop.right + dx).coerceIn(crop.left + minimumSpan, 1f),
-                            bottom = (crop.bottom + dy).coerceIn(crop.top + minimumSpan, 1f)
-                        )
-                        4 -> {
-                            val width = crop.right - crop.left
-                            val height = crop.bottom - crop.top
-                            val left = (crop.left + dx).coerceIn(0f, 1f - width)
-                            val top = (crop.top + dy).coerceIn(0f, 1f - height)
-                            NormalizedImageCrop(left, top, left + width, top + height)
-                        }
-                        else -> crop
+                    val updated = adjustImageCrop(workingCrop, dragTarget, dx, dy)
+                    if (updated != workingCrop) {
+                        workingCrop = updated
+                        latestOnCropChange(updated)
                     }
-                    if (updated != crop) onCropChange(updated)
                 }
             }
     ) {
@@ -450,10 +501,35 @@ private fun ManualImageCropOverlay(
             size = androidx.compose.ui.geometry.Size(size.width - frame.right, frame.height)
         )
         drawRect(Color.White, topLeft = frame.topLeft, size = frame.size, style = Stroke(width = 3.dp.toPx()))
-        val radius = 8.dp.toPx()
-        listOf(frame.topLeft, frame.topRight, frame.bottomLeft, frame.bottomRight).forEach { corner ->
-            drawCircle(Color.White, radius = radius, center = corner)
-            drawCircle(handleColor, radius = radius * 0.55f, center = corner)
+        val gridColor = Color.White.copy(alpha = 0.48f)
+        for (step in 1..2) {
+            val x = frame.left + frame.width * step / 3f
+            val y = frame.top + frame.height * step / 3f
+            drawLine(gridColor, Offset(x, frame.top), Offset(x, frame.bottom), 1.dp.toPx())
+            drawLine(gridColor, Offset(frame.left, y), Offset(frame.right, y), 1.dp.toPx())
+        }
+
+        val cornerLength = 24.dp.toPx().coerceAtMost(minOf(frame.width, frame.height) / 3f)
+        val cornerStroke = 5.dp.toPx()
+        listOf(
+            frame.topLeft to (Offset(cornerLength, 0f) to Offset(0f, cornerLength)),
+            frame.topRight to (Offset(-cornerLength, 0f) to Offset(0f, cornerLength)),
+            frame.bottomLeft to (Offset(cornerLength, 0f) to Offset(0f, -cornerLength)),
+            frame.bottomRight to (Offset(-cornerLength, 0f) to Offset(0f, -cornerLength))
+        ).forEach { (corner, arms) ->
+            drawLine(Color.White, corner, corner + arms.first, cornerStroke)
+            drawLine(Color.White, corner, corner + arms.second, cornerStroke)
+        }
+
+        val edgeRadius = 5.dp.toPx()
+        listOf(
+            Offset(frame.center.x, frame.top),
+            Offset(frame.right, frame.center.y),
+            Offset(frame.center.x, frame.bottom),
+            Offset(frame.left, frame.center.y)
+        ).forEach { edge ->
+            drawCircle(Color.White, radius = edgeRadius + 2.dp.toPx(), center = edge)
+            drawCircle(handleColor, radius = edgeRadius, center = edge)
         }
     }
 }

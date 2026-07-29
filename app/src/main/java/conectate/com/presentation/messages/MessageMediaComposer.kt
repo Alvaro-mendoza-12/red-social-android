@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.pager.HorizontalPager
@@ -84,11 +85,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -102,6 +101,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.SimpleImageCropDialog
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -184,6 +185,7 @@ fun MessageMediaComposer(
     var caption by remember { mutableStateOf("") }
     var preparing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var cropTargetUri by remember { mutableStateOf<Uri?>(null) }
 
     val permissions = remember {
         when {
@@ -284,6 +286,7 @@ fun MessageMediaComposer(
                         if (selected.isEmpty()) step = "gallery"
                     },
                     onEditChange = { uri, edit -> edits[uri] = edit },
+                    onRequestCrop = { item -> cropTargetUri = item.uri },
                     onSend = {
                         if (isSending || preparing || selected.isEmpty()) return@MessageEditorStep
                         error = null
@@ -326,6 +329,39 @@ fun MessageMediaComposer(
             }
         }
     }
+
+    cropTargetUri?.let { targetUri ->
+        SimpleImageCropDialog(
+            sourceUri = targetUri,
+            title = "Recortar foto",
+            presets = listOf(
+                ImageCropPreset.ORIGINAL,
+                ImageCropPreset.SQUARE,
+                ImageCropPreset.PORTRAIT,
+                ImageCropPreset.WIDE
+            ),
+            initialPreset = ImageCropPreset.FREE,
+            onDismiss = { cropTargetUri = null },
+            onCropped = { croppedUri ->
+                val index = selected.indexOfFirst { it.uri == targetUri }
+                if (index >= 0) {
+                    val previous = selected[index]
+                    val previousEdit = edits.remove(targetUri) ?: ComposerEditState()
+                    selected[index] = previous.copy(
+                        id = croppedUri.hashCode().toLong(),
+                        uri = croppedUri,
+                        dateModified = System.currentTimeMillis()
+                    )
+                    edits[croppedUri] = previousEdit.copy(
+                        cropEnabled = false,
+                        crop = NormalizedCrop()
+                    )
+                    activeIndex = index
+                }
+                cropTargetUri = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -348,7 +384,12 @@ private fun MessageGalleryStep(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -491,6 +532,7 @@ private fun MessageEditorStep(
     onActiveIndexChange: (Int) -> Unit,
     onRemove: (DeviceMedia) -> Unit,
     onEditChange: (Uri, ComposerEditState) -> Unit,
+    onRequestCrop: (DeviceMedia) -> Unit,
     onSend: () -> Unit
 ) {
     val context = LocalContext.current
@@ -528,6 +570,7 @@ private fun MessageEditorStep(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .statusBarsPadding()
     ) {
         HorizontalPager(
             state = pagerState,
@@ -598,12 +641,6 @@ private fun MessageEditorStep(
                     }
                 }
             }
-            if (edit.cropEnabled) {
-                ComposerCropOverlay(
-                    crop = edit.crop,
-                    onCropChange = { crop -> onEditChange(active.uri, edit.copy(crop = crop)) }
-                )
-            }
             if (edit.overlayText.isNotBlank() || edit.overlayEmoji.isNotBlank()) {
                 Text(
                     text = listOf(edit.overlayEmoji, edit.overlayText).filter(String::isNotBlank).joinToString(" "),
@@ -640,11 +677,8 @@ private fun MessageEditorStep(
                         }
                     }
                     item {
-                        RoundToolButton(Icons.Default.Crop, "Recortar libre", selected = edit.cropEnabled) {
-                            onEditChange(
-                                active.uri,
-                                edit.copy(cropEnabled = !edit.cropEnabled, drawEnabled = false)
-                            )
+                        RoundToolButton(Icons.Default.Crop, "Recortar libre") {
+                            onRequestCrop(active)
                         }
                     }
                     item {
@@ -911,85 +945,6 @@ private fun ComposerVideoPreview(
         update = { it.player = player },
         modifier = Modifier.fillMaxSize()
     )
-}
-
-@Composable
-private fun ComposerCropOverlay(
-    crop: NormalizedCrop,
-    onCropChange: (NormalizedCrop) -> Unit
-) {
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    var activeHandle by remember { mutableStateOf(-1) }
-    val minimumSpan = 0.08f
-    val accentColor = MaterialTheme.colorScheme.primary
-
-    androidx.compose.foundation.Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { size = it }
-            .pointerInput(crop, size) {
-                detectDragGestures(
-                    onDragStart = { point ->
-                        if (size.width <= 0 || size.height <= 0) return@detectDragGestures
-                        val corners = listOf(
-                            Offset(crop.left * size.width, crop.top * size.height),
-                            Offset(crop.right * size.width, crop.top * size.height),
-                            Offset(crop.left * size.width, crop.bottom * size.height),
-                            Offset(crop.right * size.width, crop.bottom * size.height)
-                        )
-                        activeHandle = corners.indices.minByOrNull { index ->
-                            val dx = corners[index].x - point.x
-                            val dy = corners[index].y - point.y
-                            dx * dx + dy * dy
-                        } ?: -1
-                    },
-                    onDragEnd = { activeHandle = -1 },
-                    onDragCancel = { activeHandle = -1 },
-                    onDrag = { change, _ ->
-                        if (activeHandle < 0 || size.width <= 0 || size.height <= 0) return@detectDragGestures
-                        change.consume()
-                        val x = (change.position.x / size.width).coerceIn(0f, 1f)
-                        val y = (change.position.y / size.height).coerceIn(0f, 1f)
-                        val updated = when (activeHandle) {
-                            0 -> crop.copy(
-                                left = x.coerceAtMost(crop.right - minimumSpan),
-                                top = y.coerceAtMost(crop.bottom - minimumSpan)
-                            )
-                            1 -> crop.copy(
-                                right = x.coerceAtLeast(crop.left + minimumSpan),
-                                top = y.coerceAtMost(crop.bottom - minimumSpan)
-                            )
-                            2 -> crop.copy(
-                                left = x.coerceAtMost(crop.right - minimumSpan),
-                                bottom = y.coerceAtLeast(crop.top + minimumSpan)
-                            )
-                            else -> crop.copy(
-                                right = x.coerceAtLeast(crop.left + minimumSpan),
-                                bottom = y.coerceAtLeast(crop.top + minimumSpan)
-                            )
-                        }
-                        onCropChange(updated)
-                    }
-                )
-            }
-    ) {
-        val rect = Rect(
-            crop.left * this.size.width,
-            crop.top * this.size.height,
-            crop.right * this.size.width,
-            crop.bottom * this.size.height
-        )
-        val shade = Color.Black.copy(alpha = 0.58f)
-        drawRect(shade, topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(this.size.width, rect.top))
-        drawRect(shade, topLeft = Offset(0f, rect.bottom), size = androidx.compose.ui.geometry.Size(this.size.width, this.size.height - rect.bottom))
-        drawRect(shade, topLeft = Offset(0f, rect.top), size = androidx.compose.ui.geometry.Size(rect.left, rect.height))
-        drawRect(shade, topLeft = Offset(rect.right, rect.top), size = androidx.compose.ui.geometry.Size(this.size.width - rect.right, rect.height))
-        drawRect(Color.White, topLeft = rect.topLeft, size = rect.size, style = Stroke(width = 3f))
-        listOf(rect.topLeft, rect.topRight, rect.bottomLeft, rect.bottomRight).forEach { point ->
-            drawCircle(Color.White, radius = 12f, center = point)
-            drawCircle(accentColor, radius = 7f, center = point)
-        }
-    }
 }
 
 private fun composerThumbnailRequest(context: Context, item: DeviceMedia): ImageRequest {
