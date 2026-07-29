@@ -38,6 +38,7 @@ import conectate.com.presentation.components.MessageBubble
 import conectate.com.presentation.messages.VoiceState
 import conectate.com.presentation.components.FullScreenImageDialog
 import conectate.com.presentation.components.MediaItem
+import conectate.com.presentation.components.DeviceAudioPickerDialog
 import conectate.com.util.Constants
 import kotlinx.coroutines.launch
 import java.io.File
@@ -167,10 +168,11 @@ fun GroupChatScreen(
     }
 
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
+    var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { viewModel.sendMediaMessage(it, context) }
+        pendingAudioPreviewUri = uri
     }
 
     val documentPickerLauncher = rememberLauncherForActivityResult(
@@ -1276,6 +1278,25 @@ fun GroupChatScreen(
             voters = details.voters,
             isLoading = details.isLoading,
             onDismiss = { viewModel.dismissPollOptionVoters() }
+        )
+    }
+
+    pendingAudioPreviewUri?.let { sourceUri ->
+        DeviceAudioPickerDialog(
+            initialUri = sourceUri,
+            title = "Previsualizar audio",
+            confirmLabel = "Listo y enviar",
+            onBrowseFiles = { audioPickerLauncher.launch("audio/*") },
+            onDismiss = { pendingAudioPreviewUri = null },
+            onClipReady = { clip ->
+                viewModel.sendMediaMessage(
+                    clip.uri,
+                    context,
+                    forcedMessageType = "audio",
+                    customContent = null
+                )
+                pendingAudioPreviewUri = null
+            }
         )
     }
 

@@ -1,8 +1,9 @@
 package conectate.com.presentation.settings
 
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -70,10 +71,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import conectate.com.data.local.prefs.AppThemeOption
 import conectate.com.presentation.components.AppAppearanceSettingsSection
 import conectate.com.presentation.components.CommentAudioPlayer
+import conectate.com.presentation.components.DeviceAudioPickerDialog
 import conectate.com.presentation.components.ProfileAmbientBackground
 import conectate.com.presentation.profile.SettingsUiState
 import conectate.com.presentation.profile.SettingsViewModel as ProfileSettingsViewModel
@@ -101,28 +104,6 @@ private fun gameLogoValues(raw: String): Map<String, String> = raw
         if (game.isBlank() || url.isBlank()) null else game to url
     }
     .toMap()
-
-private fun selectedProfileMusicName(context: Context, uri: Uri): String? {
-    return runCatching {
-        context.contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) {
-                cursor.getString(index)
-            } else {
-                null
-            }
-        }
-    }.getOrNull()
-        ?.trim()
-        ?.takeIf(String::isNotBlank)
-        ?: uri.lastPathSegment?.substringAfterLast('/')
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,16 +137,30 @@ fun CustomizeAppScreen(
     var favoriteSport by rememberSaveable { mutableStateOf("") }
     var career by rememberSaveable { mutableStateOf("") }
     var availabilitySchedule by rememberSaveable { mutableStateOf("") }
+    var showProfileMusicPicker by remember { mutableStateOf(false) }
+    var externalProfileMusicUri by remember { mutableStateOf<Uri?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val profileMusicPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            viewModel.uploadProfileMusic(
-                uri = uri,
-                displayName = selectedProfileMusicName(context, uri),
-                onUploaded = { uploadedUrl -> favoriteMusicUrl = uploadedUrl }
-            )
+            externalProfileMusicUri = uri
+            showProfileMusicPicker = true
+        }
+    }
+    val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            externalProfileMusicUri = null
+            showProfileMusicPicker = true
+        } else {
+            profileMusicPicker.launch("audio/*")
         }
     }
 
@@ -190,6 +185,29 @@ fun CustomizeAppScreen(
         val message = appearanceMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         viewModel.clearAppearanceMessage()
+    }
+
+    if (showProfileMusicPicker) {
+        DeviceAudioPickerDialog(
+            initialUri = externalProfileMusicUri,
+            onBrowseFiles = {
+                showProfileMusicPicker = false
+                profileMusicPicker.launch("audio/*")
+            },
+            onDismiss = {
+                showProfileMusicPicker = false
+                externalProfileMusicUri = null
+            },
+            onClipReady = { clip ->
+                viewModel.uploadProfileMusic(
+                    uri = clip.uri,
+                    displayName = clip.displayName,
+                    contentTypeHint = clip.mimeType,
+                    deleteTemporaryFile = true,
+                    onUploaded = { uploadedUrl -> favoriteMusicUrl = uploadedUrl }
+                )
+            }
+        )
     }
 
     Scaffold(
@@ -408,7 +426,17 @@ fun CustomizeAppScreen(
                                 singleLine = true
                             )
                             OutlinedButton(
-                                onClick = { profileMusicPicker.launch("audio/*") },
+                                onClick = {
+                                    if (
+                                        ContextCompat.checkSelfPermission(context, audioPermission) ==
+                                        PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        externalProfileMusicUri = null
+                                        showProfileMusicPicker = true
+                                    } else {
+                                        audioPermissionLauncher.launch(audioPermission)
+                                    }
+                                },
                                 enabled = user != null && !profileMusicUploading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -447,7 +475,7 @@ fun CustomizeAppScreen(
                                 )
                             }
                             Text(
-                                text = "Archivos de hasta 40 MB. La canción elegida se guarda automáticamente; los enlaces se guardan con el botón inferior.",
+                                text = "Escucha, recorta y previsualiza hasta 60 segundos. El archivo solo se sube después de pulsar Listo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

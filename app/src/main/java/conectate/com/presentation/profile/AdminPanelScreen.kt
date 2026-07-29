@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -389,10 +390,10 @@ fun AdminPanelScreen(
                     Text("No tienes permisos de administrador.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            return@Scaffold
         }
 
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        if (isAdmin || isLoading) {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             ScrollableTabRow(selectedTabIndex = selectedTabIndex) {
                 Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, text = { Text("Resumen") })
                 Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, text = { Text("Usuarios") })
@@ -419,18 +420,18 @@ fun AdminPanelScreen(
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (selectedTabIndex) {
                     0 -> {
-                        item { AdminSummary(stats, systemHealth) }
+                        item(key = "admin-summary") { AdminSummary(stats, systemHealth) }
                     }
                     1 -> {
-                        item {
+                        item(key = "admin-user-search") {
                             AdminUserSearch(
                                 query = userSearch,
                                 onQueryChange = viewModel::setUserSearch,
                                 onSearch = viewModel::searchUsers
                             )
                         }
-                        if (users.isEmpty() && !isLoading) item { Text("No se encontraron usuarios.") }
-                        items(users, key = { it.id }) { summary ->
+                        if (users.isEmpty() && !isLoading) item(key = "admin-users-empty") { Text("No se encontraron usuarios.") }
+                        items(users, key = { "admin-user:${it.id}" }) { summary ->
                             val user = selectedUser?.takeIf { it.id == summary.id } ?: summary
                             AdminUserCard(
                                 user = user,
@@ -450,9 +451,9 @@ fun AdminPanelScreen(
                     }
                     2 -> {
                         if (suspendedProfiles.isEmpty() && !isLoading) {
-                            item { Text("No hay usuarios suspendidos.") }
+                            item(key = "admin-suspended-empty") { Text("No hay usuarios suspendidos.") }
                         }
-                        items(suspendedProfiles) { profile ->
+                        items(suspendedProfiles, key = { "admin-suspended:${it.userId}" }) { profile ->
                             SuspendedProfileCard(
                                 profile = profile,
                                 onReactivate = { viewModel.unsuspendUser(profile.userId) },
@@ -462,9 +463,12 @@ fun AdminPanelScreen(
                     }
                     3 -> {
                         if (userReports.isEmpty() && !isLoading) {
-                            item { Text("No hay reportes.") }
+                            item(key = "admin-reports-empty") { Text("No hay reportes.") }
                         }
-                        items(userReports) { report ->
+                        itemsIndexed(
+                            items = userReports,
+                            key = { index, report -> "admin-report:${report.id ?: index}" }
+                        ) { _, report ->
                             UserReportCard(
                                 report = report,
                                 onSuspend = { userToSuspend = report.reported_user_id },
@@ -474,9 +478,9 @@ fun AdminPanelScreen(
                     }
                     4 -> {
                         if (videoReports.isEmpty() && !isLoading) {
-                            item { Text("No hay reportes de videos.") }
+                            item(key = "admin-video-reports-empty") { Text("No hay reportes de videos.") }
                         }
-                        items(videoReports) { report ->
+                        items(videoReports, key = { "admin-video-report:${it.id}" }) { report ->
                             VideoReportCard(
                                 report = report,
                                 onSuspend = { userToSuspend = report.videoOwnerId },
@@ -486,9 +490,9 @@ fun AdminPanelScreen(
                     }
                     5 -> {
                         if (moderationAppeals.isEmpty() && !isLoading) {
-                            item { Text("No hay apelaciones para revisar.") }
+                            item(key = "admin-appeals-empty") { Text("No hay apelaciones para revisar.") }
                         }
-                        items(moderationAppeals, key = { it.id }) { appeal ->
+                        items(moderationAppeals, key = { "admin-appeal:${it.id}" }) { appeal ->
                             ModerationAppealCard(
                                 appeal = appeal,
                                 onReview = {
@@ -502,6 +506,7 @@ fun AdminPanelScreen(
             }
         }
     }
+}
 }
 
 @Composable
@@ -545,9 +550,9 @@ private fun SystemHealthPanel(health: SystemHealthResponse?) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            return@Column
         }
 
+        if (health != null) {
         val overallColor = if (health.ok) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.error
         Text(
@@ -602,6 +607,7 @@ private fun SystemHealthPanel(health: SystemHealthResponse?) {
                 }
             }
         }
+        }
     }
 }
 
@@ -622,17 +628,33 @@ private fun AdminMetric(label: String, value: Int, icon: androidx.compose.ui.gra
 
 @Composable
 private fun AdminUserSearch(query: String, onQueryChange: (String) -> Unit, onSearch: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            label = { Text("Nombre, correo, usuario o ID") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
-        )
-        Spacer(Modifier.width(8.dp))
-        Button(onClick = onSearch) { Text("Buscar") }
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (maxWidth < 420.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Nombre, correo, usuario o ID") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                )
+                Button(onClick = onSearch, modifier = Modifier.fillMaxWidth()) { Text("Buscar") }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    label = { Text("Nombre, correo, usuario o ID") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = onSearch) { Text("Buscar") }
+            }
+        }
     }
 }
 
@@ -902,11 +924,29 @@ private fun UserReportCard(report: Report, onSuspend: () -> Unit, onStatusChange
             }
             Text("Estado: ${report.status}", color = if (report.status == "pendiente") Color.Red else Color.Green)
             
-            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSuspend) { Text("Suspender") }
-                if (report.status == "pendiente") {
-                    OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
-                    OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                if (maxWidth < 430.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
+                        if (report.status == "pendiente") {
+                            OutlinedButton(
+                                onClick = { onStatusChange("resuelto") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Resolver") }
+                            OutlinedButton(
+                                onClick = { onStatusChange("ignorado") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Ignorar") }
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onSuspend) { Text("Suspender") }
+                        if (report.status == "pendiente") {
+                            OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
+                            OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+                        }
+                    }
                 }
             }
         }
@@ -922,11 +962,31 @@ private fun VideoReportCard(report: VideoReport, onSuspend: () -> Unit, onStatus
             Text("Razón: ${report.reason}")
             Text("Estado: ${report.status}", color = if (report.status == "pendiente") Color.Red else Color.Green)
             
-            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSuspend) { Text("Suspender Dueño") }
-                if (report.status == "pendiente") {
-                    OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
-                    OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                if (maxWidth < 430.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) {
+                            Text("Suspender dueño")
+                        }
+                        if (report.status == "pendiente") {
+                            OutlinedButton(
+                                onClick = { onStatusChange("resuelto") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Resolver") }
+                            OutlinedButton(
+                                onClick = { onStatusChange("ignorado") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Ignorar") }
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onSuspend) { Text("Suspender dueño") }
+                        if (report.status == "pendiente") {
+                            OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
+                            OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+                        }
+                    }
                 }
             }
         }

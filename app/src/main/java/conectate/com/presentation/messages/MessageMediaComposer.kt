@@ -169,6 +169,9 @@ fun MessageMediaComposer(
     initialFilter: String = "all",
     initialSelectedUris: List<Pair<Uri, String>> = emptyList(),
     initialStep: String = "gallery",
+    maxItems: Int = 30,
+    title: String = "Enviar foto o video",
+    confirmContentDescription: String = "Enviar",
     isSending: Boolean,
     onDismiss: () -> Unit,
     onSend: (List<OutgoingMessageMedia>, String) -> Unit
@@ -218,7 +221,7 @@ fun MessageMediaComposer(
 
     LaunchedEffect(initialSelectedUris) {
         if (initialSelectedUris.isNotEmpty() && selected.isEmpty()) {
-            selected.addAll(initialSelectedUris.map {
+            selected.addAll(initialSelectedUris.take(maxItems.coerceAtLeast(1)).map {
                 DeviceMedia(
                     id = it.first.hashCode().toLong(),
                     uri = it.first,
@@ -257,10 +260,11 @@ fun MessageMediaComposer(
                     onToggle = { item ->
                         if (selected.any { it.uri == item.uri }) {
                             selected.removeAll { it.uri == item.uri }
-                        } else if (selected.size < 30) {
+                        } else if (selected.size < maxItems.coerceAtLeast(1)) {
                             selected.add(item)
                         }
                     },
+                    title = title,
                     onContinue = {
                         if (selected.isNotEmpty()) {
                             activeIndex = 0
@@ -275,6 +279,7 @@ fun MessageMediaComposer(
                     caption = caption,
                     isSending = isSending || preparing,
                     error = error,
+                    confirmContentDescription = confirmContentDescription,
                     onCaptionChange = { caption = it.take(800) },
                     onBack = { step = "gallery" },
                     onDismiss = onDismiss,
@@ -374,6 +379,7 @@ private fun MessageGalleryStep(
     hasPermission: Boolean,
     onDismiss: () -> Unit,
     onToggle: (DeviceMedia) -> Unit,
+    title: String,
     onContinue: () -> Unit
 ) {
     val filtered = remember(media, filter) {
@@ -400,7 +406,7 @@ private fun MessageGalleryStep(
                 Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
             }
             Text(
-                text = "Enviar foto o video",
+                text = title,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
@@ -526,6 +532,7 @@ private fun MessageEditorStep(
     caption: String,
     isSending: Boolean,
     error: String?,
+    confirmContentDescription: String,
     onCaptionChange: (String) -> Unit,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -859,7 +866,7 @@ private fun MessageEditorStep(
                     if (isSending) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Send, contentDescription = "Enviar")
+                        Icon(Icons.Default.Send, contentDescription = confirmContentDescription)
                     }
                 }
             }

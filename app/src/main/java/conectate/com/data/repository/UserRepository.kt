@@ -1837,6 +1837,7 @@ class UserRepository @Inject constructor(
      */
     suspend fun uploadProfileMusic(
         uri: Uri,
+        contentTypeHint: String? = null,
         onProgress: (Float) -> Unit = {}
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -1868,8 +1869,21 @@ class UserRepository @Inject constructor(
                 if (count > 0) bytes.copyOf(count) else ByteArray(0)
             } ?: return@withContext Result.failure(Exception("No se pudo abrir la canción seleccionada."))
 
-            val declaredType = canonicalizeMediaContentType(resolver.getType(uri))
-            val inferredType = canonicalizeMediaContentType(inferMimeTypeFromBytes(header))
+            val declaredType = canonicalizeMediaContentType(
+                contentTypeHint ?: resolver.getType(uri)
+            )
+            val rawInferredType = canonicalizeMediaContentType(inferMimeTypeFromBytes(header))
+            // Media3 exports an audio-only MP4 with a generic ISO brand on some
+            // devices. The byte sniffer can label that container as video/mp4;
+            // the trusted exporter hint preserves its real audio type.
+            val inferredType = if (
+                declaredType == "audio/mp4" &&
+                rawInferredType == "video/mp4"
+            ) {
+                "audio/mp4"
+            } else {
+                rawInferredType
+            }
             val allowedTypes = setOf(
                 "audio/mpeg",
                 "audio/mp4",

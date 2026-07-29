@@ -3,9 +3,6 @@ package conectate.com.presentation.social
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -29,8 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import conectate.com.presentation.components.ImageCropPreset
-import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.messages.MessageMediaComposer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,37 +38,26 @@ fun CreatePostScreen(
     var remixAllowed by remember { mutableStateOf(false) }
     var remixAudience by remember { mutableStateOf("public") }
     val selectedMediaUris = remember { mutableStateListOf<Uri>() }
-    var pendingCropUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    var showMediaComposer by remember { mutableStateOf(false) }
     val isCreating by viewModel.isCreating.collectAsState()
     val error by viewModel.error.collectAsState()
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
-        val accepted = uris.take((7 - selectedMediaUris.size).coerceAtLeast(0))
-        val (images, videos) = accepted.partition { uri ->
-            context.contentResolver.getType(uri)?.startsWith("image/") != false
-        }
-        selectedMediaUris.addAll(videos)
-        pendingCropUris = images
-    }
-
-    pendingCropUris.firstOrNull()?.let { sourceUri ->
-        SimpleImageCropDialog(
-            sourceUri = sourceUri,
-            title = "Recortar publicación",
-            presets = listOf(
-                ImageCropPreset.ORIGINAL,
-                ImageCropPreset.SQUARE,
-                ImageCropPreset.PORTRAIT,
-                ImageCropPreset.WIDE
-            ),
-            initialPreset = ImageCropPreset.ORIGINAL,
-            onDismiss = { pendingCropUris = pendingCropUris.drop(1) },
-            onCropped = { croppedUri ->
-                selectedMediaUris.add(croppedUri)
-                pendingCropUris = pendingCropUris.drop(1)
+    if (showMediaComposer) {
+        MessageMediaComposer(
+            maxItems = (7 - selectedMediaUris.size).coerceAtLeast(1),
+            title = "Preparar publicación",
+            confirmContentDescription = "Añadir a la publicación",
+            isSending = false,
+            onDismiss = { showMediaComposer = false },
+            onSend = { media, preparedCaption ->
+                selectedMediaUris.addAll(
+                    media.map { it.uri }
+                        .take((7 - selectedMediaUris.size).coerceAtLeast(0))
+                )
+                if (caption.isBlank() && preparedCaption.isNotBlank()) {
+                    caption = preparedCaption
+                }
+                showMediaComposer = false
             }
         )
     }
@@ -233,8 +218,9 @@ fun CreatePostScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
+                    enabled = selectedMediaUris.size < 7,
                     onClick = {
-                        launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                        showMediaComposer = true
                     }
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Agregar Multimedia")

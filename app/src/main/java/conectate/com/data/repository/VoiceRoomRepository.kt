@@ -1006,8 +1006,17 @@ class VoiceRoomRepository @Inject constructor(
 
     init {
         scope.launch {
-            refreshRooms()
-            subscribeToVoiceRooms()
+            authService.observeSession()
+                .map { session -> session?.user?.id?.trim()?.lowercase().orEmpty() }
+                .distinctUntilChanged()
+                .collectLatest { userId ->
+                    if (userId.isBlank()) {
+                        _activeRooms.value = emptyList()
+                        return@collectLatest
+                    }
+                    refreshRooms()
+                    subscribeToVoiceRooms()
+                }
         }
     }
 

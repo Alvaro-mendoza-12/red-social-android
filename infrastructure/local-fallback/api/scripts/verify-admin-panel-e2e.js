@@ -4,6 +4,7 @@ const { Pool } = require('pg')
 const databaseUrl = process.env.DATABASE_URL
 const jwtSecret = String(process.env.JWT_SECRET || '')
 const baseUrl = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')
+const expectedAdminCount = Math.max(3, Number.parseInt(process.env.EXPECTED_ADMIN_COUNT || '3', 10) || 3)
 
 if (!databaseUrl || jwtSecret.length < 32) {
   throw new Error('DATABASE_URL and JWT_SECRET are required')
@@ -11,7 +12,7 @@ if (!databaseUrl || jwtSecret.length < 32) {
 
 const pool = new Pool({ connectionString: databaseUrl, max: 2 })
 
-async function findAdminActor() {
+async function findAdminActors() {
   const { rows } = await pool.query(
     `SELECT u.id::text AS id, u.email
      FROM fallback_users u
@@ -22,10 +23,12 @@ async function findAdminActor() {
        )
      WHERE m.is_admin = TRUE
      ORDER BY m.updated_at DESC
-     LIMIT 1`,
+     LIMIT 20`,
   )
-  if (!rows[0]) throw new Error('No configured administrator was found')
-  return rows[0]
+  if (rows.length < expectedAdminCount) {
+    throw new Error(`Expected at least ${expectedAdminCount} configured administrators; found ${rows.length}`)
+  }
+  return rows.slice(0, expectedAdminCount)
 }
 
 async function jsonRequest(path, accessToken) {
@@ -50,17 +53,26 @@ async function jsonRequest(path, accessToken) {
 
 async function run() {
   try {
-    const actor = await findAdminActor()
-    const accessToken = jwt.sign(
-      { email: actor.email, provider: 'local-fallback' },
-      jwtSecret,
-      {
-        subject: actor.id,
-        expiresIn: '5m',
-        issuer: 'conectate-local-fallback',
-        audience: 'conectate-clients',
-      },
-    )
+    const actors = await findAdminActors()
+    const tokens = actors.map((actor) => jwt.sign(
+        { email: actor.email, provider: 'local-fallback' },
+        jwtSecret,
+        {
+          subject: actor.id,
+          expiresIn: '5m',
+          issuer: 'conectate-local-fallback',
+          audience: 'conectate-clients',
+        },
+      ))
+
+    for (const accessToken of tokens) {
+      await jsonRequest('/v1/data/admin/access', accessToken)
+      await jsonRequest('/v1/data/admin/catalog', accessToken)
+      await jsonRequest('/v1/data/admin/users?limit=1', accessToken)
+      await jsonRequest('/v1/data/admin/stats', accessToken)
+    }
+
+    const accessToken = tokens[0]
 
     const endpoints = [
       '/v1/data/admin/access',
@@ -88,7 +100,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      adminId: actor.id,
+      verifiedAdminAccounts: actors.length,
       endpoints: results,
     }))
   } finally {

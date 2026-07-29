@@ -408,6 +408,8 @@ class SettingsViewModel @Inject constructor(
     fun uploadProfileMusic(
         uri: Uri,
         displayName: String?,
+        contentTypeHint: String? = null,
+        deleteTemporaryFile: Boolean = false,
         onUploaded: (String) -> Unit
     ) {
         val user = currentUser
@@ -426,13 +428,20 @@ class SettingsViewModel @Inject constructor(
                 ?.takeIf(String::isNotBlank)
 
             val previousMusicUrl = user.favorite_music_url.orEmpty()
-            val upload = userRepository.uploadProfileMusic(uri) { progress ->
+            fun deleteTemporaryClip() {
+                if (deleteTemporaryFile && uri.scheme.equals("file", ignoreCase = true)) {
+                    uri.path?.let { path -> runCatching { java.io.File(path).delete() } }
+                }
+            }
+
+            val upload = userRepository.uploadProfileMusic(uri, contentTypeHint) { progress ->
                 _profileMusicUploadProgress.value = progress.coerceIn(0f, 1f)
             }
             val uploadedUrl = upload.getOrElse { error ->
                 _appearanceMessage.value =
                     error.message ?: "No se pudo subir la canción seleccionada."
                 _profileMusicUploading.value = false
+                deleteTemporaryClip()
                 return@launch
             }
 
@@ -445,6 +454,7 @@ class SettingsViewModel @Inject constructor(
                 _appearanceMessage.value =
                     update.exceptionOrNull()?.message ?: "No se pudo guardar la canción en el perfil."
                 _profileMusicUploading.value = false
+                deleteTemporaryClip()
                 return@launch
             }
 
@@ -463,6 +473,7 @@ class SettingsViewModel @Inject constructor(
                 userRepository.deleteUploadedProfileMusic(previousMusicUrl)
             }
             _profileMusicUploading.value = false
+            deleteTemporaryClip()
         }
     }
 

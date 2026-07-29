@@ -50,6 +50,7 @@ import conectate.com.presentation.components.isUserAdmin
 import conectate.com.presentation.components.MessageBubble
 import conectate.com.presentation.components.ImageMessageBubble
 import conectate.com.presentation.components.VideoMessageBubble
+import conectate.com.presentation.components.DeviceAudioPickerDialog
 import conectate.com.util.Constants
 import androidx.compose.material3.AlertDialog
 import java.util.Locale
@@ -215,6 +216,7 @@ fun ChatScreen(
     }
     
     var showMediaComposer by remember { mutableStateOf(false) }
+    var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
@@ -255,7 +257,7 @@ fun ChatScreen(
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
-        uri?.let { viewModel.sendMediaMessage(it, "audio") }
+        pendingAudioPreviewUri = uri
     }
 
     val documentPickerLauncher = rememberLauncherForActivityResult(
@@ -2135,6 +2137,20 @@ fun ChatScreen(
             onDismiss = { fullScreenMediaItems = emptyList() }
     )
 }
+
+    pendingAudioPreviewUri?.let { sourceUri ->
+        DeviceAudioPickerDialog(
+            initialUri = sourceUri,
+            title = "Previsualizar audio",
+            confirmLabel = "Listo y enviar",
+            onBrowseFiles = { audioPickerLauncher.launch("audio/*") },
+            onDismiss = { pendingAudioPreviewUri = null },
+            onClipReady = { clip ->
+                viewModel.sendMediaMessage(clip.uri, "audio")
+                pendingAudioPreviewUri = null
+            }
+        )
+    }
 
     if (showMediaComposer) {
         MessageMediaComposer(
