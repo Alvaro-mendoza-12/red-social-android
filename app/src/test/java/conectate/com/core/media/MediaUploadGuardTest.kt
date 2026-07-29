@@ -168,6 +168,32 @@ class MediaUploadGuardTest {
     }
 
     @Test
+    fun `profile music accepts flac and enforces its size limit`() {
+        val flacHeader = byteArrayOf(
+            0x66, 0x4C, 0x61, 0x43, 0x00, 0x00, 0x00, 0x22,
+            0x00, 0x00, 0x00, 0x00
+        )
+        assertTrue(
+            guard.validateMetadata(
+                bucketName = "profile-audio",
+                fileName = "user/song.flac",
+                sizeBytes = 8L * 1024 * 1024,
+                contentType = "audio/flac",
+                headerBytes = flacHeader
+            ).allowed
+        )
+        assertFalse(
+            guard.validateMetadata(
+                bucketName = "profile-audio",
+                fileName = "user/song.flac",
+                sizeBytes = 40L * 1024 * 1024 + 1,
+                contentType = "audio/flac",
+                headerBytes = flacHeader
+            ).allowed
+        )
+    }
+
+    @Test
     fun `report evidence accepts real png and rejects oversized payloads`() {
         val pngHeader = byteArrayOf(
             0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,

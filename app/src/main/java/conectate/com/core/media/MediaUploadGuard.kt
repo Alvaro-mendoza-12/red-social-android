@@ -159,6 +159,18 @@ class MediaUploadGuard @Inject constructor() {
             allowedContentTypes = setOf("audio/mpeg", "audio/mp4", "audio/wav"),
             allowedExtensions = setOf("mp3", "m4a", "wav")
         ),
+        "profile-audio" to BucketPolicy(
+            maxBytes = 40L * 1024 * 1024,
+            allowedContentTypes = setOf(
+                "audio/mpeg",
+                "audio/mp4",
+                "audio/wav",
+                "audio/ogg",
+                "audio/webm",
+                "audio/flac"
+            ),
+            allowedExtensions = setOf("mp3", "m4a", "wav", "ogg", "webm", "flac")
+        ),
         "moment-media" to BucketPolicy(
             maxBytes = 35L * 1024 * 1024,
             allowedContentTypes = setOf(
@@ -375,6 +387,9 @@ class MediaUploadGuard @Inject constructor() {
         }
         if (bytes.size >= 4 && bytes.copyOfRange(0, 4).decodeToString() == "OggS") {
             return "audio/ogg"
+        }
+        if (bytes.size >= 4 && bytes.copyOfRange(0, 4).decodeToString() == "fLaC") {
+            return "audio/flac"
         }
         if (
             bytes.size >= 4 && bytes[0] == 0x1A.toByte() && bytes[1] == 0x45.toByte() &&

@@ -30,6 +30,7 @@ async function run() {
   assert.equal(allowedBuckets.has('chat-media'), true)
   assert.equal(allowedBuckets.has('report-evidence'), true)
   assert.equal(allowedBuckets.has('live-replays'), true)
+  assert.equal(allowedBuckets.has('profile-audio'), true)
   assert.equal(allowedBuckets.has('arbitrary-user-bucket'), false)
 
   const gif = Buffer.from('474946383961000000000000', 'hex')
@@ -75,6 +76,16 @@ async function run() {
       contentType: 'audio/mp4',
     })).contentType,
     'audio/mp4',
+  )
+  const flac = Buffer.from('664c614300000022', 'hex')
+  assert.equal(
+    (await validateUpload({
+      bucket: 'profile-audio',
+      objectPath: 'user/profile-song.flac',
+      buffer: flac,
+      contentType: 'audio/flac',
+    })).contentType,
+    'audio/flac',
   )
 
   const mp4 = Buffer.from('000000186674797069736f6d0000020069736f6d69736f32', 'hex')

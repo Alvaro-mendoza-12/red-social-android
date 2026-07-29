@@ -23,6 +23,7 @@ const defaultBuckets = [
   'video-comments-media',
   'post-comments-media',
   'group-audio',
+  'profile-audio',
   'report-evidence',
 ]
 
@@ -48,6 +49,7 @@ const bucketUploadLimits = new Map([
   ['groups', 60 * 1024 * 1024],
   ['communities', 60 * 1024 * 1024],
   ['group-audio', 20 * 1024 * 1024],
+  ['profile-audio', 40 * 1024 * 1024],
   ['post-media', 25 * 1024 * 1024],
   ['moment-media', 35 * 1024 * 1024],
   ['challenges', 30 * 1024 * 1024],
@@ -71,6 +73,7 @@ const audioTypes = new Set([
   'audio/x-wav',
   'audio/ogg',
   'audio/webm',
+  'audio/flac',
 ])
 const documentTypes = new Set([
   'application/pdf',
@@ -200,6 +203,7 @@ function inferContentType(header, objectPath) {
     return 'audio/mpeg'
   }
   if (startsWith(header, [0x4f, 0x67, 0x67, 0x53])) return 'audio/ogg'
+  if (startsWith(header, [0x66, 0x4c, 0x61, 0x43])) return 'audio/flac'
   if (startsWith(header, [0x1a, 0x45, 0xdf, 0xa3])) {
     return ['weba', 'opus'].includes(extension) ? 'audio/webm' : 'video/webm'
   }
@@ -245,7 +249,7 @@ function allowedTypesForBucket(bucket) {
     allowed.add('video/mp4')
   }
   if (bucket === 'videos' || bucket === 'live-replays') allowed.add('video/mp4')
-  if (['video-comments-media', 'post-comments-media', 'group-audio'].includes(bucket)) {
+  if (['video-comments-media', 'post-comments-media', 'group-audio', 'profile-audio'].includes(bucket)) {
     audioTypes.forEach((type) => allowed.add(type))
   }
   if (messagingBuckets.has(bucket) || bucket === 'challenges') {

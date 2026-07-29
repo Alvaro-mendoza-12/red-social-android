@@ -4879,6 +4879,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const currentProfile = buildProfileForUser(user, importedProfile, currentProfileOverride)
       const currentAvatarUrl = trimUrl(currentProfile.avatar_url)
       const currentCoverUrl = trimUrl(currentProfile.cover_url)
+      const currentMusicUrl = trimUrl(currentProfile.favorite_music_url)
 
       // Valida propiedad Y normaliza la URL al objeto REAL (con owner-id). Si el cliente manda la
       // URL sin el prefijo owner-id, se reescribe para que la foto SE PUEDA MOSTRAR.
@@ -4895,6 +4896,22 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           return res.status(403).json({ error: 'PROFILE_COVER_NOT_OWNED' })
         }
         patch.cover_url = resolvedCover
+      }
+      if (
+        patch.favorite_music_url &&
+        trimUrl(patch.favorite_music_url) !== currentMusicUrl &&
+        trimUrl(patch.favorite_music_url).includes('/storage/v1/object/public/')
+      ) {
+        const resolvedMusic = await resolveOwnedStorageUrl(
+          pool,
+          user.id,
+          patch.favorite_music_url,
+          ['profile-audio'],
+        )
+        if (!resolvedMusic) {
+          return res.status(403).json({ error: 'PROFILE_MUSIC_NOT_OWNED' })
+        }
+        patch.favorite_music_url = resolvedMusic
       }
 
       patch.updated_at = new Date().toISOString()

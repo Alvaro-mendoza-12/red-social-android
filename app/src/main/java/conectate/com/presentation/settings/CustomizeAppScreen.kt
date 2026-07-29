@@ -1,5 +1,10 @@
 package conectate.com.presentation.settings
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
@@ -32,7 +38,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -56,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +73,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.local.prefs.AppThemeOption
 import conectate.com.presentation.components.AppAppearanceSettingsSection
+import conectate.com.presentation.components.CommentAudioPlayer
 import conectate.com.presentation.components.ProfileAmbientBackground
 import conectate.com.presentation.profile.SettingsUiState
 import conectate.com.presentation.profile.SettingsViewModel as ProfileSettingsViewModel
@@ -92,6 +102,28 @@ private fun gameLogoValues(raw: String): Map<String, String> = raw
     }
     .toMap()
 
+private fun selectedProfileMusicName(context: Context, uri: Uri): String? {
+    return runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) {
+                cursor.getString(index)
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?: uri.lastPathSegment?.substringAfterLast('/')
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomizeAppScreen(
@@ -105,7 +137,11 @@ fun CustomizeAppScreen(
     val settingsState by viewModel.settingsState.collectAsState()
     val appearanceSaving by viewModel.appearanceSaving.collectAsState()
     val appearanceMessage by viewModel.appearanceMessage.collectAsState()
+    val profileMusicUploading by viewModel.profileMusicUploading.collectAsState()
+    val profileMusicUploadProgress by viewModel.profileMusicUploadProgress.collectAsState()
+    val profileMusicSelectedName by viewModel.profileMusicSelectedName.collectAsState()
     val user = (settingsState as? SettingsUiState.Success)?.user
+    val context = LocalContext.current
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var profileTheme by rememberSaveable { mutableStateOf(AppThemeOption.CONECTATE) }
@@ -121,6 +157,17 @@ fun CustomizeAppScreen(
     var career by rememberSaveable { mutableStateOf("") }
     var availabilitySchedule by rememberSaveable { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
+    val profileMusicPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadProfileMusic(
+                uri = uri,
+                displayName = selectedProfileMusicName(context, uri),
+                onUploaded = { uploadedUrl -> favoriteMusicUrl = uploadedUrl }
+            )
+        }
+    }
 
     LaunchedEffect(user?.id, user?.updated_at) {
         if (user != null) {
@@ -350,14 +397,67 @@ fun CustomizeAppScreen(
                         }
                     }
                     item {
-                        OutlinedTextField(
-                            value = favoriteMusicUrl,
-                            onValueChange = { favoriteMusicUrl = it.take(700) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Música del perfil") },
-                            placeholder = { Text("https://...") },
-                            singleLine = true
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SectionTitle("Música del perfil")
+                            OutlinedTextField(
+                                value = favoriteMusicUrl,
+                                onValueChange = { favoriteMusicUrl = it.take(700) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Enlace de música") },
+                                placeholder = { Text("YouTube o enlace directo") },
+                                singleLine = true
+                            )
+                            OutlinedButton(
+                                onClick = { profileMusicPicker.launch("audio/*") },
+                                enabled = user != null && !profileMusicUploading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (profileMusicUploading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.MusicNote, contentDescription = null)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (profileMusicUploading) {
+                                        "Subiendo canción…"
+                                    } else {
+                                        "Elegir canción del dispositivo"
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (profileMusicUploading) {
+                                LinearProgressIndicator(
+                                    progress = profileMusicUploadProgress.coerceIn(0f, 1f),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            profileMusicSelectedName?.let { fileName ->
+                                Text(
+                                    text = fileName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = "Archivos de hasta 40 MB. La canción elegida se guarda automáticamente; los enlaces se guardan con el botón inferior.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (favoriteMusicUrl.isNotBlank()) {
+                                CommentAudioPlayer(
+                                    audioUrl = favoriteMusicUrl,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
                     }
                     item {
                         Button(

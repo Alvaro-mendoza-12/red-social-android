@@ -19,6 +19,9 @@ fun canonicalizeMediaContentType(contentType: String?): String? {
     return when (clean) {
         "image/jpg" -> "image/jpeg"
         "audio/m4a", "audio/x-m4a" -> "audio/mp4"
+        "audio/mp3", "audio/x-mp3", "audio/x-mpeg" -> "audio/mpeg"
+        "audio/x-wav" -> "audio/wav"
+        "audio/x-flac" -> "audio/flac"
         else -> clean
     }
 }
@@ -36,6 +39,7 @@ fun preferredExtensionForMime(contentType: String?): String? {
         "audio/mp4" -> "m4a"
         "audio/ogg" -> "ogg"
         "audio/webm" -> "webm"
+        "audio/flac" -> "flac"
         "application/pdf" -> "pdf"
         "application/zip" -> "zip"
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
@@ -111,6 +115,30 @@ fun inferMimeTypeFromBytes(bytes: ByteArray): String? {
     }
     if ((bytes[0].toInt() and 0xFF) == 0xFF && (bytes[1].toInt() and 0xE0) == 0xE0) {
         return "audio/mpeg"
+    }
+    if (
+        bytes[0] == 0x4F.toByte() &&
+        bytes[1] == 0x67.toByte() &&
+        bytes[2] == 0x67.toByte() &&
+        bytes[3] == 0x53.toByte()
+    ) {
+        return "audio/ogg"
+    }
+    if (
+        bytes[0] == 0x66.toByte() &&
+        bytes[1] == 0x4C.toByte() &&
+        bytes[2] == 0x61.toByte() &&
+        bytes[3] == 0x43.toByte()
+    ) {
+        return "audio/flac"
+    }
+    if (
+        bytes[0] == 0x1A.toByte() &&
+        bytes[1] == 0x45.toByte() &&
+        bytes[2] == 0xDF.toByte() &&
+        bytes[3] == 0xA3.toByte()
+    ) {
+        return "audio/webm"
     }
     if (
         bytes.getOrNull(4) == 0x66.toByte() &&

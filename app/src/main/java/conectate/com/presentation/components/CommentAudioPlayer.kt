@@ -36,6 +36,7 @@ fun CommentAudioPlayer(
     audioUrl: String,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val youtubeVideoId = remember(audioUrl) { extractYouTubeVideoId(audioUrl) }
     var isPlaying by remember(audioUrl) { mutableStateOf(false) }
     var isLoading by remember(audioUrl) { mutableStateOf(false) }
@@ -82,7 +83,7 @@ fun CommentAudioPlayer(
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .build()
                     )
-                    UbuntuMedia.setDataSource(this, audioUrl)
+                    UbuntuMedia.setDataSource(context, this, audioUrl)
                     setOnPreparedListener {
                         isLoading = false
                         start()

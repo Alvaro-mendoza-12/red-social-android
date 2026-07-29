@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Movie
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.provider.OpenableColumns
 import conectate.com.core.media.ProfileMediaMutation
 import conectate.com.core.media.ProfileMediaSync
 import conectate.com.core.testing.TestRuntimeOverrides
@@ -18,6 +19,9 @@ import conectate.com.data.repository.user.UserLocalStateStore
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.util.canonicalizeMediaContentType
+import conectate.com.util.inferMimeTypeFromBytes
+import conectate.com.util.preferredExtensionForMime
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -1826,6 +1830,130 @@ class UserRepository @Inject constructor(
         return if (result.isSuccess) Result.success(true) else Result.failure(result.exceptionOrNull() ?: Exception("Unknown error"))
     }
 
+    /**
+     * Streams a user-selected song into the dedicated public profile-audio
+     * bucket. A content:// URI is never persisted in the profile because it is
+     * only readable on the phone that selected it.
+     */
+    suspend fun uploadProfileMusic(
+        uri: Uri,
+        onProgress: (Float) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val userId = authService.getCurrentUserId()
+                ?: return@withContext Result.failure(Exception("No hay una sesión activa."))
+            val resolver = context.contentResolver
+
+            var reportedSize = -1L
+            runCatching {
+                resolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.SIZE),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                            reportedSize = cursor.getLong(sizeIndex)
+                        }
+                    }
+                }
+            }
+
+            val header = resolver.openInputStream(uri)?.use { input ->
+                val bytes = ByteArray(512)
+                val count = input.read(bytes)
+                if (count > 0) bytes.copyOf(count) else ByteArray(0)
+            } ?: return@withContext Result.failure(Exception("No se pudo abrir la canción seleccionada."))
+
+            val declaredType = canonicalizeMediaContentType(resolver.getType(uri))
+            val inferredType = canonicalizeMediaContentType(inferMimeTypeFromBytes(header))
+            val allowedTypes = setOf(
+                "audio/mpeg",
+                "audio/mp4",
+                "audio/wav",
+                "audio/ogg",
+                "audio/webm",
+                "audio/flac"
+            )
+            if (inferredType != null && inferredType !in allowedTypes) {
+                return@withContext Result.failure(Exception("El archivo seleccionado no es una canción compatible."))
+            }
+            val contentType = inferredType?.takeIf { it in allowedTypes }
+                ?: declaredType?.takeIf { it in allowedTypes }
+                ?: return@withContext Result.failure(
+                    Exception("Formato no compatible. Usa MP3, M4A, WAV, OGG, WebM/Opus o FLAC.")
+                )
+            val extension = preferredExtensionForMime(contentType)
+                ?: return@withContext Result.failure(Exception("No se pudo identificar el formato de audio."))
+
+            val descriptorSize = runCatching {
+                resolver.openAssetFileDescriptor(uri, "r")?.use { descriptor -> descriptor.length }
+            }.getOrNull()?.takeIf { it > 0L }
+            val measuredSize = when {
+                reportedSize > 0L -> reportedSize
+                descriptorSize != null -> descriptorSize
+                else -> resolver.openInputStream(uri)?.use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > PROFILE_MUSIC_MAX_BYTES) break
+                    }
+                    total
+                } ?: -1L
+            }
+            if (measuredSize <= 0L) {
+                return@withContext Result.failure(Exception("No se pudo comprobar el tamaño de la canción."))
+            }
+            if (measuredSize > PROFILE_MUSIC_MAX_BYTES) {
+                return@withContext Result.failure(Exception("La canción supera el máximo permitido de 40 MB."))
+            }
+
+            val requestedPath = "$userId/${UUID.randomUUID()}.$extension"
+            val upload = storageService.uploadFileFromUri(
+                bucketName = PROFILE_MUSIC_BUCKET,
+                fileName = requestedPath,
+                sourceUri = uri,
+                sizeBytes = measuredSize,
+                contentType = contentType,
+                allowOverwrite = false,
+                onProgress = onProgress
+            )
+            val stored = upload.getOrElse { error ->
+                return@withContext Result.failure(error)
+            }
+            val storedPath = ProfileMediaSync.uploadedObjectPath(
+                bucket = PROFILE_MUSIC_BUCKET,
+                requestedPath = requestedPath,
+                responseKey = stored.Key,
+                responseName = stored.Name
+            )
+            val publicUrl = UbuntuStorageUrl.rewrite(
+                storageService.getPublicUrl(PROFILE_MUSIC_BUCKET, storedPath)
+            ).orEmpty()
+            if (publicUrl.isBlank()) {
+                return@withContext Result.failure(Exception("El servidor no devolvió la URL de la canción."))
+            }
+            Result.success(publicUrl)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun deleteUploadedProfileMusic(url: String): Result<Boolean> {
+        val normalized = url.trim().replace("\\", "/")
+        val marker = "/storage/v1/object/public/$PROFILE_MUSIC_BUCKET/"
+        if (!normalized.contains(marker, ignoreCase = true)) {
+            return Result.success(false)
+        }
+        return storageService.deleteFileByPublicUrl(normalized).map { true }
+    }
+
     // ─────────────────────────────────────────────
     // UPLOAD COVER IMAGE
     // ─────────────────────────────────────────────
@@ -3199,6 +3327,8 @@ class UserRepository @Inject constructor(
 
     private companion object {
         const val PROFILE_AVATAR_MAX_DURATION_MS = 2_000L
+        const val PROFILE_MUSIC_BUCKET = "profile-audio"
+        const val PROFILE_MUSIC_MAX_BYTES = 40L * 1024 * 1024
 
         val NON_MENTIONABLE_STATUSES = setOf(
             "deleted",

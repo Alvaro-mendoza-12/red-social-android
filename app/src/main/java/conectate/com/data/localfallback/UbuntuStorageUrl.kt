@@ -27,6 +27,7 @@ object UbuntuStorageUrl {
         "community-media",
         "post-comments-media",
         "group-audio",
+        "profile-audio",
         "report-evidence"
     )
 

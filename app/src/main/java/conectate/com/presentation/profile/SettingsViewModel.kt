@@ -1,5 +1,6 @@
 package conectate.com.presentation.profile
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.User
@@ -91,6 +92,12 @@ class SettingsViewModel @Inject constructor(
     val appearanceSaving: StateFlow<Boolean> = _appearanceSaving.asStateFlow()
     private val _appearanceMessage = MutableStateFlow<String?>(null)
     val appearanceMessage: StateFlow<String?> = _appearanceMessage.asStateFlow()
+    private val _profileMusicUploading = MutableStateFlow(false)
+    val profileMusicUploading: StateFlow<Boolean> = _profileMusicUploading.asStateFlow()
+    private val _profileMusicUploadProgress = MutableStateFlow(0f)
+    val profileMusicUploadProgress: StateFlow<Float> = _profileMusicUploadProgress.asStateFlow()
+    private val _profileMusicSelectedName = MutableStateFlow<String?>(null)
+    val profileMusicSelectedName: StateFlow<String?> = _profileMusicSelectedName.asStateFlow()
     private val _isDeletingAccount = MutableStateFlow(false)
     val isDeletingAccount: StateFlow<Boolean> = _isDeletingAccount.asStateFlow()
     private val _deleteAccountMessage = MutableStateFlow<String?>(null)
@@ -395,6 +402,67 @@ class SettingsViewModel @Inject constructor(
                     result.exceptionOrNull()?.message ?: "No se pudo actualizar el perfil."
             }
             _appearanceSaving.value = false
+        }
+    }
+
+    fun uploadProfileMusic(
+        uri: Uri,
+        displayName: String?,
+        onUploaded: (String) -> Unit
+    ) {
+        val user = currentUser
+        if (user == null) {
+            _appearanceMessage.value = "No se pudo cargar tu perfil."
+            return
+        }
+        if (_profileMusicUploading.value) return
+
+        viewModelScope.launch {
+            _profileMusicUploading.value = true
+            _profileMusicUploadProgress.value = 0f
+            _profileMusicSelectedName.value = displayName
+                ?.trim()
+                ?.take(160)
+                ?.takeIf(String::isNotBlank)
+
+            val previousMusicUrl = user.favorite_music_url.orEmpty()
+            val upload = userRepository.uploadProfileMusic(uri) { progress ->
+                _profileMusicUploadProgress.value = progress.coerceIn(0f, 1f)
+            }
+            val uploadedUrl = upload.getOrElse { error ->
+                _appearanceMessage.value =
+                    error.message ?: "No se pudo subir la canción seleccionada."
+                _profileMusicUploading.value = false
+                return@launch
+            }
+
+            val update = userRepository.updateProfile(
+                user.id,
+                UpdateProfileRequest(favorite_music_url = uploadedUrl)
+            )
+            if (update.isFailure) {
+                userRepository.deleteUploadedProfileMusic(uploadedUrl)
+                _appearanceMessage.value =
+                    update.exceptionOrNull()?.message ?: "No se pudo guardar la canción en el perfil."
+                _profileMusicUploading.value = false
+                return@launch
+            }
+
+            val persisted = userRepository.getUserById(user.id, forceNetwork = true).getOrNull()
+                ?: user.copy(favorite_music_url = uploadedUrl)
+            currentUser = persisted
+            _settingsState.value = SettingsUiState.Success(persisted)
+            _profileMusicUploadProgress.value = 1f
+            onUploaded(uploadedUrl)
+            _appearanceMessage.value = "Canción guardada en tu perfil."
+
+            if (
+                previousMusicUrl.isNotBlank() &&
+                previousMusicUrl != uploadedUrl
+            ) {
+                userRepository.deleteUploadedProfileMusic(previousMusicUrl)
+            }
+            _profileMusicUploading.value = false
         }
     }
 

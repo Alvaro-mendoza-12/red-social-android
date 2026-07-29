@@ -46,6 +46,7 @@ const audioBuckets = [
   'video-comments-media',
   'post-comments-media',
   'group-audio',
+  'profile-audio',
 ]
 
 function createWaveBytes() {
