@@ -15,6 +15,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Cake
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +37,10 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
 import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 private const val PROFILE_AVATAR_MAX_VIDEO_MS = 2_000L
 
@@ -53,6 +60,10 @@ fun EditProfileScreen(
     var bio by remember { mutableStateOf("") }
     var country by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf("unspecified") }
+    var birthDate by remember { mutableStateOf("") }
+    var showGenderDropdown by remember { mutableStateOf(false) }
+    var showBirthDatePicker by remember { mutableStateOf(false) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var avatarMediaType by remember { mutableStateOf<String?>(null) }
     var avatarDurationMs by remember { mutableStateOf<Long?>(null) }
@@ -78,6 +89,8 @@ fun EditProfileScreen(
             bio = user.bio ?: ""
             country = user.country ?: ""
             city = user.city ?: ""
+            gender = user.gender
+            birthDate = user.birth_date.orEmpty()
             avatarMediaType = user.avatar_media_type
             avatarDurationMs = user.avatar_duration_ms
             avatarVideoMuted = user.avatar_video_muted
@@ -88,6 +101,45 @@ fun EditProfileScreen(
     // Load profile on screen entry (in case ViewModel was just created)
     LaunchedEffect(Unit) {
         viewModel.loadUserProfile(null)
+    }
+
+    val parsedBirthDate = remember(birthDate) {
+        runCatching { LocalDate.parse(birthDate) }.getOrNull()
+    }
+    val birthDateIsValid = birthDate.isBlank() ||
+        parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
+
+    if (showBirthDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = parsedBirthDate
+                ?.atStartOfDay(ZoneOffset.UTC)
+                ?.toInstant()
+                ?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showBirthDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = datePickerState.selectedDateMillis != null,
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val selected = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                            if (!selected.isAfter(LocalDate.now())) {
+                                birthDate = selected.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                                showBirthDatePicker = false
+                            }
+                        }
+                    },
+                ) { Text("Usar fecha") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBirthDatePicker = false }) { Text("Cancelar") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 
     val profileImageLauncher = rememberLauncherForActivityResult(
@@ -420,6 +472,68 @@ fun EditProfileScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        ExposedDropdownMenuBox(
+                            expanded = showGenderDropdown,
+                            onExpandedChange = { showGenderDropdown = it },
+                        ) {
+                            OutlinedTextField(
+                                value = when (gender) {
+                                    "man" -> "Hombre"
+                                    "woman" -> "Mujer"
+                                    else -> "Prefiero no decirlo"
+                                },
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Me identifico como") },
+                                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) },
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(showGenderDropdown)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(),
+                            )
+                            ExposedDropdownMenu(
+                                expanded = showGenderDropdown,
+                                onDismissRequest = { showGenderDropdown = false },
+                            ) {
+                                listOf(
+                                    "man" to "Hombre",
+                                    "woman" to "Mujer",
+                                    "unspecified" to "Prefiero no decirlo",
+                                ).forEach { (value, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            gender = value
+                                            showGenderDropdown = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = parsedBirthDate?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                                ?: birthDate,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Fecha de nacimiento") },
+                            leadingIcon = { Icon(Icons.Default.Cake, contentDescription = null) },
+                            trailingIcon = {
+                                IconButton(onClick = { showBirthDatePicker = true }) {
+                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha")
+                                }
+                            },
+                            isError = !birthDateIsValid,
+                            supportingText = {
+                                Text("El día se usa para avisar a tus amigos en tu cumpleaños.")
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showBirthDatePicker = true },
+                        )
+
                         if (errorMessage != null) {
                             Text(errorMessage ?: "", color = MaterialTheme.colorScheme.error)
                         }
@@ -433,6 +547,7 @@ fun EditProfileScreen(
                                     trimmedName.isEmpty() -> errorMessage = "El nombre no puede estar vacío"
                                     trimmedName.length < 2 -> errorMessage = "El nombre es muy corto"
                                     trimmedName.length > 50 -> errorMessage = "El nombre es muy largo"
+                                    !birthDateIsValid -> errorMessage = "Selecciona una fecha de nacimiento válida"
                                     else -> {
                                         isLoading = true
                                         errorMessage = null
@@ -441,6 +556,8 @@ fun EditProfileScreen(
                                             bio = trimmedBio,
                                             country = country.trim(),
                                             city = city.trim(),
+                                            gender = gender,
+                                            birthDate = birthDate.takeIf { it.isNotBlank() },
                                             imageUri = imageUri,
                                             avatarMediaType = avatarMediaType,
                                             avatarVideoMuted = avatarVideoMuted,

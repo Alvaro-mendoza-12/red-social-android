@@ -3,7 +3,16 @@ package conectate.com.presentation.proximity
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,6 +21,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,6 +73,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,9 +87,13 @@ import conectate.com.data.localfallback.AnonymousChatMessage
 import conectate.com.data.localfallback.AnonymousChatSession
 import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.messages.getBestLastKnownLocation
 import conectate.com.presentation.messages.hasLocationPermission
 import conectate.com.presentation.navigation.Screen
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
 
 private enum class LocationAction { ENABLE_NEARBY, START_RANDOM }
 
@@ -94,11 +112,11 @@ fun ProximityScreen(
     val randomStatus by viewModel.randomStatus.collectAsState()
     val session by viewModel.anonymousSession.collectAsState()
     val messages by viewModel.anonymousMessages.collectAsState()
+    val gender by viewModel.gender.collectAsState()
+    val lookingFor by viewModel.lookingFor.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var radiusSlider by remember(radiusKm) { mutableFloatStateOf(radiusKm.toFloat()) }
-    var gender by remember { mutableStateOf("unspecified") }
-    var lookingFor by remember { mutableStateOf("any") }
     var localError by remember { mutableStateOf<String?>(null) }
     var pendingLocationAction by remember { mutableStateOf<LocationAction?>(null) }
 
@@ -148,6 +166,7 @@ fun ProximityScreen(
     val visibleError = localError ?: errorMessage
     LaunchedEffect(visibleError) {
         if (!visibleError.isNullOrBlank()) {
+            AppFeedbackBus.showError(visibleError)
             kotlinx.coroutines.delay(4_000)
             localError = null
             viewModel.clearError()
@@ -220,8 +239,8 @@ fun ProximityScreen(
                         radiusSlider = it
                         viewModel.setRadius(it.toDouble())
                     },
-                    onGenderChange = { gender = it },
-                    onLookingForChange = { lookingFor = it },
+                    onGenderChange = viewModel::setGender,
+                    onLookingForChange = viewModel::setLookingFor,
                     onStart = { requestLocation(LocationAction.START_RANDOM) },
                     onCancel = viewModel::cancelAnonymousMatch,
                     onSend = viewModel::sendAnonymousMessage,
@@ -251,6 +270,12 @@ private fun NearbyTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
+            RadarVisualization(
+                enabled = enabled,
+                radiusKm = radius,
+                profiles = profiles,
+            )
+            Spacer(Modifier.height(12.dp))
             ProximityPrivacyNotice()
             Spacer(Modifier.height(12.dp))
             RadiusControl(radius, onRadiusChange)
@@ -289,6 +314,107 @@ private fun NearbyTab(
         items(profiles, key = { it.userId }) { profile ->
             NearbyProfileRow(profile = profile, onClick = { onOpenProfile(profile.userId) })
             Divider()
+        }
+    }
+}
+
+@Composable
+private fun RadarVisualization(
+    enabled: Boolean,
+    radiusKm: Float,
+    profiles: List<NearbyProfile>,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "proximity-radar")
+    val sweepAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "radar-sweep",
+    )
+    val primary = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surfaceVariant
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1.35f),
+        shape = RoundedCornerShape(24.dp),
+        color = surface,
+        tonalElevation = 2.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(18.dp)) {
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val outerRadius = min(size.width, size.height) * 0.46f
+                repeat(4) { index ->
+                    drawCircle(
+                        color = primary.copy(alpha = 0.16f + index * 0.03f),
+                        radius = outerRadius * (index + 1) / 4f,
+                        center = center,
+                        style = Stroke(width = 2f),
+                    )
+                }
+                drawLine(
+                    color = primary.copy(alpha = 0.14f),
+                    start = Offset(center.x - outerRadius, center.y),
+                    end = Offset(center.x + outerRadius, center.y),
+                    strokeWidth = 2f,
+                )
+                drawLine(
+                    color = primary.copy(alpha = 0.14f),
+                    start = Offset(center.x, center.y - outerRadius),
+                    end = Offset(center.x, center.y + outerRadius),
+                    strokeWidth = 2f,
+                )
+                if (enabled) {
+                    val radians = Math.toRadians(sweepAngle.toDouble())
+                    val beamEnd = Offset(
+                        x = center.x + cos(radians).toFloat() * outerRadius,
+                        y = center.y + sin(radians).toFloat() * outerRadius,
+                    )
+                    drawLine(
+                        color = primary.copy(alpha = 0.88f),
+                        start = center,
+                        end = beamEnd,
+                        strokeWidth = 5f,
+                    )
+                    profiles.take(24).forEach { profile ->
+                        val angle = Math.toRadians((profile.userId.hashCode().toUInt().toLong() % 360).toDouble())
+                        val fraction = (profile.distanceKm / radiusKm.coerceAtLeast(1f))
+                            .toFloat()
+                            .coerceIn(0.12f, 0.95f)
+                        drawCircle(
+                            color = Color(0xFF45E08A),
+                            radius = 7f,
+                            center = Offset(
+                                center.x + cos(angle).toFloat() * outerRadius * fraction,
+                                center.y + sin(angle).toFloat() * outerRadius * fraction,
+                            ),
+                        )
+                    }
+                    drawCircle(color = primary, radius = 9f, center = center)
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    if (enabled) Icons.Default.MyLocation else Icons.Default.LocationOff,
+                    contentDescription = null,
+                    tint = primary,
+                )
+                Text(
+                    if (enabled) "Radar activo · ${radiusKm.toInt()} km" else "Radar apagado",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    if (enabled) "${profiles.size} personas dentro del radio" else "Actívalo para comenzar",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -380,47 +506,79 @@ private fun AnonymousTab(
         return
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ProximityPrivacyNotice()
-        RadiusControl(radius, onRadiusChange)
-        PreferenceSelector(
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Icon(Icons.Default.Shuffle, contentDescription = null)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Conversación anónima",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Conoce a alguien sin mostrar tu identidad. Ambos deciden paso a paso qué compartir.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+        item { ProximityPrivacyNotice() }
+        item { RadiusControl(radius, onRadiusChange) }
+        item { PreferenceSelector(
             label = "Me identifico como",
             value = gender,
             options = listOf(
                 "unspecified" to "Prefiero no decir",
                 "woman" to "Mujer",
-                "man" to "Hombre",
-                "nonbinary" to "No binario"
+                "man" to "Hombre"
             ),
             onValueChange = onGenderChange
-        )
-        PreferenceSelector(
+        ) }
+        item { PreferenceSelector(
             label = "Quiero conversar con",
             value = lookingFor,
             options = listOf(
                 "any" to "Cualquier persona",
                 "woman" to "Mujeres",
-                "man" to "Hombres",
-                "nonbinary" to "Personas no binarias"
+                "man" to "Hombres"
             ),
             onValueChange = onLookingForChange
-        )
-        when (status) {
+        ) }
+        item { when (status) {
             "waiting" -> {
-                Box(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
+                        Spacer(Modifier.height(22.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(54.dp), strokeWidth = 5.dp)
                         Spacer(Modifier.height(12.dp))
-                        Text("Buscando una persona compatible...")
+                        Text("Buscando conexión compatible…", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Puedes permanecer aquí; la búsqueda se actualiza automáticamente.",
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         Spacer(Modifier.height(12.dp))
                         OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(8.dp)) {
                             Icon(Icons.Default.Cancel, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Cancelar")
                         }
+                        Spacer(Modifier.height(18.dp))
                     }
                 }
             }
@@ -433,6 +591,15 @@ private fun AnonymousTab(
                 Spacer(Modifier.width(8.dp))
                 Text("Buscar chat aleatorio")
             }
+        } }
+        item {
+            Text(
+                "Seguridad: no mostramos tu ubicación exacta ni tu perfil hasta que tú lo autorices.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -550,7 +717,11 @@ private fun AnonymousConversation(
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(10.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(

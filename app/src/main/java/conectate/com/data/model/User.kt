@@ -33,6 +33,8 @@ data class User(
     val profile_welcome: String? = null,
     val country: String? = null,
     val city: String? = null,
+    val gender: String = "unspecified",
+    val birth_date: String? = null,
     val interests: List<String> = emptyList(),
     val hobbies: List<String> = emptyList(),
     val linked_games: List<String> = emptyList(),

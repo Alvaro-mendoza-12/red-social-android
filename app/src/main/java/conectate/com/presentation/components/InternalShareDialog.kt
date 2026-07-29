@@ -35,7 +35,7 @@ fun InternalShareDialog(
         onDismissRequest = onDismiss,
         title = { Text("Compartir con...") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.72f)) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { 

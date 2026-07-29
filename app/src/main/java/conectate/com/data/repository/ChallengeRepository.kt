@@ -610,7 +610,7 @@ class ChallengeRepository @Inject constructor(
         return notificationRepository.sendNotification(
             recipientId = friendId,
             type = "challenge_invite",
-            content = "Te han desafiado al reto: $challengeTitle. ¡Tienes 10 minutos!",
+            content = "Te pasaron una Ronda Novvin: $challengeTitle. ¡Tienes 10 minutos!",
             extraData = buildJsonObject {
                 put("challenge_title", challengeTitle)
             }

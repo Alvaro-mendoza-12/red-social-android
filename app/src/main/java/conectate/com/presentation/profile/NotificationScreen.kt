@@ -315,6 +315,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "new_post" -> " hizo una nueva publicación"
         "friend_request" -> " te envió una solicitud de amistad"
         "friend_request_accepted" -> " aceptó tu solicitud de amistad"
+        "birthday" -> " cumple años hoy. ¡Deséale un feliz cumpleaños!"
         "group_member_added" -> {
             val groupName = n.content?.trim().orEmpty()
             if (groupName.isNotBlank()) " te agregó al grupo $groupName" else " te agregó a un grupo"
@@ -368,7 +369,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
     // requiera ser exhaustivo.
     try {
     when (type) {
-        "follow", "friend_request_accepted" -> navController.navigate(Screen.UserProfile.createRoute(n.actorId))
+        "follow", "friend_request_accepted", "birthday" -> navController.navigate(Screen.UserProfile.createRoute(n.actorId))
         "friend_request" -> navController.navigate(Screen.FriendRequests.route)
         "mention" -> {
             when {

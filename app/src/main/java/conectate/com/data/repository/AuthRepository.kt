@@ -104,6 +104,8 @@ class AuthRepository @Inject constructor(
         password: String,
         name: String,
         country: String,
+        gender: String,
+        birthDate: String,
         imageUri: Uri?,
         acceptedPrivacyPolicy: Boolean
     ): Result<User> {
@@ -114,6 +116,17 @@ class AuthRepository @Inject constructor(
         val acceptedAt = java.time.OffsetDateTime.now().toString()
         val normalizedName = name.trim()
         val normalizedCountry = country.trim()
+        val normalizedGender = gender.trim().lowercase()
+            .takeIf { it in setOf("man", "woman", "unspecified") }
+            ?: "unspecified"
+        val normalizedBirthDate = birthDate.trim()
+            .takeIf { value ->
+                runCatching {
+                    val parsed = java.time.LocalDate.parse(value)
+                    !parsed.isAfter(java.time.LocalDate.now())
+                }.getOrDefault(false)
+            }
+            ?: return Result.failure(Exception("Selecciona una fecha de nacimiento válida."))
 
         val signUpResult = authService.signUp(
             email = email,
@@ -142,6 +155,8 @@ class AuthRepository @Inject constructor(
             display_name = normalizedName,
             full_name = normalizedName,
             country = normalizedCountry,
+            gender = normalizedGender,
+            birth_date = normalizedBirthDate,
             privacy_policy_accepted = true,
             privacy_policy_accepted_at = acceptedAt
         )
@@ -166,12 +181,14 @@ class AuthRepository @Inject constructor(
             }
         }
 
-        if (usesUbuntuBackend || uploadedAvatarUrl != null) {
+        if (usesUbuntuBackend || uploadedAvatarUrl != null || normalizedBirthDate.isNotBlank()) {
             val profileUpdate = userRepository.updateProfile(
                 userId = userId,
                 request = UpdateProfileRequest(
                     display_name = normalizedName.takeIf { usesUbuntuBackend && it.isNotBlank() },
                     country = normalizedCountry.takeIf { usesUbuntuBackend && it.isNotBlank() },
+                    gender = normalizedGender,
+                    birth_date = normalizedBirthDate,
                     avatar_url = uploadedAvatarUrl
                 )
             )
@@ -205,6 +222,8 @@ class AuthRepository @Inject constructor(
             display_name = normalizedName.takeIf { it.isNotBlank() },
             full_name = normalizedName.takeIf { it.isNotBlank() },
             country = normalizedCountry.takeIf { it.isNotBlank() },
+            gender = normalizedGender,
+            birth_date = normalizedBirthDate,
             avatar_url = uploadedAvatarUrl
         )
 

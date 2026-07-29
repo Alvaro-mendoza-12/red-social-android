@@ -235,6 +235,10 @@ class UserRepository @Inject constructor(
                 profile_welcome = sanitizeProfileText(profile.stringValue("profile_welcome", "profileWelcome")),
                 country = sanitizeProfileText(profile.stringValue("country")),
                 city = sanitizeProfileText(profile.stringValue("city")),
+                gender = sanitizeProfileText(profile.stringValue("gender"))
+                    ?.takeIf { it in setOf("man", "woman", "unspecified") }
+                    ?: "unspecified",
+                birth_date = sanitizeProfileText(profile.stringValue("birth_date", "birthDate")),
                 status = sanitizeProfileText(profile.stringValue("status")),
                 interests = profile.stringListValue("interests"),
                 hobbies = profile.stringListValue("hobbies"),
@@ -421,6 +425,8 @@ class UserRepository @Inject constructor(
             user.display_name?.let { put("display_name", JsonPrimitive(it)) }
             user.country?.let { put("country", JsonPrimitive(it)) }
             user.city?.let { put("city", JsonPrimitive(it)) }
+            put("gender", JsonPrimitive(user.gender))
+            user.birth_date?.let { put("birth_date", JsonPrimitive(it)) }
             user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             user.bio?.let { put("bio", JsonPrimitive(it)) }
             if (privacyPolicyAccepted) {
@@ -472,6 +478,8 @@ class UserRepository @Inject constructor(
             request.bio?.let { put("bio", JsonPrimitive(it)) }
             request.country?.let { put("country", JsonPrimitive(it)) }
             request.city?.let { put("city", JsonPrimitive(it)) }
+            request.gender?.let { put("gender", JsonPrimitive(it)) }
+            request.birth_date?.let { put("birth_date", JsonPrimitive(it)) }
             request.status?.let { put("status", JsonPrimitive(it)) }
             request.interests?.let { values ->
                 put("interests", JsonArray(values.map { JsonPrimitive(it) }))
@@ -537,6 +545,8 @@ class UserRepository @Inject constructor(
         if (request.bio?.let { !sameText(it, user.bio) } == true) return "bio"
         if (request.country?.let { !sameText(it, user.country) } == true) return "country"
         if (request.city?.let { !sameText(it, user.city) } == true) return "city"
+        if (request.gender?.let { !sameText(it, user.gender) } == true) return "gender"
+        if (request.birth_date?.let { !sameText(it, user.birth_date) } == true) return "birth_date"
         if (request.status?.let { !sameText(it, user.status) } == true) return "status"
         if (request.interests?.let { !sameList(it, user.interests) } == true) return "interests"
         if (request.hobbies?.let { !sameList(it, user.hobbies) } == true) return "hobbies"
@@ -1520,6 +1530,8 @@ class UserRepository @Inject constructor(
                     bio = request.bio,
                     country = request.country,
                     city = request.city,
+                    gender = request.gender,
+                    birthDate = request.birth_date,
                     status = request.status,
                     interests = request.interests,
                     hobbies = request.hobbies,

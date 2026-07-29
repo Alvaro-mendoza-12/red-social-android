@@ -252,6 +252,14 @@ fun HomeScreen(
                 )
             }
 
+            composable(Screen.SettingsCategory.route) { backStackEntry ->
+                conectate.com.presentation.settings.SettingsCategoryScreen(
+                    navController = navController,
+                    mainNavController = mainNavController,
+                    category = backStackEntry.arguments?.getString("category").orEmpty(),
+                )
+            }
+
             composable(Screen.AccountSettings.route) {
                 conectate.com.presentation.profile.EditProfileScreen(navController = navController)
             }

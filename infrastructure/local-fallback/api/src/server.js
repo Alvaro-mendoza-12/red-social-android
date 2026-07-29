@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
 const {
   ensureLocalDataTables,
+  processBirthdayNotifications,
   processDueCommunityEventReminders,
   registerDataRoutes,
 } = require('./data-routes')
@@ -2287,6 +2288,7 @@ let server
 let scheduledMessageTimer
 let notificationDigestTimer
 let communityEventReminderTimer
+let birthdayNotificationTimer
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
@@ -2327,6 +2329,16 @@ ensureAuthMetadataColumns()
     runCommunityEventReminders()
     communityEventReminderTimer = setInterval(runCommunityEventReminders, 30_000)
     communityEventReminderTimer.unref?.()
+    const runBirthdayNotifications = () => {
+      void processBirthdayNotifications(pool).catch((error) => {
+        console.error('[birthday-notifications] worker failed', {
+          message: String(error?.message || error).slice(0, 240),
+        })
+      })
+    }
+    runBirthdayNotifications()
+    birthdayNotificationTimer = setInterval(runBirthdayNotifications, 15 * 60_000)
+    birthdayNotificationTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -2338,6 +2350,7 @@ async function shutdown(signal) {
   if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)
   if (notificationDigestTimer) clearInterval(notificationDigestTimer)
   if (communityEventReminderTimer) clearInterval(communityEventReminderTimer)
+  if (birthdayNotificationTimer) clearInterval(birthdayNotificationTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

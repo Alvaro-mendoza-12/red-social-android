@@ -2303,6 +2303,8 @@ function profilePatchFromBody(body) {
     ['bio', ['bio']],
     ['country', ['country']],
     ['city', ['city']],
+    ['gender', ['gender']],
+    ['birth_date', ['birth_date', 'birthDate']],
     ['status', ['status']],
     ['username', ['username']],
     ['favorite_music_url', ['favorite_music_url', 'favoriteMusicUrl']],
@@ -2492,6 +2494,30 @@ function buildPostReactionState(rows, identity) {
       userId,
       reactionType,
     })
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'gender')) {
+    const normalizedGender = String(patch.gender || '').trim().toLowerCase()
+    patch.gender = new Set(['man', 'woman', 'unspecified']).has(normalizedGender)
+      ? normalizedGender
+      : 'unspecified'
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'birth_date')) {
+    const normalizedBirthDate = String(patch.birth_date || '').trim()
+    const parsedBirthDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedBirthDate)
+      ? new Date(`${normalizedBirthDate}T00:00:00.000Z`)
+      : null
+    if (
+      !parsedBirthDate ||
+      Number.isNaN(parsedBirthDate.getTime()) ||
+      parsedBirthDate.toISOString().slice(0, 10) !== normalizedBirthDate ||
+      parsedBirthDate.getTime() > Date.now()
+    ) {
+      delete patch.birth_date
+    } else {
+      patch.birth_date = normalizedBirthDate
+    }
   }
 
   const counts = new Map()
@@ -4717,6 +4743,19 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_friends_receiver
      ON fallback_friends(lower(receiver_id), created_at DESC)`,
+  )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_birthday_notification_deliveries (
+      birthday_user_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      birthday_year SMALLINT NOT NULL,
+      delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (birthday_user_id, recipient_id, birthday_year)
+    )
+  `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_birthday_delivery_year
+     ON fallback_birthday_notification_deliveries(birthday_year, delivered_at DESC)`,
   )
   const { ensureMomentsTables } = require('./moments-routes')
   const { ensureAdminModerationTables } = require('./admin-moderation-routes')
@@ -11875,6 +11914,115 @@ async function processDueCommunityEventReminders(pool, { limit = 100 } = {}) {
   return { processed: dueRows.length }
 }
 
+function birthdayDateParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.BIRTHDAY_TIME_ZONE || 'America/Bogota',
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  })
+  const parts = Object.fromEntries(
+    formatter.formatToParts(now)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  )
+  return {
+    monthDay: `${parts.month}-${parts.day}`,
+    year: Number(parts.year),
+  }
+}
+
+async function processBirthdayNotifications(pool, { now = new Date(), limit = 100 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500))
+  const { monthDay, year } = birthdayDateParts(now)
+  const birthdayUsers = await pool.query(
+    `SELECT u.id::text AS local_user_id,
+            COALESCE(NULLIF(u.supabase_user_id::text, ''), u.id::text) AS public_user_id,
+            COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
+            COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url, '') AS avatar_url
+       FROM fallback_users u
+       JOIN fallback_profile_overrides o ON o.user_id = u.id
+      WHERE COALESCE(o.profile->>'birth_date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        AND substring(o.profile->>'birth_date' FROM 6 FOR 5) = $1
+      ORDER BY u.id
+      LIMIT $2`,
+    [monthDay, safeLimit],
+  )
+
+  let delivered = 0
+  for (const birthdayUser of birthdayUsers.rows) {
+    const actorAliases = cleanSet([
+      birthdayUser.local_user_id,
+      birthdayUser.public_user_id,
+    ])
+    const acceptedFriends = await pool.query(
+      `SELECT sender_id, receiver_id
+         FROM fallback_friends
+        WHERE lower(status) = 'accepted'
+          AND (
+            lower(sender_id) = ANY($1::text[])
+            OR lower(receiver_id) = ANY($1::text[])
+          )`,
+      [Array.from(actorAliases)],
+    )
+
+    for (const friendship of acceptedFriends.rows) {
+      const senderId = normalizeId(friendship.sender_id)
+      const receiverId = normalizeId(friendship.receiver_id)
+      const recipientAlias = actorAliases.has(senderId) ? receiverId : senderId
+      if (!recipientAlias || actorAliases.has(recipientAlias)) continue
+      const recipientUser = await fallbackUserByProfileAlias(pool, recipientAlias)
+      if (!recipientUser) continue
+      const recipientId = userIdentity(recipientUser).displayUserId
+      const claim = await pool.query(
+        `INSERT INTO fallback_birthday_notification_deliveries(
+            birthday_user_id, recipient_id, birthday_year
+         )
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING
+         RETURNING birthday_user_id`,
+        [birthdayUser.public_user_id, recipientId, year],
+      )
+      if (claim.rowCount === 0) continue
+
+      try {
+        const notification = await createLocalNotification(pool, {
+          recipientId,
+          actorId: birthdayUser.public_user_id,
+          actorName: birthdayUser.display_name,
+          actorAvatarUrl: birthdayUser.avatar_url,
+          type: 'birthday',
+          targetId: birthdayUser.public_user_id,
+          targetType: 'profile',
+          content: `${birthdayUser.display_name} cumple años hoy. ¡Deséale un feliz cumpleaños!`,
+          extraData: {
+            birthday_user_id: birthdayUser.public_user_id,
+            birthday_year: year,
+            open_path: `/app/profile/${birthdayUser.public_user_id}`,
+          },
+        })
+        if (notification) delivered += 1
+      } catch (error) {
+        await pool.query(
+          `DELETE FROM fallback_birthday_notification_deliveries
+            WHERE birthday_user_id = $1
+              AND recipient_id = $2
+              AND birthday_year = $3`,
+          [birthdayUser.public_user_id, recipientId, year],
+        )
+        throw error
+      }
+    }
+  }
+
+  await pool.query(
+    `DELETE FROM fallback_birthday_notification_deliveries
+      WHERE birthday_year < $1`,
+    [year - 1],
+  )
+  return { birthdays: birthdayUsers.rowCount, delivered }
+}
+
 module.exports = {
   buildPublicSemanticSearchCorpus,
   buildProfileForUser,
@@ -11904,6 +12052,7 @@ module.exports = {
   sameStorageObjectReference,
   storageObjectExists,
   profileForViewer,
+  processBirthdayNotifications,
   processDueCommunityEventReminders,
   recommendationPreferenceScore,
   registerDataRoutes,

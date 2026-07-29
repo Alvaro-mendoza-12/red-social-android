@@ -1,8 +1,8 @@
 const crypto = require('crypto')
 const { publishRealtimeEvent } = require('./realtime-publish')
 
-const ALLOWED_GENDERS = new Set(['unspecified', 'woman', 'man', 'nonbinary'])
-const ALLOWED_LOOKING_FOR = new Set(['any', 'woman', 'man', 'nonbinary'])
+const ALLOWED_GENDERS = new Set(['unspecified', 'woman', 'man'])
+const ALLOWED_LOOKING_FOR = new Set(['any', 'woman', 'man'])
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()

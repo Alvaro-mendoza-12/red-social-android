@@ -722,6 +722,8 @@ internal data class LocalFallbackUpdateProfileRequest(
     val bio: String? = null,
     val country: String? = null,
     val city: String? = null,
+    val gender: String? = null,
+    val birthDate: String? = null,
     val status: String? = null,
     val interests: List<String>? = null,
     val hobbies: List<String>? = null,
@@ -763,6 +765,8 @@ internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buil
     bio?.let { put("bio", JsonPrimitive(it)) }
     country?.let { put("country", JsonPrimitive(it)) }
     city?.let { put("city", JsonPrimitive(it)) }
+    gender?.let { put("gender", JsonPrimitive(it)) }
+    birthDate?.let { put("birthDate", JsonPrimitive(it)) }
     status?.let { put("status", JsonPrimitive(it)) }
     interests?.let { values -> put("interests", JsonArray(values.map(::JsonPrimitive))) }
     hobbies?.let { values -> put("hobbies", JsonArray(values.map(::JsonPrimitive))) }
@@ -2142,6 +2146,8 @@ class LocalFallbackApiClient @Inject constructor(
         bio: String? = null,
         country: String? = null,
         city: String? = null,
+        gender: String? = null,
+        birthDate: String? = null,
         status: String? = null,
         interests: List<String>? = null,
         hobbies: List<String>? = null,
@@ -2182,6 +2188,8 @@ class LocalFallbackApiClient @Inject constructor(
                         bio = bio,
                         country = country,
                         city = city,
+                        gender = gender,
+                        birthDate = birthDate,
                         status = status,
                         interests = interests,
                         hobbies = hobbies,

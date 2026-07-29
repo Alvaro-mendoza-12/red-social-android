@@ -134,6 +134,8 @@ class AuthViewModel @Inject constructor(
         password: String,
         name: String,
         country: String,
+        gender: String,
+        birthDate: String,
         imageUri: Uri?,
         acceptedPrivacyPolicy: Boolean
     ) {
@@ -141,7 +143,7 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
 
             var result = authRepository.signUpWithEmail(
-                email, password, name, country, imageUri, acceptedPrivacyPolicy
+                email, password, name, country, gender, birthDate, imageUri, acceptedPrivacyPolicy
             )
 
             _authState.value = result.fold(

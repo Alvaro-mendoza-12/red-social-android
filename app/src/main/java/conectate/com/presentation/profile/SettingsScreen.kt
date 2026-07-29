@@ -14,7 +14,9 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -118,7 +120,35 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            
+            SettingsSection(title = "Configuración por áreas") {
+                SettingsAreaButton(
+                    icon = Icons.Default.Message,
+                    title = "Mensajes y llamadas",
+                    subtitle = "Chats, sonidos, lectura, llamadas y notificaciones",
+                    onClick = { navController.navigate(Screen.SettingsCategory.createRoute("messages")) }
+                )
+                SettingsAreaButton(
+                    icon = Icons.Default.Movie,
+                    title = "Videos y multimedia",
+                    subtitle = "Datos, descargas y reproducción",
+                    onClick = { navController.navigate(Screen.SettingsCategory.createRoute("videos")) }
+                )
+                SettingsAreaButton(
+                    icon = Icons.Default.Groups,
+                    title = "Social",
+                    subtitle = "Radar, actividad, directos y comunidades",
+                    onClick = { navController.navigate(Screen.SettingsCategory.createRoute("social")) }
+                )
+                SettingsAreaButton(
+                    icon = Icons.Default.Person,
+                    title = "Perfil y apariencia",
+                    subtitle = "Datos, privacidad, tema y accesibilidad",
+                    onClick = { navController.navigate(Screen.SettingsCategory.createRoute("profile")) }
+                )
+            }
+
+            Divider()
+
             // Section: Cuenta
             SettingsSection(title = "Privacidad de la Cuenta") {
                 Row(
@@ -971,4 +1001,33 @@ fun SettingsSection(title: String, content: @Composable () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         content()
     }
+}
+
+@Composable
+private fun SettingsAreaButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Icon(icon, contentDescription = null)
+        Spacer(Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(title, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
 }

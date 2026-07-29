@@ -269,6 +269,15 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.SettingsCategory.route) { backStackEntry ->
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.SettingsCategoryScreen(
+                navController = navController,
+                category = backStackEntry.arguments?.getString("category").orEmpty(),
+            )
+        }
+    }
+
     composable(Screen.Novvin.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.messages.NovvinChatScreen(

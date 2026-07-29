@@ -2,8 +2,11 @@ package conectate.com.presentation.auth
 
 import androidx.compose.runtime.Composable
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -16,6 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -278,16 +284,48 @@ fun LoginScreen(
         )
     }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f),
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.background,
+                    )
+                )
+            )
     ) {
+        val responsiveHorizontalPadding =
+            if (maxWidth > 600.dp) ((maxWidth - 520.dp) / 2).coerceAtLeast(24.dp) else 24.dp
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = responsiveHorizontalPadding, vertical = 24.dp)
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_novvin),
+                contentDescription = "Novvin",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(88.dp)
+                    .padding(10.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
         // App Title
         Text(
             text = stringResource(R.string.app_name),
@@ -303,6 +341,16 @@ fun LoginScreen(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
+
+        if (!isAddAccountMode) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Tu gente, tus rondas, tu mundo.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
+                textAlign = TextAlign.Center,
+            )
+        }
 
         if (isAddAccountMode) {
             Spacer(modifier = Modifier.height(10.dp))
@@ -694,6 +742,7 @@ fun LoginScreen(
                     )
                 }
             }
+        }
         }
     }
 }

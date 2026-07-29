@@ -52,6 +52,9 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
     object EditProfile : Screen("edit_profile")
     object Settings : Screen("settings")
+    object SettingsCategory : Screen("settings_category/{category}") {
+        fun createRoute(category: String) = "settings_category/${android.net.Uri.encode(category)}"
+    }
     object AccountSettings : Screen("account_settings")
     object SecuritySettings : Screen("security_settings")
     object PrivacySettings : Screen("privacy_settings")

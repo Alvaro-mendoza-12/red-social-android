@@ -222,7 +222,7 @@ object IntentRouter {
                 }
             }
 
-            "follow", "friend_request", "voice_access_request" -> {
+            "follow", "friend_request", "voice_access_request", "birthday" -> {
                 val followerId = incomingIntent.getStringExtra("follower_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!followerId.isNullOrBlank()) {

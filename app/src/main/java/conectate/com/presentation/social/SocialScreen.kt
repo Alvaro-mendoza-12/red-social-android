@@ -172,7 +172,7 @@ fun SocialScreen(
         challengeViewModel.refreshChallengeData()
     })
     
-    val tabs = listOf("Social", "Momentos", "Retos")
+    val tabs = listOf("Social", "Momentos", "Rondas")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
     val socialListState = rememberLazyListState()
@@ -1454,7 +1454,7 @@ fun SocialScreen(
                              text = when (pagerState.currentPage) {
                                  0 -> "Novvin"
                                  1 -> "Momentos"
-                                 else -> "Retos"
+                                 else -> "Rondas Novvin"
                              },
                              style = MaterialTheme.typography.headlineSmall,
                              fontWeight = FontWeight.ExtraBold,
@@ -1916,6 +1916,32 @@ fun ChallengeSection(
         val isVoting = activeChallenge?.status == "voting"
         val isCompleted = activeChallenge?.status == "completed"
 
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("✨", fontSize = 28.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Rondas Novvin",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        "Una consigna compartida: participa, descubre respuestas y pásala a un amigo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+        }
+
         // Timer dinámico
         val durationSeconds = if (isVoting) {
             votingCountdown
@@ -1962,7 +1988,7 @@ fun ChallengeSection(
             LaunchedEffect(activeChallenge?.status, votingCountdown, winnersCountdown) { onRefresh() }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
         // Banner Pro Principal
         Card(
@@ -1984,7 +2010,7 @@ fun ChallengeSection(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        if (isVoting) "FASE DE VOTACIÓN" else if (isCompleted) "RETO FINALIZADO" else "RETO ACTUAL",
+                        if (isVoting) "VOTACIÓN DE LA RONDA" else if (isCompleted) "RONDA FINALIZADA" else "RONDA ACTUAL",
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.8f),
                         fontWeight = FontWeight.Bold
@@ -2047,17 +2073,17 @@ fun ChallengeSection(
             ) {
                 Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                 Spacer(Modifier.height(16.dp))
-                Text("Buscando el próximo desafío...", fontWeight = FontWeight.Bold)
+                Text("Preparando la próxima ronda…", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = onRefresh,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("💥 GENERAR DESAFÍO COMUNITARIO", fontWeight = FontWeight.Black)
+                    Text("💥 ACTIVAR RONDA COMUNITARIA", fontWeight = FontWeight.Black)
                 }
             Text(
-                "¡Sé el primero en activar un reto hoy!",
+                "¡Sé el primero en activar la ronda de hoy!",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.padding(top = 8.dp)

@@ -7,6 +7,7 @@ import conectate.com.data.localfallback.AnonymousChatSession
 import conectate.com.data.localfallback.AnonymousMatchResult
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.NearbyProfile
+import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
@@ -22,7 +23,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class ProximityViewModel @Inject constructor(
     private val authService: AuthService,
-    private val apiClient: LocalFallbackApiClient
+    private val apiClient: LocalFallbackApiClient,
+    private val userRepository: UserRepository,
 ) : ViewModel() {
     private val _nearbyProfiles = MutableStateFlow<List<NearbyProfile>>(emptyList())
     val nearbyProfiles: StateFlow<List<NearbyProfile>> = _nearbyProfiles.asStateFlow()
@@ -48,11 +50,44 @@ class ProximityViewModel @Inject constructor(
     private val _anonymousMessages = MutableStateFlow<List<AnonymousChatMessage>>(emptyList())
     val anonymousMessages: StateFlow<List<AnonymousChatMessage>> = _anonymousMessages.asStateFlow()
 
+    private val _gender = MutableStateFlow("unspecified")
+    val gender: StateFlow<String> = _gender.asStateFlow()
+
+    private val _lookingFor = MutableStateFlow("any")
+    val lookingFor: StateFlow<String> = _lookingFor.asStateFlow()
+
     private var matchPollingJob: Job? = null
     private var messagePollingJob: Job? = null
 
     init {
+        loadProfileMatchingDefaults()
         refreshRandomStatus(showErrors = false)
+    }
+
+    private fun loadProfileMatchingDefaults() {
+        viewModelScope.launch {
+            userRepository.ensureCurrentProfile().onSuccess { user ->
+                val profileGender = user.gender.takeIf { it in setOf("man", "woman") }
+                    ?: "unspecified"
+                _gender.value = profileGender
+                _lookingFor.value = when (profileGender) {
+                    "man" -> "woman"
+                    "woman" -> "man"
+                    else -> "any"
+                }
+            }
+        }
+    }
+
+    fun setGender(gender: String) {
+        val normalized = gender.takeIf { it in setOf("man", "woman", "unspecified") }
+            ?: "unspecified"
+        _gender.value = normalized
+    }
+
+    fun setLookingFor(lookingFor: String) {
+        _lookingFor.value = lookingFor.takeIf { it in setOf("man", "woman", "any") }
+            ?: "any"
     }
 
     fun setRadius(radiusKm: Double) {

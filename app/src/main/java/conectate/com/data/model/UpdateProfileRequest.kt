@@ -8,6 +8,8 @@ data class UpdateProfileRequest(
     val bio: String? = null,
     val country: String? = null,
     val city: String? = null,
+    val gender: String? = null,
+    val birth_date: String? = null,
     val status: String? = null,
     val interests: List<String>? = null,
     val hobbies: List<String>? = null,

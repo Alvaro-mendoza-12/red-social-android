@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -274,6 +275,20 @@ fun CustomizeAppScreen(
                             dark = isDarkMode,
                             onSelected = viewModel::setAppTheme
                         )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                AppThemeOption.entries
+                                    .filterNot { it == appTheme }
+                                    .randomOrNull()
+                                    ?.let(viewModel::setAppTheme)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Shuffle, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sorpréndeme con otro estilo")
+                        }
                     }
                 }
             } else {
@@ -324,6 +339,30 @@ fun CustomizeAppScreen(
                             selected = profileEffect,
                             onSelected = { profileEffect = it }
                         )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                profileTheme = AppThemeOption.entries
+                                    .filterNot { it == profileTheme }
+                                    .randomOrNull()
+                                    ?: profileTheme
+                                profileEffect = listOf(
+                                    "none",
+                                    "sparkles",
+                                    "constellation",
+                                    "confetti",
+                                    "waves",
+                                    "orbit",
+                                    "rain",
+                                    "equalizer",
+                                ).filterNot { it == profileEffect }.randomOrNull() ?: profileEffect
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Shuffle, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Crear combinación sorpresa")
+                        }
                     }
                     item {
                         OutlinedTextField(

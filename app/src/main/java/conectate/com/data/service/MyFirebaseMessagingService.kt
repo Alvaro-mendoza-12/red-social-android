@@ -32,6 +32,7 @@ import conectate.com.data.repository.AccountSessionRepository
 import conectate.com.data.repository.CallRepository
 import conectate.com.data.repository.MultiAccountInboxRepository
 import conectate.com.data.repository.NotificationRepository
+import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.repository.message.MessageSessionStateStore
 import conectate.com.data.model.MultiAccountPendingDestination
 import conectate.com.data.supabase.AuthService
@@ -84,6 +85,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     @Inject
     lateinit var messageSessionStateStore: MessageSessionStateStore
+
+    @Inject
+    lateinit var appSettingsPreferences: AppSettingsPreferences
 
     private val serviceScope = newSafeScope("FirebaseMessagingService", Dispatchers.IO)
     private val callGuardPrefs by lazy {
@@ -258,6 +262,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     // App open: show in-app incoming UI (avoids duplicate notifications)
                     callRepository.presentIncomingInvite(invite)
                 } else {
+                    if (!appSettingsPreferences.callNotificationsEnabled.value) {
+                        android.util.Log.d(TAG, "Call notifications disabled by user preference.")
+                        return
+                    }
                     sendIncomingCallNotification(invite)
                 }
                 return
@@ -293,10 +301,21 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "like", "like_post", "like_video", "follow", "friend_request", "friend_request_accepted",
                 "comment", "comment_post", "reply_post", "comment_video", "reply_video",
                 "mention", "mention_post", "mention_video", "share", "share_post", "share_video", "admin_warning_video",
-                "challenge_invite", "voice_invite", "voice_access_request"
+                "challenge_invite", "voice_invite", "voice_access_request", "birthday"
             )
 
             if (type in socialTypes) {
+                if (
+                    type == "voice_invite" &&
+                    !appSettingsPreferences.liveNotificationsEnabled.value
+                ) {
+                    android.util.Log.d(TAG, "Live notifications disabled by user preference: $type")
+                    return
+                }
+                if (!appSettingsPreferences.socialNotificationsEnabled.value) {
+                    android.util.Log.d(TAG, "Social notifications disabled by user preference: $type")
+                    return
+                }
                 var isForeground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                 if (isForeground && isTargetingActiveAccount) {
                     android.util.Log.d(TAG, "Skipping foreground social system notification for active account: $type")
@@ -412,6 +431,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 return
             }
 
+            if (!appSettingsPreferences.messageNotificationsEnabled.value) {
+                android.util.Log.d(TAG, "Message notifications disabled by user preference.")
+                return
+            }
+
             // 4. CHAT ROUTING
             if (isGroup || isCommunity) {
                 var groupName = data["group_name"] ?: data["groupName"] ?: data["community_name"] ?: "Grupo/Comunidad"
@@ -450,6 +474,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             } else {
                 var title = data["title"] ?: data["notification_title"] ?: senderName
                 var body = data["body"] ?: data["message"] ?: displayContent
+                val isLiveNotification = type.startsWith("live_") ||
+                    type in setOf("new_live", "stream_reminder", "stream_soon", "voice_invite")
+                if (isLiveNotification && !appSettingsPreferences.liveNotificationsEnabled.value) {
+                    android.util.Log.d(TAG, "Live notifications disabled by user preference: $type")
+                    return
+                }
                 if (body.isNotBlank()) {
                     sendSystemNotification(title, body)
                 }

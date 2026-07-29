@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -39,6 +40,10 @@ import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.navigation.Screen
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,16 +59,24 @@ fun RegisterScreen(
     var confirmPassword by remember { mutableStateOf("") }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var country by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf("unspecified") }
+    var birthDate by remember { mutableStateOf("") }
     var profileImageUri by remember { mutableStateOf<Uri?>(null) }
     var pendingProfileCropUri by remember { mutableStateOf<Uri?>(null) }
     var acceptedPrivacyPolicy by remember { mutableStateOf(false) }
     
     var showCountryDropdown by remember { mutableStateOf(false) }
+    var showGenderDropdown by remember { mutableStateOf(false) }
+    var showBirthDatePicker by remember { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
     val scrollState = rememberScrollState()
     val authError = (authState as? AuthState.Error)?.message.orEmpty()
     val emailIsValid = email.isBlank() || Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    val parsedBirthDate = remember(birthDate) {
+        runCatching { LocalDate.parse(birthDate) }.getOrNull()
+    }
+    val birthDateIsValid = parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
 
     LaunchedEffect(authError) {
         if (authError.isNotBlank()) {
@@ -103,16 +116,66 @@ fun RegisterScreen(
             }
         )
     }
+
+    if (showBirthDatePicker) {
+        val initialDateMillis = parsedBirthDate
+            ?.atStartOfDay(ZoneOffset.UTC)
+            ?.toInstant()
+            ?.toEpochMilli()
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialDateMillis,
+        )
+        DatePickerDialog(
+            onDismissRequest = { showBirthDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = datePickerState.selectedDateMillis != null,
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { selectedMillis ->
+                            val selected = Instant.ofEpochMilli(selectedMillis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                            if (selected.isAfter(LocalDate.now())) {
+                                AppFeedbackBus.showError("La fecha de nacimiento no puede estar en el futuro.")
+                            } else {
+                                birthDate = selected.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                                showBirthDatePicker = false
+                            }
+                        }
+                    },
+                ) { Text("Usar fecha") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBirthDatePicker = false }) { Text("Cancelar") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
     
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(scrollState)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+                        MaterialTheme.colorScheme.background,
+                    )
+                )
+            )
     ) {
+        val responsiveHorizontalPadding =
+            if (maxWidth > 600.dp) ((maxWidth - 560.dp) / 2).coerceAtLeast(24.dp) else 24.dp
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = responsiveHorizontalPadding, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         Spacer(modifier = Modifier.height(24.dp))
         
         // Title
@@ -163,39 +226,68 @@ fun RegisterScreen(
         
         // Profile Image Picker
         Box(
-            modifier = Modifier
-                .size(120.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .clickable { imagePickerLauncher.launch("image/*") },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
-            if (profileImageUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(profileImageUri),
-                    contentDescription = "Foto de perfil",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable { imagePickerLauncher.launch("image/*") },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (profileImageUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(profileImageUri),
+                        contentDescription = "Previsualización de la foto de perfil",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Agregar foto",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Agregar foto",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(38.dp)
+                    .clickable { imagePickerLauncher.launch("image/*") },
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                shadowElevation = 3.dp,
+            ) {
+                Icon(
+                    Icons.Default.Crop,
+                    contentDescription = "Elegir y recortar foto",
+                    modifier = Modifier.padding(8.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
         }
+        Text(
+            text = if (profileImageUri == null) {
+                "Opcional · podrás mover y recortar antes de guardar"
+            } else {
+                "Vista previa lista · toca para cambiar o recortar"
+            },
+            modifier = Modifier.padding(top = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
         
         Spacer(modifier = Modifier.height(24.dp))
         
@@ -334,6 +426,80 @@ fun RegisterScreen(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ExposedDropdownMenuBox(
+            expanded = showGenderDropdown,
+            onExpandedChange = { showGenderDropdown = it },
+        ) {
+            val genderLabel = when (gender) {
+                "man" -> "Hombre"
+                "woman" -> "Mujer"
+                else -> "Prefiero no decirlo"
+            }
+            OutlinedTextField(
+                value = genderLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Me identifico como") },
+                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = showGenderDropdown)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(),
+            )
+            ExposedDropdownMenu(
+                expanded = showGenderDropdown,
+                onDismissRequest = { showGenderDropdown = false },
+            ) {
+                listOf(
+                    "man" to "Hombre",
+                    "woman" to "Mujer",
+                    "unspecified" to "Prefiero no decirlo",
+                ).forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            gender = value
+                            showGenderDropdown = false
+                        },
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = parsedBirthDate?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                ?: birthDate,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Fecha de nacimiento") },
+            placeholder = { Text("Seleccionar fecha") },
+            leadingIcon = { Icon(Icons.Default.Cake, contentDescription = null) },
+            trailingIcon = {
+                IconButton(onClick = { showBirthDatePicker = true }) {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha")
+                }
+            },
+            isError = birthDate.isNotBlank() && !birthDateIsValid,
+            supportingText = {
+                Text(
+                    if (birthDate.isBlank() || birthDateIsValid) {
+                        "Usaremos el día para avisar a tus amigos cuando sea tu cumpleaños."
+                    } else {
+                        "Selecciona una fecha válida."
+                    }
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showBirthDatePicker = true },
+        )
         
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -363,6 +529,7 @@ fun RegisterScreen(
                          password.length >= 8 &&
                          password == confirmPassword &&
                          country.isNotEmpty() &&
+                         birthDateIsValid &&
                          acceptedPrivacyPolicy
         
         Button(
@@ -373,6 +540,8 @@ fun RegisterScreen(
                         password = password,
                         name = name,
                         country = country,
+                        gender = gender,
+                        birthDate = birthDate,
                         imageUri = profileImageUri,
                         acceptedPrivacyPolicy = acceptedPrivacyPolicy
                     )
@@ -412,6 +581,7 @@ fun RegisterScreen(
         }
         
         Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 

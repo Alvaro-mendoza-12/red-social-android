@@ -465,10 +465,45 @@ fun VoiceRoomActiveScreen(
                         )
                         
                         Spacer(modifier = Modifier.height(12.dp))
+
+                        val cinemaHasParticipantVideo = participants.any { participant ->
+                            val isLocal = participant.id == currentUserId
+                            if (isLocal) {
+                                videoMode != VoiceRoomRepository.VideoMode.NONE && localVideoTrack != null
+                            } else {
+                                participantSharingState(participant, sharingStates)
+                                    .let { it.first || it.second } &&
+                                    (
+                                        remoteVideoTracks[participant.socketId] != null ||
+                                            remoteVideoTracks[participant.id.lowercase()] != null
+                                        )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "En la sala",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "${participants.size} ${if (participants.size == 1) "persona" else "personas"} · sincronizado",
+                                color = Color.White.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                         
                         // Participants in a horizontal row during cinema mode
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth().height(90.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(if (cinemaHasParticipantVideo) 132.dp else 90.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(15.dp)
                         ) {
