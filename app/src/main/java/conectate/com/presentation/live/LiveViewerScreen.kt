@@ -19,7 +19,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
+import java.util.concurrent.atomic.AtomicBoolean
 import org.webrtc.RendererCommon
+
+internal class LiveViewerExitGate {
+    private val started = AtomicBoolean(false)
+
+    fun runOnce(cleanup: () -> Unit): Boolean {
+        if (!started.compareAndSet(false, true)) return false
+        cleanup()
+        return true
+    }
+}
 
 @Composable
 fun LiveViewerScreen(
@@ -47,18 +58,20 @@ fun LiveViewerScreen(
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
+    val exitGate = remember(liveId) { LiveViewerExitGate() }
 
     fun leaveViewer() {
         manualLeaveRequested = true
-        viewModel.leaveLive()
+        exitGate.runOnce(viewModel::leaveLive)
         navController.popBackStack()
     }
 
     DisposableEffect(liveId) {
         onDispose {
             // Idempotent cleanup also covers navigation gestures and route
-            // replacement, not only the explicit "Salir" button.
-            viewModel.leaveLive()
+            // replacement. The gate prevents a second native WebRTC teardown
+            // after the explicit "Salir" action already removed this route.
+            exitGate.runOnce(viewModel::leaveLive)
         }
     }
 

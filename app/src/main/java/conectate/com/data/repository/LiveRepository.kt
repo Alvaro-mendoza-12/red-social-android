@@ -107,6 +107,7 @@ class LiveRepository @Inject constructor(
     private var socketEndpointRecoveryJob: Job? = null
     private var mediaConnectionTimeoutJob: Job? = null
     private val sessionStartupMutex = Mutex()
+    private val sessionEndMutex = Mutex()
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
     private val knownViewerSocketIds = mutableSetOf<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
@@ -1170,9 +1171,10 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    suspend fun endLive(): Result<Unit> = withContext(Dispatchers.IO) {
-        var session = _activeSession.value ?: return@withContext Result.success(Unit)
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+    suspend fun endLive(): Result<Unit> = sessionEndMutex.withLock {
+        withContext(Dispatchers.IO) {
+        val session = _activeSession.value ?: return@withContext Result.success(Unit)
+        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
 
         // Best-effort DB update (host only)
         if (session.role == LiveRole.HOST && currentUserId.isNotBlank()) {
@@ -1233,6 +1235,7 @@ class LiveRepository @Inject constructor(
         disconnectAndClear()
         refreshActiveStreams()
         Result.success(Unit)
+        }
     }
 
     private fun connectSocket(liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?) {
