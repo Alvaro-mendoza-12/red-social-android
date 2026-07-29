@@ -83,6 +83,9 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
+  // Last-resort protection for production: an abandoned transaction must not
+  // retain row locks until every API connection is exhausted.
+  options: '-c statement_timeout=30000 -c lock_timeout=10000 -c idle_in_transaction_session_timeout=15000',
 })
 
 function logDatabasePoolError(error) {
@@ -759,9 +762,9 @@ async function authenticatedUserFromRequest(req) {
   return { row: hydrated, user: sanitizeUser(hydrated) }
 }
 
-async function recordAudit(eventName, userId, metadata = {}) {
+async function recordAudit(eventName, userId, metadata = {}, executor = pool) {
   try {
-    await pool.query(
+    await executor.query(
       'INSERT INTO fallback_audit_events(event_name, user_id, metadata) VALUES ($1, $2, $3)',
       [eventName, userId || null, metadata],
     )
@@ -1636,9 +1639,12 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(row))
     const session = await issueUserSession(user, req, { executor: client, client: 'android' })
+    // Keep the audit insert on the same transaction connection. Using `pool`
+    // here waits for a user-row lock held by this transaction, leaving the
+    // transaction idle forever and eventually exhausting the whole pool.
     await recordAudit('auth_refresh', user.id, {
       migratedLegacyToken: !consumedSessionId,
-    })
+    }, client)
     await client.query('COMMIT')
     return res.json(session)
   } catch (error) {
