@@ -134,6 +134,7 @@ fun VoiceRoomActiveScreen(
     val participants by viewModel.participants.collectAsStateWithLifecycle()
     val videoMode by viewModel.videoMode.collectAsState()
     val remoteVideoTracks by viewModel.remoteVideoTracks.collectAsState()
+    val sharingStates by viewModel.sharingStates.collectAsStateWithLifecycle()
     val localVideoTrack by viewModel.localVideoTrack.collectAsState()
     val peerConnectionStates by viewModel.peerConnectionStates.collectAsState()
     val signalingStates by viewModel.signalingStates.collectAsState()
@@ -201,8 +202,11 @@ fun VoiceRoomActiveScreen(
     
     // Background based on state
     // Only black if Cinema Mode has CONTENT, or if we have full screen video
-    val hasRealVideo = videoMode != VoiceRoomRepository.VideoMode.NONE || 
-                       remoteVideoTracks.isNotEmpty()
+    val hasRemoteSharing = participants.any { participant ->
+        !participant.id.equals(currentUserId, ignoreCase = true) &&
+            participantSharingState(participant, sharingStates).let { it.first || it.second }
+    }
+    val hasRealVideo = videoMode != VoiceRoomRepository.VideoMode.NONE || hasRemoteSharing
     val isCinemaActiveWithContent = isCinemaMode && !cinemaState?.videoUrl.isNullOrBlank()
     val backgroundColor = if (hasRealVideo || isCinemaActiveWithContent || fullScreenParticipantId != null) 
         Color.Black 
@@ -471,7 +475,12 @@ fun VoiceRoomActiveScreen(
                                  val track = if (isLocal) {
                                      if (videoMode != VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
                                  } else {
-                                     remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
+                                     if (participantSharingState(participant, sharingStates).let { it.first || it.second }) {
+                                         remoteVideoTracks[participant.socketId]
+                                             ?: remoteVideoTracks[participant.id.lowercase()]
+                                     } else {
+                                         null
+                                     }
                                  }
                                  
                                  if (track != null) {
@@ -491,6 +500,7 @@ fun VoiceRoomActiveScreen(
                      remoteVideoTracks = remoteVideoTracks,
                      localVideoTrack = localVideoTrack,
                      localVideoMode = videoMode,
+                     sharingStates = sharingStates,
                      eglBaseContext = viewModel.getEglBaseContext(),
                      currentUserId = currentUserId ?: "",
                      onFullscreenToggle = { viewModel.toggleFullScreen(null) }
@@ -514,6 +524,7 @@ fun VoiceRoomActiveScreen(
                         VideoGridLayout(
                             participants = participants,
                             remoteVideoTracks = remoteVideoTracks,
+                            sharingStates = sharingStates,
                             peerConnectionStates = peerConnectionStates,
                             signalingStates = signalingStates,
                             debugInfo = debugInfo,
@@ -827,10 +838,26 @@ fun PasswordPromptDialog(
     )
 }
 
+internal fun participantSharingState(
+    participant: VoiceParticipant,
+    sharingStates: Map<String, Pair<Boolean, Boolean>>
+): Pair<Boolean, Boolean> {
+    val socketId = participant.socketId.trim()
+    val userId = participant.id.trim().lowercase()
+    return sharingStates[socketId]
+        ?: sharingStates[userId]
+        ?: sharingStates.entries.firstOrNull { (key, _) ->
+            key.trim().equals(socketId, ignoreCase = true) ||
+                key.trim().equals(userId, ignoreCase = true)
+        }?.value
+        ?: (false to false)
+}
+
 @Composable
 fun VideoGridLayout(
     participants: List<conectate.com.data.model.VoiceParticipant>,
     remoteVideoTracks: Map<String, VideoTrack>,
+    sharingStates: Map<String, Pair<Boolean, Boolean>>,
     peerConnectionStates: Map<String, String>,
     signalingStates: Map<String, String>,
     debugInfo: String?,
@@ -857,7 +884,11 @@ fun VideoGridLayout(
              val track = if (isLocal) {
                  if (localVideoMode != VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
              } else {
-                 remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
+                 if (participantSharingState(participant, sharingStates).let { it.first || it.second }) {
+                     remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
+                 } else {
+                     null
+                 }
              }
              
              if (track != null) {
@@ -967,7 +998,7 @@ fun AudioOnlyLayout(
 ) {
     LazyVerticalGrid(
 
-        columns = GridCells.Fixed(3), // 3 columns for audio avatars
+        columns = GridCells.Adaptive(minSize = 104.dp),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1277,6 +1308,7 @@ fun ControlBar(
 ) {
     val context = LocalContext.current
     Surface(
+        modifier = Modifier.navigationBarsPadding(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         tonalElevation = 8.dp
@@ -2005,6 +2037,7 @@ fun FullScreenParticipantView(
     remoteVideoTracks: Map<String, org.webrtc.VideoTrack>,
     localVideoTrack: org.webrtc.VideoTrack?,
     localVideoMode: conectate.com.data.repository.VoiceRoomRepository.VideoMode,
+    sharingStates: Map<String, Pair<Boolean, Boolean>>,
     eglBaseContext: org.webrtc.EglBase.Context?,
     currentUserId: String,
     onFullscreenToggle: () -> Unit
@@ -2014,7 +2047,11 @@ fun FullScreenParticipantView(
     val track = if (isLocal) {
         if (localVideoMode != conectate.com.data.repository.VoiceRoomRepository.VideoMode.NONE) localVideoTrack else null
     } else {
-        remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
+        if (participantSharingState(participant, sharingStates).let { it.first || it.second }) {
+            remoteVideoTracks[participant.socketId] ?: remoteVideoTracks[participant.id.lowercase()]
+        } else {
+            null
+        }
     }
 
     Box(

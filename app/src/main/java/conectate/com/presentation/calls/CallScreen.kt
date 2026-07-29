@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -80,6 +81,11 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.WebRtcVideoView
 import conectate.com.presentation.navigation.Screen
 import kotlinx.coroutines.delay
+
+internal fun callHasVisibleVideo(
+    hasLocalVideoTrack: Boolean,
+    remoteParticipants: List<CallParticipant>
+): Boolean = hasLocalVideoTrack || remoteParticipants.any { it.isVideoEnabled }
 
 @Composable
 fun CallScreen(
@@ -229,9 +235,7 @@ fun CallScreen(
         CallConnectionState.ENDED -> "Finalizada"
         else -> ""
     }
-    val hasVideoContent = active.isVideo ||
-        localVideoTrack != null ||
-        remoteVideoTracks.isNotEmpty()
+    val hasVideoContent = callHasVisibleVideo(localVideoTrack != null, remoteParticipants)
 
     Scaffold(
         containerColor = Color.Black
@@ -357,7 +361,7 @@ fun CallScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (hasVideoContent) {
-                        val remoteVideoTrack = primaryRemote?.let { participant ->
+                        val remoteVideoTrack = primaryRemote?.takeIf { it.isVideoEnabled }?.let { participant ->
                             remoteVideoTracks[participant.socketId]
                                 ?: remoteVideoTracks[participant.userId]
                         } ?: remoteVideoTracks.values.firstOrNull()
@@ -421,7 +425,10 @@ fun CallScreen(
                 }
 
                 var showReactions by remember { mutableStateOf(false) }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.navigationBarsPadding()
+                ) {
                     if (dedupedParticipants.size > 1) {
                         CallParticipantStrip(
                             participants = dedupedParticipants,

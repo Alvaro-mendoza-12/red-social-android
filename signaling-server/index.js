@@ -1352,7 +1352,8 @@ callIo.on('connection', (socket) => {
         currentCallParticipants.set(socket.id, {
             userId,
             name,
-            avatarUrl
+            avatarUrl,
+            videoEnabled: Boolean(data.videoEnabled)
         });
         socket.data.joinedCallIds.add(callId);
 
@@ -1368,7 +1369,8 @@ callIo.on('connection', (socket) => {
             socketId: socket.id,
             userId,
             name,
-            avatarUrl
+            avatarUrl,
+            videoEnabled: Boolean(data.videoEnabled)
         });
 
         const participants = [];
@@ -1378,7 +1380,8 @@ callIo.on('connection', (socket) => {
                     socketId: sid,
                     userId: p.userId,
                     name: p.name,
-                    avatarUrl: p.avatarUrl
+                    avatarUrl: p.avatarUrl,
+                    videoEnabled: Boolean(p.videoEnabled)
                 });
             }
         });
@@ -1402,6 +1405,20 @@ callIo.on('connection', (socket) => {
         const userId = requireSocketUser(socket, data.userId);
         if (!callId || !userId) return;
         socket.to(callId).emit('mute-state', { ...data, userId });
+    });
+
+    socket.on('video-state', (data) => {
+        const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'video-state');
+        const userId = requireSocketUser(socket, data?.userId);
+        if (!callId || !userId) return;
+        const participant = calls.get(callId)?.get(socket.id);
+        const isVideoEnabled = Boolean(data?.isVideoEnabled);
+        if (participant) participant.videoEnabled = isVideoEnabled;
+        socket.to(callId).emit('video-state', {
+            userId,
+            socketId: socket.id,
+            isVideoEnabled
+        });
     });
 
     // WebRTC signaling (scoped to /call namespace)

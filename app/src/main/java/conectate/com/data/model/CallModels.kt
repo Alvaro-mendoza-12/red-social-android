@@ -39,7 +39,8 @@ data class CallParticipant(
     val name: String,
     val avatarUrl: String? = null,
     val socketId: String,
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
+    val isVideoEnabled: Boolean = false
 )
 
 data class CallInvite(

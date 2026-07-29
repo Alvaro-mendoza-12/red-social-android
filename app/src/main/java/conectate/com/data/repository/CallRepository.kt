@@ -707,6 +707,28 @@ class CallRepository @Inject constructor(
     fun toggleVideo(enabled: Boolean) {
         webRTCManager?.setVideoEnabled(enabled)
         _activeCall.value = _activeCall.value?.copy(isVideo = enabled)
+        val myId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (myId.isNotBlank()) {
+            _participants.update { list ->
+                list.map { participant ->
+                    if (participant.userId.equals(myId, ignoreCase = true)) {
+                        participant.copy(isVideoEnabled = enabled)
+                    } else {
+                        participant
+                    }
+                }
+            }
+        }
+        _activeCall.value?.callId?.let { callId ->
+            socket?.emit(
+                "video-state",
+                org.json.JSONObject().apply {
+                    put("callId", callId)
+                    put("userId", myId)
+                    put("isVideoEnabled", enabled)
+                }
+            )
+        }
         updateServiceNotification()
     }
 
@@ -1036,6 +1058,7 @@ class CallRepository @Inject constructor(
                         put("userId", userId.trim())
                         put("name", name)
                         put("avatarUrl", avatarUrl ?: "")
+                        put("videoEnabled", webRTCManager?.hasLocalVideoTrack() == true)
                     }
                 )
                 android.util.Log.i("CallRepository", "📤 join-call EMITTED for call=$callId sid=$sid")
@@ -1064,9 +1087,16 @@ class CallRepository @Inject constructor(
                 var uid = data.getString("userId")
                 var pname = data.optString("name", "Usuario")
                 var pavatar = data.optString("avatarUrl", "").ifBlank { null }
+                val videoEnabled = data.optBoolean("videoEnabled", false)
 
                 _participants.update { current ->
-                    var p = CallParticipant(userId = uid, name = pname, avatarUrl = pavatar, socketId = sid)
+                    var p = CallParticipant(
+                        userId = uid,
+                        name = pname,
+                        avatarUrl = pavatar,
+                        socketId = sid,
+                        isVideoEnabled = videoEnabled
+                    )
                     (current.filterNot { it.socketId == sid || it.userId.equals(uid, ignoreCase = true) } + p)
                         .distinctBy { it.socketId }
                 }
@@ -1102,6 +1132,7 @@ class CallRepository @Inject constructor(
                     var uid = p.getString("userId")
                     var pname = p.optString("name", "Usuario")
                     var pavatar = p.optString("avatarUrl", "").ifBlank { null }
+                    val videoEnabled = p.optBoolean("videoEnabled", false)
                     if (sid == mySocketId) continue
 
                     remoteParticipants.add(
@@ -1109,7 +1140,8 @@ class CallRepository @Inject constructor(
                             userId = uid,
                             name = pname,
                             avatarUrl = pavatar,
-                            socketId = sid
+                            socketId = sid,
+                            isVideoEnabled = videoEnabled
                         )
                     )
 
@@ -1150,6 +1182,25 @@ class CallRepository @Inject constructor(
                 var muted = data.getBoolean("isMuted")
                 _participants.update { list ->
                     list.map { if (it.userId.equals(uid, ignoreCase = true)) it.copy(isMuted = muted) else it }
+                }
+            }
+
+            socket?.on("video-state") { args ->
+                val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
+                val uid = data.optString("userId", "").trim()
+                val sid = data.optString("socketId", "").trim()
+                val enabled = data.optBoolean("isVideoEnabled", false)
+                _participants.update { list ->
+                    list.map { participant ->
+                        if (
+                            (uid.isNotBlank() && participant.userId.equals(uid, ignoreCase = true)) ||
+                            (sid.isNotBlank() && participant.socketId == sid)
+                        ) {
+                            participant.copy(isVideoEnabled = enabled)
+                        } else {
+                            participant
+                        }
+                    }
                 }
             }
 

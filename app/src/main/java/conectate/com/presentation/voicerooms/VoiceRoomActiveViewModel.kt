@@ -61,6 +61,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _remoteVideoTracks = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
     val remoteVideoTracks: StateFlow<Map<String, VideoTrack>> = _remoteVideoTracks.asStateFlow()
+    val sharingStates: StateFlow<Map<String, Pair<Boolean, Boolean>>> =
+        voiceRoomRepository.sharingStates
 
     private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
     val localVideoTrack: StateFlow<VideoTrack?> = _localVideoTrack.asStateFlow()
