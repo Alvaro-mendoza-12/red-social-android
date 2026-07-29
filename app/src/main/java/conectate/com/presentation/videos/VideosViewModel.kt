@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import android.media.MediaPlayer
 import conectate.com.util.AudioRecorder
@@ -203,11 +204,16 @@ class VideosViewModel @Inject constructor(
         commentsJob = viewModelScope.launch {
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
-                    _commentsState.value = mergeComments(_commentsState.value, comments)
+                    _commentsState.value = comments
+                    updateCommentCount(videoId, comments.size)
                 }
                 .onFailure { error ->
                     android.util.Log.e("VideosViewModel", "Failed loading comments", error)
                 }
+            videoRepository.getCommentsFlow(videoId).collect { comments ->
+                _commentsState.value = comments
+                updateCommentCount(videoId, comments.size)
+            }
         }
     }
 
@@ -370,6 +376,7 @@ class VideosViewModel @Inject constructor(
             }.onSuccess { insertedComment ->
                 android.util.Log.d("VideosViewModel", "Comment added successfully")
                 _commentsState.value = mergeComment(_commentsState.value, insertedComment)
+                updateCommentCount(videoId, _commentsState.value.size)
                 cancelReply()
                 clearMentionSuggestions()
                 refreshCommentsAfterWrite(videoId)
@@ -383,7 +390,8 @@ class VideosViewModel @Inject constructor(
             delay(250)
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
-                    _commentsState.value = mergeComments(_commentsState.value, comments)
+                    _commentsState.value = comments
+                    updateCommentCount(videoId, comments.size)
                 }
                 .onFailure { error ->
                     android.util.Log.w("VideosViewModel", "Post-write comments refresh failed", error)
@@ -459,14 +467,21 @@ class VideosViewModel @Inject constructor(
 
     fun deleteComment(comment: conectate.com.data.model.VideoComment) {
         val videoId = _selectedVideoForComments.value ?: return
+        val previous = _commentsState.value
+        val next = removeVideoCommentImmediately(previous, comment.id)
+        _commentsState.value = next
+        updateCommentCount(videoId, next.size)
         viewModelScope.launch {
             videoRepository.deleteComment(comment.id)
                 .onSuccess {
-                    _commentsState.value = _commentsState.value.filterNot { it.id == comment.id }
                     refreshCommentsAfterWrite(videoId)
                     reloadVideo(videoId)
                 }
-                .onFailure { android.util.Log.e("VideosViewModel", "Error deleting comment", it) }
+                .onFailure {
+                    _commentsState.value = previous
+                    updateCommentCount(videoId, previous.size)
+                    android.util.Log.e("VideosViewModel", "Error deleting comment", it)
+                }
         }
     }
 
@@ -487,17 +502,28 @@ class VideosViewModel @Inject constructor(
     }
 
     fun reactToComment(comment: conectate.com.data.model.VideoComment, reaction: String?) {
+        val previous = _commentsState.value
+        _commentsState.value = reactToVideoCommentImmediately(previous, comment.id, reaction)
         viewModelScope.launch {
             videoRepository.setCommentReaction(comment.id, reaction)
-                .onFailure { android.util.Log.e("VideosViewModel", "Comment reaction failed", it) }
+                .onSuccess { _selectedVideoForComments.value?.let(::refreshCommentsAfterWrite) }
+                .onFailure {
+                    _commentsState.value = previous
+                    android.util.Log.e("VideosViewModel", "Comment reaction failed", it)
+                }
         }
     }
 
     fun editComment(comment: conectate.com.data.model.VideoComment, content: String) {
+        val previous = _commentsState.value
+        _commentsState.value = editVideoCommentImmediately(previous, comment.id, content)
         viewModelScope.launch {
             videoRepository.editComment(comment.id, content)
-                .onSuccess { _selectedVideoForComments.value?.let { loadComments(it) } }
-                .onFailure { android.util.Log.e("VideosViewModel", "Comment edit failed", it) }
+                .onSuccess { _selectedVideoForComments.value?.let(::refreshCommentsAfterWrite) }
+                .onFailure {
+                    _commentsState.value = previous
+                    android.util.Log.e("VideosViewModel", "Comment edit failed", it)
+                }
         }
     }
 
@@ -518,9 +544,9 @@ class VideosViewModel @Inject constructor(
                          if (current.id != videoId) current
                          else updatedVideo.copy(
                              views = maxOf(current.views, updatedVideo.views),
-                             likeCount = maxOf(current.likeCount, updatedVideo.likeCount),
-                             commentCount = maxOf(current.commentCount, updatedVideo.commentCount),
-                             shareCount = maxOf(current.shareCount, updatedVideo.shareCount),
+                             likeCount = updatedVideo.likeCount.coerceAtLeast(0),
+                             commentCount = updatedVideo.commentCount.coerceAtLeast(0),
+                             shareCount = updatedVideo.shareCount.coerceAtLeast(0),
                              likedByMe = updatedVideo.likedByMe,
                              sharedByMe = updatedVideo.sharedByMe
                          )
@@ -630,17 +656,16 @@ class VideosViewModel @Inject constructor(
         current: List<conectate.com.data.model.VideoComment>,
         comment: conectate.com.data.model.VideoComment
     ): List<conectate.com.data.model.VideoComment> {
-        if (current.any { it.id.equals(comment.id, ignoreCase = true) }) return current
-        return listOf(comment) + current
+        return mergeLatestVideoComments(current, listOf(comment))
     }
 
-    private fun mergeComments(
-        current: List<conectate.com.data.model.VideoComment>,
-        incoming: List<conectate.com.data.model.VideoComment>
-    ): List<conectate.com.data.model.VideoComment> {
-        return (current + incoming)
-            .filter { it.id.isNotBlank() }
-            .distinctBy { it.id.trim().lowercase() }
+    private fun updateCommentCount(videoId: String, count: Int) {
+        val currentState = _videosState.value as? VideosUiState.Success ?: return
+        _videosState.value = VideosUiState.Success(
+            currentState.videos.map { video ->
+                if (video.id == videoId) video.copy(commentCount = count.coerceAtLeast(0)) else video
+            }
+        )
     }
 
     private fun saveVideosCache(videos: List<Video>) {

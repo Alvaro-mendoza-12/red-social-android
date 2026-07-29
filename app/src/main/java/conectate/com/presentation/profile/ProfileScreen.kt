@@ -584,8 +584,13 @@ fun ProfileScreen(
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
+                                            if (user.is_admin || conectate.com.presentation.components.isUserAdmin(user.username, user.email)) {
+                                                Spacer(Modifier.width(4.dp))
+                                                conectate.com.presentation.components.AdminBadge(showVerifiedLine = false)
+                                            }
                                             if (user.is_verified) {
                                                 Spacer(Modifier.width(4.dp))
                                                 Icon(Icons.Default.CheckCircle, "Verificado", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
@@ -603,7 +608,8 @@ fun ProfileScreen(
                                         conectate.com.presentation.components.BadgeRow(
                                             userName = user.username,
                                             userEmail = user.email,
-                                            badges = user.badges ?: emptyList()
+                                            badges = user.badges ?: emptyList(),
+                                            includeAdmin = false
                                         )
                                     }
                                 }

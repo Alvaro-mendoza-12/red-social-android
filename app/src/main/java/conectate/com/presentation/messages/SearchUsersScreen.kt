@@ -21,6 +21,7 @@ import androidx.navigation.NavController
 import conectate.com.data.model.User
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.UserItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,23 +123,5 @@ fun UserSearchItem(
     user: User,
     onClick: () -> Unit
 ) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = {
-            Text(
-                text = user.displayName ?: user.username ?: "Usuario",
-                fontWeight = FontWeight.Bold
-            )
-        },
-        supportingContent = {
-            Text(text = "@${user.username ?: "sin_username"}")
-        },
-        leadingContent = {
-            CircularProfileImage(
-                imageUrl = user.avatar_url,
-                size = 48.dp,
-                fallbackName = user.displayName
-            )
-        }
-    )
+    UserItem(user = user, onClick = onClick)
 }

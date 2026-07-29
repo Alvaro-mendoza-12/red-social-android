@@ -64,6 +64,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import android.media.MediaPlayer
 import kotlinx.coroutines.Job
@@ -167,7 +168,8 @@ class VideoPlayerViewModel @Inject constructor(
                         // _viewCount.value = video.views
 
                         commentsSubscriptionJob?.cancel()
-                        refreshComments(video, preserveCurrent = false)
+                        refreshComments(video)
+                        observeComments()
                     },
                     onFailure = { error ->
                         _uiState.value = VideoPlayerUiState.Error(
@@ -244,7 +246,7 @@ class VideoPlayerViewModel @Inject constructor(
                 if (currentState is VideoPlayerUiState.Success) {
                     val nextComments = mergeComments(currentState.comments, listOf(insertedComment))
                     _uiState.value = currentState.copy(comments = nextComments)
-                    _commentCount.value = maxOf(_commentCount.value, nextComments.size)
+                    _commentCount.value = nextComments.size
                 }
                 _commentText.value = ""
                 _replyingTo.value = null
@@ -276,11 +278,11 @@ class VideoPlayerViewModel @Inject constructor(
         viewModelScope.launch {
             delay(250)
             val currentVideo = (_uiState.value as? VideoPlayerUiState.Success)?.video
-            refreshComments(currentVideo, preserveCurrent = true)
+            refreshComments(currentVideo)
         }
     }
 
-    private suspend fun refreshComments(video: Video?, preserveCurrent: Boolean) {
+    private suspend fun refreshComments(video: Video?) {
         val loaded = videoRepository.loadVideoCommentsNow(videoId)
             .onFailure { error ->
                 android.util.Log.e("VideoPlayerVM", "Failed to refresh comments", error)
@@ -288,12 +290,7 @@ class VideoPlayerViewModel @Inject constructor(
             .getOrNull()
             ?: emptyList()
         val currentState = _uiState.value
-        val currentComments = if (preserveCurrent && currentState is VideoPlayerUiState.Success) {
-            currentState.comments
-        } else {
-            emptyList()
-        }
-        val nextComments = mergeComments(currentComments, loaded)
+        val nextComments = loaded
         if (currentState is VideoPlayerUiState.Success) {
             _uiState.value = currentState.copy(comments = nextComments)
         } else if (video != null) {
@@ -303,10 +300,17 @@ class VideoPlayerViewModel @Inject constructor(
                 isLiked = _isLiked.value
             )
         }
-        _commentCount.value = if (preserveCurrent) {
-            maxOf(_commentCount.value, nextComments.size)
-        } else {
-            nextComments.size
+        _commentCount.value = nextComments.size
+    }
+
+    private fun observeComments() {
+        commentsSubscriptionJob?.cancel()
+        commentsSubscriptionJob = viewModelScope.launch {
+            videoRepository.getCommentsFlow(videoId).collect { comments ->
+                val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return@collect
+                _uiState.value = currentState.copy(comments = comments)
+                _commentCount.value = comments.size
+            }
         }
     }
 
@@ -314,9 +318,7 @@ class VideoPlayerViewModel @Inject constructor(
         current: List<VideoComment>,
         incoming: List<VideoComment>
     ): List<VideoComment> {
-        return (current + incoming)
-            .filter { it.id.isNotBlank() }
-            .distinctBy { it.id.trim().lowercase() }
+        return mergeLatestVideoComments(current, incoming)
     }
 
     fun onReplyClick(comment: VideoComment) {
@@ -471,14 +473,14 @@ class VideoPlayerViewModel @Inject constructor(
     fun deleteComment(comment: VideoComment) {
         val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return
         val previousComments = currentState.comments
-        val nextComments = previousComments.filterNot { it.id.equals(comment.id, ignoreCase = true) }
+        val nextComments = removeVideoCommentImmediately(previousComments, comment.id)
         _uiState.value = currentState.copy(comments = nextComments)
         _commentCount.value = nextComments.size
 
         viewModelScope.launch {
             videoRepository.deleteComment(comment.id).onSuccess {
                 delay(250)
-                refreshComments(currentState.video, preserveCurrent = false)
+                refreshComments(currentState.video)
             }.onFailure { error ->
                 android.util.Log.e("VideoPlayerVM", "Error deleting comment", error)
                 val latestState = _uiState.value
@@ -492,18 +494,40 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     fun reactToComment(comment: VideoComment, reaction: String?) {
+        val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return
+        val previousComments = currentState.comments
+        _uiState.value = currentState.copy(
+            comments = reactToVideoCommentImmediately(previousComments, comment.id, reaction)
+        )
         viewModelScope.launch {
             videoRepository.setCommentReaction(comment.id, reaction)
                 .onSuccess { refreshCommentsAfterWrite() }
-                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo reaccionar" }
+                .onFailure {
+                    val latestState = _uiState.value as? VideoPlayerUiState.Success
+                    if (latestState != null) {
+                        _uiState.value = latestState.copy(comments = previousComments)
+                    }
+                    _reportActionMessage.value = it.message ?: "No se pudo reaccionar"
+                }
         }
     }
 
     fun editComment(comment: VideoComment, content: String) {
+        val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return
+        val previousComments = currentState.comments
+        _uiState.value = currentState.copy(
+            comments = editVideoCommentImmediately(previousComments, comment.id, content)
+        )
         viewModelScope.launch {
             videoRepository.editComment(comment.id, content)
                 .onSuccess { refreshCommentsAfterWrite() }
-                .onFailure { _reportActionMessage.value = it.message ?: "No se pudo editar" }
+                .onFailure {
+                    val latestState = _uiState.value as? VideoPlayerUiState.Success
+                    if (latestState != null) {
+                        _uiState.value = latestState.copy(comments = previousComments)
+                    }
+                    _reportActionMessage.value = it.message ?: "No se pudo editar"
+                }
         }
     }
 
@@ -518,7 +542,18 @@ class VideoPlayerViewModel @Inject constructor(
     fun addStickerComment(url: String, label: String) {
         viewModelScope.launch {
             videoRepository.addStickerComment(videoId, url, label)
-                .onSuccess { refreshCommentsAfterWrite() }
+                .onSuccess { insertedComment ->
+                    val currentState = _uiState.value as? VideoPlayerUiState.Success
+                    if (currentState != null) {
+                        val nextComments = mergeLatestVideoComments(
+                            currentState.comments,
+                            listOf(insertedComment)
+                        )
+                        _uiState.value = currentState.copy(comments = nextComments)
+                        _commentCount.value = nextComments.size
+                    }
+                    refreshCommentsAfterWrite()
+                }
                 .onFailure { _reportActionMessage.value = it.message ?: "No se pudo enviar el sticker" }
         }
     }
@@ -614,9 +649,9 @@ class VideoPlayerViewModel @Inject constructor(
                             if (latestState is VideoPlayerUiState.Success) {
                                 val merged = refreshed.copy(
                                     views = maxOf(latestState.video.views, refreshed.views),
-                                    likeCount = maxOf(latestState.video.likeCount, refreshed.likeCount),
-                                    commentCount = maxOf(latestState.video.commentCount, refreshed.commentCount),
-                                    shareCount = maxOf(newShareCount, refreshed.shareCount),
+                                    likeCount = refreshed.likeCount.coerceAtLeast(0),
+                                    commentCount = refreshed.commentCount.coerceAtLeast(0),
+                                    shareCount = refreshed.shareCount.coerceAtLeast(0),
                                     likedByMe = latestState.video.likedByMe || refreshed.likedByMe,
                                     sharedByMe = newSharedState
                                 )

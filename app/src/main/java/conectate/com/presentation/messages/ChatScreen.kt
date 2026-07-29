@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
@@ -1506,7 +1507,7 @@ fun ChatScreen(
                             }
                         },
                         maxLines = 4,
-                        shape = CircleShape,
+                        shape = RoundedCornerShape(12.dp),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send

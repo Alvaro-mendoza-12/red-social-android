@@ -54,7 +54,8 @@ fun UserItem(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 
                 if (user.is_verified) {
@@ -69,7 +70,7 @@ fun UserItem(
 
                 if (user.is_admin || isUserAdmin(user.username, user.email)) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    AdminBadge()
+                    AdminBadge(showVerifiedLine = false)
                 }
             }
             

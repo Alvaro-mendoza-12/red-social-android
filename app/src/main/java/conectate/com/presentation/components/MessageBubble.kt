@@ -361,6 +361,7 @@ fun MessageBubble(
     onResolveUrl: suspend (String) -> String? = { it },
     senderName: String? = null,
     senderEmail: String? = null,
+    isAdmin: Boolean = false,
     isVerified: Boolean = false,
     userBadges: List<conectate.com.data.model.Badge> = emptyList(),
     onUrlClick: (String) -> Unit = {},
@@ -494,7 +495,7 @@ fun MessageBubble(
                         }
                         
                         // Prioritize Admin Badge
-                        if (isUserAdmin(senderName, senderEmail)) {
+                        if (isAdmin || isUserAdmin(senderName, senderEmail) || userBadges.any(::isAdminBadge)) {
                             Spacer(modifier = Modifier.width(4.dp))
                             AdminBadge(showVerifiedLine = false)
                         }

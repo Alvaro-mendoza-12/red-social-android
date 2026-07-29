@@ -19,6 +19,11 @@ import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import conectate.com.presentation.videos.editVideoCommentImmediately
+import conectate.com.presentation.videos.mergeLatestVideoComments
+import conectate.com.presentation.videos.reactToVideoCommentImmediately
+import conectate.com.presentation.videos.removeVideoCommentImmediately
 import javax.inject.Inject
 
 @HiltViewModel
@@ -422,13 +427,16 @@ class VideoFeedViewModel @Inject constructor(
         commentsJob = viewModelScope.launch {
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
-                    val merged = mergeComments(_comments.value, comments)
-                    _comments.value = merged
-                    updateCommentCount(videoId, merged.size)
+                    _comments.value = comments
+                    updateCommentCount(videoId, comments.size)
                 }
                 .onFailure { error ->
                     android.util.Log.e("VideoFeedVM", "Failed to load comments for $videoId", error)
                 }
+            videoRepository.getCommentsFlow(videoId).collect { comments ->
+                _comments.value = comments
+                updateCommentCount(videoId, comments.size)
+            }
         }
     }
     
@@ -550,15 +558,20 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun deleteComment(videoId: String, comment: conectate.com.data.model.VideoComment) {
+        val previous = _comments.value
+        val next = removeVideoCommentImmediately(previous, comment.id)
+        _comments.value = next
+        updateCommentCount(videoId, next.size)
         viewModelScope.launch {
             videoRepository.deleteComment(comment.id)
                 .onSuccess {
                     android.util.Log.d("VideoFeedVM", "Comment deleted successfully")
-                    fetchComments(videoId)
-                    // Reload video to get accurate server-side count (handles cascade deletes)
+                    refreshCommentsAfterWrite(videoId)
                     reloadVideo(videoId)
                 }
                 .onFailure { e ->
+                    _comments.value = previous
+                    updateCommentCount(videoId, previous.size)
                     android.util.Log.e("VideoFeedVM", "Error deleting comment", e)
                 }
         }
@@ -577,31 +590,38 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun reactToComment(comment: conectate.com.data.model.VideoComment, reaction: String?) {
-        viewModelScope.launch {
-            videoRepository.setCommentReaction(comment.id, reaction)
-                .onFailure { android.util.Log.e("VideoFeedVM", "Comment reaction failed", it) }
-        }
+        val videoId = selectedVideoForComments.value?.id ?: comment.videoId
+        reactToComment(videoId, comment, reaction)
     }
 
     fun reactToComment(videoId: String, comment: conectate.com.data.model.VideoComment, reaction: String?) {
-        reactToComment(comment, reaction)
-        refreshCommentsAfterWrite(videoId)
-    }
-
-    fun editComment(comment: conectate.com.data.model.VideoComment, content: String) {
-        val videoId = selectedVideoForComments.value?.id
+        val previous = _comments.value
+        _comments.value = reactToVideoCommentImmediately(previous, comment.id, reaction)
         viewModelScope.launch {
-            videoRepository.editComment(comment.id, content)
-                .onSuccess { videoId?.let { fetchComments(it) } }
-                .onFailure { android.util.Log.e("VideoFeedVM", "Comment edit failed", it) }
+            videoRepository.setCommentReaction(comment.id, reaction)
+                .onSuccess { refreshCommentsAfterWrite(videoId) }
+                .onFailure {
+                    _comments.value = previous
+                    android.util.Log.e("VideoFeedVM", "Comment reaction failed", it)
+                }
         }
     }
 
+    fun editComment(comment: conectate.com.data.model.VideoComment, content: String) {
+        val videoId = selectedVideoForComments.value?.id ?: comment.videoId
+        editComment(videoId, comment, content)
+    }
+
     fun editComment(videoId: String, comment: conectate.com.data.model.VideoComment, content: String) {
+        val previous = _comments.value
+        _comments.value = editVideoCommentImmediately(previous, comment.id, content)
         viewModelScope.launch {
             videoRepository.editComment(comment.id, content)
-                .onSuccess { fetchComments(videoId) }
-                .onFailure { android.util.Log.e("VideoFeedVM", "Comment edit failed", it) }
+                .onSuccess { refreshCommentsAfterWrite(videoId) }
+                .onFailure {
+                    _comments.value = previous
+                    android.util.Log.e("VideoFeedVM", "Comment edit failed", it)
+                }
         }
     }
 
@@ -660,9 +680,9 @@ class VideoFeedViewModel @Inject constructor(
                         if (current.id != videoId) current
                         else updatedVideo.copy(
                             views = maxOf(current.views, updatedVideo.views),
-                            likeCount = maxOf(current.likeCount, updatedVideo.likeCount),
-                            commentCount = maxOf(current.commentCount, updatedVideo.commentCount),
-                            shareCount = maxOf(current.shareCount, updatedVideo.shareCount),
+                            likeCount = updatedVideo.likeCount.coerceAtLeast(0),
+                            commentCount = updatedVideo.commentCount.coerceAtLeast(0),
+                            shareCount = updatedVideo.shareCount.coerceAtLeast(0),
                             likedByMe = updatedVideo.likedByMe,
                             sharedByMe = updatedVideo.sharedByMe
                         )
@@ -682,9 +702,8 @@ class VideoFeedViewModel @Inject constructor(
             delay(250)
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
-                    val merged = mergeComments(_comments.value, comments)
-                    _comments.value = merged
-                    updateCommentCount(videoId, merged.size)
+                    _comments.value = comments
+                    updateCommentCount(videoId, comments.size)
                 }
                 .onFailure { error ->
                     android.util.Log.w("VideoFeedVM", "Post-write comments refresh failed for $videoId", error)
@@ -707,17 +726,7 @@ class VideoFeedViewModel @Inject constructor(
         current: List<conectate.com.data.model.VideoComment>,
         comment: conectate.com.data.model.VideoComment
     ): List<conectate.com.data.model.VideoComment> {
-        if (current.any { it.id.equals(comment.id, ignoreCase = true) }) return current
-        return listOf(comment) + current
-    }
-
-    private fun mergeComments(
-        current: List<conectate.com.data.model.VideoComment>,
-        incoming: List<conectate.com.data.model.VideoComment>
-    ): List<conectate.com.data.model.VideoComment> {
-        return (current + incoming)
-            .filter { it.id.isNotBlank() }
-            .distinctBy { it.id.trim().lowercase() }
+        return mergeLatestVideoComments(current, listOf(comment))
     }
 
     // Audio Comment Actions

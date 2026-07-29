@@ -196,9 +196,9 @@ class VideoRepository @Inject constructor(
         val stats = videoStatsDao.getStats(cleanVideoId) ?: return video
         return video.copy(
             views = maxOf(video.views, stats.viewCount),
-            likeCount = maxOf(video.likeCount, stats.likeCount),
-            commentCount = maxOf(video.commentCount, stats.commentCount),
-            shareCount = maxOf(video.shareCount, stats.shareCount)
+            likeCount = stats.likeCount.coerceAtLeast(0),
+            commentCount = stats.commentCount.coerceAtLeast(0),
+            shareCount = stats.shareCount.coerceAtLeast(0)
         )
     }
 
@@ -1093,9 +1093,9 @@ class VideoRepository @Inject constructor(
                         return
                     }
                 val entities = comments.map { VideoCommentEntity.fromDomain(it.normalizedStorageUrls()) }
+                videoCommentDao.deleteCommentsByVideo(videoId)
                 videoCommentDao.insertComments(entities)
-                val mergedCount = maxOf(comments.size, videoCommentDao.getComments(videoId).size)
-                setLocalVideoCommentCount(videoId, mergedCount)
+                setLocalVideoCommentCount(videoId, comments.size)
                 return
             }
 
@@ -1116,6 +1116,7 @@ class VideoRepository @Inject constructor(
                 val entities = comments.map { VideoCommentEntity.fromDomain(it) }
                 videoCommentDao.deleteCommentsByVideo(videoId)
                 videoCommentDao.insertComments(entities)
+                setLocalVideoCommentCount(videoId, comments.size)
                 android.util.Log.d("VideoRepository", "Inserted ${entities.size} comments to Room")
             } else {
                 android.util.Log.e("VideoRepository", "Failed to fetch comments: ${response.status}")
@@ -1179,6 +1180,12 @@ class VideoRepository @Inject constructor(
                                     videoCommentDao.deleteComment(id)
                                     updateLocalVideoCommentCount(videoId, -1)
                                 }
+                            }
+                        }
+                        is PostgresAction.Update -> {
+                            val comment = change.decodeRecord<VideoComment>().normalizedStorageUrls()
+                            repositoryScope.launch {
+                                videoCommentDao.insertComment(VideoCommentEntity.fromDomain(comment))
                             }
                         }
                         else -> {}
@@ -1255,12 +1262,11 @@ class VideoRepository @Inject constructor(
                             parentId = normalizeCommentParentId(it.parentId)
                         ).normalizedStorageUrls()
                     }
-                val localComments = videoCommentDao.getComments(cleanVideoId)
-                    .map { it.toDomain().normalizedStorageUrls() }
-                val merged = mergeVideoComments(remoteComments + localComments)
-                videoCommentDao.insertComments(merged.map { VideoCommentEntity.fromDomain(it) })
-                setLocalVideoCommentCount(cleanVideoId, merged.size)
-                return@withContext Result.success(merged)
+                val authoritative = mergeVideoComments(remoteComments)
+                videoCommentDao.deleteCommentsByVideo(cleanVideoId)
+                videoCommentDao.insertComments(authoritative.map { VideoCommentEntity.fromDomain(it) })
+                setLocalVideoCommentCount(cleanVideoId, authoritative.size)
+                return@withContext Result.success(authoritative)
             }
 
             refreshCommentsFromNetwork(cleanVideoId)
@@ -2786,8 +2792,8 @@ class VideoRepository @Inject constructor(
             videoId = cleanVideoId,
             viewCount = maxOf(current.viewCount, views),
             likeCount = likes,
-            commentCount = maxOf(current.commentCount, comments),
-            shareCount = maxOf(current.shareCount, shares),
+            commentCount = comments.coerceAtLeast(0),
+            shareCount = shares.coerceAtLeast(0),
             lastUpdated = System.currentTimeMillis()
         ))
     }
@@ -2814,7 +2820,7 @@ class VideoRepository @Inject constructor(
             videoStatsDao.insertStats(
                 currentStats.copy(
                     videoId = cleanVideoId,
-                    commentCount = maxOf(currentStats.commentCount, count.coerceAtLeast(0)),
+                    commentCount = count.coerceAtLeast(0),
                     lastUpdated = System.currentTimeMillis()
                 )
             )

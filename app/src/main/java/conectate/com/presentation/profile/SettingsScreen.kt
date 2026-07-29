@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -34,6 +35,8 @@ import android.util.Log
 import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
+
+private const val NOVVIN_WEB_URL = "https://red-social-android.vercel.app"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +62,8 @@ fun SettingsScreen(
     val storedAccounts by authViewModel.storedAccounts.collectAsState()
     val accountSwitchMessage by authViewModel.accountSwitchMessage.collectAsState()
     val currentUserId by authViewModel.currentUserId.collectAsState()
+    val uriHandler = LocalUriHandler.current
+    val screenContext = LocalContext.current
     
     // Local state for immediate UI feedback, synced with DB
     var isPrivate by remember { mutableStateOf(false) }
@@ -539,7 +544,7 @@ fun SettingsScreen(
                                         onClick = { 
                                             showSupportDialog = false
                                             try {
-                                                viewModel.contactSupport("conectate", mainNavController, context)
+                                                viewModel.contactSupport("novvin", mainNavController, context)
                                             } catch (e: Exception) {
                                                 android.util.Log.e("SettingsScreen", "Error contacting support", e)
                                             }
@@ -575,7 +580,66 @@ fun SettingsScreen(
 
             Divider()
 
-            SettingsSection(title = "Dispositivos vinculados") {
+            SettingsSection(title = "Novvin Web") {
+                Text(
+                    "Inicia sesión desde el navegador y vincula esta cuenta de forma segura.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = NOVVIN_WEB_URL,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            runCatching { uriHandler.openUri(NOVVIN_WEB_URL) }
+                                .onFailure {
+                                    android.widget.Toast.makeText(
+                                        screenContext,
+                                        "No se pudo abrir el navegador.",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Computer, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Abrir web")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = screenContext.getSystemService(
+                                android.content.Context.CLIPBOARD_SERVICE
+                            ) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(
+                                android.content.ClipData.newPlainText("Novvin Web", NOVVIN_WEB_URL)
+                            )
+                            android.widget.Toast.makeText(
+                                screenContext,
+                                "Enlace copiado.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Copiar enlace")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 OutlinedButton(
                     onClick = {
                         mainNavController.navigate(Screen.WebLoginScanner.createRoute()) {

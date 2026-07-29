@@ -1232,17 +1232,10 @@ fun VideoItem(
     // 2. Real-time updates: currentStats provides the latest truth from the server
     // 3. User Interaction: ViewModel updates video.likeCount optimistically
     // We use the local object when user is interacting, otherwise trust the server.
-    val likeCount = if (video.likedByMe) {
-        // If likedByMe is true, ensure we show AT LEAST currentStats value or video value
-        maxOf(video.likeCount, currentStats?.likeCount ?: 0)
-    } else {
-        // If not liked, we can just trust the server's count
-        currentStats?.likeCount ?: video.likeCount
-    }
-    
-    val commentCount = maxOf(video.commentCount, currentStats?.commentCount ?: 0)
+    val likeCount = currentStats?.likeCount ?: video.likeCount
+    val commentCount = currentStats?.commentCount ?: video.commentCount
     val viewCount = maxOf(video.views, currentStats?.viewCount ?: 0)
-    val shareCount = maxOf(video.shareCount, currentStats?.shareCount ?: 0)
+    val shareCount = currentStats?.shareCount ?: video.shareCount
 
     // Only attach player if selected. Otherwise show thumbnail.
     // This effectively manages the player view binding.
@@ -1344,7 +1337,8 @@ fun VideoItem(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setBackgroundColor(android.graphics.Color.BLACK)
                         setKeepContentOnPlayerReset(true)
                         setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
@@ -1379,8 +1373,10 @@ fun VideoItem(
                 model = thumbnailRequest,
                 contentDescription = null,
                 filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
             )
         }
         

@@ -120,53 +120,68 @@ class SettingsViewModel @Inject constructor(
 
     private fun resolveAdminIds() {
         viewModelScope.launch {
-            // Try to find by username first, fallback to email if needed
-            // "Conectate"
-            val conectateUser = userRepository.getUserByUsername("conectate").getOrNull() 
-                ?: userRepository.getUserByUsername("Conectate").getOrNull()
-                ?: userRepository.getUserByUsername("gamergamerff017").getOrNull() // From screenshot
-                ?: userRepository.getUserByEmail("conectate@admin.com").getOrNull() 
-                ?: userRepository.getUserByEmail("gamergamerff017@gmail.com").getOrNull()
-            
+            val conectateUser = resolveSupportAdmin("novvin")
             _conectateAdminId.value = conectateUser?.id
-            android.util.Log.d("SettingsViewModel", "Resolved Conectate Admin ID: ${conectateUser?.id}")
+            android.util.Log.d("SettingsViewModel", "Resolved Novvin Admin ID: ${conectateUser?.id}")
 
-            // "Alvaro"
-            val alvaroUser = userRepository.getUserByUsername("alvaro").getOrNull()
-                ?: userRepository.getUserByUsername("Alvaro").getOrNull()
-                ?: userRepository.getUserByEmail("alvaromendozamarin004@gmail.com").getOrNull()
-            
+            val alvaroUser = resolveSupportAdmin("alvaro")
             _alvaroAdminId.value = alvaroUser?.id
         }
+    }
+
+    private fun isNovvinSupportAdmin(adminName: String): Boolean =
+        adminName.trim().lowercase() in setOf("novvin", "noobin", "conectate")
+
+    private suspend fun resolveSupportAdmin(adminName: String): User? {
+        val isNovvin = isNovvinSupportAdmin(adminName)
+        val usernames = if (isNovvin) {
+            listOf("novvin", "conectate", "gamergamerff004", "gamergamerff017")
+        } else {
+            listOf("alvaro")
+        }
+        val emails = if (isNovvin) {
+            listOf(
+                "gamergamerff004@gmail.com",
+                "gamergamerff017@gmail.com",
+                "conectate@admin.com"
+            )
+        } else {
+            listOf("alvaromendozamarin004@gmail.com")
+        }
+
+        for (username in usernames) {
+            val candidate = userRepository.getUserByUsername(username).getOrNull()
+            if (!candidate?.id.isNullOrBlank()) return candidate
+        }
+        for (email in emails) {
+            val candidate = userRepository.getUserByEmail(email).getOrNull()
+            if (!candidate?.id.isNullOrBlank()) return candidate
+        }
+        return null
     }
 
     fun contactSupport(adminName: String, navController: NavController, context: android.content.Context) {
         android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
         viewModelScope.launch {
             try {
-                var adminId = if (adminName.equals("conectate", ignoreCase = true)) _conectateAdminId.value else _alvaroAdminId.value
+                val isNovvin = isNovvinSupportAdmin(adminName)
+                var adminId = if (isNovvin) _conectateAdminId.value else _alvaroAdminId.value
 
                 if (adminId.isNullOrBlank()) {
-                    if (adminName.equals("conectate", ignoreCase = true)) {
-                        val conectateUser = userRepository.getUserByUsername("conectate").getOrNull()
-                            ?: userRepository.getUserByUsername("Conectate").getOrNull()
-                            ?: userRepository.getUserByUsername("gamergamerff017").getOrNull()
-                            ?: userRepository.getUserByEmail("conectate@admin.com").getOrNull()
-                            ?: userRepository.getUserByEmail("gamergamerff017@gmail.com").getOrNull()
-                        adminId = conectateUser?.id
+                    adminId = resolveSupportAdmin(adminName)?.id
+                    if (isNovvin) {
+                        _conectateAdminId.value = adminId
                     } else {
-                        val alvaroUser = userRepository.getUserByUsername("alvaro").getOrNull()
-                            ?: userRepository.getUserByUsername("Alvaro").getOrNull()
-                            ?: userRepository.getUserByEmail("alvaromendozamarin004@gmail.com").getOrNull()
-                        adminId = alvaroUser?.id
+                        _alvaroAdminId.value = adminId
                     }
                 }
 
-                if (!adminId.isNullOrBlank()) {
-                    messageRepository.getOrCreateChat(adminId)
-                        .onSuccess { chat ->
+                val targetAdminId = adminId?.trim()?.takeIf { it.isNotBlank() }
+                if (targetAdminId != null) {
+                    messageRepository.getOrCreateChat(targetAdminId)
+                        .onSuccess {
                             val route = Screen.Chat.createRoute(
-                                userId = chat.id,
+                                userId = targetAdminId,
                                 initialMessage = "Hola $adminName, necesito ayuda con la aplicación."
                             )
                             navController.navigate(route)

@@ -268,7 +268,8 @@ function sortMessagesNewestFirst(rows) {
 }
 
 function messageVisibleTo(row, identity) {
-  if (boolOf(row, ['deleted_for_all', 'deletedForAll'], false)) return false
+  // A deletion for everyone is a conversation tombstone, not a private hide.
+  // Keep it in history so every participant renders "Mensaje eliminado".
   const deletedBy = cleanSet(arrayOf(row, ['deleted_by', 'deletedBy']))
   if (deletedBy.size === 0 || !identity?.ids) return true
   return !Array.from(identity.ids).some((id) => deletedBy.has(normalizeId(id)))

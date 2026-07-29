@@ -121,29 +121,14 @@ fun BadgeRow(
     userName: String?,
     userEmail: String? = null,
     badges: List<Badge> = emptyList(),
+    includeAdmin: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    // Collect all badges to display
-    val displayBadges = remember(userName, userEmail, badges) {
-        val list = mutableListOf<@Composable () -> Unit>()
-        
-        // 1. Admin Badge (if applicable according to identifiers)
-        if (isUserAdmin(userName, userEmail)) {
-            list.add { AdminBadge(showVerifiedLine = false) }
-        }
-        
-        // 2. Map other badges from the list
-        badges.forEach { badge ->
-            // Skip if it's an admin badge and we already added it OR if name is Admin
-            if (badge.name.lowercase() != "admin" || !isUserAdmin(userName, userEmail)) {
-                list.add { GenericBadgeChip(badge) }
-            }
-        }
-        
-        list
-    }
+    val adminFromCatalog = badges.any(::isAdminBadge)
+    val showAdmin = includeAdmin && (isUserAdmin(userName, userEmail) || adminFromCatalog)
+    val otherBadges = badges.filterNot(::isAdminBadge)
 
-    if (displayBadges.isNotEmpty()) {
+    if (showAdmin || otherBadges.isNotEmpty()) {
         Row(
             modifier = modifier
                 .fillMaxWidth()
@@ -151,11 +136,19 @@ fun BadgeRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            displayBadges.forEach { badgeComposable ->
-                badgeComposable()
+            if (showAdmin) {
+                AdminBadge(showVerifiedLine = false)
+            }
+            otherBadges.forEach { badge ->
+                GenericBadgeChip(badge)
             }
         }
     }
+}
+
+fun isAdminBadge(badge: Badge): Boolean {
+    val normalizedName = badge.name.trim().lowercase()
+    return badge.isAdminBadge || normalizedName == "admin" || normalizedName == "administrador"
 }
 
 @Composable
@@ -200,8 +193,14 @@ fun isUserAdmin(userName: String?, userEmail: String? = null): Boolean {
     val normalizedName = userName?.lowercase()?.trim() ?: ""
     val normalizedEmail = userEmail?.lowercase()?.trim() ?: ""
     
-    return normalizedName == "conectate" || 
-           normalizedName == "alvaro" || 
+    return normalizedName in setOf(
+               "conectate",
+               "novvin",
+               "noobin",
+               "alvaro",
+               "gamergamerff004",
+               "gamergamerff017"
+           ) ||
            normalizedEmail == "alvaromendozamarin004@gmail.com" ||
            normalizedEmail == "gamergamerff004@gmail.com" ||
            normalizedEmail == "gamergamerff017@gmail.com"
