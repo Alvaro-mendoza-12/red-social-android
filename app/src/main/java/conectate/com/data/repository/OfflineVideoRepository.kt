@@ -63,6 +63,33 @@ class OfflineVideoRepository @Inject constructor(
         _downloadProgress.value = emptyMap()
     }
 
+    fun configuredTargetCount(): Int {
+        val accountId = currentAccountId() ?: return 0
+        return preferences.getInt(targetPreferenceKey(accountId), 0)
+            .coerceIn(0, MAX_CONFIGURED_VIDEO_COUNT)
+    }
+
+    fun setConfiguredTargetCount(count: Int) {
+        val accountId = currentAccountId() ?: return
+        preferences.edit()
+            .putInt(targetPreferenceKey(accountId), count.coerceIn(0, MAX_CONFIGURED_VIDEO_COUNT))
+            .apply()
+    }
+
+    fun requestFreshCycle() {
+        val accountId = currentAccountId() ?: return
+        preferences.edit().putBoolean(refreshPreferenceKey(accountId), true).apply()
+    }
+
+    fun consumeFreshCycleRequest(): Boolean {
+        val accountId = currentAccountId() ?: return false
+        val requested = preferences.getBoolean(refreshPreferenceKey(accountId), false)
+        if (requested) {
+            preferences.edit().putBoolean(refreshPreferenceKey(accountId), false).apply()
+        }
+        return requested
+    }
+
     suspend fun download(video: Video): Result<OfflineVideoEntry> = withContext(Dispatchers.IO) {
         val accountId = currentAccountId()
             ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
@@ -276,6 +303,8 @@ class OfflineVideoRepository @Inject constructor(
         File(context.filesDir, "offline-videos/${safePart(accountId)}")
 
     private fun preferenceKey(accountId: String): String = "account:${safePart(accountId)}"
+    private fun targetPreferenceKey(accountId: String): String = "target:${safePart(accountId)}"
+    private fun refreshPreferenceKey(accountId: String): String = "refresh:${safePart(accountId)}"
 
     private fun safePart(value: String): String = value.trim().lowercase()
         .replace(Regex("[^a-z0-9._-]"), "_")
@@ -289,5 +318,6 @@ class OfflineVideoRepository @Inject constructor(
         private const val MAX_OFFLINE_VIDEO_BYTES = 512L * 1024L * 1024L
         private const val MAX_THUMBNAIL_BYTES = 10L * 1024L * 1024L
         private const val MIN_FREE_SPACE_BYTES = 64L * 1024L * 1024L
+        private const val MAX_CONFIGURED_VIDEO_COUNT = 150
     }
 }

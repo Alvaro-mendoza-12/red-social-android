@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,22 +53,22 @@ fun RegisterScreen(
     navController: NavController,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPassword by remember { mutableStateOf("") }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
-    var country by remember { mutableStateOf("") }
-    var gender by remember { mutableStateOf("unspecified") }
-    var birthDate by remember { mutableStateOf("") }
-    var profileImageUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingProfileCropUri by remember { mutableStateOf<Uri?>(null) }
-    var acceptedPrivacyPolicy by remember { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var confirmPassword by rememberSaveable { mutableStateOf("") }
+    var confirmPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var country by rememberSaveable { mutableStateOf("") }
+    var gender by rememberSaveable { mutableStateOf("unspecified") }
+    var birthDate by rememberSaveable { mutableStateOf("") }
+    var profileImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var pendingProfileCropUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var acceptedPrivacyPolicy by rememberSaveable { mutableStateOf(false) }
     
-    var showCountryDropdown by remember { mutableStateOf(false) }
-    var showGenderDropdown by remember { mutableStateOf(false) }
-    var showBirthDatePicker by remember { mutableStateOf(false) }
+    var showCountryDropdown by rememberSaveable { mutableStateOf(false) }
+    var showGenderDropdown by rememberSaveable { mutableStateOf(false) }
+    var showBirthDatePicker by rememberSaveable { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
     val scrollState = rememberScrollState()
@@ -77,6 +78,16 @@ fun RegisterScreen(
         runCatching { LocalDate.parse(birthDate) }.getOrNull()
     }
     val birthDateIsValid = parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
+    val registerBackStackEntry = remember(navController) {
+        navController.getBackStackEntry(Screen.Register.route)
+    }
+    val privacyAcceptedFromDocument by registerBackStackEntry.savedStateHandle
+        .getStateFlow("registration_privacy_accepted", false)
+        .collectAsState()
+
+    LaunchedEffect(privacyAcceptedFromDocument) {
+        if (privacyAcceptedFromDocument) acceptedPrivacyPolicy = true
+    }
 
     LaunchedEffect(authError) {
         if (authError.isNotBlank()) {
@@ -524,17 +535,24 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(8.dp))
         
         // Register Button
-        val isFormValid = name.isNotBlank() && 
-                         email.isNotBlank() && emailIsValid &&
-                         password.length >= 8 &&
-                         password == confirmPassword &&
-                         country.isNotEmpty() &&
-                         birthDateIsValid &&
-                         acceptedPrivacyPolicy
-        
+        val validationMessage = when {
+            name.isBlank() -> "Escribe tu nombre."
+            email.isBlank() -> "Escribe el correo que usarás para iniciar sesión."
+            !emailIsValid -> "Escribe un correo válido."
+            password.length < 8 -> "La contraseña debe tener al menos 8 caracteres."
+            confirmPassword.isBlank() -> "Confirma tu contraseña."
+            password != confirmPassword -> "Las contraseñas no coinciden."
+            country.isBlank() -> "Selecciona tu país."
+            birthDate.isBlank() -> "Selecciona tu fecha de nacimiento."
+            !birthDateIsValid -> "Selecciona una fecha de nacimiento válida."
+            !acceptedPrivacyPolicy -> "Acepta las políticas de privacidad para crear tu cuenta."
+            else -> null
+        }
         Button(
             onClick = {
-                if (isFormValid) {
+                if (validationMessage != null) {
+                    AppFeedbackBus.showError(validationMessage)
+                } else {
                     viewModel.signUpWithEmail(
                         email = email,
                         password = password,
@@ -550,7 +568,7 @@ fun RegisterScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            enabled = isFormValid && authState !is AuthState.Loading
+            enabled = authState !is AuthState.Loading
         ) {
             if (authState is AuthState.Loading) {
                 CircularProgressIndicator(

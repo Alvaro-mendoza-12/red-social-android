@@ -30,6 +30,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil.compose.AsyncImage
 import conectate.com.data.repository.VideoRepository
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -248,6 +249,10 @@ fun VideoUploadScreen(
     var thumbnailToCrop by remember { mutableStateOf<Uri?>(null) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(uploadError) {
+        uploadError?.takeIf { it.isNotBlank() }?.let(AppFeedbackBus::showError)
+    }
+
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -508,8 +513,7 @@ fun VideoUploadScreen(
                         viewModel.uploadVideo { success ->
                             if (success) {
                                 viewModel.resetState() 
-                                // Use Toast for reliable feedback that persists across navigation
-                                android.widget.Toast.makeText(context, "Video subido exitosamente!", android.widget.Toast.LENGTH_SHORT).show()
+                                AppFeedbackBus.showSuccess("Video subido exitosamente")
                                 
                                 // Navigate to Home with Videos tab selected
                                 val targetRoute = conectate.com.presentation.navigation.Screen.Home.createRoute(

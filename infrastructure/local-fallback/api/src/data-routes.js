@@ -2448,6 +2448,30 @@ function profilePatchFromBody(body) {
     patch.full_name = patch.display_name
   }
 
+  if (Object.prototype.hasOwnProperty.call(patch, 'gender')) {
+    const normalizedGender = String(patch.gender || '').trim().toLowerCase()
+    patch.gender = new Set(['man', 'woman', 'unspecified']).has(normalizedGender)
+      ? normalizedGender
+      : 'unspecified'
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'birth_date')) {
+    const normalizedBirthDate = String(patch.birth_date || '').trim()
+    const parsedBirthDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedBirthDate)
+      ? new Date(`${normalizedBirthDate}T00:00:00.000Z`)
+      : null
+    if (
+      !parsedBirthDate ||
+      Number.isNaN(parsedBirthDate.getTime()) ||
+      parsedBirthDate.toISOString().slice(0, 10) !== normalizedBirthDate ||
+      parsedBirthDate.getTime() > Date.now()
+    ) {
+      delete patch.birth_date
+    } else {
+      patch.birth_date = normalizedBirthDate
+    }
+  }
+
   return patch
 }
 
@@ -2494,30 +2518,6 @@ function buildPostReactionState(rows, identity) {
       userId,
       reactionType,
     })
-  }
-
-  if (Object.prototype.hasOwnProperty.call(patch, 'gender')) {
-    const normalizedGender = String(patch.gender || '').trim().toLowerCase()
-    patch.gender = new Set(['man', 'woman', 'unspecified']).has(normalizedGender)
-      ? normalizedGender
-      : 'unspecified'
-  }
-
-  if (Object.prototype.hasOwnProperty.call(patch, 'birth_date')) {
-    const normalizedBirthDate = String(patch.birth_date || '').trim()
-    const parsedBirthDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedBirthDate)
-      ? new Date(`${normalizedBirthDate}T00:00:00.000Z`)
-      : null
-    if (
-      !parsedBirthDate ||
-      Number.isNaN(parsedBirthDate.getTime()) ||
-      parsedBirthDate.toISOString().slice(0, 10) !== normalizedBirthDate ||
-      parsedBirthDate.getTime() > Date.now()
-    ) {
-      delete patch.birth_date
-    } else {
-      patch.birth_date = normalizedBirthDate
-    }
   }
 
   const counts = new Map()

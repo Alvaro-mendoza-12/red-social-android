@@ -1540,33 +1540,6 @@ fun VideoItem(
                             ) 
                         }
                     )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                when {
-                                    isAvailableOffline -> "Disponible sin conexión"
-                                    downloadProgress != null -> "Descargando ${(downloadProgress * 100).toInt()}%"
-                                    else -> "Descargar para ver sin conexión"
-                                }
-                            )
-                        },
-                        enabled = !isAvailableOffline && downloadProgress == null,
-                        onClick = {
-                            showShareMenu = false
-                            onDownloadClick()
-                        },
-                        leadingIcon = {
-                            when {
-                                isAvailableOffline -> Icon(Icons.Default.DownloadDone, contentDescription = null)
-                                downloadProgress != null -> CircularProgressIndicator(
-                                    progress = downloadProgress,
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
-                                )
-                                else -> Icon(Icons.Default.Download, contentDescription = null)
-                            }
-                        }
-                    )
                     if (!isOwnVideo) {
                         DropdownMenuItem(
                             text = { Text(if (isAlreadyReported) "Reportado" else "Reportar video") },

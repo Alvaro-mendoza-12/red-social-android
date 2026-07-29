@@ -29,8 +29,11 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +86,8 @@ class PostRepository @Inject constructor(
     }
     private val _mutationEvents = MutableSharedFlow<PostMutationEvent>(extraBufferCapacity = 32)
     val mutationEvents: SharedFlow<PostMutationEvent> = _mutationEvents.asSharedFlow()
+    private val _globalFeedError = MutableStateFlow<String?>(null)
+    val globalFeedError: StateFlow<String?> = _globalFeedError.asStateFlow()
 
     @Serializable
     private data class PostReactionRequest(
@@ -172,9 +177,11 @@ class PostRepository @Inject constructor(
         val cacheKey = "posts:$normalizedMode:offset=$offset:limit=$limit"
         
         try {
+            _globalFeedError.value = null
             if (supabaseConfig.isLocalFallbackPrimary) {
                 val accessToken = authService.getAccessToken()
                 if (accessToken == null) {
+                    _globalFeedError.value = "Tu sesión no está disponible. Vuelve a iniciar sesión."
                     appMetrics.recordFailure(
                         metric = "posts_fetch",
                         attributes = mapOf("source" to "ubuntu", "reason" to "missing_access_token")
@@ -190,12 +197,16 @@ class PostRepository @Inject constructor(
                 )
                 if (result.isFailure) {
                     val error = result.exceptionOrNull()
+                    _globalFeedError.value =
+                        error?.message?.takeIf { it.isNotBlank() }
+                            ?: "No se pudo cargar el feed público."
                     android.util.Log.e("PostRepository", "Error fetching Ubuntu feed", error)
                     appMetrics.recordFailure("posts_fetch", error, mapOf("source" to "ubuntu"))
                     emit(emptyList())
                     return@flow
                 }
                 val posts = result.getOrThrow().items
+                _globalFeedError.value = null
                 appMetrics.incrementCounter(
                     metric = "posts_fetch_success",
                     attributes = mapOf("source" to "ubuntu", "count" to posts.size.toString())
@@ -258,6 +269,7 @@ class PostRepository @Inject constructor(
                     )
                     emit(posts)
                 } else {
+                    _globalFeedError.value = "El servidor no pudo cargar las publicaciones."
                     appMetrics.recordFailure(
                         metric = "posts_fetch",
                         attributes = mapOf("source" to "global", "http_status" to response.status.value.toString())
@@ -265,6 +277,7 @@ class PostRepository @Inject constructor(
                     emit(emptyList())
                 }
             } else {
+                _globalFeedError.value = "Tu sesión no está disponible. Vuelve a iniciar sesión."
                 appMetrics.recordFailure(
                     metric = "posts_fetch",
                     attributes = mapOf("source" to "global", "reason" to "missing_access_token")
@@ -273,6 +286,8 @@ class PostRepository @Inject constructor(
             }
             } catch (e: Exception) {
                 android.util.Log.e("PostRepository", "Error fetching global posts", e)
+                _globalFeedError.value =
+                    e.message?.takeIf { it.isNotBlank() } ?: "No se pudo cargar el feed público."
                 appMetrics.recordFailure("posts_fetch", e, mapOf("source" to "global"))
                 emit(emptyList())
             }

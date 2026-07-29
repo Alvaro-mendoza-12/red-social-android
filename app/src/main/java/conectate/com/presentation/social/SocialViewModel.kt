@@ -75,6 +75,7 @@ class SocialViewModel @Inject constructor(
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts.asStateFlow()
+    val feedError: StateFlow<String?> = postRepository.globalFeedError
     val feedMode: StateFlow<SocialFeedMode> = feedPreferences.mode
     val mutedCreatorIds: StateFlow<Set<String>> = feedPreferences.mutedCreatorIds
     val mutedTerms: StateFlow<Set<String>> = feedPreferences.mutedTerms

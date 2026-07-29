@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -423,7 +424,7 @@ fun LoginScreen(
 
             // Method Selection Buttons
             Text(
-                text = "Elige cómo quieres iniciar sesión",
+                text = "¿Qué quieres hacer?",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 modifier = Modifier.padding(bottom = 24.dp)
@@ -449,13 +450,34 @@ fun LoginScreen(
                     text = if (storedAccounts.isNotEmpty()) {
                         "Iniciar sesión con otra cuenta"
                     } else {
-                        stringResource(R.string.sign_in_email)
+                        "Iniciar sesión con mi correo"
                     },
                     style = MaterialTheme.typography.titleMedium
                 )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            if (!isAddAccountMode) {
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.Register.route) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PersonAdd,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Crear una cuenta nueva",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             OutlinedButton(
                 onClick = {
@@ -488,11 +510,19 @@ fun LoginScreen(
 
         } else if (loginType == "email") {
             // Email Login Form
+            Text(
+                text = "Escribe el correo y la contraseña que elegiste al crear tu cuenta.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
             // Email Field
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text(stringResource(R.string.email)) },
+                label = { Text("Correo de tu cuenta") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -510,7 +540,7 @@ fun LoginScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text(stringResource(R.string.password)) },
+                label = { Text("Tu contraseña") },
                 visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
@@ -559,40 +589,6 @@ fun LoginScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Secure migration helper: the existing password must be verified first.
-            TextButton(
-                onClick = {
-                    val trimmedEmail = email.trim().lowercase()
-                    when {
-                        trimmedEmail.isBlank() ->
-                            viewModel.setAuthError("Ingresa el correo de tu cuenta.")
-                        password.isBlank() ->
-                            viewModel.setAuthError(
-                                "Ingresa tu contraseña actual arriba para comprobar que la cuenta es tuya."
-                            )
-                        else -> {
-                            migrationEmail = ""
-                            migrationDisplayName = ""
-                            migrationToken = ""
-                            migrationNewPassword = ""
-                            migrationConfirmPassword = ""
-                            migrationInfo = ""
-                            passwordFlowMode = "migration"
-                            viewModel.signInWithEmail(trimmedEmail, password)
-                        }
-                    }
-                },
-                enabled = authState !is AuthState.Loading
-            ) {
-                Text(
-                    text = "Actualizar contraseña de cuenta migrada",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
             }
 
             TextButton(

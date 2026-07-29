@@ -139,6 +139,7 @@ fun SocialScreen(
     sharedUri: String? = null
 ) {
     val posts by viewModel.posts.collectAsState()
+    val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -1592,7 +1593,25 @@ fun SocialScreen(
                                         modifier = Modifier.fillMaxWidth().weight(1f),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (isConnected) {
+                                        if (isConnected && feedError != null) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                                modifier = Modifier.padding(horizontal = 32.dp)
+                                            ) {
+                                                Text(
+                                                    feedError ?: "No se pudo cargar el feed público.",
+                                                    color = MaterialTheme.colorScheme.error,
+                                                    textAlign = TextAlign.Center,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                                Button(onClick = { viewModel.loadPosts() }) {
+                                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("Reintentar")
+                                                }
+                                            }
+                                        } else if (isConnected) {
                                             Text(
                                                 if (feedMode == SocialFeedMode.FOLLOWING)
                                                     "Sigue personas para ver sus publicaciones aquí."
