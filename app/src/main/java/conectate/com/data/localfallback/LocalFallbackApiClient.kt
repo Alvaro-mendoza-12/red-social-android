@@ -97,7 +97,9 @@ data class AdminBadgeOption(
     val name: String,
     val description: String = "",
     val icon: String = "",
-    val color: String = ""
+    val color: String = "",
+    val createdBy: String = "",
+    val canDelete: Boolean = false
 )
 
 data class AdminFrameOption(val id: String, val name: String)
@@ -5820,7 +5822,9 @@ class LocalFallbackApiClient @Inject constructor(
         name = textOf(row, "name"),
         description = textOf(row, "description"),
         icon = textOf(row, "icon"),
-        color = textOf(row, "color")
+        color = textOf(row, "color"),
+        createdBy = textOf(row, "created_by"),
+        canDelete = boolOf(row, "can_delete")
     )
 
     private fun mapAdminUser(row: JsonObject): AdminUser {
@@ -5917,6 +5921,23 @@ class LocalFallbackApiClient @Inject constructor(
                 ?.jsonObject
                 ?: error("El servidor no devolvió la insignia creada.")
             mapAdminBadge(badge)
+        }
+    }
+
+    suspend fun adminDeleteBadge(
+        accessToken: String,
+        badgeId: String
+    ): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val encodedId = URLEncoder.encode(badgeId.trim(), Charsets.UTF_8.name())
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/admin/badges/$encodedId") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) {
+                throw toException(response, decodeError(response.bodyAsText()))
+            }
+            true
         }
     }
 

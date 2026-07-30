@@ -40,7 +40,13 @@ class AdminPanelViewModel @Inject constructor(
                 "La cuenta debe permanecer suspendida antes de eliminarla."
             normalized.contains("admin_cannot_be_deleted") ||
                 normalized.contains("self_delete_forbidden") ->
-                "Por seguridad no se puede eliminar esa cuenta administradora."
+                "No puedes eliminar tu propia cuenta desde este panel."
+            normalized.contains("badge_delete_forbidden") ->
+                "Solo quien creó la insignia o un administrador propietario puede borrarla."
+            normalized.contains("built_in_badge_cannot_be_deleted") ->
+                "Las insignias incluidas con la aplicación no se pueden borrar."
+            normalized.contains("badge_not_found") ->
+                "La insignia ya no existe. Actualiza el catálogo."
             normalized.contains("hard_delete_confirmation_invalid") ||
                 normalized.contains("acknowledgements_required") ->
                 "La confirmación de eliminación dejó de ser válida. Actualiza el usuario e inténtalo otra vez."
@@ -297,7 +303,6 @@ class AdminPanelViewModel @Inject constructor(
                 val token = authService.ensureValidAccessToken().getOrThrow()
                 val target = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
                 when {
-                    target.isAdmin -> _errorMessage.value = "No se puede eliminar una cuenta administradora."
                     !target.isTestAccount && !target.isSuspended -> {
                         _errorMessage.value = "La cuenta debe estar suspendida antes de una eliminación permanente."
                     }
@@ -366,6 +371,37 @@ class AdminPanelViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _errorMessage.value = adminError(e, "No se pudo crear la insignia.")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun deleteBadge(badgeId: String) {
+        if (badgeId.isBlank()) return
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                localFallbackApiClient.adminDeleteBadge(token, badgeId)
+                    .onSuccess {
+                        _catalog.value = _catalog.value.copy(
+                            badges = _catalog.value.badges.filterNot { badge -> badge.id == badgeId }
+                        )
+                        _users.value = _users.value.map { user ->
+                            user.copy(badges = user.badges.filterNot { badge -> badge.id == badgeId })
+                        }
+                        _selectedUser.value = _selectedUser.value?.let { user ->
+                            user.copy(badges = user.badges.filterNot { badge -> badge.id == badgeId })
+                        }
+                        _statusMessage.value = "Insignia eliminada del catálogo y de los perfiles."
+                    }
+                    .onFailure {
+                        _errorMessage.value = adminError(it, "No se pudo eliminar la insignia.")
+                    }
+            } catch (error: Exception) {
+                _errorMessage.value = adminError(error, "No se pudo eliminar la insignia.")
             } finally {
                 _isLoading.value = false
             }
@@ -620,7 +656,6 @@ class AdminPanelViewModel @Inject constructor(
                 // Revalidación obligatoria inmediatamente antes del borrado:
                 // permisos, suspensión, correo e ID deben seguir vigentes.
                 val target = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
-                if (target.isAdmin) error("No se puede eliminar una cuenta administradora.")
                 if (!target.isTestAccount && !target.isSuspended) {
                     error("La cuenta ya no está suspendida; la eliminación fue cancelada.")
                 }

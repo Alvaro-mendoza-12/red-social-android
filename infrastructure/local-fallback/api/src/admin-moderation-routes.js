@@ -284,7 +284,9 @@ function profileBadgesFromRow(row) {
     .filter(Boolean)
 }
 
-function customAdminBadgeFromRow(row) {
+function customAdminBadgeFromRow(row, options = {}) {
+  const createdBy = normalizeId(row?.created_by)
+  const actorIdentityValues = identityValuesOf(options.actorIdentity)
   return {
     id: normalizeId(row?.id),
     name: String(row?.name || '').trim(),
@@ -294,17 +296,20 @@ function customAdminBadgeFromRow(row) {
     type: 'manual',
     is_admin_badge: false,
     custom: true,
+    created_by: createdBy,
+    can_delete: options.isOwner === true ||
+      (Boolean(createdBy) && actorIdentityValues.includes(createdBy)),
   }
 }
 
-async function adminBadgeCatalog(pool) {
+async function adminBadgeCatalog(pool, options = {}) {
   const { rows } = await pool.query(
-    `SELECT id, name, description, icon, color
+    `SELECT id, name, description, icon, color, created_by
      FROM fallback_admin_badges
      ORDER BY created_at ASC, id ASC`,
   )
   const catalog = new Map(ADMIN_BADGE_CATALOG.map((badge) => [badge.id, badge]))
-  rows.map(customAdminBadgeFromRow).forEach((badge) => {
+  rows.map((row) => customAdminBadgeFromRow(row, options)).forEach((badge) => {
     if (badge.id && badge.name && !catalog.has(badge.id)) catalog.set(badge.id, badge)
   })
   return Array.from(catalog.values())
@@ -1169,7 +1174,10 @@ async function executeAdminHardDelete(options) {
     if (targetIdentityValues.some((value) => actorIdentityValues.includes(value))) {
       throw hardDeleteError('SELF_DELETE_FORBIDDEN', 403)
     }
-    if (isProtectedAdminTarget(target, targetIdentityValues)) {
+    // An active suspension is the explicit administrative prerequisite for a
+    // permanent purge. Once another owner suspended the target, its former
+    // role must not leave an undeletable account behind.
+    if (isProtectedAdminTarget(target, targetIdentityValues) && !target.is_suspended) {
       throw hardDeleteError('ADMIN_CANNOT_BE_DELETED', 403)
     }
     const isTestAccount = isTestAccountTarget(target)
@@ -1507,7 +1515,13 @@ function registerAdminModerationRoutes(app, {
     try {
       const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
-      res.json({ badges: await adminBadgeCatalog(pool), frames: PROFILE_FRAME_CATALOG })
+      res.json({
+        badges: await adminBadgeCatalog(pool, {
+          actorIdentity: context.identity,
+          isOwner: context.access.isOwner,
+        }),
+        frames: PROFILE_FRAME_CATALOG,
+      })
     } catch (error) {
       next(error)
     }
@@ -1543,10 +1557,13 @@ function registerAdminModerationRoutes(app, {
       const { rows } = await pool.query(
         `INSERT INTO fallback_admin_badges(id, name, description, icon, color, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, name, description, icon, color`,
+         RETURNING id, name, description, icon, color, created_by`,
         [id, name, description, icon, color, context.identity.displayUserId],
       )
-      const badge = customAdminBadgeFromRow(rows[0])
+      const badge = customAdminBadgeFromRow(rows[0], {
+        actorIdentity: context.identity,
+        isOwner: context.access.isOwner,
+      })
       await recordModerationEvent(pool, context.identity.displayUserId, {
         context: 'admin_badge_created',
         contentRef: badge.id,
@@ -1639,6 +1656,104 @@ function registerAdminModerationRoutes(app, {
       res.json({ user: { ...user, content: rows[0] || {} } })
     } catch (error) {
       next(error)
+    }
+  })
+
+  app.delete('/v1/data/admin/badges/:id', authRequired, async (req, res, next) => {
+    const badgeId = normalizeId(req.params?.id)
+    if (!badgeId) return res.status(400).json({ error: 'BADGE_ID_REQUIRED' })
+    if (ADMIN_BADGES_BY_ID.has(badgeId)) {
+      return res.status(409).json({ error: 'BUILT_IN_BADGE_CANNOT_BE_DELETED' })
+    }
+
+    const client = await pool.connect()
+    let transactionStarted = false
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      await client.query('BEGIN')
+      transactionStarted = true
+      const { rows } = await client.query(
+        `SELECT id, name, created_by
+         FROM fallback_admin_badges
+         WHERE lower(id) = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [badgeId],
+      )
+      const badge = rows[0]
+      if (!badge) {
+        await client.query('ROLLBACK')
+        transactionStarted = false
+        return res.status(404).json({ error: 'BADGE_NOT_FOUND' })
+      }
+      const actorValues = identityValuesOf(context.identity)
+      if (
+        !context.access.isOwner &&
+        !actorValues.includes(normalizeId(badge.created_by))
+      ) {
+        await client.query('ROLLBACK')
+        transactionStarted = false
+        return res.status(403).json({ error: 'BADGE_DELETE_FORBIDDEN' })
+      }
+
+      const updatedProfiles = await client.query(
+        `UPDATE fallback_profile_overrides
+         SET profile = jsonb_set(
+               profile,
+               '{badges}',
+               COALESCE((
+                 SELECT jsonb_agg(entry.value)
+                 FROM jsonb_array_elements(profile->'badges') AS entry(value)
+                 WHERE lower(
+                   CASE
+                     WHEN jsonb_typeof(entry.value) = 'string' THEN entry.value #>> '{}'
+                     ELSE COALESCE(entry.value->>'id', '')
+                   END
+                 ) <> $1
+               ), '[]'::jsonb),
+               TRUE
+             ),
+             updated_at = NOW()
+         WHERE jsonb_typeof(profile->'badges') = 'array'
+           AND EXISTS (
+             SELECT 1
+             FROM jsonb_array_elements(profile->'badges') AS assigned(value)
+             WHERE lower(
+               CASE
+                 WHEN jsonb_typeof(assigned.value) = 'string' THEN assigned.value #>> '{}'
+                 ELSE COALESCE(assigned.value->>'id', '')
+               END
+             ) = $1
+           )`,
+        [badgeId],
+      )
+      await client.query(
+        `DELETE FROM fallback_admin_badges WHERE lower(id) = $1`,
+        [badgeId],
+      )
+      await recordModerationEvent(client, context.identity.displayUserId, {
+        context: 'admin_badge_deleted',
+        contentRef: badgeId,
+        verdict: 'deleted',
+        metadataPreview: JSON.stringify({
+          name: String(badge.name || '').trim(),
+          profilesUpdated: Number(updatedProfiles.rowCount) || 0,
+        }),
+      })
+      await client.query('COMMIT')
+      transactionStarted = false
+      invalidateProfileCache()
+      res.json({
+        success: true,
+        badgeId,
+        profilesUpdated: Number(updatedProfiles.rowCount) || 0,
+      })
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
     }
   })
 

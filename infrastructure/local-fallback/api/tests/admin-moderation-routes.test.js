@@ -31,7 +31,13 @@ function poolForEmail(email, isAdmin = false) {
   }
 }
 
-function hardDeletePool({ isTestAccount = true, isSuspended = false, storageRow, restoredAuth = false } = {}) {
+function hardDeletePool({
+  isAdmin = false,
+  isTestAccount = true,
+  isSuspended = false,
+  storageRow,
+  restoredAuth = false,
+} = {}) {
   const statements = []
   let released = false
   const client = {
@@ -52,7 +58,7 @@ function hardDeletePool({ isTestAccount = true, isSuspended = false, storageRow,
             sync_source: restoredAuth ? 'both' : (isTestAccount ? 'test' : 'local'),
             is_test_account: isTestAccount,
             is_suspended: isSuspended,
-            is_admin: false,
+            is_admin: isAdmin,
           }],
         }
       }
@@ -254,6 +260,70 @@ async function testPartialDecorationUpdate() {
   assert.strictEqual(invalidations, 1)
 }
 
+async function testCustomBadgeDelete() {
+  const { app, routes } = fakeApp()
+  let invalidations = 0
+  let released = false
+  const client = {
+    async query(statement) {
+      const sql = String(statement).replace(/\s+/g, ' ').trim()
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+        return { rows: [], rowCount: 0 }
+      }
+      if (sql.startsWith('SELECT id, name, created_by FROM fallback_admin_badges')) {
+        return {
+          rows: [{
+            id: 'custom-prueba',
+            name: 'Prueba',
+            created_by: ADMIN_ID,
+          }],
+          rowCount: 1,
+        }
+      }
+      if (sql.startsWith('UPDATE fallback_profile_overrides')) return { rows: [], rowCount: 2 }
+      if (sql.startsWith('DELETE FROM fallback_admin_badges')) return { rows: [], rowCount: 1 }
+      if (sql.startsWith('INSERT INTO fallback_moderation_events')) return { rows: [], rowCount: 1 }
+      throw new Error(`Consulta inesperada al borrar insignia: ${sql}`)
+    },
+    release() {
+      released = true
+    },
+  }
+  const pool = {
+    async query(statement) {
+      const sql = String(statement).replace(/\s+/g, ' ').trim()
+      if (sql.includes('SELECT u.email,') && sql.includes('COALESCE(m.is_admin')) {
+        return { rows: [{ email: 'admin@example.test', is_admin: true }] }
+      }
+      throw new Error(`Consulta administrativa inesperada: ${sql}`)
+    },
+    async connect() {
+      return client
+    },
+  }
+  registerAdminModerationRoutes(app, {
+    pool,
+    authRequired: (_req, _res, next) => next(),
+    getCurrentUser: async () => ({ id: ADMIN_ID }),
+    userIdentity: () => ({ localUserId: ADMIN_ID, displayUserId: ADMIN_ID }),
+    invalidateProfileCache: () => { invalidations += 1 },
+  })
+  const route = routes.find((entry) =>
+    entry.method === 'delete' && entry.path === '/v1/data/admin/badges/:id')
+  const response = await invokeRoute(route, {
+    body: {},
+    params: { id: 'custom-prueba' },
+  })
+  assert.strictEqual(response.statusCode, 200)
+  assert.deepStrictEqual(response.body, {
+    success: true,
+    badgeId: 'custom-prueba',
+    profilesUpdated: 2,
+  })
+  assert.strictEqual(invalidations, 1)
+  assert.strictEqual(released, true)
+}
+
 async function testFakeAccountHardDelete() {
   const storageRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'conectate-admin-delete-'))
   try {
@@ -316,6 +386,43 @@ async function testFakeAccountHardDelete() {
     })
     assert.strictEqual(suspendedResult.deletedRows > 0, true)
     assert.strictEqual(suspendedFixture.statements.includes('COMMIT'), true)
+
+    const activeAdminFixture = hardDeletePool({
+      isAdmin: true,
+      isTestAccount: false,
+      isSuspended: false,
+    })
+    await assert.rejects(
+      executeAdminHardDelete({
+        actorIdentity: { localUserId: ADMIN_ID, displayUserId: ADMIN_ID },
+        confirmation: `ELIMINAR ${TARGET_ID} persona@conectate.social`,
+        pool: activeAdminFixture.pool,
+        reason: 'Un administrador activo debe seguir protegido',
+        storageRoot,
+        targetId: TARGET_ID,
+      }),
+      (error) => error.code === 'ADMIN_CANNOT_BE_DELETED' && error.status === 403,
+    )
+
+    const suspendedAdminFixture = hardDeletePool({
+      isAdmin: true,
+      isTestAccount: false,
+      isSuspended: true,
+    })
+    const suspendedAdminResult = await executeAdminHardDelete({
+      acknowledgeFullPurge: true,
+      acknowledgeIrreversible: true,
+      actorIdentity: { localUserId: ADMIN_ID, displayUserId: ADMIN_ID },
+      allowSuspendedAccountDelete: true,
+      confirmation: `ELIMINAR ${TARGET_ID} persona@conectate.social`,
+      expectedEmail: 'persona@conectate.social',
+      pool: suspendedAdminFixture.pool,
+      reason: 'Toda cuenta suspendida puede eliminarse',
+      storageRoot,
+      targetId: TARGET_ID,
+    })
+    assert.strictEqual(suspendedAdminResult.deletedRows > 0, true)
+    assert.strictEqual(suspendedAdminFixture.statements.includes('COMMIT'), true)
   } finally {
     await fs.promises.rm(storageRoot, { recursive: true, force: true })
   }
@@ -325,6 +432,7 @@ async function run() {
   await testHelpers()
   await testRoutePermissionsAndValidation()
   await testPartialDecorationUpdate()
+  await testCustomBadgeDelete()
   await testFakeAccountHardDelete()
   console.log('admin moderation route tests passed')
 }

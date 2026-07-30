@@ -2308,6 +2308,13 @@ app.post('/v1/auth/sync-to-supabase', authRequired, async (req, res, next) => {
 })
 
 async function deleteExternalAuthUser(userId) {
+  // The legacy identity provider is retired when imports are disabled. There
+  // is no external account service left to mutate; the hard-delete transaction
+  // writes durable identity tombstones so an old export cannot recreate it.
+  // Avoid making permanent deletion depend on dead DNS or expired credentials.
+  if (!legacySupabaseImportEnabled) {
+    return { deleted: false, alreadyMissing: true, providerRetired: true }
+  }
   const supabaseAdmin = getSupabaseAdminClient()
   if (supabaseAdmin) {
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)

@@ -1,6 +1,8 @@
 package conectate.com.presentation.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,14 +19,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.Report
 import conectate.com.data.model.VideoReport
 import conectate.com.data.localfallback.AdminCatalog
+import conectate.com.data.localfallback.AdminBadgeOption
 import conectate.com.data.localfallback.AdminModerationAppeal
 import conectate.com.data.localfallback.AdminUser
 import conectate.com.data.localfallback.SystemHealthResponse
@@ -74,6 +79,16 @@ fun AdminPanelScreen(
     var badgeDescription by remember { mutableStateOf("") }
     var badgeIcon by remember { mutableStateOf("🏅") }
     var badgeColor by remember { mutableStateOf("#14B8A6") }
+    var badgeToDelete by remember { mutableStateOf<AdminBadgeOption?>(null) }
+    val badgeIcons = remember {
+        listOf("🏅", "⭐", "👑", "🛡️", "✅", "💎", "🔥", "🎬", "🎵", "🎮", "🤝", "🌟")
+    }
+    val badgeColors = remember {
+        listOf(
+            "#14B8A6", "#0EA5E9", "#22C55E", "#F59E0B",
+            "#EF4444", "#EC4899", "#8B5CF6", "#64748B"
+        )
+    }
 
     LaunchedEffect(Unit) {
         viewModel.checkAdminAccess()
@@ -118,18 +133,92 @@ fun AdminPanelScreen(
                         maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = badgeIcon,
-                        onValueChange = { badgeIcon = it.take(8) },
-                        label = { Text("Emoji o símbolo") },
-                        singleLine = true,
+                    Text("Vista previa", fontWeight = FontWeight.SemiBold)
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = badgeColorValue(badgeColor).copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, badgeColorValue(badgeColor)),
                         modifier = Modifier.fillMaxWidth()
-                    )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                badgeIcon.ifBlank { "🏅" },
+                                fontSize = 28.sp
+                            )
+                            Column {
+                                Text(
+                                    badgeName.ifBlank { "Nombre de la insignia" },
+                                    fontWeight = FontWeight.Bold,
+                                    color = badgeColorValue(badgeColor)
+                                )
+                                Text(
+                                    badgeDescription.ifBlank { "Así se verá en el perfil." },
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                    Text("Elige un icono", fontWeight = FontWeight.SemiBold)
+                    badgeIcons.chunked(4).forEach { rowIcons ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowIcons.forEach { icon ->
+                                FilterChip(
+                                    selected = badgeIcon == icon,
+                                    onClick = { badgeIcon = icon },
+                                    label = { Text(icon, fontSize = 20.sp) }
+                                )
+                            }
+                        }
+                    }
+                    Text("Elige un color", fontWeight = FontWeight.SemiBold)
+                    badgeColors.chunked(4).forEach { rowColors ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            rowColors.forEach { color ->
+                                val selected = badgeColor.equals(color, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(badgeColorValue(color))
+                                        .border(
+                                            width = if (selected) 4.dp else 1.dp,
+                                            color = if (selected) {
+                                                MaterialTheme.colorScheme.onSurface
+                                            } else {
+                                                MaterialTheme.colorScheme.outlineVariant
+                                            },
+                                            shape = CircleShape
+                                        )
+                                        .clickable { badgeColor = color },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (selected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Color seleccionado",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = badgeColor,
                         onValueChange = { badgeColor = it.take(7).uppercase() },
-                        label = { Text("Color hexadecimal") },
-                        supportingText = { Text("Ejemplo: #14B8A6") },
+                        label = { Text("Color personalizado (opcional)") },
+                        supportingText = { Text("Puedes elegirlo arriba; este campo es solo avanzado.") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -159,6 +248,56 @@ fun AdminPanelScreen(
                 TextButton(
                     enabled = !isLoading,
                     onClick = { showCreateBadgeDialog = false }
+                ) { Text("Cancelar") }
+            }
+        )
+    }
+
+    badgeToDelete?.let { badge ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isLoading) badgeToDelete = null
+            },
+            title = { Text("Eliminar insignia") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = badgeColorValue(badge.color).copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, badgeColorValue(badge.color))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(badge.icon.ifBlank { "🏅" }, fontSize = 26.sp)
+                            Text(badge.name, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text("También se quitará esta insignia de los perfiles que la tengan asignada.")
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    onClick = {
+                        viewModel.deleteBadge(badge.id)
+                        badgeToDelete = null
+                    }
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isLoading,
+                    onClick = { badgeToDelete = null }
                 ) { Text("Cancelar") }
             }
         )
@@ -417,7 +556,7 @@ fun AdminPanelScreen(
             },
             confirmButton = {
                 Button(
-                    enabled = !isLoading && !target.isAdmin && (target.isTestAccount || target.isSuspended),
+                    enabled = !isLoading && (target.isTestAccount || target.isSuspended),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         viewModel.deleteUserCompletely(target.id)
@@ -524,6 +663,15 @@ fun AdminPanelScreen(
                                 Text("Crear insignia")
                             }
                         }
+                        val customBadges = catalog.badges.filter { it.id.startsWith("custom-") }
+                        if (customBadges.isNotEmpty()) {
+                            item(key = "admin-custom-badges") {
+                                CustomBadgesCard(
+                                    badges = customBadges,
+                                    onDelete = { badgeToDelete = it }
+                                )
+                            }
+                        }
                         item(key = "admin-user-search") {
                             AdminUserSearch(
                                 query = userSearch,
@@ -616,7 +764,83 @@ fun AdminPanelScreen(
             }
         }
     }
+    }
 }
+
+private fun badgeColorValue(value: String): Color = runCatching {
+    Color(android.graphics.Color.parseColor(value))
+}.getOrDefault(Color(0xFF14B8A6))
+
+@Composable
+private fun CustomBadgesCard(
+    badges: List<AdminBadgeOption>,
+    onDelete: (AdminBadgeOption) -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Insignias personalizadas", fontWeight = FontWeight.Bold)
+                Text(
+                    "Previsualiza y administra las insignias creadas en el panel.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            badges.forEachIndexed { index, badge ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = badgeColorValue(badge.color).copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, badgeColorValue(badge.color)),
+                        modifier = Modifier.size(46.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(badge.icon.ifBlank { "🏅" }, fontSize = 23.sp)
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            badge.name,
+                            fontWeight = FontWeight.SemiBold,
+                            color = badgeColorValue(badge.color)
+                        )
+                        if (badge.description.isNotBlank()) {
+                            Text(
+                                badge.description,
+                                maxLines = 2,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (badge.canDelete) {
+                        IconButton(onClick = { onDelete(badge) }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Eliminar ${badge.name}",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = "Creada por otro administrador",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+                if (index < badges.lastIndex) Divider()
+            }
+        }
+    }
 }
 
 @Composable
@@ -955,7 +1179,7 @@ private fun AdminUserCard(
                             OutlinedButton(enabled = canWrite, onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
                         }
                     }
-                    if (!user.isAdmin && (user.isTestAccount || user.isSuspended)) {
+                    if (user.isTestAccount || user.isSuspended) {
                         Button(
                             onClick = onDelete,
                             enabled = canDelete,
