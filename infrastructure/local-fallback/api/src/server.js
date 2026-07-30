@@ -2324,16 +2324,31 @@ async function deleteExternalAuthUser(userId) {
     throw error
   }
 
-  const response = await fetch(
-    `${externalAuthDeleteUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
-    {
-      method: 'DELETE',
-      headers: {
-        apikey: externalAuthDeleteKey,
-        authorization: `Bearer ${externalAuthDeleteKey}`,
+  let response
+  try {
+    response = await fetch(
+      `${externalAuthDeleteUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey: externalAuthDeleteKey,
+          authorization: `Bearer ${externalAuthDeleteKey}`,
+        },
       },
-    },
-  )
+    )
+  } catch (error) {
+    // The retired migration provider has no DNS record anymore. In that exact
+    // case there is no reachable external identity to delete; local tombstones
+    // still prevent a future import from recreating the account. Other network
+    // failures remain fatal so temporary outages cannot cause partial purges.
+    if (!legacySupabaseImportEnabled && error?.cause?.code === 'ENOTFOUND') {
+      return { deleted: false, alreadyMissing: true, providerRetired: true }
+    }
+    const deleteError = new Error('EXTERNAL_AUTH_DELETE_FAILED')
+    deleteError.status = 502
+    deleteError.cause = error
+    throw deleteError
+  }
   if (response.ok) return { deleted: true, alreadyMissing: false }
   if (response.status === 404) return { deleted: false, alreadyMissing: true }
   const payload = await parseJsonResponse(response)
