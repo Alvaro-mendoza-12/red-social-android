@@ -93,6 +93,9 @@ internal fun Throwable?.toUserFacingMessage(
             rawMessage.contains("almacenamiento seguro", ignoreCase = true) ->
             "El almacenamiento seguro del dispositivo no está disponible. Reinicia el dispositivo o vuelve a intentar en un entorno confiable."
 
+        looksLikeTransportImplementationMessage(rawMessage) ->
+            "La conexión con el servidor se interrumpió. Espera un momento e inténtalo nuevamente."
+
         looksLikeTechnicalBackendMessage(rawMessage) ->
             "El servicio no está disponible en este momento. Inténtalo nuevamente más tarde."
 
@@ -174,8 +177,25 @@ internal fun looksLikeSessionIssue(message: String?): Boolean {
         normalized.contains("no hay sesión activa") ||
         normalized.contains("no hay sesion activa") ||
         normalized.contains("unauthorized") ||
+        normalized.contains("token revoked") ||
+        normalized.contains("session revoked") ||
+        normalized.contains("sesión revocada") ||
+        normalized.contains("sesion revocada") ||
         normalized.contains("la cuenta activa ya no está disponible") ||
         normalized.contains("la cuenta activa ya no esta disponible")
+}
+
+internal fun looksLikeTransportImplementationMessage(message: String?): Boolean {
+    val normalized = message?.trim()?.lowercase().orEmpty()
+    if (normalized.isBlank()) return false
+    return normalized.contains("websocket") ||
+        normalized.contains("web socket") ||
+        normalized.contains("closedreceivechannel") ||
+        normalized.contains("channel was closed") ||
+        normalized.contains("connection was closed") ||
+        normalized.contains("io.ktor.") ||
+        normalized.contains("java.net.") ||
+        normalized.contains("exception:")
 }
 
 internal fun looksLikeStoredAccountSessionIssue(message: String?): Boolean {

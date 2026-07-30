@@ -140,10 +140,12 @@ async function ensureProximityTables(pool) {
 
 async function profileById(pool, userId) {
   const { rows } = await pool.query(
-    `SELECT u.id, u.email, u.display_name, u.avatar_url, COALESCE(o.profile, '{}'::jsonb) AS profile
+    `SELECT u.id, u.supabase_user_id, u.email, u.display_name, u.avatar_url,
+            COALESCE(o.profile, '{}'::jsonb) AS profile
      FROM fallback_users u
      LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
      WHERE lower(u.id::text) = $1
+        OR lower(COALESCE(u.supabase_user_id::text, '')) = $1
      LIMIT 1`,
     [normalizeId(userId)],
   )
@@ -151,7 +153,7 @@ async function profileById(pool, userId) {
   if (!row) return null
   const profile = row.profile || {}
   return {
-    id: normalizeId(row.id),
+    id: normalizeId(row.supabase_user_id || row.id),
     displayName: profileText(profile, ['display_name', 'displayName', 'full_name', 'fullName', 'username'], row.display_name || 'Usuario'),
     avatarUrl: profileText(profile, ['avatar_url', 'avatarUrl'], row.avatar_url || '') || null,
     city: profileText(profile, ['city'], ''),

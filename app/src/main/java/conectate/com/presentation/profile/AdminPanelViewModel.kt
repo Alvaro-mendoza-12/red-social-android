@@ -13,6 +13,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -105,6 +107,7 @@ class AdminPanelViewModel @Inject constructor(
     private val _deleteCandidate = MutableStateFlow<AdminUser?>(null)
     val deleteCandidate: StateFlow<AdminUser?> = _deleteCandidate.asStateFlow()
     private val decorationMutationLocks = mutableMapOf<String, Mutex>()
+    private var userSearchJob: Job? = null
 
     fun checkAdminAccess() {
         viewModelScope.launch {
@@ -226,6 +229,17 @@ class AdminPanelViewModel @Inject constructor(
 
     fun setUserSearch(value: String) {
         _userSearch.value = value.take(120)
+        userSearchJob?.cancel()
+        if (!_isAdmin.value) return
+        userSearchJob = viewModelScope.launch {
+            delay(300L)
+            runCatching {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                loadUsers(token, _userSearch.value)
+            }.onFailure { error ->
+                _errorMessage.value = adminError(error, "No se pudo completar la búsqueda.")
+            }
+        }
     }
 
     fun searchUsers() {
@@ -321,6 +335,34 @@ class AdminPanelViewModel @Inject constructor(
 
     fun updateUserBadge(userId: String, badgeId: String, enabled: Boolean) {
         updateUserDecorations(userId, badgeMutation = badgeId to enabled)
+    }
+
+    fun createBadge(name: String, description: String, icon: String, color: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                localFallbackApiClient.adminCreateBadge(
+                    accessToken = token,
+                    name = name,
+                    description = description,
+                    icon = icon,
+                    color = color
+                ).onSuccess { badge ->
+                    _catalog.value = _catalog.value.copy(
+                        badges = (_catalog.value.badges + badge).distinctBy { it.id }
+                    )
+                    _statusMessage.value = "Insignia creada y disponible para asignar."
+                }.onFailure {
+                    _errorMessage.value = adminError(it, "No se pudo crear la insignia.")
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = adminError(e, "No se pudo crear la insignia.")
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
 
     fun updateUserFrame(userId: String, profileFrame: String) {
@@ -541,10 +583,11 @@ class AdminPanelViewModel @Inject constructor(
                 if (!target.isTestAccount && !target.isSuspended) {
                     error("La cuenta ya no está suspendida; la eliminación fue cancelada.")
                 }
+                val confirmationUserId = target.localId.trim().ifBlank { target.id.trim() }
                 val expectedConfirmation = if (target.isTestAccount) {
-                    "ELIMINAR ${target.id}"
+                    "ELIMINAR $confirmationUserId"
                 } else {
-                    "ELIMINAR ${target.id} ${target.email.trim().lowercase()}"
+                    "ELIMINAR $confirmationUserId ${target.email.trim().lowercase()}"
                 }
                 val result = localFallbackApiClient.adminDeleteUser(
                     token,
@@ -579,5 +622,10 @@ class AdminPanelViewModel @Inject constructor(
                 _isLoading.value = false
             }
         }
+    }
+
+    override fun onCleared() {
+        userSearchJob?.cancel()
+        super.onCleared()
     }
 }

@@ -9,6 +9,8 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.localfallback.UbuntuRealtimeClient
@@ -238,6 +240,7 @@ class CallRepository @Inject constructor(
                     contextId = contextId,
                     isVideo = isVideo
                 )
+                startForegroundIncomingRingtone()
             }
         }
 
@@ -261,6 +264,7 @@ class CallRepository @Inject constructor(
                         )
                     }
                     _incomingInvite.value = null
+                    callTonePlayer.stopIncomingRingtone()
                 }
 
                 handleExternalCallResponse(callId, action, fromUserId)
@@ -522,6 +526,7 @@ class CallRepository @Inject constructor(
         var myAvatar = profile?.avatar_url
 
         _incomingInvite.value = null
+        callTonePlayer.stopIncomingRingtone()
         pendingInvitees.clear()
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
@@ -577,7 +582,7 @@ class CallRepository @Inject constructor(
         startService()
         scheduleConnectingTimeout(invite.callId)
         connectSocket(invite.callId, currentUserId, myName, myAvatar)
-        callTonePlayer.stopRingback()
+        callTonePlayer.stopAll()
         Result.success(Unit)
     }
 
@@ -586,7 +591,7 @@ class CallRepository @Inject constructor(
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
 
         _incomingInvite.value = null
-        callTonePlayer.stopRingback()
+        callTonePlayer.stopAll()
         try {
             recordIncomingInviteOutcome(invite, "Llamada rechazada")
         } catch (error: Exception) {
@@ -770,12 +775,21 @@ class CallRepository @Inject constructor(
             contextId = payload.stringValue("contextId", "context_id").ifBlank { null },
             isVideo = payload.booleanValue("isVideo", "is_video")
         )
+        startForegroundIncomingRingtone()
     }
 
     private fun handleUbuntuCallResponse(payload: kotlinx.serialization.json.JsonObject) {
         val callId = payload.stringValue("callId", "call_id")
         val action = payload.stringValue("action", "call_action")
         if (callId.isBlank() || action.isBlank()) return
+        val incoming = _incomingInvite.value
+        if (
+            incoming?.callId.equals(callId, ignoreCase = true) &&
+            action.trim().lowercase() in setOf("cancel", "decline", "missed", "ended")
+        ) {
+            _incomingInvite.value = null
+            callTonePlayer.stopIncomingRingtone()
+        }
         handleExternalCallResponse(
             callId = callId,
             action = action,
@@ -806,12 +820,24 @@ class CallRepository @Inject constructor(
 
     fun dismissIncomingInvite() {
         _incomingInvite.value = null
+        callTonePlayer.stopIncomingRingtone()
     }
 
     fun presentIncomingInvite(invite: CallInvite) {
         if (_activeCall.value != null) return
         clearEndedCallSummary()
         _incomingInvite.value = invite
+        startForegroundIncomingRingtone()
+    }
+
+    private fun startForegroundIncomingRingtone() {
+        val isForeground = ProcessLifecycleOwner.get()
+            .lifecycle
+            .currentState
+            .isAtLeast(Lifecycle.State.STARTED)
+        if (isForeground) {
+            callTonePlayer.startIncomingRingtone()
+        }
     }
 
     fun clearEndedCallSummary(callId: String? = null) {

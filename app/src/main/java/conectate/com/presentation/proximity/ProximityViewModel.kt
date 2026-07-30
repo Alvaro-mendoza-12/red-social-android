@@ -9,6 +9,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
@@ -61,7 +62,19 @@ class ProximityViewModel @Inject constructor(
 
     init {
         loadProfileMatchingDefaults()
+        restoreNearbyStatus()
         refreshRandomStatus(showErrors = false)
+    }
+
+    private fun restoreNearbyStatus() {
+        viewModelScope.launch {
+            val token = accessTokenOrReport(showErrors = false) ?: return@launch
+            apiClient.loadNearbyProfiles(token, _radiusKm.value)
+                .onSuccess { profiles ->
+                    _nearbyProfiles.value = profiles
+                    _nearbyEnabled.value = true
+                }
+        }
     }
 
     private fun loadProfileMatchingDefaults() {
@@ -259,7 +272,7 @@ class ProximityViewModel @Inject constructor(
         if (matchPollingJob?.isActive == true) return
         matchPollingJob = viewModelScope.launch {
             while (isActive && _randomStatus.value == "waiting") {
-                delay(2_500)
+                delay(1_000)
                 val token = authService.ensureValidAccessToken().getOrNull() ?: continue
                 apiClient.loadAnonymousMatchStatus(token).onSuccess(::applyMatchResult)
             }
@@ -296,7 +309,9 @@ class ProximityViewModel @Inject constructor(
     }
 
     private fun reportFailure(error: Throwable?) {
-        _errorMessage.value = error?.message ?: "No se pudo completar la operación."
+        _errorMessage.value = error.toUserFacingMessage(
+            fallback = "No se pudo completar la operación. Inténtalo nuevamente."
+        )
     }
 
     private fun finishLoading() {

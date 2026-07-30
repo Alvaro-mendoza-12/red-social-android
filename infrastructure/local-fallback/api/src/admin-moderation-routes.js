@@ -226,10 +226,11 @@ function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
 }
 
-function normalizeBadgeIds(value) {
+function normalizeBadgeIds(value, catalog = ADMIN_BADGE_CATALOG) {
   if (!Array.isArray(value)) return null
+  const badgesById = new Map(catalog.map((badge) => [normalizeId(badge?.id), badge]))
   const ids = Array.from(new Set(value.map(normalizeId).filter(Boolean)))
-  if (ids.length > ADMIN_BADGE_CATALOG.length || ids.some((id) => !ADMIN_BADGES_BY_ID.has(id))) {
+  if (ids.length > badgesById.size || ids.some((id) => !badgesById.has(id))) {
     return null
   }
   return ids
@@ -255,9 +256,52 @@ function profileBadgesFromRow(row) {
   return raw
     .map((entry) => {
       const id = normalizeId(typeof entry === 'string' ? entry : entry?.id)
-      return ADMIN_BADGES_BY_ID.get(id)
+      const catalogBadge = ADMIN_BADGES_BY_ID.get(id)
+      if (catalogBadge) return catalogBadge
+      if (!id || !entry || typeof entry !== 'object') return null
+      const name = String(entry.name || '').trim().slice(0, 60)
+      if (!name) return null
+      const color = /^#[0-9a-f]{6}$/i.test(String(entry.color || '').trim())
+        ? String(entry.color).trim().toUpperCase()
+        : '#14B8A6'
+      return {
+        id,
+        name,
+        description: String(entry.description || '').trim().slice(0, 180),
+        icon: String(entry.icon || '🏅').trim().slice(0, 16) || '🏅',
+        color,
+        type: 'manual',
+        is_admin_badge: false,
+        custom: true,
+      }
     })
     .filter(Boolean)
+}
+
+function customAdminBadgeFromRow(row) {
+  return {
+    id: normalizeId(row?.id),
+    name: String(row?.name || '').trim(),
+    description: String(row?.description || '').trim(),
+    icon: String(row?.icon || '🏅').trim() || '🏅',
+    color: String(row?.color || '#14B8A6').trim().toUpperCase(),
+    type: 'manual',
+    is_admin_badge: false,
+    custom: true,
+  }
+}
+
+async function adminBadgeCatalog(pool) {
+  const { rows } = await pool.query(
+    `SELECT id, name, description, icon, color
+     FROM fallback_admin_badges
+     ORDER BY created_at ASC, id ASC`,
+  )
+  const catalog = new Map(ADMIN_BADGE_CATALOG.map((badge) => [badge.id, badge]))
+  rows.map(customAdminBadgeFromRow).forEach((badge) => {
+    if (badge.id && badge.name && !catalog.has(badge.id)) catalog.set(badge.id, badge)
+  })
+  return Array.from(catalog.values())
 }
 
 function adminUserFromRow(row) {
@@ -582,6 +626,18 @@ async function ensureAdminModerationTables(pool) {
       strike_applied BOOLEAN NOT NULL DEFAULT FALSE,
       action_note TEXT,
       reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_admin_badges (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      icon TEXT NOT NULL DEFAULT '🏅',
+      color TEXT NOT NULL DEFAULT '#14B8A6',
+      created_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -1400,8 +1456,55 @@ function registerAdminModerationRoutes(app, {
     try {
       const context = await adminGuard(req, res)
       if (!context) return
-      res.json({ badges: ADMIN_BADGE_CATALOG, frames: PROFILE_FRAME_CATALOG })
+      res.json({ badges: await adminBadgeCatalog(pool), frames: PROFILE_FRAME_CATALOG })
     } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/admin/badges', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res)
+      if (!context) return
+      const name = String(req.body?.name || '').trim().slice(0, 60)
+      const description = String(req.body?.description || '').trim().slice(0, 180)
+      const icon = String(req.body?.icon || '🏅').trim().slice(0, 16) || '🏅'
+      const colorInput = String(req.body?.color || '#14B8A6').trim().toUpperCase()
+      const color = /^#[0-9A-F]{6}$/.test(colorInput) ? colorInput : null
+      const requestedId = normalizeId(req.body?.id)
+      const generatedId = name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40)
+      const id = requestedId
+        ? (requestedId.startsWith('custom-') ? requestedId : `custom-${requestedId}`)
+        : `custom-${generatedId}`
+      if (!name) return res.status(400).json({ error: 'BADGE_NAME_REQUIRED' })
+      if (!/^custom-[a-z0-9][a-z0-9-]{0,32}$/.test(id)) {
+        return res.status(400).json({ error: 'BADGE_ID_INVALID' })
+      }
+      if (!color) return res.status(400).json({ error: 'BADGE_COLOR_INVALID' })
+      if (ADMIN_BADGES_BY_ID.has(id)) return res.status(409).json({ error: 'BADGE_ALREADY_EXISTS' })
+
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_admin_badges(id, name, description, icon, color, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, name, description, icon, color`,
+        [id, name, description, icon, color, context.identity.displayUserId],
+      )
+      const badge = customAdminBadgeFromRow(rows[0])
+      await recordModerationEvent(pool, context.identity.displayUserId, {
+        context: 'admin_badge_created',
+        contentRef: badge.id,
+        verdict: 'created',
+        metadataPreview: badge.name,
+      })
+      res.status(201).json({ badge })
+    } catch (error) {
+      if (error?.code === '23505') return res.status(409).json({ error: 'BADGE_ALREADY_EXISTS' })
       next(error)
     }
   })
@@ -1501,7 +1604,21 @@ function registerAdminModerationRoutes(app, {
       if (hasVerified && typeof req.body.verified !== 'boolean') {
         return res.status(400).json({ error: 'VERIFIED_VALUE_INVALID' })
       }
-      const badgeIds = hasBadges ? normalizeBadgeIds(req.body.badge_ids) : undefined
+      const requestedBadgeIds = hasBadges && Array.isArray(req.body.badge_ids)
+        ? Array.from(new Set(req.body.badge_ids.map(normalizeId).filter(Boolean)))
+        : null
+      if (
+        hasBadges &&
+        (
+          requestedBadgeIds === null ||
+          requestedBadgeIds.some((id) => !ADMIN_BADGES_BY_ID.has(id) && !id.startsWith('custom-'))
+        )
+      ) {
+        return res.status(400).json({ error: 'BADGE_IDS_INVALID' })
+      }
+      const badgeCatalog = hasBadges ? await adminBadgeCatalog(pool) : ADMIN_BADGE_CATALOG
+      const badgesById = new Map(badgeCatalog.map((badge) => [badge.id, badge]))
+      const badgeIds = hasBadges ? normalizeBadgeIds(requestedBadgeIds, badgeCatalog) : undefined
       if (hasBadges && badgeIds === null) return res.status(400).json({ error: 'BADGE_IDS_INVALID' })
       const profileFrame = hasFrame ? normalizeProfileFrame(req.body.profile_frame) : undefined
       if (hasFrame && profileFrame === null) return res.status(400).json({ error: 'PROFILE_FRAME_INVALID' })
@@ -1509,7 +1626,7 @@ function registerAdminModerationRoutes(app, {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const patch = {}
       if (hasVerified) patch.is_verified = req.body.verified
-      if (hasBadges) patch.badges = badgeIds.map((id) => ADMIN_BADGES_BY_ID.get(id))
+      if (hasBadges) patch.badges = badgeIds.map((id) => badgesById.get(id))
       if (hasFrame) patch.profile_frame = profileFrame
       await upsertAdminProfilePatch(pool, user.local_id, patch)
       invalidateProfileCache()

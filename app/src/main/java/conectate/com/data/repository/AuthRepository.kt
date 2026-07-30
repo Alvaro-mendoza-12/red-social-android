@@ -129,17 +129,19 @@ class AuthRepository @Inject constructor(
             }
             ?: return Result.failure(Exception("Selecciona una fecha de nacimiento válida."))
 
-        val signUpResult = authService.signUp(
-            email = email,
-            password = password,
-            metadata = conectate.com.data.supabase.SignUpMetadata(
-                full_name = name,
-                display_name = name,
-                country = country,
-                privacy_policy_accepted = acceptedPrivacyPolicy,
-                privacy_policy_accepted_at = acceptedAt
+        val signUpResult = authService.pendingRegistrationFor(email)
+            ?.let { Result.success(it) }
+            ?: authService.signUp(
+                email = email,
+                password = password,
+                metadata = conectate.com.data.supabase.SignUpMetadata(
+                    full_name = name,
+                    display_name = name,
+                    country = country,
+                    privacy_policy_accepted = acceptedPrivacyPolicy,
+                    privacy_policy_accepted_at = acceptedAt
+                )
             )
-        )
 
         if (signUpResult.isFailure) {
             return Result.failure(signUpResult.exceptionOrNull() ?: Exception("Unknown signup error"))
@@ -244,6 +246,11 @@ class AuthRepository @Inject constructor(
             android.util.Log.w("AuthRepository", "Failed to save quick-switch session after sign up", it)
         }
 
+        // Publish the authenticated state only after the selected avatar and
+        // every required profile field have been confirmed by the server.
+        // Publishing immediately after /register allowed navigation to destroy
+        // the registration ViewModel and cancel the pending image upload.
+        authService.completePendingRegistration()
         return Result.success(hydratedUser)
     }
 

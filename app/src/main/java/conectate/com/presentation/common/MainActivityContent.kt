@@ -325,9 +325,8 @@ fun MainActivityContent(
 
                 AppFeedbackHost(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
+                        .align(Alignment.Center)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 )
 
                 if (showAccountDeletedDialog) {

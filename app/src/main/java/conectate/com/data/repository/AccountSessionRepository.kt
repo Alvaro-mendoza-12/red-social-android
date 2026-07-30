@@ -286,7 +286,10 @@ class AccountSessionRepository @Inject constructor(
             TestRuntimeOverrides.setStoredAccounts(context, sanitized)
             return
         }
-        prefsOrNull?.edit()?.putString(KEY_ACCOUNTS, json.encodeToString(sanitized))?.apply()
+        // Session refresh credentials are security-critical. A synchronous
+        // commit prevents losing the newest token when Android kills the
+        // process immediately after a refresh or the user closes the app.
+        prefsOrNull?.edit()?.putString(KEY_ACCOUNTS, json.encodeToString(sanitized))?.commit()
     }
 
     private suspend fun buildActiveSessionSnapshot(

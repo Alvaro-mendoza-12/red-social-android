@@ -68,6 +68,11 @@ fun AdminPanelScreen(
     var appealReviewNote by remember { mutableStateOf("") }
     // Estado para eliminar usuario completamente
     var userToDelete by remember { mutableStateOf<AdminUser?>(null) }
+    var showCreateBadgeDialog by remember { mutableStateOf(false) }
+    var badgeName by remember { mutableStateOf("") }
+    var badgeDescription by remember { mutableStateOf("") }
+    var badgeIcon by remember { mutableStateOf("🏅") }
+    var badgeColor by remember { mutableStateOf("#14B8A6") }
 
     LaunchedEffect(Unit) {
         viewModel.checkAdminAccess()
@@ -84,6 +89,78 @@ fun AdminPanelScreen(
             userToDelete = candidate
             viewModel.consumeDeleteCandidate()
         }
+    }
+
+    if (showCreateBadgeDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isLoading) showCreateBadgeDialog = false
+            },
+            title = { Text("Crear insignia") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = badgeName,
+                        onValueChange = { badgeName = it.take(60) },
+                        label = { Text("Nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = badgeDescription,
+                        onValueChange = { badgeDescription = it.take(180) },
+                        label = { Text("Descripción") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = badgeIcon,
+                        onValueChange = { badgeIcon = it.take(8) },
+                        label = { Text("Emoji o símbolo") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = badgeColor,
+                        onValueChange = { badgeColor = it.take(7).uppercase() },
+                        label = { Text("Color hexadecimal") },
+                        supportingText = { Text("Ejemplo: #14B8A6") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isLoading &&
+                        badgeName.trim().length >= 2 &&
+                        Regex("^#[0-9A-Fa-f]{6}$").matches(badgeColor.trim()),
+                    onClick = {
+                        viewModel.createBadge(
+                            name = badgeName.trim(),
+                            description = badgeDescription.trim(),
+                            icon = badgeIcon.trim().ifBlank { "🏅" },
+                            color = badgeColor.trim()
+                        )
+                        showCreateBadgeDialog = false
+                        badgeName = ""
+                        badgeDescription = ""
+                        badgeIcon = "🏅"
+                        badgeColor = "#14B8A6"
+                    }
+                ) { Text("Crear") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isLoading,
+                    onClick = { showCreateBadgeDialog = false }
+                ) { Text("Cancelar") }
+            }
+        )
     }
 
     if (userToSuspend != null) {
@@ -423,6 +500,16 @@ fun AdminPanelScreen(
                         item(key = "admin-summary") { AdminSummary(stats, systemHealth) }
                     }
                     1 -> {
+                        item(key = "admin-create-badge") {
+                            OutlinedButton(
+                                onClick = { showCreateBadgeDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Crear insignia")
+                            }
+                        }
                         item(key = "admin-user-search") {
                             AdminUserSearch(
                                 query = userSearch,
@@ -679,12 +766,29 @@ private fun AdminUserCard(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
-                    model = user.avatarUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(26.dp)),
-                    contentScale = ContentScale.Crop
-                )
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (user.avatarUrl.isNullOrBlank()) {
+                        Text(
+                            text = user.displayName.trim().firstOrNull()?.uppercase() ?: "?",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    } else {
+                        AsyncImage(
+                            model = user.avatarUrl,
+                            contentDescription = "Foto de ${user.displayName}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(user.displayName, fontWeight = FontWeight.Bold)

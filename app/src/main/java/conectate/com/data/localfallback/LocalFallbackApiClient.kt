@@ -561,7 +561,8 @@ private data class LocalFallbackLoginRequest(
 
 @Serializable
 private data class LocalFallbackRefreshRequest(
-    val refreshToken: String
+    val refreshToken: String,
+    val accessToken: String? = null
 )
 
 @Serializable
@@ -1664,7 +1665,10 @@ class LocalFallbackApiClient @Inject constructor(
             .map { it.normalized() }
     }
 
-    suspend fun refreshSession(refreshToken: String): Result<LocalFallbackAuthResponse> {
+    suspend fun refreshSession(
+        refreshToken: String,
+        accessToken: String? = null
+    ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val token = refreshToken.trim()
         if (token.isBlank()) return Result.failure(Exception("No hay una sesión que renovar."))
@@ -1673,7 +1677,12 @@ class LocalFallbackApiClient @Inject constructor(
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/refresh") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
-                setBody(LocalFallbackRefreshRequest(token))
+                setBody(
+                    LocalFallbackRefreshRequest(
+                        refreshToken = token,
+                        accessToken = accessToken?.trim()?.takeIf { it.isNotBlank() }
+                    )
+                )
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -5811,6 +5820,36 @@ class LocalFallbackApiClient @Inject constructor(
                     AdminFrameOption(textOf(row, "id"), textOf(row, "name"))
                 }.orEmpty()
             )
+        }
+    }
+
+    suspend fun adminCreateBadge(
+        accessToken: String,
+        name: String,
+        description: String,
+        icon: String,
+        color: String
+    ): Result<AdminBadgeOption> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/badges") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("name", name.trim())
+                    put("description", description.trim())
+                    put("icon", icon.trim())
+                    put("color", color.trim())
+                })
+            }
+            if (!response.status.isSuccess()) {
+                error("No se pudo crear la insignia: ${response.status} - ${response.bodyAsText()}")
+            }
+            val badge = json.parseToJsonElement(response.bodyAsText())
+                .jsonObject["badge"]
+                ?.jsonObject
+                ?: error("El servidor no devolvió la insignia creada.")
+            mapAdminBadge(badge)
         }
     }
 

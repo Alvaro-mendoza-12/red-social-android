@@ -139,6 +139,10 @@ class AuthService @Inject constructor(
     )
     private val localSessionRefreshMutex = Mutex()
     @Volatile
+    private var registrationInProgress: Boolean = false
+    @Volatile
+    private var pendingRegistrationSession: AuthResponse? = null
+    @Volatile
     private var localSessionRefreshLastAttemptAtMs: Long = 0L
     @Volatile
     private var localSessionRefreshLastSuccessAtMs: Long = 0L
@@ -213,17 +217,39 @@ class AuthService @Inject constructor(
             return Result.failure(Exception("No se pudo restaurar la cuenta local guardada."))
         }
 
-        persistLocalFallbackSession(
-            LocalFallbackAuthResponse(
-                accessToken = access,
-                user = LocalFallbackUser(
-                    id = resolvedUserId,
-                    email = resolvedEmail,
-                    displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
-                    avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotBlank() }
-                )
-            )
+        val refreshed = localFallbackApiClient.refreshSession(
+            refreshToken = refresh,
+            accessToken = access
         )
+            .getOrElse { error ->
+                if (error is LocalFallbackSessionRenewalRequiredException) {
+                    return Result.failure(
+                        IllegalStateException(
+                            "Esta cuenta guardada venció. Inicia sesión manualmente una vez para volver a activarla.",
+                            error
+                        )
+                    )
+                }
+                return Result.failure(error)
+            }
+        val refreshedUserId = refreshed.user.supabaseUserId
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: refreshed.user.id.trim().lowercase()
+        val refreshedLocalUserId = refreshed.user.id.trim().lowercase()
+        val refreshedEmail = refreshed.user.email.trim().lowercase()
+        val identityMatches =
+            refreshedEmail.equals(resolvedEmail, ignoreCase = true) ||
+                refreshedUserId == resolvedUserId ||
+                refreshedLocalUserId == resolvedUserId
+        if (!identityMatches) {
+            return Result.failure(
+                IllegalStateException("La sesión guardada no corresponde a la cuenta seleccionada.")
+            )
+        }
+
+        persistLocalFallbackSession(refreshed)
         return Result.success(Unit)
     }
 
@@ -232,6 +258,8 @@ class AuthService @Inject constructor(
      * Prevents the app from treating an old SDK session as logged-in (even if signOut() fails).
      */
     fun forceLocalLogout() {
+        registrationInProgress = false
+        pendingRegistrationSession = null
         if (TestRuntimeOverrides.isEnabled(context)) {
             TestRuntimeOverrides.clearSession(context)
         }
@@ -340,18 +368,28 @@ class AuthService @Inject constructor(
         if (isLocalFallbackModeEnabled()) {
             val localSession = recoverPersistedLocalFallbackSession()
             if (localSession != null) {
-                _currentSession.value = localSession
                 authScope.launch {
-                    val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
-                        .getOrElse {
-                            Log.w("AuthService", "Ubuntu session could not be renewed at startup", it)
-                            localSession.accessToken
+                    try {
+                        val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
+                            .getOrElse { error ->
+                                Log.w("AuthService", "Ubuntu session could not be renewed at startup", error)
+                                return@launch
+                            }
+                        val restored = recoverPersistedLocalFallbackSession()
+                        if (
+                            restored != null &&
+                            !isTokenExpiredOrExpiringSoon(refreshedToken, withinSeconds = 0L)
+                        ) {
+                            _currentSession.value = restored
+                            syncLocalFallbackCompatibilitySession(refreshedToken)
+                        } else {
+                            _currentSession.value = null
                         }
-                    runCatching { syncLocalFallbackCompatibilitySession(refreshedToken) }
-                        .onFailure { Log.e("AuthService", "Ubuntu compatibility session sync failed", it) }
-                    _isInitializing.value = false
+                    } finally {
+                        _isInitializing.value = false
+                    }
                 }
-                Log.d("AuthService", "Ubuntu backend: Local session recovered at startup")
+                Log.d("AuthService", "Ubuntu backend: validating saved session at startup")
             } else {
                 _currentSession.value = null
                 clearPersistedSessionSnapshot()
@@ -435,6 +473,13 @@ class AuthService @Inject constructor(
                             _isInitializing.value = false
                             return@collect
                         }
+                        if (registrationInProgress) {
+                            if (status is SessionStatus.Authenticated && isUsableSession(status.session)) {
+                                persistSessionSnapshot(status.session)
+                            }
+                            _isInitializing.value = false
+                            return@collect
+                        }
                         recoverPersistedLocalFallbackSession()?.let { localSession ->
                             _currentSession.value = localSession
                             _isInitializing.value = false
@@ -509,6 +554,8 @@ class AuthService @Inject constructor(
         password: String,
         metadata: SignUpMetadata
     ): Result<AuthResponse> {
+        registrationInProgress = true
+        pendingRegistrationSession = null
         return try {
             ensureSecureStorageAvailable().getOrThrow()
             if (localFallbackApiClient.isConfigured) {
@@ -517,9 +564,15 @@ class AuthService @Inject constructor(
                     password = password,
                     displayName = metadata.display_name ?: metadata.full_name
                 )
-                val localSession = localResult.getOrElse { return Result.failure(it) }
-                persistLocalFallbackSession(localSession)
-                return Result.success(mapLocalFallbackSession(localSession))
+                val localSession = localResult.getOrElse { error ->
+                    registrationInProgress = false
+                    pendingRegistrationSession = null
+                    return Result.failure(error)
+                }
+                persistLocalFallbackSession(localSession, publishSession = false)
+                val mapped = mapLocalFallbackSession(localSession)
+                pendingRegistrationSession = mapped
+                return Result.success(mapped)
             }
 
             supabaseConfig.client.auth.signUpWith(Email) {
@@ -558,15 +611,18 @@ class AuthService @Inject constructor(
                 session = awaitUsableSession()
             }
 
-            var safeSession = session
-                ?: return Result.failure(Exception("Registro completado pero no se pudo recuperar la sesión"))
+            var safeSession = session ?: run {
+                registrationInProgress = false
+                return Result.failure(Exception("Registro completado pero no se pudo recuperar la sesión"))
+            }
             if (!isUsableSession(safeSession)) {
+                registrationInProgress = false
                 return Result.failure(Exception("Registro completado pero la sesión aún no está lista"))
             }
 
             setForcedLogout(false)
-            _currentSession.value = mapSession(safeSession)
             persistSessionSnapshot(safeSession)
+            pendingRegistrationSession = mapSession(safeSession)
 
             Result.success(
                 AuthResponse(
@@ -581,8 +637,33 @@ class AuthService @Inject constructor(
                 )
             )
         } catch (e: Exception) {
+            registrationInProgress = false
+            pendingRegistrationSession = null
             Log.e("AuthService", "Signup error", e)
             Result.failure(e)
+        }
+    }
+
+    fun pendingRegistrationFor(email: String): AuthResponse? {
+        val normalizedEmail = email.trim().lowercase()
+        return pendingRegistrationSession
+            ?.takeIf {
+                registrationInProgress &&
+                    it.user.email.trim().equals(normalizedEmail, ignoreCase = true)
+            }
+    }
+
+    suspend fun completePendingRegistration() {
+        val pending = pendingRegistrationSession
+        pendingRegistrationSession = null
+        registrationInProgress = false
+        if (pending == null) return
+
+        _currentSession.value = if (isLocalFallbackModeEnabled()) {
+            recoverPersistedLocalFallbackSession() ?: pending
+        } else {
+            val sdkSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
+            if (isUsableSession(sdkSession)) mapSession(requireNotNull(sdkSession)) else pending
         }
     }
 
@@ -767,19 +848,26 @@ class AuthService @Inject constructor(
     ): Result<Unit> {
         return try {
             if (isLocalFallbackSession() || isLocalFallbackModeEnabled()) {
-                authPrefsOrNull?.edit()?.apply {
-                    (displayName ?: fullName)?.let {
-                        putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, it)
-                    }
-                    avatarUrl?.let {
-                        putString(KEY_LOCAL_FALLBACK_AVATAR_URL, it)
-                    }
-                    country?.let {
-                        putString(KEY_LOCAL_FALLBACK_COUNTRY, it)
-                    }
-                }?.apply()
+                val prefs = authPrefsOrNull
+                    ?: return Result.failure(Exception("El almacenamiento seguro no está disponible."))
+                val stored = withContext(Dispatchers.IO) {
+                    prefs.edit().apply {
+                        (displayName ?: fullName)?.let {
+                            putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, it)
+                        }
+                        avatarUrl?.let {
+                            putString(KEY_LOCAL_FALLBACK_AVATAR_URL, it)
+                        }
+                        country?.let {
+                            putString(KEY_LOCAL_FALLBACK_COUNTRY, it)
+                        }
+                    }.commit()
+                }
+                if (!stored) {
+                    return Result.failure(Exception("No se pudieron guardar los datos del perfil en el dispositivo."))
+                }
                 val recovered = recoverPersistedLocalFallbackSession()
-                if (recovered != null) {
+                if (recovered != null && !registrationInProgress) {
                     _currentSession.value = recovered
                 }
                 return Result.success(Unit)
@@ -991,7 +1079,7 @@ class AuthService @Inject constructor(
             ?: authPrefsOrNull?.getString(KEY_REFRESH_TOKEN, null)
     }
 
-    fun isLoggedIn(): Boolean = getCurrentUserId() != null
+    fun isLoggedIn(): Boolean = !registrationInProgress && getCurrentUserId() != null
 
     /**
      * Ensures a valid, non-expired access token is returned.
@@ -1245,7 +1333,10 @@ class AuthService @Inject constructor(
         }
 
         localSessionRefreshLastAttemptAtMs = now
-        val refreshed = localFallbackApiClient.refreshSession(refreshToken)
+        val refreshed = localFallbackApiClient.refreshSession(
+            refreshToken = refreshToken,
+            accessToken = accessToken
+        )
         val refreshedResponse = refreshed.getOrNull()
         if (refreshedResponse != null) {
             val response = refreshedResponse
@@ -1274,7 +1365,10 @@ class AuthService @Inject constructor(
         )
     }
 
-    private suspend fun persistLocalFallbackSession(response: LocalFallbackAuthResponse) {
+    private suspend fun persistLocalFallbackSession(
+        response: LocalFallbackAuthResponse,
+        publishSession: Boolean = true
+    ) {
         val user = response.user
         val accessToken = response.accessToken.trim()
         val refreshToken = response.refreshToken.trim().ifBlank { accessToken }
@@ -1283,21 +1377,30 @@ class AuthService @Inject constructor(
         val email = user.email.trim().lowercase()
         if (accessToken.isBlank() || localUserId.isBlank() || displayUserId.isBlank() || email.isBlank()) return
 
-        authPrefsOrNull?.edit()
-            ?.putBoolean(KEY_FORCED_LOGOUT, false)
-            ?.putBoolean(KEY_LOCAL_FALLBACK_SESSION, true)
-            ?.putString(KEY_ACCESS_TOKEN, accessToken)
-            ?.putString(KEY_REFRESH_TOKEN, refreshToken)
-            ?.putString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, localUserId)
-            ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, displayUserId)
-            ?.putString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, user.supabaseUserId?.trim()?.lowercase())
-            ?.putString(KEY_LOCAL_FALLBACK_EMAIL, email)
-            ?.putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, user.displayName?.trim())
-            ?.putString(KEY_LOCAL_FALLBACK_AVATAR_URL, user.avatarUrl?.trim())
-            ?.putString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, user.accountCreatedAt ?: user.createdAt)
-            ?.apply()
+        val prefs = authPrefsOrNull
+            ?: throw IllegalStateException("El almacenamiento seguro no está disponible.")
+        val stored = withContext(Dispatchers.IO) {
+            prefs.edit()
+                .putBoolean(KEY_FORCED_LOGOUT, false)
+                .putBoolean(KEY_LOCAL_FALLBACK_SESSION, true)
+                .putString(KEY_ACCESS_TOKEN, accessToken)
+                .putString(KEY_REFRESH_TOKEN, refreshToken)
+                .putString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, localUserId)
+                .putString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, displayUserId)
+                .putString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, user.supabaseUserId?.trim()?.lowercase())
+                .putString(KEY_LOCAL_FALLBACK_EMAIL, email)
+                .putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, user.displayName?.trim())
+                .putString(KEY_LOCAL_FALLBACK_AVATAR_URL, user.avatarUrl?.trim())
+                .putString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, user.accountCreatedAt ?: user.createdAt)
+                .commit()
+        }
+        if (!stored) {
+            throw IllegalStateException("No se pudo guardar la sesión de forma segura en este dispositivo.")
+        }
 
-        _currentSession.value = mapLocalFallbackSession(response)
+        if (publishSession && !registrationInProgress) {
+            _currentSession.value = mapLocalFallbackSession(response)
+        }
         syncLocalFallbackCompatibilitySession(accessToken)
     }
 

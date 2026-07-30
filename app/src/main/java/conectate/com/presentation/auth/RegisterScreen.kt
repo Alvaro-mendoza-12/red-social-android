@@ -92,7 +92,6 @@ fun RegisterScreen(
     LaunchedEffect(authError) {
         if (authError.isNotBlank()) {
             AppFeedbackBus.showError(authError)
-            scrollState.animateScrollTo(0)
         }
     }
     
@@ -205,34 +204,6 @@ fun RegisterScreen(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
 
-        if (authError.isNotBlank()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ErrorOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = authError,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-        
         Spacer(modifier = Modifier.height(32.dp))
         
         // Profile Image Picker

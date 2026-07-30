@@ -1714,16 +1714,12 @@ class VoiceRoomRepository @Inject constructor(
                 
                 val selfId = authService.getCurrentUserId()
                 val current = _currentParticipants.value
-                val currentSocketIds = current
-                    .map { it.socketId.trim() }
-                    .filter { it.isNotBlank() }
-                    .toSet()
                 val selfParticipant = current.firstOrNull { it.id == selfId }
                 val remoteParticipants = mutableListOf<conectate.com.data.model.VoiceParticipant>()
                 val remoteSocketIds = mutableSetOf<String>()
                 val rebuiltSharingStates = mutableMapOf<String, Pair<Boolean, Boolean>>()
                 val rebuiltCaptionConsentUserIds = mutableSetOf<String>()
-                val pendingNewSockets = mutableListOf<Pair<String, String>>()
+                val authoritativeRemoteSockets = mutableListOf<Pair<String, String>>()
 
                 for (i in 0 until participantsJson.length()) {
                     var p = participantsJson.optJSONObject(i) ?: continue
@@ -1749,9 +1745,7 @@ class VoiceRoomRepository @Inject constructor(
                             rebuiltCaptionConsentUserIds += uid.lowercase()
                         }
 
-                        if (sid.isNotBlank() && sid !in currentSocketIds) {
-                            pendingNewSockets += sid to uid
-                        }
+                        authoritativeRemoteSockets += sid to uid
                     }
                 }
 
@@ -1777,7 +1771,14 @@ class VoiceRoomRepository @Inject constructor(
                     .map { participant -> participant.socketId.trim() }
                     .filter { socketId -> socketId.isNotBlank() && socketId !in remoteSocketIds }
                     .forEach { staleSocketId -> webRTCManager?.onUserLeft(staleSocketId) }
-                pendingNewSockets.forEach { (sid, uid) ->
+                // Visibility in the REST participant list does not mean a
+                // PeerConnection already exists. The REST join can win the
+                // race against Socket.IO's current-participants event, which
+                // previously skipped negotiation entirely and left two users
+                // visible but with no audio, camera or screen stream. This is
+                // safe to call for every authoritative remote participant:
+                // WebRTCManager reuses an existing peer connection.
+                authoritativeRemoteSockets.forEach { (sid, uid) ->
                     webRTCManager?.onUserJoined(sid, uid)
                 }
                 flushPendingRoomSocketEvents(roomId)

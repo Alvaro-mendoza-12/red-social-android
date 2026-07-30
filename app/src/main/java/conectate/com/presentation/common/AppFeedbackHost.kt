@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -18,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
@@ -51,7 +55,7 @@ object AppFeedbackBus {
     fun showError(message: String) = show(
         message = message,
         style = AppFeedbackStyle.Error,
-        duration = SnackbarDuration.Long
+        duration = SnackbarDuration.Short
     )
 
     fun showError(
@@ -102,7 +106,10 @@ fun AppFeedbackHost(
 
     SnackbarHost(
         hostState = snackbarHostState,
-        modifier = modifier,
+        modifier = modifier
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         snackbar = { snackbarData ->
             val (containerColor, contentColor) = when (currentStyle) {
                 AppFeedbackStyle.Info -> MaterialTheme.colorScheme.inverseSurface to MaterialTheme.colorScheme.inverseOnSurface
@@ -111,7 +118,16 @@ fun AppFeedbackHost(
             }
             Snackbar(
                 containerColor = containerColor,
-                contentColor = contentColor
+                contentColor = contentColor,
+                action = {
+                    IconButton(onClick = snackbarData::dismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar aviso",
+                            tint = contentColor
+                        )
+                    }
+                }
             ) {
                 Text(snackbarData.visuals.message)
             }

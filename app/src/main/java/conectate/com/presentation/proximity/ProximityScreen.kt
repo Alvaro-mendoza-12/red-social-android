@@ -201,18 +201,6 @@ fun ProximityScreen(
                 )
             }
             if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            if (!visibleError.isNullOrBlank()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        visibleError,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
 
             when (selectedTab) {
                 0 -> NearbyTab(

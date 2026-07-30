@@ -1,8 +1,12 @@
 package conectate.com.util
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.os.Build
 import conectate.com.core.concurrency.newSafeScope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -26,8 +30,14 @@ class CallTonePlayer @Inject constructor(
     @Volatile
     private var ringbackJob: Job? = null
 
+    @Volatile
+    private var incomingRingtoneJob: Job? = null
+
+    private var incomingRingtone: Ringtone? = null
+
     fun startRingback() {
         if (!shouldPlay() || ringbackJob?.isActive == true) return
+        stopIncomingRingtone()
 
         ringbackJob = scope.launch {
             while (isActive) {
@@ -41,11 +51,59 @@ class CallTonePlayer @Inject constructor(
         }
     }
 
+    fun startIncomingRingtone() {
+        if (!shouldPlay() || incomingRingtoneJob?.isActive == true) return
+        stopRingback()
+
+        incomingRingtoneJob = scope.launch {
+            val ringtone = synchronized(lock) {
+                incomingRingtone ?: createIncomingRingtone().also { incomingRingtone = it }
+            } ?: return@launch
+
+            while (isActive) {
+                synchronized(lock) {
+                    runCatching {
+                        if (!ringtone.isPlaying) ringtone.play()
+                    }
+                }
+                // Android 9+ loops natively. On older devices this also restarts
+                // non-looping manufacturer ringtones without busy-waiting.
+                delay(3_000L)
+            }
+        }
+    }
+
+    fun stopIncomingRingtone() {
+        incomingRingtoneJob?.cancel()
+        incomingRingtoneJob = null
+        synchronized(lock) {
+            runCatching { incomingRingtone?.stop() }
+        }
+    }
+
     fun stopRingback() {
         ringbackJob?.cancel()
         ringbackJob = null
         synchronized(lock) {
             runCatching { toneGenerator.stopTone() }
+        }
+    }
+
+    fun stopAll() {
+        stopRingback()
+        stopIncomingRingtone()
+    }
+
+    private fun createIncomingRingtone(): Ringtone? {
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        return RingtoneManager.getRingtone(context, uri)?.apply {
+            audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                isLooping = true
+            }
         }
     }
 

@@ -1550,6 +1550,7 @@ app.post('/v1/auth/login', async (req, res, next) => {
 
 app.post('/v1/auth/refresh', async (req, res, next) => {
   const refreshToken = String(req.body?.refreshToken || '').trim()
+  const accessToken = String(req.body?.accessToken || '').trim()
   if (refreshToken.length < 32 || refreshToken.length > 4096) {
     return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
   }
@@ -1576,6 +1577,7 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
 
     let row = activeSession.rows[0]
     let consumedSessionId = row?.auth_session_id || null
+    let recoveryMode = consumedSessionId ? 'active_refresh' : null
 
     // One-time migration path for APKs that stored the old access JWT as
     // their refresh credential. It only accepts a currently valid token
@@ -1585,27 +1587,69 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
       try {
         legacyPayload = verifyLegacyUserToken(refreshToken)
       } catch {
-        await client.query('ROLLBACK')
-        return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+        legacyPayload = null
       }
       if (
-        legacyPayload?.provider !== 'local-fallback' ||
-        !isUuidText(legacyPayload?.sub) ||
-        legacyPayload?.client === 'web' ||
-        legacyPayload?.sid
+        legacyPayload?.provider === 'local-fallback' &&
+        isUuidText(legacyPayload?.sub) &&
+        legacyPayload?.client !== 'web' &&
+        !legacyPayload?.sid
       ) {
-        await client.query('ROLLBACK')
-        return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+        const legacyUser = await client.query(
+          `SELECT ${userSelectColumns}
+           FROM fallback_users
+           WHERE id = $1
+           LIMIT 1
+           FOR UPDATE`,
+          [legacyPayload.sub],
+        )
+        row = legacyUser.rows[0]
+        recoveryMode = row ? 'legacy_access_token' : null
       }
-      const legacyUser = await client.query(
-        `SELECT ${userSelectColumns}
-         FROM fallback_users
-         WHERE id = $1
-         LIMIT 1
-         FOR UPDATE`,
-        [legacyPayload.sub],
-      )
-      row = legacyUser.rows[0]
+    }
+
+    // Recovery for an APK that lost the response from the former rotating
+    // refresh flow. The signed access token must still be valid, its own
+    // session must be revoked, and a newer active replacement must exist.
+    // A normal logout has no active replacement and therefore cannot use this.
+    if (!row && accessToken) {
+      let accessPayload
+      try {
+        accessPayload = verifyLegacyUserToken(accessToken)
+      } catch {
+        accessPayload = null
+      }
+      if (
+        accessPayload?.provider === 'local-fallback' &&
+        isUuidText(accessPayload?.sub) &&
+        isUuidText(accessPayload?.sid) &&
+        accessPayload?.client !== 'web'
+      ) {
+        const recoverableUser = await client.query(
+          `SELECT ${userSelectColumns}
+           FROM fallback_users
+           WHERE fallback_users.id = $1
+             AND EXISTS (
+               SELECT 1
+               FROM fallback_auth_sessions lost_session
+               WHERE lost_session.id = $2
+                 AND lost_session.user_id = fallback_users.id
+                 AND lost_session.revoked_at IS NOT NULL
+             )
+             AND EXISTS (
+               SELECT 1
+               FROM fallback_auth_sessions replacement_session
+               WHERE replacement_session.user_id = fallback_users.id
+                 AND replacement_session.revoked_at IS NULL
+                 AND replacement_session.expires_at > NOW()
+             )
+           LIMIT 1
+           FOR UPDATE`,
+          [accessPayload.sub, accessPayload.sid],
+        )
+        row = recoverableUser.rows[0]
+        recoveryMode = row ? 'lost_rotation_response' : null
+      }
     }
 
     if (!row) {
@@ -1627,24 +1671,40 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
       return res.status(403).json(accountSuspendedPayload(suspension))
     }
 
+    const user = sanitizeUser(await hydrateUserRow(row))
+    let session
     if (consumedSessionId) {
+      // Keep the opaque mobile refresh credential reusable until its explicit
+      // expiry/revocation. Rotating it on every request made a valid account
+      // unusable when the response was lost after the old token was revoked
+      // (app closed, radio change or timeout).
       await client.query(
         `UPDATE fallback_auth_sessions
-         SET revoked_at = NOW(),
-             last_used_at = NOW(),
+         SET last_used_at = NOW(),
              updated_at = NOW()
          WHERE id = $1`,
         [consumedSessionId],
       )
+      session = {
+        user,
+        accessToken: signUserToken(user, {
+          sessionId: consumedSessionId,
+          client: 'android',
+        }),
+        refreshToken,
+        tokenType: 'Bearer',
+        expiresIn: jwtExpiresIn,
+      }
+    } else {
+      // Legacy APKs and safely recovered lost rotation responses both need a
+      // new opaque refresh session.
+      session = await issueUserSession(user, req, { executor: client, client: 'android' })
     }
-
-    const user = sanitizeUser(await hydrateUserRow(row))
-    const session = await issueUserSession(user, req, { executor: client, client: 'android' })
     // Keep the audit insert on the same transaction connection. Using `pool`
     // here waits for a user-row lock held by this transaction, leaving the
     // transaction idle forever and eventually exhausting the whole pool.
     await recordAudit('auth_refresh', user.id, {
-      migratedLegacyToken: !consumedSessionId,
+      recoveryMode,
     }, client)
     await client.query('COMMIT')
     return res.json(session)

@@ -7,6 +7,8 @@ const {
   shouldDeferNotificationPush,
 } = require('./notification-digest-routes')
 
+const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
+
 function quoteIdentifier(value) {
   return `"${String(value).replace(/"/g, '""')}"`
 }
@@ -2067,6 +2069,7 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     ? row.badges.filter((badge) => badge && typeof badge === 'object').slice(0, 12)
     : []
   const profileFrame = cleanText(row?.profile_frame ?? row?.profileFrame, 40).toLowerCase()
+  const followersCount = numberOf(row, ['followers_count', 'follower_count'], 0)
   return {
     id,
     user_id: textOf(row, ['user_id', 'userId'], ''),
@@ -2100,10 +2103,12 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     availability_schedule: textOf(row, ['availability_schedule', 'availabilitySchedule'], ''),
     profile_section_order: normalizeProfileSectionOrder(row?.profile_section_order ?? row?.profileSectionOrder),
     profile_section_visibility: normalizeProfileSectionVisibility(row?.profile_section_visibility ?? row?.profileSectionVisibility),
-    followers_count: numberOf(row, ['followers_count', 'follower_count'], 0),
+    followers_count: followersCount,
     following_count: numberOf(row, ['following_count'], 0),
     post_count: numberOf(row, ['post_count', 'posts_count'], 0),
-    is_verified: boolOf(row, ['is_verified', 'verified'], false),
+    is_verified:
+      boolOf(row, ['is_verified', 'verified'], false) ||
+      followersCount >= AUTO_VERIFY_FOLLOWER_THRESHOLD,
     badges: publicBadges,
     profile_frame: new Set(['gold', 'neon', 'ruby', 'ocean']).has(profileFrame) ? profileFrame : '',
     is_private: boolOf(row, ['is_private', 'private'], false),
@@ -2178,6 +2183,37 @@ async function combinedFollows(pool) {
     localFollows(pool, 20_000),
   ])
   return [...imported, ...local]
+}
+
+async function autoVerifyLocalFollowerMilestone(pool, rawProfileId) {
+  const target = await fallbackUserByProfileAlias(pool, rawProfileId)
+  if (!target) return false
+  const targetIds = userIdentity(target).values
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS followers
+     FROM (
+       SELECT DISTINCT lower(follower_id)
+       FROM fallback_follows
+       WHERE lower(following_id) = ANY($1::text[])
+       LIMIT $2
+     ) milestone`,
+    [targetIds, AUTO_VERIFY_FOLLOWER_THRESHOLD],
+  )
+  if ((Number(rows[0]?.followers) || 0) < AUTO_VERIFY_FOLLOWER_THRESHOLD) return false
+
+  const current = await localProfileOverride(pool, target.id)
+  if (boolOf(current, ['is_verified', 'verified'], false)) return false
+  await pool.query(
+    `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (user_id)
+     DO UPDATE SET
+       profile = fallback_profile_overrides.profile || EXCLUDED.profile,
+       updated_at = NOW()`,
+    [target.id, JSON.stringify({ is_verified: true })],
+  )
+  clearProfileCaches()
+  return true
 }
 
 async function getCurrentUser(pool, req) {
@@ -5349,12 +5385,15 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       if (!profileId) return res.status(400).json({ error: 'PROFILE_ID_REQUIRED' })
       if (identity.ids.has(profileId)) return res.status(400).json({ error: 'CANNOT_FOLLOW_SELF' })
 
-      await pool.query(
+      const followInsert = await pool.query(
         `INSERT INTO fallback_follows(follower_id, following_id)
          VALUES ($1, $2)
          ON CONFLICT (follower_id, following_id) DO NOTHING`,
         [identity.displayUserId, profileId],
       )
+      const autoVerified = followInsert.rowCount > 0
+        ? await autoVerifyLocalFollowerMilestone(pool, profileId)
+        : false
       await createLocalNotificationBestEffort(pool, {
         recipientId: profileId,
         actorId: identity.displayUserId,
@@ -5365,6 +5404,13 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         targetType: 'profile',
         content: `${user.display_name || user.email || 'Alguien'} empezó a seguirte.`,
       })
+      if (autoVerified) {
+        void publishRealtimeEvent(`user:${profileId}`, {
+          event: 'profile_updated',
+          fields: ['is_verified'],
+          reason: 'followers_milestone',
+        }).catch(() => {})
+      }
       res.json({ ok: true, isFollowing: true })
     } catch (error) {
       next(error)
