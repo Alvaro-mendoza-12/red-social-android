@@ -72,6 +72,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import java.util.UUID
+import kotlin.math.roundToInt
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -81,6 +82,14 @@ data class AdminDashboardStats(
     val pendingUserReports: Int = 0,
     val pendingVideoReports: Int = 0,
     val totalVideos: Int = 0
+)
+
+data class AdminAccessInfo(
+    val isAdmin: Boolean = false,
+    val accessLevel: String = "none",
+    val isOwner: Boolean = false,
+    val canWrite: Boolean = false,
+    val canDeleteUsers: Boolean = false
 )
 
 data class AdminBadgeOption(
@@ -118,6 +127,8 @@ data class AdminUser(
     val lastLoginAt: String? = null,
     val syncSource: String = "local",
     val isAdmin: Boolean = false,
+    val adminAccessLevel: String = "none",
+    val adminIsOwner: Boolean = false,
     val isTestAccount: Boolean = false,
     val isVerified: Boolean = false,
     val isSuspended: Boolean = false,
@@ -160,13 +171,20 @@ data class AnonymousChatSession(
     val peer: AnonymousPeer,
     val createdAt: String = "",
     val updatedAt: String = ""
-)
+) {
+    val friendshipPercent: Int
+        get() = (((ownRevealLevel + peerRevealLevel).coerceIn(0, 6) * 100f) / 6f)
+            .roundToInt()
+            .coerceIn(0, 100)
+}
 
 data class AnonymousChatMessage(
     val id: String,
     val clientMessageId: String,
     val sender: String,
     val content: String,
+    val contentType: String = "text",
+    val mediaUrl: String? = null,
     val createdAt: String
 )
 
@@ -335,6 +353,11 @@ data class LocalFallbackChatPreferenceRequest(
 @Serializable
 private data class LocalFallbackRawChatResponse(
     val chat: JsonObject? = null
+)
+
+@Serializable
+private data class LocalFallbackSupportAdminResponse(
+    val admin: JsonObject? = null
 )
 
 @Serializable
@@ -1627,6 +1650,21 @@ class LocalFallbackApiClient @Inject constructor(
             }
         } catch (error: Exception) {
             Result.failure(error)
+        }
+    }
+
+    suspend fun resolveSupportAdminId(accessToken: String, alias: String): Result<String> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackSupportAdminResponse>(
+            "$baseUrl/v1/data/support/admins/${urlEncode(alias.trim().lowercase())}",
+            accessToken
+        ).mapCatching { response ->
+            val admin = response.admin
+                ?: throw IllegalStateException("No encontramos ese administrador de soporte.")
+            textOf(admin, "id", "user_id", "profile_id")
+                .trim()
+                .takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("La cuenta de soporte no está disponible.")
         }
     }
 
@@ -5591,6 +5629,25 @@ class LocalFallbackApiClient @Inject constructor(
             method = "GET"
         )
 
+    suspend fun loadAnonymousSessions(accessToken: String): Result<List<AnonymousChatSession>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/proximity/random/sessions") {
+                localHeaders(accessToken)
+            }
+            if (!response.status.isSuccess()) {
+                return Result.failure(Exception("No se pudieron cargar tus chats anónimos: ${response.status}"))
+            }
+            val items = json.parseToJsonElement(response.bodyAsText())
+                .jsonObject["items"]
+                ?.jsonArray
+                .orEmpty()
+            Result.success(items.map { mapAnonymousSession(it.jsonObject) })
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     private suspend fun anonymousMatchRequest(
         accessToken: String,
         path: String,
@@ -5667,7 +5724,9 @@ class LocalFallbackApiClient @Inject constructor(
         accessToken: String,
         sessionId: String,
         clientMessageId: String,
-        content: String
+        content: String,
+        contentType: String = "text",
+        mediaUrl: String? = null
     ): Result<AnonymousChatMessage> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -5677,6 +5736,8 @@ class LocalFallbackApiClient @Inject constructor(
                 setBody(buildJsonObject {
                     put("clientMessageId", clientMessageId)
                     put("content", content)
+                    put("contentType", contentType)
+                    mediaUrl?.let { put("mediaUrl", it) }
                 })
             }
             if (!response.status.isSuccess()) return Result.failure(Exception("No se pudo enviar el mensaje: ${response.status}"))
@@ -5747,6 +5808,8 @@ class LocalFallbackApiClient @Inject constructor(
         clientMessageId = textOf(row, "client_message_id"),
         sender = textOf(row, "sender").ifBlank { "peer" },
         content = textOf(row, "content"),
+        contentType = textOf(row, "content_type", "contentType").ifBlank { "text" },
+        mediaUrl = UbuntuStorageUrl.rewrite(textOf(row, "media_url", "mediaUrl"))?.takeIf { it.isNotBlank() },
         createdAt = textOf(row, "created_at")
     )
 
@@ -5773,6 +5836,10 @@ class LocalFallbackApiClient @Inject constructor(
             lastLoginAt = textOf(row, "last_login_at").ifBlank { null },
             syncSource = textOf(row, "sync_source").ifBlank { "local" },
             isAdmin = boolOf(row, "is_admin"),
+            adminAccessLevel = textOf(row, "admin_access_level").ifBlank {
+                if (boolOf(row, "is_admin")) "full" else "none"
+            },
+            adminIsOwner = boolOf(row, "admin_is_owner"),
             isTestAccount = boolOf(row, "is_test_account"),
             isVerified = boolOf(row, "is_verified"),
             isSuspended = boolOf(row, "is_suspended"),
@@ -5915,7 +5982,7 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun adminCheckAccess(accessToken: String): Result<Boolean> {
+    suspend fun adminGetAccess(accessToken: String): Result<AdminAccessInfo> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         RuntimeBackendEndpoint.ensureFreshEndpoint()
         return try {
@@ -5923,7 +5990,16 @@ class LocalFallbackApiClient @Inject constructor(
                 localHeaders(accessToken)
             }
             if (response.status.value == 200) {
-                Result.success(true)
+                val body = json.parseToJsonElement(response.bodyAsText()).jsonObject
+                Result.success(
+                    AdminAccessInfo(
+                        isAdmin = boolOf(body, "isAdmin", "is_admin"),
+                        accessLevel = textOf(body, "accessLevel", "access_level").ifBlank { "none" },
+                        isOwner = boolOf(body, "isOwner", "is_owner"),
+                        canWrite = boolOf(body, "canWrite", "can_write"),
+                        canDeleteUsers = boolOf(body, "canDeleteUsers", "can_delete_users")
+                    )
+                )
             } else {
                 Result.failure(Exception("Acceso denegado: ${response.status}"))
             }
@@ -5993,6 +6069,31 @@ class LocalFallbackApiClient @Inject constructor(
             Result.success(profiles)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun adminCheckAccess(accessToken: String): Result<Boolean> =
+        adminGetAccess(accessToken).map { it.isAdmin }
+
+    suspend fun adminUpdateUserAccess(
+        accessToken: String,
+        userId: String,
+        accessLevel: String
+    ): Result<AdminUser> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val encodedId = URLEncoder.encode(userId, Charsets.UTF_8.name())
+            val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/admin/users/$encodedId/access") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("access_level", accessLevel) })
+            }
+            if (!response.status.isSuccess()) {
+                error("No se pudo cambiar el acceso administrativo: ${response.status} - ${response.bodyAsText()}")
+            }
+            val user = json.parseToJsonElement(response.bodyAsText()).jsonObject["user"]?.jsonObject
+                ?: error("El servidor no devolvió el usuario actualizado.")
+            mapAdminUser(user)
         }
     }
 

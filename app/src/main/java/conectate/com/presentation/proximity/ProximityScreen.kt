@@ -11,6 +11,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -32,7 +33,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
@@ -76,6 +80,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -87,10 +93,13 @@ import conectate.com.data.localfallback.AnonymousChatMessage
 import conectate.com.data.localfallback.AnonymousChatSession
 import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.CommentAudioPlayer
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.messages.getBestLastKnownLocation
 import conectate.com.presentation.messages.hasLocationPermission
+import conectate.com.presentation.messages.StickerPickerDialog
 import conectate.com.presentation.navigation.Screen
+import coil.compose.AsyncImage
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -111,7 +120,9 @@ fun ProximityScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val randomStatus by viewModel.randomStatus.collectAsState()
     val session by viewModel.anonymousSession.collectAsState()
+    val sessions by viewModel.anonymousSessions.collectAsState()
     val messages by viewModel.anonymousMessages.collectAsState()
+    val normalChatPeerBySession by viewModel.normalChatPeerBySession.collectAsState()
     val gender by viewModel.gender.collectAsState()
     val lookingFor by viewModel.lookingFor.collectAsState()
 
@@ -219,6 +230,7 @@ fun ProximityScreen(
                 else -> AnonymousTab(
                     status = randomStatus,
                     session = session,
+                    sessions = sessions,
                     messages = messages,
                     radius = radiusSlider,
                     gender = gender,
@@ -232,9 +244,15 @@ fun ProximityScreen(
                     onStart = { requestLocation(LocationAction.START_RANDOM) },
                     onCancel = viewModel::cancelAnonymousMatch,
                     onSend = viewModel::sendAnonymousMessage,
+                    onSendSticker = viewModel::sendAnonymousSticker,
+                    onSendMedia = viewModel::sendAnonymousMedia,
                     onReveal = viewModel::revealNextLevel,
                     onEnd = viewModel::endAnonymousSession,
-                    onOpenProfile = { userId -> navController.navigate(Screen.UserProfile.createRoute(userId)) }
+                    onSelectSession = viewModel::selectAnonymousSession,
+                    onBackToSessions = viewModel::showAnonymousSessionList,
+                    normalChatPeerId = session?.id?.let(normalChatPeerBySession::get),
+                    onOpenProfile = { userId -> navController.navigate(Screen.UserProfile.createRoute(userId)) },
+                    onOpenNormalChat = { userId -> navController.navigate(Screen.Chat.createRoute(userId)) },
                 )
             }
         }
@@ -468,6 +486,7 @@ private fun NearbyProfileRow(profile: NearbyProfile, onClick: () -> Unit) {
 private fun AnonymousTab(
     status: String,
     session: AnonymousChatSession?,
+    sessions: List<AnonymousChatSession>,
     messages: List<AnonymousChatMessage>,
     radius: Float,
     gender: String,
@@ -478,18 +497,29 @@ private fun AnonymousTab(
     onStart: () -> Unit,
     onCancel: () -> Unit,
     onSend: (String) -> Unit,
+    onSendSticker: (String?, String) -> Unit,
+    onSendMedia: (android.net.Uri, String) -> Unit,
     onReveal: () -> Unit,
     onEnd: () -> Unit,
-    onOpenProfile: (String) -> Unit
+    onSelectSession: (String) -> Unit,
+    onBackToSessions: () -> Unit,
+    normalChatPeerId: String?,
+    onOpenProfile: (String) -> Unit,
+    onOpenNormalChat: (String) -> Unit,
 ) {
     if (session != null) {
         AnonymousConversation(
             session = session,
             messages = messages,
             onSend = onSend,
+            onSendSticker = onSendSticker,
+            onSendMedia = onSendMedia,
             onReveal = onReveal,
             onEnd = onEnd,
-            onOpenProfile = onOpenProfile
+            onBack = onBackToSessions,
+            normalChatPeerId = normalChatPeerId,
+            onOpenProfile = onOpenProfile,
+            onOpenNormalChat = onOpenNormalChat,
         )
         return
     }
@@ -521,6 +551,28 @@ private fun AnonymousTab(
             }
         }
         item { ProximityPrivacyNotice() }
+        if (sessions.isNotEmpty()) {
+            item {
+                Text(
+                    "Tus chats anónimos",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            items(sessions, key = { it.id }) { anonymousSession ->
+                AnonymousSessionRow(
+                    session = anonymousSession,
+                    onClick = { onSelectSession(anonymousSession.id) },
+                )
+            }
+            item {
+                Text(
+                    "Puedes mantener varias conversaciones y buscar otra persona sin cerrar las anteriores.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         item { RadiusControl(radius, onRadiusChange) }
         item { PreferenceSelector(
             label = "Me identifico como",
@@ -592,6 +644,49 @@ private fun AnonymousTab(
     }
 }
 
+@Composable
+private fun AnonymousSessionRow(
+    session: AnonymousChatSession,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (session.peer.avatarUrl != null) {
+                CircularProfileImage(imageUrl = session.peer.avatarUrl, size = 46.dp, showBorder = true)
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(11.dp))
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(session.peer.displayName, fontWeight = FontWeight.Bold)
+                LinearProgressIndicator(
+                    progress = session.friendshipPercent / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Nivel de confianza: ${session.friendshipPercent}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreferenceSelector(
@@ -630,20 +725,44 @@ private fun AnonymousConversation(
     session: AnonymousChatSession,
     messages: List<AnonymousChatMessage>,
     onSend: (String) -> Unit,
+    onSendSticker: (String?, String) -> Unit,
+    onSendMedia: (android.net.Uri, String) -> Unit,
     onReveal: () -> Unit,
     onEnd: () -> Unit,
-    onOpenProfile: (String) -> Unit
+    onBack: () -> Unit,
+    normalChatPeerId: String?,
+    onOpenProfile: (String) -> Unit,
+    onOpenNormalChat: (String) -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
+    var showStickerPicker by remember { mutableStateOf(false) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { onSendMedia(it, "image") }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { onSendMedia(it, "audio") }
+    }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    }
+    if (showStickerPicker) {
+        StickerPickerDialog(
+            onDismiss = { showStickerPicker = false },
+            onStickerSelected = { sticker ->
+                onSendSticker(sticker.media_url, sticker.title.ifBlank { "Sticker" })
+                showStickerPicker = false
+            }
+        )
     }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Volver a chats anónimos")
+            }
             if (session.peer.avatarUrl != null) {
                 CircularProfileImage(imageUrl = session.peer.avatarUrl, size = 44.dp, showBorder = true)
             } else {
@@ -654,12 +773,32 @@ private fun AnonymousConversation(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(session.peer.displayName, fontWeight = FontWeight.Bold)
-                Text("Identidad compartida: ${session.peerRevealLevel}/3", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Confianza: ${session.friendshipPercent}% · Identidad: ${session.peerRevealLevel}/3",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             IconButton(onClick = onEnd) {
                 Icon(Icons.Default.Cancel, contentDescription = "Finalizar chat")
             }
         }
+        LinearProgressIndicator(
+            progress = session.friendshipPercent / 100f,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        )
+        Text(
+            when {
+                session.friendshipPercent >= 100 -> "Chat normal desbloqueado"
+                session.friendshipPercent >= 67 -> "Fotos desbloqueadas · falta compartir el perfil"
+                session.friendshipPercent >= 50 -> "Audios desbloqueados"
+                session.friendshipPercent >= 33 -> "Stickers desbloqueados"
+                else -> "Sigan conversando y compartiendo identidad para desbloquear opciones"
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
         if (session.peer.interests.isNotEmpty() || session.peer.hobbies.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -677,6 +816,15 @@ private fun AnonymousConversation(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("Ver perfil compartido")
+            }
+        }
+        normalChatPeerId?.let { userId ->
+            Button(
+                onClick = { onOpenNormalChat(userId) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Continuar en chats")
             }
         }
         if (session.ownRevealLevel < 3) {
@@ -702,6 +850,32 @@ private fun AnonymousConversation(
         ) {
             items(messages, key = { it.id.ifBlank { it.clientMessageId } }) { message ->
                 AnonymousMessageBubble(message)
+            }
+        }
+        if (session.friendshipPercent >= 33) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AssistChip(
+                    onClick = { showStickerPicker = true },
+                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
+                    label = { Text("Sticker") }
+                )
+                if (session.friendshipPercent >= 50) {
+                    AssistChip(
+                        onClick = { audioPicker.launch("audio/*") },
+                        leadingIcon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
+                        label = { Text("Audio") }
+                    )
+                }
+                if (session.friendshipPercent >= 67) {
+                    AssistChip(
+                        onClick = { imagePicker.launch("image/*") },
+                        leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                        label = { Text("Foto") }
+                    )
+                }
             }
         }
         Row(
@@ -746,7 +920,34 @@ private fun AnonymousMessageBubble(message: AnonymousChatMessage) {
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth(0.82f)
         ) {
-            Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                when (message.contentType) {
+                    "image", "sticker" -> {
+                        message.mediaUrl?.let { mediaUrl ->
+                            AsyncImage(
+                                model = mediaUrl,
+                                contentDescription = if (message.contentType == "sticker") "Sticker" else "Foto",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(if (message.contentType == "sticker") 150.dp else 220.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        if (message.mediaUrl.isNullOrBlank() || message.contentType == "image") {
+                            Text(
+                                message.content,
+                                modifier = Modifier.padding(top = if (message.mediaUrl.isNullOrBlank()) 0.dp else 5.dp)
+                            )
+                        }
+                    }
+                    "audio" -> {
+                        message.mediaUrl?.let { CommentAudioPlayer(audioUrl = it) }
+                            ?: Text(message.content)
+                    }
+                    else -> Text(message.content)
+                }
+            }
         }
     }
 }

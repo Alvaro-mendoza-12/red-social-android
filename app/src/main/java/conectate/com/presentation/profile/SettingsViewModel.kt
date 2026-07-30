@@ -19,6 +19,7 @@ import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.local.prefs.AppFontOption
 import conectate.com.data.local.prefs.AppThemeOption
 import androidx.navigation.NavController
+import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.navigation.Screen
 
 sealed class SettingsUiState {
@@ -120,12 +121,11 @@ class SettingsViewModel @Inject constructor(
 
     private fun resolveAdminIds() {
         viewModelScope.launch {
-            val conectateUser = resolveSupportAdmin("novvin")
-            _conectateAdminId.value = conectateUser?.id
-            android.util.Log.d("SettingsViewModel", "Resolved Novvin Admin ID: ${conectateUser?.id}")
+            val conectateAdminId = resolveSupportAdminId("novvin")
+            _conectateAdminId.value = conectateAdminId
+            android.util.Log.d("SettingsViewModel", "Resolved Novvin Admin ID: $conectateAdminId")
 
-            val alvaroUser = resolveSupportAdmin("alvaro")
-            _alvaroAdminId.value = alvaroUser?.id
+            _alvaroAdminId.value = resolveSupportAdminId("alvaro")
         }
     }
 
@@ -160,6 +160,18 @@ class SettingsViewModel @Inject constructor(
         return null
     }
 
+    private suspend fun resolveSupportAdminId(adminName: String): String? {
+        val token = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+        if (token.isNotBlank() && localFallbackApiClient.isConfigured) {
+            localFallbackApiClient.resolveSupportAdminId(token, adminName)
+                .getOrNull()
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return resolveSupportAdmin(adminName)?.id?.trim()?.takeIf { it.isNotBlank() }
+    }
+
     fun contactSupport(adminName: String, navController: NavController, context: android.content.Context) {
         android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
         viewModelScope.launch {
@@ -168,7 +180,7 @@ class SettingsViewModel @Inject constructor(
                 var adminId = if (isNovvin) _conectateAdminId.value else _alvaroAdminId.value
 
                 if (adminId.isNullOrBlank()) {
-                    adminId = resolveSupportAdmin(adminName)?.id
+                    adminId = resolveSupportAdminId(adminName)
                     if (isNovvin) {
                         _conectateAdminId.value = adminId
                     } else {
@@ -188,18 +200,20 @@ class SettingsViewModel @Inject constructor(
                         }
                         .onFailure { error ->
                             android.util.Log.e("SettingsViewModel", "Support chat creation failed", error)
-                            android.widget.Toast.makeText(
-                                context,
-                                error.message ?: "No se pudo abrir el chat de soporte.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
+                            conectate.com.presentation.common.AppFeedbackBus.showError(
+                                error.toUserFacingMessage("No se pudo abrir el chat de soporte.")
+                            )
                         }
                 } else {
-                    android.widget.Toast.makeText(context, "Admin $adminName no encontrado.", android.widget.Toast.LENGTH_SHORT).show()
+                    conectate.com.presentation.common.AppFeedbackBus.showError(
+                        "No encontramos la cuenta de $adminName. Inténtalo nuevamente."
+                    )
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SettingsViewModel", "Contact support failed", e)
-                android.widget.Toast.makeText(context, "Error de red", android.widget.Toast.LENGTH_SHORT).show()
+                conectate.com.presentation.common.AppFeedbackBus.showError(
+                    e.toUserFacingMessage("No se pudo abrir el chat de soporte.")
+                )
             }
         }
     }

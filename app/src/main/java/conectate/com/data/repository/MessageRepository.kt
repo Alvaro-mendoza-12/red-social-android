@@ -2149,13 +2149,33 @@ class MessageRepository @Inject constructor(
     private fun unifyMessageList(messages: List<Message>): List<Message> {
         if (messages.isEmpty()) return emptyList()
         
-        // 1. Exact ID Deduplication (Prefer real status over "sending")
+        // 1. Exact ID deduplication. Realtime/FCM acknowledgements may contain
+        // only a subset of a structured message. Choosing the first non-sending
+        // variation could therefore turn a contact into an empty text bubble
+        // until the chat was reopened. Keep the richest payload and merge the
+        // authoritative delivery/deletion state independently.
         val byId = messages.groupBy { it.id.trim().lowercase() }.map { (_, variations) ->
-            val preferred = variations.find { it.status != "sending" } ?: variations.first()
-            preferred.copy(
-                reply_to_id = preferred.reply_to_id
+            val preferredPayload = variations.maxWithOrNull(
+                compareBy<Message> { messagePayloadScore(it) }
+                    .thenBy { it.updated_at.orEmpty() }
+            ) ?: variations.first()
+            val preferredStatus = variations.maxByOrNull { messageStatusRank(it.status) }
+                ?: preferredPayload
+            val mergedReactions = variations
+                .flatMap { it.reactions.entries }
+                .groupBy({ it.key }, { it.value })
+                .mapValues { (_, values) -> values.flatten().distinct() }
+            preferredPayload.copy(
+                status = preferredStatus.status,
+                delivered_at = variations.firstNotNullOfOrNull { it.delivered_at },
+                read_at = variations.firstNotNullOfOrNull { it.read_at },
+                deleted_for_all = variations.any { it.deleted_for_all },
+                deleted_by = variations.flatMap { it.deleted_by }.distinct(),
+                is_edited = variations.any { it.is_edited },
+                reactions = mergedReactions,
+                reply_to_id = preferredPayload.reply_to_id
                     ?: variations.firstNotNullOfOrNull { it.reply_to_id },
-                reply_to = preferred.reply_to
+                reply_to = preferredPayload.reply_to
                     ?: variations.firstNotNullOfOrNull { it.reply_to }
             )
         }
@@ -2170,6 +2190,25 @@ class MessageRepository @Inject constructor(
                 else -> it.created_at.replace(" ", "T")
             }
         }.thenBy { it.id })
+    }
+
+    private fun messagePayloadScore(message: Message): Int {
+        val contentType = message.content_type.trim().lowercase()
+        return (if (message.deleted_for_all) 10_000 else 0) +
+            (if (contentType != "text") 2_000 else 0) +
+            (if (message.content.isNotBlank()) 1_000 else 0) +
+            (if (!message.media_url.isNullOrBlank()) 500 else 0) +
+            (if (!message.thumbnail_url.isNullOrBlank()) 100 else 0) +
+            message.content.length.coerceAtMost(300)
+    }
+
+    private fun messageStatusRank(status: String): Int = when (status.trim().lowercase()) {
+        "read" -> 5
+        "delivered" -> 4
+        "sent" -> 3
+        "sending" -> 2
+        "failed" -> 1
+        else -> 0
     }
 
     private fun updateMessageInFlow(chatId: String, msg: Message) {

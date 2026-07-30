@@ -221,9 +221,15 @@ const MODERATION_RULE_CATALOG = Object.freeze([
 const ADMIN_BADGES_BY_ID = new Map(ADMIN_BADGE_CATALOG.map((badge) => [badge.id, badge]))
 const PROFILE_FRAME_IDS = new Set(PROFILE_FRAME_CATALOG.map((frame) => frame.id))
 const MODERATION_RULES_BY_ID = new Map(MODERATION_RULE_CATALOG.map((rule) => [rule.id, rule]))
+const ADMIN_ACCESS_RANK = Object.freeze({ none: 0, view: 1, write: 2, full: 3 })
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function normalizeAdminAccessLevel(value, fallback = 'none') {
+  const level = normalizeId(value)
+  return Object.prototype.hasOwnProperty.call(ADMIN_ACCESS_RANK, level) ? level : fallback
 }
 
 function normalizeBadgeIds(value, catalog = ADMIN_BADGE_CATALOG) {
@@ -306,6 +312,11 @@ async function adminBadgeCatalog(pool) {
 
 function adminUserFromRow(row) {
   const identityValues = [row?.local_id, row?.public_id].map(normalizeId).filter(Boolean)
+  const isOwner = row?.admin_is_owner === true ||
+    identityValues.some((value) => DESIGNATED_ADMIN_USER_IDS.has(value))
+  const accessLevel = isOwner
+    ? 'full'
+    : normalizeAdminAccessLevel(row?.admin_access_level, row?.is_admin === true ? 'full' : 'none')
   return {
     id: normalizeId(row?.public_id || row?.local_id),
     local_id: normalizeId(row?.local_id),
@@ -316,9 +327,11 @@ function adminUserFromRow(row) {
     created_at: row?.created_at || null,
     last_login_at: row?.last_login_at || null,
     sync_source: String(row?.sync_source || 'local'),
-    is_admin: row?.is_admin === true ||
+    is_admin: accessLevel !== 'none' ||
       DESIGNATED_ADMIN_EMAILS.has(normalizeId(row?.email)) ||
       identityValues.some((value) => DESIGNATED_ADMIN_USER_IDS.has(value)),
+    admin_access_level: accessLevel,
+    admin_is_owner: isOwner,
     is_test_account: isTestAccountTarget(row),
     is_verified: row?.is_verified === true,
     is_suspended: row?.is_suspended === true,
@@ -341,6 +354,8 @@ const ADMIN_USER_SELECT = `
     u.last_login_at,
     u.sync_source,
     COALESCE(m.is_admin, FALSE) AS is_admin,
+    COALESCE(m.admin_access_level, CASE WHEN m.is_admin THEN 'full' ELSE 'none' END) AS admin_access_level,
+    COALESCE(m.admin_is_owner, FALSE) AS admin_is_owner,
     lower(COALESCE(o.profile->>'is_test_account', 'false')) IN ('true', '1') AS is_test_account,
     lower(COALESCE(o.profile->>'is_verified', 'false')) IN ('true', '1') AS is_verified,
     (COALESCE(m.is_suspended, FALSE) AND (m.suspended_until IS NULL OR m.suspended_until > NOW())) AS is_suspended,
@@ -644,6 +659,8 @@ async function ensureAdminModerationTables(pool) {
   `)
   for (const statement of [
     `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS admin_access_level TEXT NOT NULL DEFAULT 'none'`,
+    `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS admin_is_owner BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_profile_moderation ADD COLUMN IF NOT EXISTS decision_id UUID`,
     `ALTER TABLE fallback_video_reports ADD COLUMN IF NOT EXISTS warn_sent BOOLEAN NOT NULL DEFAULT FALSE`,
@@ -656,12 +673,16 @@ async function ensureAdminModerationTables(pool) {
   }
   if (BOOTSTRAP_ADMIN_EMAILS.length > 0) {
     await pool.query(
-      `INSERT INTO fallback_profile_moderation(user_id, is_admin, updated_at)
-       SELECT u.id::text, TRUE, NOW()
+      `INSERT INTO fallback_profile_moderation(
+         user_id, is_admin, admin_access_level, admin_is_owner, updated_at
+       )
+       SELECT u.id::text, TRUE, 'full', TRUE, NOW()
        FROM fallback_users u
        WHERE lower(trim(u.email)) = ANY($1::text[])
        ON CONFLICT (user_id) DO UPDATE SET
          is_admin = TRUE,
+         admin_access_level = 'full',
+         admin_is_owner = TRUE,
          updated_at = NOW()`,
       [BOOTSTRAP_ADMIN_EMAILS],
     )
@@ -669,18 +690,27 @@ async function ensureAdminModerationTables(pool) {
 }
 
 async function isAppAdmin(pool, identity) {
+  const access = await appAdminAccess(pool, identity)
+  return access.level !== 'none'
+}
+
+async function appAdminAccess(pool, identity) {
   const identityValues = Array.from(new Set([
     identity?.localUserId,
     identity?.preferredUserId,
     ...(identity?.values || []),
     ...Array.from(identity?.ids || []),
   ].map(normalizeId).filter(Boolean)))
-  if (identityValues.length === 0) return false
-  if (identityValues.some((value) => DESIGNATED_ADMIN_USER_IDS.has(value))) return true
+  if (identityValues.length === 0) return { level: 'none', isOwner: false }
+  if (identityValues.some((value) => DESIGNATED_ADMIN_USER_IDS.has(value))) {
+    return { level: 'full', isOwner: true }
+  }
   const { rows } = await pool.query(
     `SELECT u.email,
             u.display_name,
-            COALESCE(m.is_admin, FALSE) AS is_admin
+            COALESCE(m.is_admin, FALSE) AS is_admin,
+            COALESCE(m.admin_access_level, CASE WHEN m.is_admin THEN 'full' ELSE 'none' END) AS admin_access_level,
+            COALESCE(m.admin_is_owner, FALSE) AS admin_is_owner
      FROM fallback_users u
      LEFT JOIN fallback_profile_moderation m
        ON lower(m.user_id) = lower(u.id::text)
@@ -692,7 +722,14 @@ async function isAppAdmin(pool, identity) {
     [identityValues],
   )
   const email = String(rows[0]?.email || '').trim().toLowerCase()
-  return rows[0]?.is_admin === true || Boolean(email && DESIGNATED_ADMIN_EMAILS.has(email))
+  const isOwner = rows[0]?.admin_is_owner === true ||
+    Boolean(email && DESIGNATED_ADMIN_EMAILS.has(email))
+  if (isOwner) return { level: 'full', isOwner: true }
+  const level = normalizeAdminAccessLevel(
+    rows[0]?.admin_access_level,
+    rows[0]?.is_admin === true ? 'full' : 'none',
+  )
+  return { level, isOwner: false }
 }
 
 async function recordModerationEvent(pool, actorId, payload) {
@@ -1316,19 +1353,27 @@ function registerAdminModerationRoutes(app, {
   deleteExternalAuthUser,
   invalidateProfileCache = () => {},
 }) {
-  async function adminGuard(req, res) {
+  async function adminGuard(req, res, { minimum = 'write', ownerOnly = false } = {}) {
     const user = await getCurrentUser(pool, req)
     if (!user) {
       res.status(404).json({ error: 'USER_NOT_FOUND' })
       return null
     }
     const identity = userIdentity(user)
-    const allowed = await isAppAdmin(pool, identity)
-    if (!allowed) {
+    const access = await appAdminAccess(pool, identity)
+    if (access.level === 'none') {
       res.status(403).json({ error: 'ADMIN_REQUIRED' })
       return null
     }
-    return { user, identity }
+    if (ownerOnly && !access.isOwner) {
+      res.status(403).json({ error: 'ADMIN_OWNER_REQUIRED' })
+      return null
+    }
+    if ((ADMIN_ACCESS_RANK[access.level] || 0) < (ADMIN_ACCESS_RANK[minimum] || 0)) {
+      res.status(403).json({ error: 'ADMIN_WRITE_REQUIRED' })
+      return null
+    }
+    return { user, identity, access }
   }
 
   app.get('/v1/moderation/decision', appealAuthRequired, async (req, res, next) => {
@@ -1444,9 +1489,15 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/access', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
-      res.json({ isAdmin: true })
+      res.json({
+        isAdmin: true,
+        accessLevel: context.access.level,
+        isOwner: context.access.isOwner,
+        canWrite: ADMIN_ACCESS_RANK[context.access.level] >= ADMIN_ACCESS_RANK.write,
+        canDeleteUsers: context.access.isOwner,
+      })
     } catch (error) {
       next(error)
     }
@@ -1454,7 +1505,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/catalog', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       res.json({ badges: await adminBadgeCatalog(pool), frames: PROFILE_FRAME_CATALOG })
     } catch (error) {
@@ -1511,7 +1562,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/users', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const search = String(req.query?.search || '').trim().slice(0, 120)
       const status = normalizeId(req.query?.status || 'all')
@@ -1570,7 +1621,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/users/:id', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const user = await findAdminTarget(pool, req.params.id)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -1586,6 +1637,89 @@ function registerAdminModerationRoutes(app, {
         [identityValues, user.local_id],
       )
       res.json({ user: { ...user, content: rows[0] || {} } })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.put('/v1/data/admin/users/:id/access', authRequired, async (req, res, next) => {
+    try {
+      const context = await adminGuard(req, res, { ownerOnly: true })
+      if (!context) return
+      const level = normalizeAdminAccessLevel(req.body?.access_level, '')
+      if (!Object.prototype.hasOwnProperty.call(ADMIN_ACCESS_RANK, level)) {
+        return res.status(400).json({ error: 'ADMIN_ACCESS_LEVEL_INVALID' })
+      }
+      const target = await findAdminTarget(pool, req.params.id)
+      if (!target) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      if (target.admin_is_owner && level !== 'full') {
+        return res.status(403).json({ error: 'ADMIN_OWNER_ACCESS_IMMUTABLE' })
+      }
+      if (target.admin_is_owner) {
+        return res.json({ user: target, unchanged: true })
+      }
+
+      await pool.query(
+        `INSERT INTO fallback_profile_moderation(
+           user_id, is_admin, admin_access_level, admin_is_owner, updated_at
+         )
+         VALUES ($1, $2, $3, FALSE, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           is_admin = EXCLUDED.is_admin,
+           admin_access_level = EXCLUDED.admin_access_level,
+           admin_is_owner = FALSE,
+           updated_at = NOW()`,
+        [target.id, level !== 'none', level],
+      )
+      const actorName = String(context.user?.display_name || context.user?.email || 'Administrador').trim()
+      const accessLabel = {
+        none: 'retirado',
+        view: 'solo lectura',
+        write: 'lectura y moderación',
+        full: 'administración total sin eliminación de cuentas',
+      }[level]
+      await pool.query(
+        `INSERT INTO fallback_notifications(
+           recipient_id, actor_id, actor_name, type, target_id, target_type, content, extra_data
+         )
+         VALUES ($1, $2, $3, 'admin_access_changed', $1, 'profile', $4, $5::jsonb)`,
+        [
+          target.id,
+          context.identity.displayUserId,
+          actorName,
+          `Tu acceso administrativo fue ${accessLabel}.`,
+          JSON.stringify({ access_level: level, delegated: level !== 'none' }),
+        ],
+      )
+      await pool.query(
+        `INSERT INTO fallback_notifications(
+           recipient_id, actor_id, actor_name, type, target_id, target_type, content, extra_data
+         )
+         SELECT DISTINCT m.user_id, $1, $2, 'admin_access_audit', $3, 'profile', $4, $5::jsonb
+         FROM fallback_profile_moderation m
+         WHERE m.admin_is_owner = TRUE
+           AND lower(m.user_id) <> lower($1)
+           AND lower(m.user_id) <> lower($3)`,
+        [
+          context.identity.displayUserId,
+          actorName,
+          target.id,
+          `${actorName} cambió el acceso administrativo de ${target.display_name} a ${accessLabel}.`,
+          JSON.stringify({ access_level: level, target_user_id: target.id }),
+        ],
+      )
+      await recordModerationEvent(pool, context.identity.displayUserId, {
+        context: 'admin_access_changed',
+        contentRef: target.id,
+        verdict: level,
+        metadataPreview: `Acceso delegado: ${accessLabel}`,
+      })
+      invalidateProfileCache()
+      void publishRealtimeEvent(`user:${target.id}`, {
+        event: 'admin_access_changed',
+        accessLevel: level,
+      }).catch(() => {})
+      res.json({ user: await findAdminTarget(pool, target.id) })
     } catch (error) {
       next(error)
     }
@@ -1649,7 +1783,7 @@ function registerAdminModerationRoutes(app, {
 
   app.delete('/v1/data/admin/users/:id', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { ownerOnly: true })
       if (!context) return
       if (req.body?.hard_delete !== true) {
         return res.status(400).json({ error: 'HARD_DELETE_FLAG_REQUIRED' })
@@ -1683,7 +1817,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/stats', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const { rows } = await pool.query(`
         SELECT
@@ -1706,7 +1840,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/suspended-profiles', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const { rows } = await pool.query(
         `SELECT
@@ -1761,7 +1895,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/moderation/appeals', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const status = normalizeId(req.query?.status || 'all')
       if (!['all', 'pending', 'reviewing', 'upheld', 'overturned'].includes(status)) {
@@ -1918,7 +2052,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/reports', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const { rows } = await pool.query(
         `SELECT * FROM fallback_reports ORDER BY created_at DESC LIMIT 200`
@@ -1931,7 +2065,7 @@ function registerAdminModerationRoutes(app, {
 
   app.get('/v1/data/admin/video-reports', authRequired, async (req, res, next) => {
     try {
-      const context = await adminGuard(req, res)
+      const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const { rows } = await pool.query(
         `SELECT * FROM fallback_video_reports ORDER BY created_at DESC LIMIT 200`

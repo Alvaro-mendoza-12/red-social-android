@@ -38,6 +38,7 @@ fun AdminPanelScreen(
     viewModel: AdminPanelViewModel = hiltViewModel()
 ) {
     val isAdmin by viewModel.isAdmin.collectAsState()
+    val adminAccess by viewModel.adminAccess.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -490,6 +491,18 @@ fun AdminPanelScreen(
                     Text(statusMessage ?: "", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
             }
+            if (isAdmin && !adminAccess.canWrite) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Text(
+                        "Acceso de solo lectura: puedes consultar el panel, pero no modificar datos.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
             if (isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
@@ -503,6 +516,7 @@ fun AdminPanelScreen(
                         item(key = "admin-create-badge") {
                             OutlinedButton(
                                 onClick = { showCreateBadgeDialog = true },
+                                enabled = adminAccess.canWrite,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null)
@@ -523,6 +537,9 @@ fun AdminPanelScreen(
                             AdminUserCard(
                                 user = user,
                                 catalog = catalog,
+                                canWrite = adminAccess.canWrite,
+                                canManageAccess = adminAccess.isOwner,
+                                canDelete = adminAccess.canDeleteUsers,
                                 expanded = selectedUser?.id == summary.id,
                                 onOpen = { viewModel.loadUserDetails(summary.id) },
                                 onVerifiedChange = { viewModel.updateUserVerification(summary.id, it) },
@@ -530,6 +547,7 @@ fun AdminPanelScreen(
                                     viewModel.updateUserBadge(summary.id, badgeId, enabled)
                                 },
                                 onFrameChange = { viewModel.updateUserFrame(summary.id, it) },
+                                onAccessChange = { viewModel.updateUserAdminAccess(summary.id, it) },
                                 onSuspend = { userToSuspend = summary.id },
                                 onReactivate = { viewModel.unsuspendUser(summary.id) },
                                 onDelete = { viewModel.prepareUserDeletion(user.id) }
@@ -543,6 +561,8 @@ fun AdminPanelScreen(
                         items(suspendedProfiles, key = { "admin-suspended:${it.userId}" }) { profile ->
                             SuspendedProfileCard(
                                 profile = profile,
+                                canWrite = adminAccess.canWrite,
+                                canDelete = adminAccess.canDeleteUsers,
                                 onReactivate = { viewModel.unsuspendUser(profile.userId) },
                                 onDelete = { viewModel.prepareUserDeletion(profile.userId) }
                             )
@@ -558,6 +578,7 @@ fun AdminPanelScreen(
                         ) { _, report ->
                             UserReportCard(
                                 report = report,
+                                canWrite = adminAccess.canWrite,
                                 onSuspend = { userToSuspend = report.reported_user_id },
                                 onStatusChange = { status -> viewModel.updateReportStatus(report.id ?: "", status, "user") }
                             )
@@ -570,6 +591,7 @@ fun AdminPanelScreen(
                         items(videoReports, key = { "admin-video-report:${it.id}" }) { report ->
                             VideoReportCard(
                                 report = report,
+                                canWrite = adminAccess.canWrite,
                                 onSuspend = { userToSuspend = report.videoOwnerId },
                                 onStatusChange = { status -> viewModel.updateReportStatus(report.id, status, "video") }
                             )
@@ -582,6 +604,7 @@ fun AdminPanelScreen(
                         items(moderationAppeals, key = { "admin-appeal:${it.id}" }) { appeal ->
                             ModerationAppealCard(
                                 appeal = appeal,
+                                canWrite = adminAccess.canWrite,
                                 onReview = {
                                     appealReviewNote = appeal.reviewerNote.orEmpty()
                                     appealToReview = appeal
@@ -749,16 +772,21 @@ private fun AdminUserSearch(query: String, onQueryChange: (String) -> Unit, onSe
 private fun AdminUserCard(
     user: AdminUser,
     catalog: AdminCatalog,
+    canWrite: Boolean,
+    canManageAccess: Boolean,
+    canDelete: Boolean,
     expanded: Boolean,
     onOpen: () -> Unit,
     onVerifiedChange: (Boolean) -> Unit,
     onBadgeChange: (String, Boolean) -> Unit,
     onFrameChange: (String) -> Unit,
+    onAccessChange: (String) -> Unit,
     onSuspend: () -> Unit,
     onReactivate: () -> Unit,
     onDelete: () -> Unit
 ) {
     var frameMenuExpanded by remember(user.id) { mutableStateOf(false) }
+    var accessMenuExpanded by remember(user.id) { mutableStateOf(false) }
     val badgeIds = user.badges.map { it.id }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -803,6 +831,17 @@ private fun AdminUserCard(
                 Spacer(Modifier.height(12.dp))
                 Text("ID: ${user.id}", style = MaterialTheme.typography.bodySmall)
                 Text("Origen: ${user.syncSource} · Alta: ${user.createdAt ?: "Sin fecha"}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    when {
+                        user.adminIsOwner -> "Administrador propietario"
+                        user.adminAccessLevel == "full" -> "Administrador delegado · acceso total sin eliminación"
+                        user.adminAccessLevel == "write" -> "Administrador delegado · moderación"
+                        user.adminAccessLevel == "view" -> "Administrador delegado · solo lectura"
+                        else -> "Usuario sin acceso administrativo"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (user.isAdmin) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 user.content?.let { content ->
                     Text(
                         "Contenido: ${content.posts} publicaciones, ${content.videos} videos, ${content.moments} momentos, ${content.storageObjects} archivos",
@@ -814,6 +853,7 @@ private fun AdminUserCard(
                     Text("Verificación", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Switch(
                         checked = user.isVerified,
+                        enabled = canWrite,
                         onCheckedChange = onVerifiedChange
                     )
                 }
@@ -821,7 +861,7 @@ private fun AdminUserCard(
                 Text("Insignias", fontWeight = FontWeight.SemiBold)
                 catalog.badges.forEach { badge ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = canWrite) {
                             onBadgeChange(badge.id, badge.id !in badgeIds)
                         },
                         verticalAlignment = Alignment.CenterVertically
@@ -837,7 +877,7 @@ private fun AdminUserCard(
                 Spacer(Modifier.height(8.dp))
                 Text("Marco", fontWeight = FontWeight.SemiBold)
                 Box {
-                    OutlinedButton(onClick = { frameMenuExpanded = true }) {
+                    OutlinedButton(enabled = canWrite, onClick = { frameMenuExpanded = true }) {
                         val frameName = catalog.frames.firstOrNull { it.id == user.profileFrame }?.name ?: "Sin marco"
                         Text(frameName)
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -856,6 +896,53 @@ private fun AdminUserCard(
                     }
                 }
 
+                if (canManageAccess) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Acceso administrativo", fontWeight = FontWeight.SemiBold)
+                    if (user.adminIsOwner) {
+                        Text(
+                            "Propietario protegido: este acceso no puede retirarse desde el panel.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Box {
+                            OutlinedButton(
+                                onClick = { accessMenuExpanded = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    when (user.adminAccessLevel) {
+                                        "view" -> "Solo lectura"
+                                        "write" -> "Lectura y moderación"
+                                        "full" -> "Total sin eliminar cuentas"
+                                        else -> "Sin acceso"
+                                    }
+                                )
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            }
+                            DropdownMenu(
+                                expanded = accessMenuExpanded,
+                                onDismissRequest = { accessMenuExpanded = false }
+                            ) {
+                                listOf(
+                                    "none" to "Sin acceso",
+                                    "view" to "Solo lectura",
+                                    "write" to "Lectura y moderación",
+                                    "full" to "Total sin eliminar cuentas"
+                                ).forEach { (level, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            accessMenuExpanded = false
+                                            onAccessChange(level)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -863,14 +950,15 @@ private fun AdminUserCard(
                 ) {
                     if (!user.isAdmin) {
                         if (user.isSuspended) {
-                            OutlinedButton(onClick = onReactivate, modifier = Modifier.fillMaxWidth()) { Text("Reactivar") }
+                            OutlinedButton(enabled = canWrite, onClick = onReactivate, modifier = Modifier.fillMaxWidth()) { Text("Reactivar") }
                         } else {
-                            OutlinedButton(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
+                            OutlinedButton(enabled = canWrite, onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
                         }
                     }
                     if (!user.isAdmin && (user.isTestAccount || user.isSuspended)) {
                         Button(
                             onClick = onDelete,
+                            enabled = canDelete,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) { Text(if (user.isTestAccount) "Eliminar prueba" else "Eliminar cuenta", color = Color.White) }
@@ -884,6 +972,7 @@ private fun AdminUserCard(
 @Composable
 private fun ModerationAppealCard(
     appeal: AdminModerationAppeal,
+    canWrite: Boolean,
     onReview: () -> Unit
 ) {
     val pending = appeal.status == "pending" || appeal.status == "reviewing"
@@ -916,7 +1005,7 @@ private fun ModerationAppealCard(
                 Text("Fundamento del revisor: $it")
             }
             if (pending) {
-                Button(onClick = onReview, modifier = Modifier.fillMaxWidth()) {
+                Button(enabled = canWrite, onClick = onReview, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.RateReview, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Revisar apelación")
@@ -929,6 +1018,8 @@ private fun ModerationAppealCard(
 @Composable
 private fun SuspendedProfileCard(
     profile: SuspendedProfile,
+    canWrite: Boolean,
+    canDelete: Boolean,
     onReactivate: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -966,13 +1057,14 @@ private fun SuspendedProfileCard(
             Text("Hasta: ${profile.suspendedUntil ?: "Permanente"}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onReactivate, modifier = Modifier.weight(1f)) {
+                OutlinedButton(enabled = canWrite, onClick = onReactivate, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Reactivar")
                 }
                 Button(
                     onClick = onDelete,
+                    enabled = canDelete,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -986,7 +1078,12 @@ private fun SuspendedProfileCard(
 }
 
 @Composable
-private fun UserReportCard(report: Report, onSuspend: () -> Unit, onStatusChange: (String) -> Unit) {
+private fun UserReportCard(
+    report: Report,
+    canWrite: Boolean,
+    onSuspend: () -> Unit,
+    onStatusChange: (String) -> Unit
+) {
     var showEvidence by remember(report.evidence_url) { mutableStateOf(false) }
     if (showEvidence && !report.evidence_url.isNullOrBlank()) {
         FullScreenImageDialog(
@@ -1031,24 +1128,26 @@ private fun UserReportCard(report: Report, onSuspend: () -> Unit, onStatusChange
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 if (maxWidth < 430.dp) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
+                        Button(enabled = canWrite, onClick = onSuspend, modifier = Modifier.fillMaxWidth()) { Text("Suspender") }
                         if (report.status == "pendiente") {
                             OutlinedButton(
                                 onClick = { onStatusChange("resuelto") },
+                                enabled = canWrite,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Resolver") }
                             OutlinedButton(
                                 onClick = { onStatusChange("ignorado") },
+                                enabled = canWrite,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Ignorar") }
                         }
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onSuspend) { Text("Suspender") }
+                        Button(enabled = canWrite, onClick = onSuspend) { Text("Suspender") }
                         if (report.status == "pendiente") {
-                            OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
-                            OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+                            OutlinedButton(enabled = canWrite, onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
+                            OutlinedButton(enabled = canWrite, onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
                         }
                     }
                 }
@@ -1058,7 +1157,12 @@ private fun UserReportCard(report: Report, onSuspend: () -> Unit, onStatusChange
 }
 
 @Composable
-private fun VideoReportCard(report: VideoReport, onSuspend: () -> Unit, onStatusChange: (String) -> Unit) {
+private fun VideoReportCard(
+    report: VideoReport,
+    canWrite: Boolean,
+    onSuspend: () -> Unit,
+    onStatusChange: (String) -> Unit
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Video ID: ${report.videoId}", fontWeight = FontWeight.Bold)
@@ -1069,26 +1173,28 @@ private fun VideoReportCard(report: VideoReport, onSuspend: () -> Unit, onStatus
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 if (maxWidth < 430.dp) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onSuspend, modifier = Modifier.fillMaxWidth()) {
+                        Button(enabled = canWrite, onClick = onSuspend, modifier = Modifier.fillMaxWidth()) {
                             Text("Suspender dueño")
                         }
                         if (report.status == "pendiente") {
                             OutlinedButton(
                                 onClick = { onStatusChange("resuelto") },
+                                enabled = canWrite,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Resolver") }
                             OutlinedButton(
                                 onClick = { onStatusChange("ignorado") },
+                                enabled = canWrite,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Ignorar") }
                         }
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onSuspend) { Text("Suspender dueño") }
+                        Button(enabled = canWrite, onClick = onSuspend) { Text("Suspender dueño") }
                         if (report.status == "pendiente") {
-                            OutlinedButton(onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
-                            OutlinedButton(onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
+                            OutlinedButton(enabled = canWrite, onClick = { onStatusChange("resuelto") }) { Text("Resolver") }
+                            OutlinedButton(enabled = canWrite, onClick = { onStatusChange("ignorado") }) { Text("Ignorar") }
                         }
                     }
                 }

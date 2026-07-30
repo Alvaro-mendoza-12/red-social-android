@@ -7101,6 +7101,53 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     }
   })
 
+  app.get('/v1/data/support/admins/:alias', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+      const alias = normalizeId(req.params.alias)
+      const candidateEmails = alias === 'alvaro' || alias === 'alba'
+        ? ['alvaromendozamarin004@gmail.com']
+        : alias === 'novvin' || alias === 'noobin' || alias === 'conectate'
+          ? ['gamergamerff017@gmail.com', 'gamergamerff004@gmail.com']
+          : []
+      if (candidateEmails.length === 0) {
+        return res.status(404).json({ error: 'SUPPORT_ADMIN_NOT_FOUND' })
+      }
+
+      const identity = userIdentity(user)
+      const { rows } = await pool.query(
+        `SELECT
+            id::text AS local_id,
+            COALESCE(supabase_user_id::text, id::text) AS public_id,
+            email,
+            display_name,
+            avatar_url
+         FROM fallback_users
+         WHERE lower(email) = ANY($1::text[])
+         ORDER BY array_position($1::text[], lower(email)), updated_at DESC NULLS LAST`,
+        [candidateEmails],
+      )
+      const target = rows.find((row) => (
+        !identity.ids.has(normalizeId(row.local_id)) &&
+        !identity.ids.has(normalizeId(row.public_id))
+      )) || rows[0]
+      if (!target) return res.status(404).json({ error: 'SUPPORT_ADMIN_NOT_FOUND' })
+
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({
+        admin: {
+          id: target.public_id,
+          display_name: target.display_name || (alias === 'alvaro' ? 'Alvaro' : 'Novvin'),
+          avatar_url: target.avatar_url || '',
+        },
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/messages/inbox', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)

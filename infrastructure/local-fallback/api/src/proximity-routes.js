@@ -3,6 +3,7 @@ const { publishRealtimeEvent } = require('./realtime-publish')
 
 const ALLOWED_GENDERS = new Set(['unspecified', 'woman', 'man'])
 const ALLOWED_LOOKING_FOR = new Set(['any', 'woman', 'man'])
+const RANDOM_MESSAGE_TYPES = new Set(['text', 'sticker', 'audio', 'image'])
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
@@ -128,6 +129,8 @@ async function ensureProximityTables(pool) {
       sender_id TEXT NOT NULL,
       client_message_id TEXT NOT NULL,
       content TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'text',
+      media_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(session_id, sender_id, client_message_id)
     )
@@ -136,6 +139,14 @@ async function ensureProximityTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_random_messages_session
     ON fallback_random_chat_messages(session_id, created_at)
   `)
+  await pool.query(
+    `ALTER TABLE fallback_random_chat_messages
+     ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'text'`,
+  )
+  await pool.query(
+    `ALTER TABLE fallback_random_chat_messages
+     ADD COLUMN IF NOT EXISTS media_url TEXT`,
+  )
 }
 
 async function profileById(pool, userId) {
@@ -184,15 +195,20 @@ async function blockedIds(pool, identity) {
 }
 
 async function activeSessionForUser(db, userId) {
+  const sessions = await activeSessionsForUser(db, userId)
+  return sessions[0] || null
+}
+
+async function activeSessionsForUser(db, userId) {
   const { rows } = await db.query(
     `SELECT id::text, user_a, user_b, status, user_a_reveal, user_b_reveal, created_at, updated_at
      FROM fallback_random_chat_sessions
      WHERE status = 'active' AND (lower(user_a::text) = $1 OR lower(user_b::text) = $1)
      ORDER BY updated_at DESC
-     LIMIT 1`,
+     LIMIT 50`,
     [normalizeId(userId)],
   )
-  return rows[0] || null
+  return rows
 }
 
 function ownsSession(session, identity) {
@@ -371,10 +387,10 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       await client.query('BEGIN')
       await client.query('SELECT pg_advisory_xact_lock($1)', [728144])
       await client.query(`DELETE FROM fallback_random_chat_queue WHERE updated_at < NOW() - INTERVAL '10 minutes'`)
-      const existing = await activeSessionForUser(client, userId)
-      if (existing) {
-        await client.query('COMMIT')
-        return res.json({ status: 'matched', session: await sessionPayload(pool, existing, identity) })
+      const existingSessions = await activeSessionsForUser(client, userId)
+      if (existingSessions.length >= 20) {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ error: 'RANDOM_ACTIVE_SESSION_LIMIT' })
       }
       const { rows: ownPresenceRows } = await client.query(
         `SELECT latitude::float8, longitude::float8, radius_km::float8
@@ -418,9 +434,18 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
         [normalizeId(userId)],
       )
       const ownPresence = ownPresenceRows[0]
+      const existingPeerIds = new Set(existingSessions.map((session) => (
+        normalizeId(session.user_a) === normalizeId(userId)
+          ? normalizeId(session.user_b)
+          : normalizeId(session.user_a)
+      )))
       const candidate = queueRows.find((entry) => {
         const candidateId = normalizeId(entry.user_id)
-        if (blocked.has(candidateId) || !mutuallyCompatible({ gender, looking_for: lookingFor }, entry)) return false
+        if (
+          blocked.has(candidateId) ||
+          existingPeerIds.has(candidateId) ||
+          !mutuallyCompatible({ gender, looking_for: lookingFor }, entry)
+        ) return false
         const distance = haversineKm(ownPresence.latitude, ownPresence.longitude, entry.latitude, entry.longitude)
         return distance <= Math.min(Number(ownPresence.radius_km || 20), Number(entry.radius_km || 20), 20)
       })
@@ -456,13 +481,30 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const session = await activeSessionForUser(pool, identity.displayUserId)
-      if (session) return res.json({ status: 'matched', session: await sessionPayload(pool, session, identity) })
       const { rows } = await pool.query(
         `SELECT 1 FROM fallback_random_chat_queue WHERE lower(user_id::text) = ANY($1::text[]) AND updated_at > NOW() - INTERVAL '10 minutes' LIMIT 1`,
         [identity.values],
       )
-      res.json({ status: rows[0] ? 'waiting' : 'idle' })
+      // An existing conversation must not consume the polling result while the
+      // same user is actively looking for an additional anonymous match.
+      if (rows[0]) return res.json({ status: 'waiting' })
+      const session = await activeSessionForUser(pool, identity.displayUserId)
+      if (session) return res.json({ status: 'matched', session: await sessionPayload(pool, session, identity) })
+      res.json({ status: 'idle' })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/proximity/random/sessions', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const sessions = await activeSessionsForUser(pool, identity.displayUserId)
+      const items = await Promise.all(sessions.map((session) => sessionPayload(pool, session, identity)))
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ items })
     } catch (error) {
       next(error)
     }
@@ -509,7 +551,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       const session = await sessionById(pool, sessionId)
       if (!session || !ownsSession(session, identity)) return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       const { rows } = await pool.query(
-        `SELECT id::text, sender_id, client_message_id, content, created_at
+        `SELECT id::text, sender_id, client_message_id, content, content_type, media_url, created_at
          FROM fallback_random_chat_messages
          WHERE session_id = $1::uuid
          ORDER BY created_at
@@ -522,6 +564,8 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
           client_message_id: row.client_message_id,
           sender: identity.ids.has(normalizeId(row.sender_id)) ? 'me' : 'peer',
           content: row.content,
+          content_type: row.content_type || 'text',
+          media_url: row.media_url || null,
           created_at: row.created_at,
         })),
       })
@@ -542,18 +586,33 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
         return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       }
       const content = cleanText(req.body?.content, 1000)
+      const contentType = normalizeId(req.body?.contentType ?? req.body?.content_type) || 'text'
+      const mediaUrl = cleanText(req.body?.mediaUrl ?? req.body?.media_url, 1200) || null
       const clientMessageId = validUuid(req.body?.clientMessageId ?? req.body?.client_message_id) || crypto.randomUUID()
-      if (!content) return res.status(400).json({ error: 'MESSAGE_REQUIRED' })
+      if (!RANDOM_MESSAGE_TYPES.has(contentType)) {
+        return res.status(400).json({ error: 'RANDOM_MESSAGE_TYPE_INVALID' })
+      }
+      const revealSum = Number(session.user_a_reveal || 0) + Number(session.user_b_reveal || 0)
+      const requiredRevealSum = { text: 0, sticker: 2, audio: 3, image: 4 }[contentType]
+      if (revealSum < requiredRevealSum) {
+        return res.status(403).json({ error: 'RANDOM_MESSAGE_TYPE_LOCKED' })
+      }
+      if (contentType === 'text' && !content) return res.status(400).json({ error: 'MESSAGE_REQUIRED' })
+      if (contentType !== 'text' && !mediaUrl && !content) {
+        return res.status(400).json({ error: 'MESSAGE_MEDIA_REQUIRED' })
+      }
       let { rows } = await pool.query(
-        `INSERT INTO fallback_random_chat_messages(session_id, sender_id, client_message_id, content)
-         VALUES ($1::uuid, $2, $3, $4)
+        `INSERT INTO fallback_random_chat_messages(
+           session_id, sender_id, client_message_id, content, content_type, media_url
+         )
+         VALUES ($1::uuid, $2, $3, $4, $5, $6)
          ON CONFLICT (session_id, sender_id, client_message_id) DO NOTHING
-         RETURNING id::text, client_message_id, content, created_at`,
-        [sessionId, identity.displayUserId, clientMessageId, content],
+         RETURNING id::text, client_message_id, content, content_type, media_url, created_at`,
+        [sessionId, identity.displayUserId, clientMessageId, content, contentType, mediaUrl],
       )
       if (!rows[0]) {
         const existing = await pool.query(
-          `SELECT id::text, client_message_id, content, created_at
+          `SELECT id::text, client_message_id, content, content_type, media_url, created_at
            FROM fallback_random_chat_messages
            WHERE session_id = $1::uuid AND lower(sender_id::text) = $2 AND client_message_id = $3
            LIMIT 1`,
@@ -611,10 +670,6 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       await pool.query(
         `UPDATE fallback_random_chat_sessions SET status = 'ended', ended_at = NOW(), updated_at = NOW() WHERE id = $1::uuid`,
         [sessionId],
-      )
-      await pool.query(
-        `UPDATE fallback_proximity_presence SET random_enabled = FALSE, updated_at = NOW() WHERE lower(user_id::text) = ANY($1::text[])`,
-        [identity.values],
       )
       void publishRealtimeEvent(`random-chat:${sessionId}`, { event: 'random_session_ended', sessionId })
       res.json({ status: 'ended' })

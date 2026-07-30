@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.AdminDashboardStats
+import conectate.com.data.localfallback.AdminAccessInfo
 import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminUser
 import conectate.com.data.localfallback.AdminModerationAppeal
@@ -66,6 +67,9 @@ class AdminPanelViewModel @Inject constructor(
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
 
+    private val _adminAccess = MutableStateFlow(AdminAccessInfo())
+    val adminAccess: StateFlow<AdminAccessInfo> = _adminAccess.asStateFlow()
+
     private val _suspendedProfiles = MutableStateFlow<List<SuspendedProfile>>(emptyList())
     val suspendedProfiles: StateFlow<List<SuspendedProfile>> = _suspendedProfiles.asStateFlow()
     private val _moderationAppeals = MutableStateFlow<List<AdminModerationAppeal>>(emptyList())
@@ -124,9 +128,11 @@ class AdminPanelViewModel @Inject constructor(
                         return@launch
                     }
 
-                val result = localFallbackApiClient.adminCheckAccess(token)
+                val result = localFallbackApiClient.adminGetAccess(token)
                 if (result.isSuccess) {
-                    _isAdmin.value = true
+                    val access = result.getOrThrow()
+                    _adminAccess.value = access
+                    _isAdmin.value = access.isAdmin
                     loadStats(token)
                     loadCatalog(token)
                     loadUsers(token, _userSearch.value)
@@ -135,6 +141,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadReports(token)
                     loadSystemHealth()
                 } else {
+                    _adminAccess.value = AdminAccessInfo()
                     _isAdmin.value = false
                     _errorMessage.value = adminError(
                         result.exceptionOrNull(),
@@ -359,6 +366,40 @@ class AdminPanelViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _errorMessage.value = adminError(e, "No se pudo crear la insignia.")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateUserAdminAccess(userId: String, accessLevel: String) {
+        if (!_adminAccess.value.isOwner) {
+            _errorMessage.value = "Solo los administradores propietarios pueden cambiar estos permisos."
+            return
+        }
+        val normalized = accessLevel.lowercase().takeIf { it in setOf("none", "view", "write", "full") }
+            ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                localFallbackApiClient.adminUpdateUserAccess(token, userId, normalized)
+                    .onSuccess { updated ->
+                        replaceUser(updated)
+                        if (_selectedUser.value?.id == updated.id) _selectedUser.value = updated
+                        _statusMessage.value = when (normalized) {
+                            "none" -> "Acceso administrativo retirado."
+                            "view" -> "Acceso de solo lectura concedido."
+                            "write" -> "Acceso de moderación concedido."
+                            else -> "Acceso administrativo total concedido; la eliminación de cuentas sigue protegida."
+                        }
+                    }
+                    .onFailure {
+                        _errorMessage.value = adminError(it, "No se pudo cambiar el acceso administrativo.")
+                    }
+            } catch (error: Exception) {
+                _errorMessage.value = adminError(error, "No se pudo cambiar el acceso administrativo.")
             } finally {
                 _isLoading.value = false
             }
