@@ -60,6 +60,13 @@ const supabaseAnonKey = legacySupabaseImportEnabled
 const supabaseAdminKey = legacySupabaseImportEnabled
   ? String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
   : ''
+// Account deletion must also remove a migrated identity even after legacy
+// imports are disabled. Keep these credentials isolated from login/sync paths:
+// they are used only by the audited hard-delete operation below.
+const externalAuthDeleteUrl = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '')
+const externalAuthDeleteKey = String(
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+).trim()
 const adminSyncToken = String(process.env.ADMIN_SYNC_TOKEN || '').trim()
 const passwordResetDelivery = String(process.env.PASSWORD_RESET_DELIVERY || 'console').trim().toLowerCase()
 const storageRoot = process.env.STORAGE_ROOT || require('path').join(process.cwd(), 'storage-data')
@@ -2302,17 +2309,37 @@ app.post('/v1/auth/sync-to-supabase', authRequired, async (req, res, next) => {
 
 async function deleteExternalAuthUser(userId) {
   const supabaseAdmin = getSupabaseAdminClient()
-  if (!supabaseAdmin) {
+  if (supabaseAdmin) {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    if (!error) return { deleted: true, alreadyMissing: false }
+    if (Number(error.status) === 404) return { deleted: false, alreadyMissing: true }
+    const deleteError = new Error('EXTERNAL_AUTH_DELETE_FAILED')
+    deleteError.status = 502
+    deleteError.cause = error
+    throw deleteError
+  }
+  if (!externalAuthDeleteUrl || !externalAuthDeleteKey) {
     const error = new Error('EXTERNAL_AUTH_DELETE_UNAVAILABLE')
     error.status = 409
     throw error
   }
-  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
-  if (!error) return { deleted: true, alreadyMissing: false }
-  if (Number(error.status) === 404) return { deleted: false, alreadyMissing: true }
+
+  const response = await fetch(
+    `${externalAuthDeleteUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: externalAuthDeleteKey,
+        authorization: `Bearer ${externalAuthDeleteKey}`,
+      },
+    },
+  )
+  if (response.ok) return { deleted: true, alreadyMissing: false }
+  if (response.status === 404) return { deleted: false, alreadyMissing: true }
+  const payload = await parseJsonResponse(response)
   const deleteError = new Error('EXTERNAL_AUTH_DELETE_FAILED')
   deleteError.status = 502
-  deleteError.cause = error
+  deleteError.cause = toRemoteAuthError(response, payload)
   throw deleteError
 }
 
