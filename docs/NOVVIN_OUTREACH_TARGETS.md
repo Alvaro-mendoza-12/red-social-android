@@ -11,6 +11,7 @@ corresponde, pregunta a moderación. No automatices publicaciones ni envíes men
 - Android Dev Perú en Meetup: <https://www.meetup.com/fr-FR/android-dev-peru/>
 - GDG Tacna: <https://gdg.community.dev/gdg-tacna/>
 - Flutter Lima en Meetup: <https://www.meetup.com/en-AU/flutter-peru/>
+- Perú TECH en Meetup: <https://www.meetup.com/es-es/perutech/>
 
 ## Comunidades hispanas y de producto
 
@@ -18,6 +19,8 @@ corresponde, pregunta a moderación. No automatices publicaciones ni envíes men
 - ASEDI / ecosistema de startups: <https://asedi.pe/>
 - r/programacionESP: <https://www.reddit.com/r/programacionESP/>
 - r/AppDevelopers: <https://www.reddit.com/r/AppDevelopers/>
+- Android Central · Developer Beta Testing: <https://forums.androidcentral.com/forums/developer-beta-testing.728/>
+- Google Groups · desarrolladores-android: <https://groups.google.com/g/desarrolladores-android>
 
 ## Publicación sugerida
 
