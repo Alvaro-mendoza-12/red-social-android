@@ -30,6 +30,28 @@ corresponde, pregunta a moderación. No automatices publicaciones ni envíes men
 > ni reseñas positivas. Play: https://play.google.com/store/apps/details?id=conectate.com
 > Web: https://red-social-android.vercel.app
 
+## Contactos directos (mensaje único, sin spam)
+
+### Android Dev Perú
+
+Contacto público: `android@devperu.org`.
+
+Asunto: `Novvin: beta Android peruana para feedback de la comunidad`
+
+> Hola, equipo de Android Dev Perú. Soy parte del equipo de Novvin, una red social
+> Android + web con videos, chats, comunidades y salas de voz. Buscamos 10 testers
+> reales para probar registro, publicación y chat, y recibir feedback honesto. No
+> pedimos pagos ni reseñas positivas. ¿Podrían indicarnos el canal correcto para
+> compartir esta beta con su comunidad? Play: https://play.google.com/store/apps/details?id=conectate.com
+> Web: https://red-social-android.vercel.app
+
+### Perú TECH / Perú Dev
+
+Solicita primero permiso a moderación en Meetup o Discord. Presenta Novvin como una
+beta para feedback técnico y no como publicidad masiva; incluye el enlace de Play,
+el enlace web y el dispositivo que quieres probar. Si no autorizan autopromoción, no
+publiques.
+
 ## Control de resultados
 
 Registra solo a personas que creen una cuenta y hagan una acción dentro de la aplicación.
