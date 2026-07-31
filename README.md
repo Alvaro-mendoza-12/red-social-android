@@ -7,6 +7,13 @@ Fecha de ultima revision documental: 2026-07-04.
 
 Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
 
+## Probar Novvin
+
+- **Android (Google Play):** <https://play.google.com/store/apps/details?id=conectate.com>
+- **Web:** <https://red-social-android.vercel.app>
+
+Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios reales ayudan a priorizar mejoras; no se solicitan pagos para empezar.
+
 ## 📱 Características
 
 - ✅ **Autenticación** con email y número de teléfono
