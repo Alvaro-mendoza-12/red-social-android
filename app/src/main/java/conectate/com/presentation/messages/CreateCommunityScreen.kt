@@ -16,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
@@ -26,8 +24,7 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.AddAPhoto
-import conectate.com.presentation.components.ImageCropPreset
-import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.util.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,7 +39,7 @@ fun CreateCommunityScreen(
     var description by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
-    var cropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showMediaPicker by remember { mutableStateOf(false) }
 
     val isCreating by viewModel.isCreating.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -50,25 +47,37 @@ fun CreateCommunityScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        cropSourceUri = uri
-    }
 
-    cropSourceUri?.let { source ->
-        SimpleImageCropDialog(
-            sourceUri = source,
-            title = "Ajustar icono de la comunidad",
-            initialPreset = ImageCropPreset.SQUARE,
-            onDismiss = { cropSourceUri = null },
-            onCropped = { cropped ->
-                cropSourceUri = null
+    if (showMediaPicker) {
+        MessageMediaComposer(
+            initialFilter = "all",
+            maxItems = 1,
+            allowedMediaTypes = setOf("image", "video"),
+            title = "Elegir icono de la comunidad",
+            confirmContentDescription = "Usar como icono",
+            showViewOnceOption = false,
+            showCaptionInput = false,
+            isSending = false,
+            onDismiss = { showMediaPicker = false },
+            onSend = { selected, _ ->
+                val media = selected.firstOrNull() ?: return@MessageMediaComposer
+                showMediaPicker = false
                 scope.launch {
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(cropped)?.use { it.readBytes() }
+                        if (media.type == "video") {
+                            VideoUtils.generateVideoThumbnail(context, media.uri)
+                        } else {
+                            context.contentResolver.openInputStream(media.uri)?.use { it.readBytes() }
+                        }
                     }
                     viewModel.setImageBytes(bytes)
+                    if (bytes == null) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No se pudo preparar ese archivo. Elige otro.",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         )
@@ -112,7 +121,7 @@ fun CreateCommunityScreen(
                         .size(100.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { launcher.launch("image/*") },
+                        .clickable { showMediaPicker = true },
                     contentAlignment = Alignment.Center
                 ) {
                     if (selectedImageBytes != null) {

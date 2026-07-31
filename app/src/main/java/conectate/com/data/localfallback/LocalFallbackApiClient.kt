@@ -1823,6 +1823,32 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun openCommunityVoiceChannel(
+        accessToken: String,
+        communityId: String,
+        channelId: String
+    ): Result<VoiceRoom> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/messages/communities/${urlEncode(communityId)}/channels/${urlEncode(channelId)}/voice-room"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val decoded = json.decodeFromString<LocalFallbackVoiceRoomResponse>(body)
+                decoded.room?.let { Result.success(mapVoiceRoom(it)) }
+                    ?: Result.failure(IllegalStateException("El canal de voz no devolvió una sala válida."))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun loadCommunityMemberProfiles(
         accessToken: String,
         communityId: String

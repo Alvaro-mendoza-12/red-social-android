@@ -185,6 +185,8 @@ assert.deepStrictEqual(
       is_default: false,
       paused_until: '2099-01-01T00:00:00.000Z',
       pause_reason: 'Mantenimiento',
+      voice_room_id: 'voice-room-1',
+      voice_participant_count: 3,
     },
     { canManage: true, canPause: true },
   ),
@@ -201,6 +203,8 @@ assert.deepStrictEqual(
     isPaused: true,
     canManage: true,
     canPause: true,
+    voiceRoomId: 'voice-room-1',
+    voiceParticipantCount: 3,
   },
 )
 assert.deepStrictEqual(

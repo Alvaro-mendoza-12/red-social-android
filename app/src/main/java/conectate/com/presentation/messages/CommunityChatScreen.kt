@@ -39,6 +39,7 @@ import conectate.com.presentation.messages.VoiceState
 import conectate.com.presentation.components.FullScreenImageDialog
 import conectate.com.presentation.components.MediaItem
 import conectate.com.presentation.components.DeviceAudioPickerDialog
+import conectate.com.presentation.components.rememberRealtimeProgress
 import conectate.com.data.model.CommunityChannel
 import conectate.com.util.Constants
 import kotlinx.coroutines.launch
@@ -93,6 +94,7 @@ fun CommunityChatScreen(
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
     val channels by viewModel.channels.collectAsState()
     val selectedChannel by viewModel.selectedChannel.collectAsState()
+    val isOpeningVoiceChannel by viewModel.isOpeningVoiceChannel.collectAsState()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
@@ -436,6 +438,20 @@ fun CommunityChatScreen(
                         }
                     }
                     is CommunityChatUiState.Success -> {
+                        val activeVoiceChannel = selectedChannel?.takeIf { it.type == "voice" }
+                        if (activeVoiceChannel != null) {
+                            CommunityVoiceChannelPreview(
+                                channel = activeVoiceChannel,
+                                isOpening = isOpeningVoiceChannel,
+                                onOpen = {
+                                    viewModel.openVoiceChannel(activeVoiceChannel) { roomId ->
+                                        navController.navigate(
+                                            conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(roomId)
+                                        )
+                                    }
+                                }
+                            )
+                        } else {
                         val memberProfiles = state.memberProfiles
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
@@ -578,6 +594,7 @@ fun CommunityChatScreen(
                                 }
                             }
                         }
+                        }
                     }
                     is CommunityChatUiState.Error -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -602,14 +619,31 @@ fun CommunityChatScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(activeChannel.name, fontWeight = FontWeight.Bold)
-                                Text("Canal de voz: entra a las salas para conversar.")
+                                Text(
+                                    if (activeChannel.voiceParticipantCount == 1) {
+                                        "1 persona conectada en este canal privado"
+                                    } else {
+                                        "${activeChannel.voiceParticipantCount} personas conectadas en este canal privado"
+                                    }
+                                )
                             }
                             Button(onClick = {
-                                navController.navigate(conectate.com.presentation.navigation.Screen.VoiceRooms.route)
-                            }) {
-                                Icon(Icons.Default.Mic, null)
+                                viewModel.openVoiceChannel(activeChannel) { roomId ->
+                                    navController.navigate(
+                                        conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(roomId)
+                                    )
+                                }
+                            }, enabled = !isOpeningVoiceChannel) {
+                                if (isOpeningVoiceChannel) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.Mic, null)
+                                }
                                 Spacer(Modifier.width(6.dp))
-                                Text("Abrir")
+                                Text(if (isOpeningVoiceChannel) "Preparando" else "Entrar")
                             }
                         }
                     }
@@ -1578,6 +1612,123 @@ fun CommunityChatScreen(
                 composerInitialUris = emptyList()
             }
         )
+    }
+}
+
+@Composable
+private fun CommunityVoiceChannelPreview(
+    channel: CommunityChannel,
+    isOpening: Boolean,
+    onOpen: () -> Unit,
+) {
+    val waveProgress = rememberRealtimeProgress(
+        key = "community-voice-${channel.id}",
+        durationMillis = 2_400L,
+        running = true,
+        repeat = true,
+    )
+    val participantLabel = if (channel.voiceParticipantCount == 1) {
+        "1 persona conectada"
+    } else {
+        "${channel.voiceParticipantCount} personas conectadas"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            tonalElevation = 4.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 30.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(92.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            repeat(5) { index ->
+                                val radians = (waveProgress * Math.PI * 2.0) + index * 0.88
+                                val normalized = ((kotlin.math.sin(radians) + 1.0) / 2.0).toFloat()
+                                Box(
+                                    modifier = Modifier
+                                        .width(7.dp)
+                                        .height((22f + normalized * 34f).dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = channel.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = channel.description
+                        ?.takeIf(String::isNotBlank)
+                        ?: "Sala privada para conversar con los miembros de esta comunidad.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text(participantLabel) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Groups,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                )
+                Button(
+                    onClick = onOpen,
+                    enabled = !isOpening && !channel.isPaused,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (isOpening) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.Default.Mic, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        when {
+                            channel.isPaused -> "Canal pausado"
+                            isOpening -> "Preparando canal"
+                            else -> "Entrar al canal de voz"
+                        }
+                    )
+                }
+                Text(
+                    text = "Este canal solo existe dentro de la comunidad y no aparece en Salas de voz.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
     }
 }
 

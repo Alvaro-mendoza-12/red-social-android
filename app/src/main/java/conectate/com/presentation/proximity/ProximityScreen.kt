@@ -3,12 +3,6 @@ package conectate.com.presentation.proximity
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -62,6 +56,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -330,25 +325,19 @@ private fun RadarVisualization(
     radiusKm: Float,
     profiles: List<NearbyProfile>,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "proximity-radar")
-    val sweepAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2_800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "radar-sweep",
+    val sweepProgress = rememberRealtimeProgress(
+        key = "radar-sweep",
+        durationMillis = 3_200L,
+        running = enabled,
+        repeat = true,
     )
-    val pulseProgress by infiniteTransition.animateFloat(
-        initialValue = 0.08f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "radar-pulse",
+    val pulseProgress = rememberRealtimeProgress(
+        key = "radar-pulse",
+        durationMillis = 1_900L,
+        running = enabled,
+        repeat = true,
     )
+    val sweepAngle = sweepProgress * 360f
     val primary = MaterialTheme.colorScheme.primary
     val surface = MaterialTheme.colorScheme.surfaceVariant
 
@@ -385,16 +374,24 @@ private fun RadarVisualization(
                     strokeWidth = 2f,
                 )
                 if (enabled) {
+                    drawArc(
+                        color = primary.copy(alpha = 0.16f),
+                        startAngle = sweepAngle - 34f,
+                        sweepAngle = 34f,
+                        useCenter = true,
+                        topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
+                        size = androidx.compose.ui.geometry.Size(outerRadius * 2f, outerRadius * 2f),
+                    )
                     drawCircle(
                         color = primary.copy(alpha = (1f - pulseProgress) * 0.28f),
                         radius = outerRadius * pulseProgress,
                         center = center,
                         style = Stroke(width = 4f),
                     )
-                    repeat(10) { trailIndex ->
-                        val trailFraction = 1f - (trailIndex / 10f)
+                    repeat(14) { trailIndex ->
+                        val trailFraction = 1f - (trailIndex / 14f)
                         val radians = Math.toRadians(
-                            (sweepAngle - trailIndex * 4.5f).toDouble()
+                            (sweepAngle - trailIndex * 2.5f).toDouble()
                         )
                         val beamEnd = Offset(
                             x = center.x + cos(radians).toFloat() * outerRadius,
@@ -404,7 +401,7 @@ private fun RadarVisualization(
                             color = primary.copy(alpha = 0.08f + 0.76f * trailFraction),
                             start = center,
                             end = beamEnd,
-                            strokeWidth = 2f + 4f * trailFraction,
+                            strokeWidth = 2f + 5f * trailFraction,
                         )
                     }
                     profiles.take(24).forEach { profile ->
@@ -431,7 +428,7 @@ private fun RadarVisualization(
                     tint = primary,
                 )
                 Text(
-                    if (enabled) "Radar activo · ${radiusKm.toInt()} km" else "Radar apagado",
+                    if (enabled) "Buscando · ${radiusKm.toInt()} km" else "Radar apagado",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                 )

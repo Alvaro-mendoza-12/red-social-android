@@ -130,7 +130,9 @@ data class CommunityChannel(
     val pauseReason: String? = null,
     val isPaused: Boolean = false,
     val canManage: Boolean = false,
-    val canPause: Boolean = false
+    val canPause: Boolean = false,
+    val voiceRoomId: String? = null,
+    val voiceParticipantCount: Int = 0
 )
 
 @Serializable

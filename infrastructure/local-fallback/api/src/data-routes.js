@@ -3557,6 +3557,11 @@ function communityChannelPayload(row, { canManage = false, canPause = false } = 
     isPaused: Number.isFinite(pausedUntilMillis) && pausedUntilMillis > Date.now(),
     canManage,
     canPause,
+    voiceRoomId: textOf(normalizedRow, ['voice_room_id', 'voiceRoomId'], null),
+    voiceParticipantCount: Math.max(
+      0,
+      numberOf(normalizedRow, ['voice_participant_count', 'voiceParticipantCount'], 0),
+    ),
   }
 }
 
@@ -3849,6 +3854,8 @@ async function localVoiceRooms(pool, limit = 1000) {
             agora_channel_name,
             readable_id,
             room_mode,
+            community_id,
+            community_channel_id::text,
             created_at,
             updated_at
          FROM fallback_voice_rooms
@@ -3860,6 +3867,19 @@ async function localVoiceRooms(pool, limit = 1000) {
       return rows.map(normalizeImportedRow)
     },
   )
+}
+
+async function canAccessCommunityVoiceRoom(pool, user, room) {
+  const communityId = normalizeId(textOf(room, ['community_id', 'communityId'], ''))
+  if (!communityId) return true
+  const payload = await loadCollectionRoomPayload(pool, user, 'community', communityId)
+  if (!payload) return false
+  const identity = userIdentity(user)
+  const community = payload.room || payload.chat || {}
+  const isCreator = rowMatchesAny(community, ['creator_id', 'owner_id', 'user_id'], identity.ids)
+  const isMember = (payload.participants || [])
+    .some((participant) => identity.ids.has(normalizeId(participant.id)))
+  return isCreator || isMember
 }
 
 function mapVoiceParticipant(row, profilesById) {
@@ -4510,6 +4530,7 @@ async function ensureLocalDataTables(pool) {
       paused_by TEXT,
       created_by TEXT NOT NULL DEFAULT '',
       is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      voice_room_id UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -4526,6 +4547,7 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS paused_by TEXT`,
     `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS voice_room_id UUID`,
     `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_community_channels ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
@@ -4737,6 +4759,8 @@ async function ensureLocalDataTables(pool) {
       agora_channel_name TEXT NOT NULL DEFAULT '',
       readable_id TEXT,
       room_mode TEXT NOT NULL DEFAULT 'casual',
+      community_id TEXT,
+      community_channel_id UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -4751,6 +4775,8 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS agora_channel_name TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS readable_id TEXT`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS room_mode TEXT NOT NULL DEFAULT 'casual'`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS community_id TEXT`,
+    `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS community_channel_id UUID`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_voice_rooms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
@@ -4759,6 +4785,11 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_voice_rooms_active_created
      ON fallback_voice_rooms(is_active, created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_voice_rooms_community_channel
+     ON fallback_voice_rooms(community_channel_id)
+     WHERE community_channel_id IS NOT NULL`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_voice_room_participants (
@@ -8375,10 +8406,16 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const context = await communityChannelContext(req, res)
       if (!context) return
       const { rows } = await pool.query(
-        `SELECT *
-         FROM fallback_community_channels
-         WHERE lower(community_id) = $1 AND is_deleted = FALSE
-         ORDER BY is_default DESC, position ASC, created_at ASC`,
+        `SELECT c.*,
+                (
+                  SELECT COUNT(*)::int
+                  FROM fallback_voice_room_participants p
+                  WHERE lower(p.room_id) = lower(COALESCE(c.voice_room_id::text, ''))
+                    AND p.updated_at >= NOW() - INTERVAL '2 minutes'
+                ) AS voice_participant_count
+         FROM fallback_community_channels c
+         WHERE lower(c.community_id) = $1 AND c.is_deleted = FALSE
+         ORDER BY c.is_default DESC, c.position ASC, c.created_at ASC`,
         [context.roomId],
       )
       res.json({
@@ -8387,6 +8424,123 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
           canManage: context.capabilities.canManageChannels,
           canPause: context.capabilities.canPauseChannels,
         })),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/messages/communities/:roomId/channels/:channelId/voice-room', authRequired, async (req, res, next) => {
+    try {
+      const context = await communityChannelContext(req, res)
+      if (!context) return
+      const channelId = normalizeId(req.params.channelId)
+      if (!validUuid(channelId)) return res.status(400).json({ error: 'CHANNEL_ID_REQUIRED' })
+
+      const channelResult = await pool.query(
+        `UPDATE fallback_community_channels
+         SET voice_room_id = COALESCE(voice_room_id, gen_random_uuid()),
+             updated_at = NOW()
+         WHERE lower(community_id) = $1
+           AND lower(id::text) = $2
+           AND channel_type = 'voice'
+           AND is_deleted = FALSE
+         RETURNING *`,
+        [context.roomId, channelId],
+      )
+      const channel = channelResult.rows[0]
+      if (!channel) return res.status(404).json({ error: 'VOICE_CHANNEL_NOT_FOUND' })
+      const pausedUntil = channel.paused_until ? new Date(channel.paused_until).getTime() : 0
+      if (Number.isFinite(pausedUntil) && pausedUntil > Date.now()) {
+        return res.status(409).json({ error: 'VOICE_CHANNEL_PAUSED' })
+      }
+
+      const roomName = cleanText(
+        `${collectionRoomTitle(context.room, 'Comunidad')} · ${textOf(channel, ['name'], 'Voz')}`,
+        120,
+      ) || 'Canal de voz de la comunidad'
+      const roomDescription = cleanText(
+        textOf(channel, ['description'], '') || 'Conversación privada para miembros de la comunidad.',
+        500,
+      )
+      const creatorId = normalizeId(
+        textOf(context.room, ['creator_id', 'owner_id', 'user_id'], context.identity.displayUserId),
+      ) || context.identity.displayUserId
+      const voiceRoomId = normalizeId(textOf(channel, ['voice_room_id'], ''))
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_voice_rooms(
+            id,
+            name,
+            description,
+            creator_id,
+            max_participants,
+            is_public,
+            is_active,
+            agora_channel_name,
+            readable_id,
+            room_mode,
+            community_id,
+            community_channel_id,
+            created_at,
+            updated_at
+         )
+         VALUES (
+            $1::uuid,
+            $2,
+            $3,
+            $4,
+            200,
+            FALSE,
+            TRUE,
+            'community_' || $5,
+            'community_' || $5,
+            'casual',
+            $6,
+            $7::uuid,
+            NOW(),
+            NOW()
+         )
+         ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            is_public = FALSE,
+            is_active = TRUE,
+            community_id = EXCLUDED.community_id,
+            community_channel_id = EXCLUDED.community_channel_id,
+            updated_at = NOW()
+         RETURNING *`,
+        [
+          voiceRoomId,
+          roomName,
+          roomDescription,
+          creatorId,
+          channelId.replaceAll('-', ''),
+          context.roomId,
+          channelId,
+        ],
+      )
+      const participantResult = await pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM fallback_voice_room_participants
+         WHERE lower(room_id) = $1
+           AND updated_at >= NOW() - INTERVAL '2 minutes'`,
+        [voiceRoomId],
+      )
+      const participantCount = Math.max(0, Number(participantResult.rows[0]?.count) || 0)
+      const profilesById = indexProfiles([
+        ...(await importedRows(pool, 'profiles', 5000)),
+        ...(await fallbackUserProfileRows(pool, 5000)),
+      ])
+      clearVoiceCaches()
+      res.json({
+        room: mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, participantCount),
+        channel: communityChannelPayload({
+          ...channel,
+          voice_participant_count: participantCount,
+        }, {
+          canManage: context.capabilities.canManageChannels,
+          canPause: context.capabilities.canPauseChannels,
+        }),
       })
     } catch (error) {
       next(error)
@@ -8530,6 +8684,12 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         [context.roomId, channelId],
       )
       if (!rows[0]) return res.status(409).json({ error: 'DEFAULT_CHANNEL_CANNOT_BE_DELETED' })
+      await pool.query(
+        `UPDATE fallback_voice_rooms
+         SET is_active = FALSE, updated_at = NOW()
+         WHERE lower(community_channel_id::text) = $1`,
+        [channelId],
+      )
       await pool.query(
         `UPDATE fallback_room_messages
          SET channel_id = $3::uuid, updated_at = NOW()
@@ -9791,7 +9951,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         participantsByRoom.set(id, [...(participantsByRoom.get(id) || []), row])
       }
       const items = sortByDateDesc(
-        rooms.map((row) => {
+        rooms.filter((row) => !normalizeId(textOf(row, ['community_id', 'communityId'], ''))).map((row) => {
           const id = voiceRoomId(row)
           return mapVoiceRoom(row, profilesById, countByRoom.get(id) || 0, participantsByRoom.get(id) || [])
         }),
@@ -9806,6 +9966,8 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
 
   app.get('/v1/data/voice/rooms/:roomId', authRequired, async (req, res, next) => {
     try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const cleanRoomId = normalizeId(req.params.roomId)
       const [importedProfiles, localProfiles, importedRooms, fallbackParticipants, fallbackRooms] = await Promise.all([
         importedRows(pool, 'profiles', 5000),
@@ -9818,6 +9980,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const profilesById = indexProfiles([...importedProfiles, ...localProfiles])
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (!(await canAccessCommunityVoiceRoom(pool, user, room))) {
+        return res.status(403).json({ error: 'VOICE_ROOM_COMMUNITY_ACCESS_DENIED' })
+      }
       const actualRoomId = voiceRoomId(room) || cleanRoomId
       const participantRows = fallbackParticipants
         .filter((row) => voiceParticipantRoomId(row) === actualRoomId)
@@ -9843,6 +10008,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (!(await canAccessCommunityVoiceRoom(pool, user, room))) {
+        return res.status(403).json({ error: 'VOICE_ROOM_COMMUNITY_ACCESS_DENIED' })
+      }
       const actualRoomId = voiceRoomId(room) || cleanRoomId
 
       const identity = userIdentity(user)
@@ -9927,6 +10095,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (!(await canAccessCommunityVoiceRoom(pool, user, room))) {
+        return res.status(403).json({ error: 'VOICE_ROOM_COMMUNITY_ACCESS_DENIED' })
+      }
       if (voiceRoomMode(room) !== 'stage') {
         return res.status(409).json({ error: 'VOICE_STAGE_REQUIRED' })
       }
@@ -9978,6 +10149,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (!(await canAccessCommunityVoiceRoom(pool, user, room))) {
+        return res.status(403).json({ error: 'VOICE_ROOM_COMMUNITY_ACCESS_DENIED' })
+      }
       if (voiceRoomMode(room) !== 'stage') {
         return res.status(409).json({ error: 'VOICE_STAGE_REQUIRED' })
       }
@@ -10096,6 +10270,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const rooms = [...(await importedRows(pool, 'voice_rooms', 1000)), ...(await localVoiceRooms(pool, 1000))]
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      if (normalizeId(textOf(room, ['community_id', 'communityId'], ''))) {
+        return res.status(409).json({ error: 'VOICE_ROOM_COMMUNITY_MANAGED' })
+      }
       const actualRoomId = voiceRoomId(room) || cleanRoomId
       if (!rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)) {
         return res.status(403).json({ error: 'VOICE_ROOM_DELETE_DENIED' })

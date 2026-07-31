@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -1946,18 +1947,17 @@ fun ReactionPicker(
 
 @Composable
 fun FloatingReaction(reaction: ReactionEvent) {
-    val progress = remember(reaction.id) { Animatable(0f) }
-    LaunchedEffect(reaction.id) {
-        progress.snapTo(0f)
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 12_500, easing = LinearEasing)
-        )
+    val progress = rememberRealtimeProgress(
+        key = reaction.id,
+        durationMillis = 5_000L
+    )
+    val offsetY = -205f * progress
+    val opacity = if (progress < 0.68f) {
+        1f
+    } else {
+        ((1f - progress) / 0.32f).coerceIn(0f, 1f)
     }
-    val p = progress.value
-    val offsetY = -230f * p
-    val opacity = if (p < 0.72f) 1f else ((1f - p) / 0.28f).coerceIn(0f, 1f)
-    val scale = 0.94f + (0.10f * p)
+    val scale = 0.94f + (0.10f * progress)
 
     Box(
         modifier = Modifier

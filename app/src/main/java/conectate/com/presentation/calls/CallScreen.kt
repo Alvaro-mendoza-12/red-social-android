@@ -3,9 +3,7 @@ package conectate.com.presentation.calls
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -43,6 +41,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
+import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -713,18 +712,17 @@ private fun FloatingCallReaction(
     reaction: CallReactionEvent,
     modifier: Modifier = Modifier
 ) {
-    val progress = remember(reaction.id) { Animatable(0f) }
-    LaunchedEffect(reaction.id) {
-        progress.snapTo(0f)
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 12_500, easing = LinearEasing)
-        )
+    val progress = rememberRealtimeProgress(
+        key = reaction.id,
+        durationMillis = 5_000L
+    )
+    val offsetY = -205f * progress
+    val alpha = if (progress < 0.68f) {
+        1f
+    } else {
+        ((1f - progress) / 0.32f).coerceIn(0f, 1f)
     }
-    val p = progress.value
-    val offsetY = -230f * p
-    val alpha = if (p < 0.72f) 1f else ((1f - p) / 0.28f).coerceIn(0f, 1f)
-    val scale = 0.94f + (0.10f * p)
+    val scale = 0.94f + (0.10f * progress)
 
     Box(
         modifier = modifier

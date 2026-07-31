@@ -56,6 +56,7 @@ import conectate.com.data.model.defaultCommunityRoleCatalog
 import conectate.com.data.model.MessagePollOptionState
 import conectate.com.data.model.PollVoteUser
 import conectate.com.data.model.MessageReadReceipt
+import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.domain.sync.CommunitySyncDataSource
@@ -380,6 +381,19 @@ class CommunityRepository @Inject constructor(
                 channelId.trim().lowercase()
             )
         }
+
+    suspend fun openCommunityVoiceChannel(
+        communityId: String,
+        channelId: String
+    ): Result<VoiceRoom> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Sesión no disponible"))
+        localFallbackApiClient.openCommunityVoiceChannel(
+            accessToken = token,
+            communityId = communityId.trim().lowercase(),
+            channelId = channelId.trim().lowercase()
+        )
+    }
 
     suspend fun getCommunityMemberProfiles(
         communityId: String

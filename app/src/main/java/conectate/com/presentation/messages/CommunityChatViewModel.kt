@@ -169,6 +169,9 @@ class CommunityChatViewModel @Inject constructor(
     private val _selectedChannel = MutableStateFlow<CommunityChannel?>(null)
     val selectedChannel: StateFlow<CommunityChannel?> = _selectedChannel.asStateFlow()
 
+    private val _isOpeningVoiceChannel = MutableStateFlow(false)
+    val isOpeningVoiceChannel: StateFlow<Boolean> = _isOpeningVoiceChannel.asStateFlow()
+
     fun init(communityId: String) {
         val cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return
@@ -210,6 +213,35 @@ class CommunityChatViewModel @Inject constructor(
         _selectedChannel.value = channel
         _replyToMessage.value = null
         _selectedMessage.value = null
+    }
+
+    fun openVoiceChannel(channel: CommunityChannel, onReady: (String) -> Unit) {
+        if (channel.type != "voice" || _isOpeningVoiceChannel.value) return
+        if (channel.isPaused) {
+            _errorMessage.value = channel.pauseReason
+                ?.takeIf(String::isNotBlank)
+                ?.let { "Este canal de voz está pausado: $it" }
+                ?: "Este canal de voz está pausado temporalmente."
+            return
+        }
+        viewModelScope.launch {
+            _isOpeningVoiceChannel.value = true
+            communityRepository.openCommunityVoiceChannel(communityId, channel.id)
+                .onSuccess { room ->
+                    if (room.id.isBlank()) {
+                        _errorMessage.value = "No se pudo preparar el canal de voz."
+                    } else {
+                        loadChannels()
+                        onReady(room.id)
+                    }
+                }
+                .onFailure {
+                    _errorMessage.value = it.toUserFacingMessage(
+                        "No se pudo abrir el canal de voz. Inténtalo nuevamente."
+                    )
+                }
+            _isOpeningVoiceChannel.value = false
+        }
     }
 
     fun createChannel(name: String, description: String?, type: String) {

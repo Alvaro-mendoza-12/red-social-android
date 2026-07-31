@@ -19,8 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
@@ -29,8 +27,7 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.background
 import conectate.com.data.model.User
 import conectate.com.presentation.components.CircularProfileImage
-import conectate.com.presentation.components.ImageCropPreset
-import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.util.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,29 +49,41 @@ fun CreateGroupScreen(
     var searchQuery by remember { mutableStateOf("") }
     var groupName by remember { mutableStateOf("") }
     var groupDescription by remember { mutableStateOf("") }
-    var cropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showMediaPicker by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        cropSourceUri = uri
-    }
 
-    cropSourceUri?.let { source ->
-        SimpleImageCropDialog(
-            sourceUri = source,
-            title = "Ajustar icono del grupo",
-            initialPreset = ImageCropPreset.SQUARE,
-            onDismiss = { cropSourceUri = null },
-            onCropped = { cropped ->
-                cropSourceUri = null
+    if (showMediaPicker) {
+        MessageMediaComposer(
+            initialFilter = "all",
+            maxItems = 1,
+            allowedMediaTypes = setOf("image", "video"),
+            title = "Elegir icono del grupo",
+            confirmContentDescription = "Usar como icono",
+            showViewOnceOption = false,
+            showCaptionInput = false,
+            isSending = false,
+            onDismiss = { showMediaPicker = false },
+            onSend = { selected, _ ->
+                val media = selected.firstOrNull() ?: return@MessageMediaComposer
+                showMediaPicker = false
                 scope.launch {
                     val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(cropped)?.use { it.readBytes() }
+                        if (media.type == "video") {
+                            VideoUtils.generateVideoThumbnail(context, media.uri)
+                        } else {
+                            context.contentResolver.openInputStream(media.uri)?.use { it.readBytes() }
+                        }
                     }
                     viewModel.setImageBytes(bytes)
+                    if (bytes == null) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No se pudo preparar ese archivo. Elige otro.",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         )
@@ -266,7 +275,7 @@ fun CreateGroupScreen(
                                 .size(100.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { launcher.launch("image/*") },
+                                .clickable { showMediaPicker = true },
                             contentAlignment = Alignment.Center
                         ) {
                             if (selectedImageBytes != null) {
