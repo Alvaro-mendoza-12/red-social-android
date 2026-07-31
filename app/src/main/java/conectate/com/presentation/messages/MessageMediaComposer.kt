@@ -174,15 +174,33 @@ fun MessageMediaComposer(
     initialSelectedUris: List<Pair<Uri, String>> = emptyList(),
     initialStep: String = "gallery",
     maxItems: Int = 30,
+    allowedMediaTypes: Set<String> = setOf("image", "video"),
     title: String = "Enviar foto o video",
     confirmContentDescription: String = "Enviar",
+    showViewOnceOption: Boolean = true,
+    showCaptionInput: Boolean = true,
     isSending: Boolean,
     onDismiss: () -> Unit,
     onSend: (List<OutgoingMessageMedia>, String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var filter by remember(initialFilter) { mutableStateOf(initialFilter) }
+    val selectableMediaTypes = remember(allowedMediaTypes) {
+        allowedMediaTypes
+            .map(String::lowercase)
+            .filter { it == "image" || it == "video" }
+            .toSet()
+            .ifEmpty { setOf("image", "video") }
+    }
+    var filter by remember(initialFilter, selectableMediaTypes) {
+        mutableStateOf(
+            when {
+                initialFilter == "all" && selectableMediaTypes.size > 1 -> "all"
+                initialFilter in selectableMediaTypes -> initialFilter
+                else -> selectableMediaTypes.first()
+            }
+        )
+    }
     var isLoading by remember { mutableStateOf(true) }
     var media by remember { mutableStateOf<List<DeviceMedia>>(emptyList()) }
     val selected = remember { mutableStateListOf<DeviceMedia>() }
@@ -260,9 +278,10 @@ fun MessageMediaComposer(
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
             when (step) {
                 "gallery" -> MessageGalleryStep(
-                    media = media,
+                    media = media.filter { it.type in selectableMediaTypes },
                     filter = filter,
                     onFilterChange = { filter = it },
+                    allowedTypes = selectableMediaTypes,
                     selected = selected,
                     isLoading = isLoading,
                     hasPermission = hasPermission,
@@ -288,6 +307,8 @@ fun MessageMediaComposer(
                     activeIndex = activeIndex.coerceIn(0, (selected.size - 1).coerceAtLeast(0)),
                     caption = caption,
                     viewOnceEnabled = viewOnceEnabled,
+                    showViewOnceOption = showViewOnceOption,
+                    showCaptionInput = showCaptionInput,
                     isSending = isSending || preparing,
                     error = error,
                     confirmContentDescription = confirmContentDescription,
@@ -406,6 +427,7 @@ private fun MessageGalleryStep(
     media: List<DeviceMedia>,
     filter: String,
     onFilterChange: (String) -> Unit,
+    allowedTypes: Set<String>,
     selected: List<DeviceMedia>,
     isLoading: Boolean,
     hasPermission: Boolean,
@@ -459,9 +481,15 @@ private fun MessageGalleryStep(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FilterChip("all", "Todo", filter, onFilterChange)
-            FilterChip("image", "Fotos", filter, onFilterChange)
-            FilterChip("video", "Videos", filter, onFilterChange)
+            if (allowedTypes.size > 1) {
+                FilterChip("all", "Todo", filter, onFilterChange)
+            }
+            if ("image" in allowedTypes) {
+                FilterChip("image", "Fotos", filter, onFilterChange)
+            }
+            if ("video" in allowedTypes) {
+                FilterChip("video", "Videos", filter, onFilterChange)
+            }
         }
 
         when {
@@ -563,6 +591,8 @@ private fun MessageEditorStep(
     activeIndex: Int,
     caption: String,
     viewOnceEnabled: Boolean,
+    showViewOnceOption: Boolean,
+    showCaptionInput: Boolean,
     isSending: Boolean,
     error: String?,
     confirmContentDescription: String,
@@ -711,7 +741,7 @@ private fun MessageEditorStep(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (selected.size == 1) {
+                if (showViewOnceOption && selected.size == 1) {
                     item {
                         RoundToolButton(
                             icon = Icons.Default.Visibility,
@@ -746,7 +776,7 @@ private fun MessageEditorStep(
                             onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
                         }
                     }
-                    item {
+                    if (showCaptionInput) item {
                         RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank()) {
                             onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
                         }
@@ -868,7 +898,7 @@ private fun MessageEditorStep(
                 )
             }
 
-            if (viewOnceEnabled) {
+            if (showViewOnceOption && viewOnceEnabled) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "👁 Ver una vez: no se podrá abrir nuevamente",
@@ -878,28 +908,30 @@ private fun MessageEditorStep(
             }
 
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = caption,
-                onValueChange = onCaptionChange,
-                placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
-                minLines = 1,
-                maxLines = 4,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    disabledTextColor = Color.White.copy(alpha = 0.55f),
-                    cursorColor = Color.White,
-                    focusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                    unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                    disabledContainerColor = Color.Black.copy(alpha = 0.42f),
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
-                    focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
-                    unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
+            if (showCaptionInput) {
+                OutlinedTextField(
+                    value = caption,
+                    onValueChange = onCaptionChange,
+                    placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
+                    minLines = 1,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        disabledTextColor = Color.White.copy(alpha = 0.55f),
+                        cursorColor = Color.White,
+                        focusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                        unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                        disabledContainerColor = Color.Black.copy(alpha = 0.42f),
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
+                        focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
+                        unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
+                    )
                 )
-            )
+            }
             if (!error.isNullOrBlank()) {
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }

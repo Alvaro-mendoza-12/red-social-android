@@ -12,6 +12,9 @@ const {
   currentUserOwnsStorageObjects,
   feedPostVisible,
   isChatActivityNotification,
+  messageContentOf,
+  normalizeMessageRow,
+  previewFromMessage,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   normalizeFeedMode,
@@ -40,6 +43,15 @@ assert.strictEqual(
   false,
 )
 assert.strictEqual(isChatActivityNotification({ type: 'comment_post' }), false)
+
+const contactJson = '{"name":"Ada","phones":["+593999999999"],"emails":[]}'
+assert.strictEqual(messageContentOf({ content: contactJson }), contactJson)
+assert.strictEqual(
+  messageContentOf({ content: { name: 'Ada', phones: ['+593999999999'], emails: [] } }),
+  contactJson,
+)
+assert.strictEqual(normalizeMessageRow({ content: contactJson, content_type: 'contact' }).content, contactJson)
+assert.strictEqual(previewFromMessage({ content: contactJson, content_type: 'contact' }), 'Contacto')
 
 const semanticCorpus = buildPublicSemanticSearchCorpus({
   profiles: [

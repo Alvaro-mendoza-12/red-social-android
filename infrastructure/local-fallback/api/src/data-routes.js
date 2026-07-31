@@ -225,9 +225,10 @@ function sortByDateDesc(rows, keys) {
 }
 
 function previewFromMessage(row) {
-  const content = textOf(row, ['content'], '')
-  if (content) return content
   const contentType = textOf(row, ['content_type'], '').toLowerCase()
+  if (contentType === 'contact') return 'Contacto'
+  const content = messageContentOf(row)
+  if (content) return content
   if (contentType === 'image') return 'Imagen'
   if (contentType === 'video') return 'Video'
   if (contentType === 'audio') return 'Audio'
@@ -235,6 +236,21 @@ function previewFromMessage(row) {
   if (contentType === 'poll') return 'Encuesta'
   if (contentType.startsWith('view_once')) return 'View once'
   return 'Sin actividad reciente'
+}
+
+function messageContentOf(row) {
+  for (const key of ['content', 'text', 'message']) {
+    const value = row?.[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (value && typeof value === 'object') {
+      try {
+        return JSON.stringify(value)
+      } catch {
+        // Continue with the next compatible field.
+      }
+    }
+  }
+  return ''
 }
 
 function cleanSet(values) {
@@ -279,6 +295,10 @@ function messageVisibleTo(row, identity) {
 
 function normalizeMessageRow(row) {
   const normalized = normalizeImportedRow(row)
+  // Contact payloads are JSON encoded inside a text column. The generic import
+  // normalizer parses JSON-looking strings, but Android keeps Message.content
+  // as String. Serialize it back so contacts survive history/realtime refreshes.
+  normalized.content = messageContentOf(row)
   normalized.deleted_by = arrayOf(normalized, ['deleted_by', 'deletedBy'])
   normalized.deleted_for_all = boolOf(normalized, ['deleted_for_all', 'deletedForAll'], false)
   normalized.is_edited = boolOf(normalized, ['is_edited', 'isEdited'], false)
@@ -3484,7 +3504,7 @@ function enrichCollectionMessage(row, config, profilesById) {
     id: textOf(row, ['id'], `${config.kind}-${roomId}-${createdAt}-${senderId}`),
     [config.roomKey]: roomId,
     sender_id: senderId,
-    content: textOf(row, ['content', 'text', 'message'], ''),
+    content: messageContentOf(row),
     content_type: textOf(row, ['content_type', 'message_type', 'type'], 'text'),
     media_url: textOf(row, ['media_url', 'file_url', 'attachment_url', 'url'], ''),
     media_size: numberOf(row, ['media_size', 'size', 'size_bytes'], 0),
@@ -12203,6 +12223,9 @@ module.exports = {
   feedPostVisible,
   invalidateImportedDataCache,
   isChatActivityNotification,
+  messageContentOf,
+  normalizeMessageRow,
+  previewFromMessage,
   normalizeFeedMode,
   normalizeCollectionRole,
   normalizeCommunityChannelType,

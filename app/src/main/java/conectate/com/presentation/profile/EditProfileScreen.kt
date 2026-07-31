@@ -2,10 +2,7 @@ package conectate.com.presentation.profile
 
 import androidx.compose.runtime.Composable
 
-import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +33,7 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.messages.MessageMediaComposer
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
@@ -79,8 +77,6 @@ fun EditProfileScreen(
 
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var unifiedPickerTarget by remember { mutableStateOf(ProfileImageTarget.AVATAR) }
-    val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
 
     LaunchedEffect(profileState) {
         if (!initialized && profileState is ProfileUiState.Success) {
@@ -140,51 +136,6 @@ fun EditProfileScreen(
         ) {
             DatePicker(state = datePickerState)
         }
-    }
-
-    val profileImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
-        val mimeType = context.contentResolver.getType(uri)?.substringBefore(";")?.lowercase().orEmpty()
-        val uriText = uri.toString().substringBefore("?").lowercase()
-        val isVideo = mimeType.startsWith("video/") ||
-            uriText.endsWith(".mp4") ||
-            uriText.endsWith(".m4v") ||
-            uriText.endsWith(".mov")
-        if (isVideo) {
-            val durationMs = viewModel.getProfileVideoDurationMs(uri)
-            if (durationMs > PROFILE_AVATAR_MAX_VIDEO_MS) {
-                trimCandidateUri = uri
-                trimCandidateDurationMs = durationMs
-            } else {
-                imageUri = uri
-                avatarMediaType = "video"
-                avatarDurationMs = durationMs.takeIf { it > 0L }?.coerceAtMost(PROFILE_AVATAR_MAX_VIDEO_MS)
-                avatarVideoMuted = true
-            }
-        } else {
-            if (mimeType == "image/gif" || uriText.endsWith(".gif")) {
-                imageUri = uri
-                avatarMediaType = "gif"
-                avatarDurationMs = null
-                avatarVideoMuted = true
-            } else {
-                pendingImageCrop = uri to ProfileImageTarget.AVATAR
-            }
-        }
-    }
-    
-    val coverImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        uri?.let { pendingImageCrop = it to ProfileImageTarget.COVER }
     }
 
     pendingImageCrop?.let { (sourceUri, target) ->
@@ -325,7 +276,6 @@ fun EditProfileScreen(
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                                     .clickable { 
                                         unifiedPickerTarget = ProfileImageTarget.COVER
-                                        mediaPickerViewModel.loadGalleryMedia(context)
                                         showUnifiedMediaPicker = true 
                                     },
                                 contentScale = ContentScale.Crop
@@ -339,7 +289,6 @@ fun EditProfileScreen(
                                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                                         .clickable { 
                                             unifiedPickerTarget = ProfileImageTarget.COVER
-                                            mediaPickerViewModel.loadGalleryMedia(context)
                                             showUnifiedMediaPicker = true
                                         }
                                         .background(MaterialTheme.colorScheme.primaryContainer),
@@ -356,7 +305,6 @@ fun EditProfileScreen(
                             Button(
                                 onClick = { 
                                     unifiedPickerTarget = ProfileImageTarget.COVER
-                                    mediaPickerViewModel.loadGalleryMedia(context)
                                     showUnifiedMediaPicker = true 
                                 },
                                 modifier = Modifier
@@ -388,7 +336,6 @@ fun EditProfileScreen(
                             Button(
                                 onClick = { 
                                     unifiedPickerTarget = ProfileImageTarget.AVATAR
-                                    mediaPickerViewModel.loadGalleryMedia(context)
                                     showUnifiedMediaPicker = true
                                 },
                                 modifier = Modifier.offset(y = 10.dp)
@@ -615,18 +562,33 @@ fun EditProfileScreen(
     }
 
     if (showUnifiedMediaPicker) {
-        conectate.com.presentation.components.UnifiedMediaPickerScreen(
-            galleryMedia = galleryMedia,
-            isMultipleSelection = false,
-            maxSelection = 1,
-            onMediaSelected = { selected ->
+        MessageMediaComposer(
+            initialFilter = if (unifiedPickerTarget == ProfileImageTarget.COVER) "image" else "all",
+            maxItems = 1,
+            allowedMediaTypes = if (unifiedPickerTarget == ProfileImageTarget.COVER) {
+                setOf("image")
+            } else {
+                setOf("image", "video")
+            },
+            title = if (unifiedPickerTarget == ProfileImageTarget.COVER) {
+                "Elegir foto de portada"
+            } else {
+                "Elegir foto o video de perfil"
+            },
+            confirmContentDescription = "Usar en el perfil",
+            showViewOnceOption = false,
+            showCaptionInput = false,
+            isSending = false,
+            onDismiss = { showUnifiedMediaPicker = false },
+            onSend = { selected, _ ->
                 showUnifiedMediaPicker = false
-                if (selected.isNotEmpty()) {
-                    val uri = selected.first().uri
+                selected.firstOrNull()?.let { media ->
+                    val uri = media.uri
                     if (unifiedPickerTarget == ProfileImageTarget.AVATAR) {
                         val mimeType = context.contentResolver.getType(uri)?.substringBefore(";")?.lowercase().orEmpty()
                         val uriText = uri.toString().substringBefore("?").lowercase()
-                        val isVideo = mimeType.startsWith("video/") ||
+                        val isVideo = media.type.startsWith("video") ||
+                            mimeType.startsWith("video/") ||
                             uriText.endsWith(".mp4") ||
                             uriText.endsWith(".m4v") ||
                             uriText.endsWith(".mov")
@@ -655,18 +617,6 @@ fun EditProfileScreen(
                         pendingImageCrop = uri to ProfileImageTarget.COVER
                     }
                 }
-            },
-            onCancel = { showUnifiedMediaPicker = false },
-            onCameraClick = {
-                showUnifiedMediaPicker = false
-                if (unifiedPickerTarget == ProfileImageTarget.AVATAR) {
-                    profileImageLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                } else {
-                    coverImageLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                }
-            },
-            onLoadMedia = {
-                mediaPickerViewModel.loadGalleryMedia(it)
             }
         )
     }
