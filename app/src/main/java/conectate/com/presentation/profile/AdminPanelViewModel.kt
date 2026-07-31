@@ -42,7 +42,7 @@ class AdminPanelViewModel @Inject constructor(
                 normalized.contains("self_delete_forbidden") ->
                 "No puedes eliminar tu propia cuenta desde este panel."
             normalized.contains("badge_delete_forbidden") ->
-                "Solo quien creó la insignia o un administrador propietario puede borrarla."
+                "Tu cuenta administrativa no tiene permisos de edición para borrar insignias."
             normalized.contains("built_in_badge_cannot_be_deleted") ->
                 "Las insignias incluidas con la aplicación no se pueden borrar."
             normalized.contains("badge_not_found") ->
@@ -118,6 +118,7 @@ class AdminPanelViewModel @Inject constructor(
     val deleteCandidate: StateFlow<AdminUser?> = _deleteCandidate.asStateFlow()
     private val decorationMutationLocks = mutableMapOf<String, Mutex>()
     private var userSearchJob: Job? = null
+    private var statsRefreshJob: Job? = null
 
     fun checkAdminAccess() {
         viewModelScope.launch {
@@ -169,6 +170,29 @@ class AdminPanelViewModel @Inject constructor(
         localFallbackApiClient.adminGetStats(token)
             .onSuccess { _stats.value = it }
             .onFailure { Log.w(TAG, "No se pudieron cargar estadísticas administrativas", it) }
+    }
+
+    fun startStatsAutoRefresh() {
+        if (statsRefreshJob?.isActive == true) return
+        statsRefreshJob = viewModelScope.launch {
+            var refreshCycle = 0
+            while (true) {
+                delay(4_000L)
+                if (!_isAdmin.value) continue
+                authService.ensureValidAccessToken()
+                    .onSuccess { token ->
+                        loadStats(token)
+                        refreshCycle += 1
+                        if (refreshCycle % 3 == 0) loadSystemHealth()
+                    }
+                    .onFailure { Log.w(TAG, "No se pudo actualizar el resumen administrativo", it) }
+            }
+        }
+    }
+
+    fun stopStatsAutoRefresh() {
+        statsRefreshJob?.cancel()
+        statsRefreshJob = null
     }
 
     private suspend fun loadCatalog(token: String) {
@@ -702,6 +726,7 @@ class AdminPanelViewModel @Inject constructor(
 
     override fun onCleared() {
         userSearchJob?.cancel()
+        statsRefreshJob?.cancel()
         super.onCleared()
     }
 }

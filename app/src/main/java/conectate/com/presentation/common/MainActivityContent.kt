@@ -7,7 +7,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -32,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -226,7 +232,21 @@ fun MainActivityContent(
                 }
             }
         ) { innerPadding ->
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            val layoutDirection = LocalLayoutDirection.current
+            val statusBarTop = WindowInsets.statusBars
+                .asPaddingValues()
+                .calculateTopPadding()
+            val adjustedPadding = PaddingValues(
+                start = innerPadding.calculateStartPadding(layoutDirection),
+                top = (innerPadding.calculateTopPadding() - statusBarTop).coerceAtLeast(0.dp),
+                end = innerPadding.calculateEndPadding(layoutDirection),
+                bottom = innerPadding.calculateBottomPadding()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(adjustedPadding)
+            ) {
                 CompositionLocalProvider(
                     LocalUniversalForwardCoordinator provides universalForwardCoordinator
                 ) {

@@ -1914,6 +1914,24 @@ function normalizeNotification(row, profilesById) {
   }
 }
 
+const CHAT_ACTIVITY_NOTIFICATION_TYPES = new Set([
+  'message',
+  'new_message',
+  'direct_message',
+  'group_message',
+  'community_message',
+])
+
+function isChatActivityNotification(row) {
+  const baseType = normalizeId(row?.type || row?.notification_type)
+  const extraData = row?.extra_data && typeof row.extra_data === 'object'
+    ? row.extra_data
+    : {}
+  const subtype = normalizeId(extraData.notification_type || extraData.notificationType)
+  if (subtype && !CHAT_ACTIVITY_NOTIFICATION_TYPES.has(subtype)) return false
+  return CHAT_ACTIVITY_NOTIFICATION_TYPES.has(subtype || baseType)
+}
+
 async function createLocalNotification(pool, input) {
   const recipientId = normalizeId(input?.recipientId || input?.recipient_id || '')
   const actorId = normalizeId(input?.actorId || input?.actor_id || '')
@@ -1937,6 +1955,40 @@ async function createLocalNotification(pool, input) {
   const actorName = cleanText(input?.actorName || input?.actor_name, 160) || null
   const actorAvatarUrl = cleanText(input?.actorAvatarUrl || input?.actor_avatar_url, 700) || null
   const originalExtraData = input?.extraData && typeof input.extraData === 'object' ? input.extraData : {}
+  if (isChatActivityNotification({
+    type,
+    target_type: targetType,
+    extra_data: originalExtraData,
+  })) {
+    // Chat already has its own realtime stream and unread counters. Keep the
+    // Android push alert, but do not duplicate every message in the social
+    // activity center or in PostgreSQL.
+    const notification = {
+      id: crypto.randomUUID(),
+      recipient_id: recipientId,
+      actor_id: actorId || null,
+      actor_name: actorName,
+      actor_avatar_url: actorAvatarUrl,
+      type,
+      target_id: targetId,
+      target_type: targetType,
+      content,
+      is_read: true,
+      extra_data: originalExtraData,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ephemeral: true,
+    }
+    try {
+      const { sendPushForNotification } = require('./push-notifications')
+      void sendPushForNotification(pool, notification, originalExtraData).catch((error) => {
+        console.error(`[push] Ephemeral message alert could not be delivered: ${error.message}`)
+      })
+    } catch (error) {
+      console.error(`[push] Ephemeral message sender could not be loaded: ${error.message}`)
+    }
+    return notification
+  }
   const delivery = await shouldDeferNotificationPush(
     pool,
     {
@@ -4141,6 +4193,23 @@ async function ensureLocalDataTables(pool) {
     `CREATE INDEX IF NOT EXISTS idx_fallback_notifications_target
      ON fallback_notifications(target_type, lower(target_id), created_at DESC)`,
   )
+  await pool.query(
+    `DELETE FROM fallback_notifications
+     WHERE lower(type) IN (
+       'message',
+       'new_message',
+       'direct_message',
+       'group_message',
+       'community_message'
+     )
+       AND lower(COALESCE(extra_data->>'notification_type', type)) IN (
+         'message',
+         'new_message',
+         'direct_message',
+         'group_message',
+         'community_message'
+       )`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_fcm_tokens (
       user_id TEXT NOT NULL,
@@ -5641,6 +5710,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         [...importedNotifications, ...fallbackNotifications]
           .filter((row) => rowMatchesAny(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], identity.ids))
           .map((row) => normalizeNotification(row, profilesById))
+          .filter((row) => !isChatActivityNotification(row))
           .filter((row) => !unreadOnly || !row.is_read),
         ['created_at', 'updated_at'],
       )
@@ -12132,6 +12202,7 @@ module.exports = {
   ensureLocalDataTables,
   feedPostVisible,
   invalidateImportedDataCache,
+  isChatActivityNotification,
   normalizeFeedMode,
   normalizeCollectionRole,
   normalizeCommunityChannelType,

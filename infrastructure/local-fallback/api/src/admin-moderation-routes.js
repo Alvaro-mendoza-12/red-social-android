@@ -286,7 +286,6 @@ function profileBadgesFromRow(row) {
 
 function customAdminBadgeFromRow(row, options = {}) {
   const createdBy = normalizeId(row?.created_by)
-  const actorIdentityValues = identityValuesOf(options.actorIdentity)
   return {
     id: normalizeId(row?.id),
     name: String(row?.name || '').trim(),
@@ -297,8 +296,7 @@ function customAdminBadgeFromRow(row, options = {}) {
     is_admin_badge: false,
     custom: true,
     created_by: createdBy,
-    can_delete: options.isOwner === true ||
-      (Boolean(createdBy) && actorIdentityValues.includes(createdBy)),
+    can_delete: options.canWrite === true,
   }
 }
 
@@ -1517,8 +1515,7 @@ function registerAdminModerationRoutes(app, {
       if (!context) return
       res.json({
         badges: await adminBadgeCatalog(pool, {
-          actorIdentity: context.identity,
-          isOwner: context.access.isOwner,
+          canWrite: ADMIN_ACCESS_RANK[context.access.level] >= ADMIN_ACCESS_RANK.write,
         }),
         frames: PROFILE_FRAME_CATALOG,
       })
@@ -1561,8 +1558,7 @@ function registerAdminModerationRoutes(app, {
         [id, name, description, icon, color, context.identity.displayUserId],
       )
       const badge = customAdminBadgeFromRow(rows[0], {
-        actorIdentity: context.identity,
-        isOwner: context.access.isOwner,
+        canWrite: true,
       })
       await recordModerationEvent(pool, context.identity.displayUserId, {
         context: 'admin_badge_created',
@@ -1687,16 +1683,6 @@ function registerAdminModerationRoutes(app, {
         transactionStarted = false
         return res.status(404).json({ error: 'BADGE_NOT_FOUND' })
       }
-      const actorValues = identityValuesOf(context.identity)
-      if (
-        !context.access.isOwner &&
-        !actorValues.includes(normalizeId(badge.created_by))
-      ) {
-        await client.query('ROLLBACK')
-        transactionStarted = false
-        return res.status(403).json({ error: 'BADGE_DELETE_FORBIDDEN' })
-      }
-
       const updatedProfiles = await client.query(
         `UPDATE fallback_profile_overrides
          SET profile = jsonb_set(
@@ -1935,17 +1921,61 @@ function registerAdminModerationRoutes(app, {
       const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
       const { rows } = await pool.query(`
+        WITH deleted_identities AS (
+          SELECT lower(user_id) AS id
+          FROM fallback_deleted_identities
+        ),
+        canonical_users AS (
+          SELECT lower(COALESCE(NULLIF(supabase_user_id::text, ''), id::text)) AS id
+          FROM fallback_users
+          UNION
+          SELECT lower(id::text)
+          FROM supabase_import.profiles
+          UNION
+          SELECT lower(id::text)
+          FROM supabase_import.users
+          UNION
+          SELECT lower(COALESCE(NULLIF(row->>'id', ''), NULLIF(row->>'user_id', ''), row_id))
+          FROM fallback_compat_rows
+          WHERE table_name IN ('users', 'profiles')
+        ),
+        canonical_videos AS (
+          SELECT lower(v.id::text) AS id
+          FROM fallback_videos v
+          WHERE NOT EXISTS (
+            SELECT 1 FROM fallback_video_deletions d
+            WHERE lower(d.video_id) = lower(v.id::text)
+          )
+          UNION
+          SELECT lower(v.id::text)
+          FROM supabase_import.videos v
+          WHERE NOT EXISTS (
+            SELECT 1 FROM fallback_video_deletions d
+            WHERE lower(d.video_id) = lower(v.id::text)
+          )
+          UNION
+          SELECT lower(COALESCE(NULLIF(row->>'id', ''), row_id))
+          FROM fallback_compat_rows c
+          WHERE c.table_name = 'videos'
+            AND NOT EXISTS (
+              SELECT 1 FROM fallback_video_deletions d
+              WHERE lower(d.video_id) = lower(COALESCE(NULLIF(c.row->>'id', ''), c.row_id))
+            )
+        )
         SELECT
-          (SELECT COUNT(*)::int FROM fallback_users) AS total_users,
+          (SELECT COUNT(*)::int
+           FROM canonical_users u
+           WHERE u.id IS NOT NULL
+             AND u.id <> ''
+             AND NOT EXISTS (
+               SELECT 1 FROM deleted_identities d WHERE d.id = u.id
+             )) AS total_users,
           (SELECT COUNT(*)::int FROM fallback_profile_moderation WHERE is_suspended = TRUE AND (suspended_until IS NULL OR suspended_until > NOW())) AS suspended_users,
           (SELECT COUNT(*)::int FROM fallback_reports WHERE status = 'pendiente') AS pending_user_reports,
           (SELECT COUNT(*)::int FROM fallback_video_reports WHERE status = 'pendiente') AS pending_video_reports,
           (SELECT COUNT(*)::int
-           FROM fallback_videos v
-           WHERE NOT EXISTS (
-             SELECT 1 FROM fallback_video_deletions d
-             WHERE lower(d.video_id) = lower(v.id::text)
-           )) AS total_videos
+           FROM canonical_videos v
+           WHERE v.id IS NOT NULL AND v.id <> '') AS total_videos
       `)
       res.json({ stats: rows[0] || {} })
     } catch (error) {

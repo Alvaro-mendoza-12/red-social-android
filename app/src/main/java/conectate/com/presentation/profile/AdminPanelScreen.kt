@@ -94,6 +94,11 @@ fun AdminPanelScreen(
         viewModel.checkAdminAccess()
     }
 
+    DisposableEffect(Unit) {
+        viewModel.startStatsAutoRefresh()
+        onDispose { viewModel.stopStatsAutoRefresh() }
+    }
+
     LaunchedEffect(lastDeletedUserId) {
         if (lastDeletedUserId != null && lastDeletedUserId == userToDelete?.id) {
             userToDelete = null

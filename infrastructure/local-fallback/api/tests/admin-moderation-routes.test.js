@@ -275,7 +275,7 @@ async function testCustomBadgeDelete() {
           rows: [{
             id: 'custom-prueba',
             name: 'Prueba',
-            created_by: ADMIN_ID,
+            created_by: '44444444-4444-4444-8444-444444444444',
           }],
           rowCount: 1,
         }

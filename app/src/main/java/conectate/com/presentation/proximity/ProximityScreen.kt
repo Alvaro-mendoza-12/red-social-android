@@ -340,6 +340,15 @@ private fun RadarVisualization(
         ),
         label = "radar-sweep",
     )
+    val pulseProgress by infiniteTransition.animateFloat(
+        initialValue = 0.08f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "radar-pulse",
+    )
     val primary = MaterialTheme.colorScheme.primary
     val surface = MaterialTheme.colorScheme.surfaceVariant
 
@@ -376,17 +385,28 @@ private fun RadarVisualization(
                     strokeWidth = 2f,
                 )
                 if (enabled) {
-                    val radians = Math.toRadians(sweepAngle.toDouble())
-                    val beamEnd = Offset(
-                        x = center.x + cos(radians).toFloat() * outerRadius,
-                        y = center.y + sin(radians).toFloat() * outerRadius,
+                    drawCircle(
+                        color = primary.copy(alpha = (1f - pulseProgress) * 0.28f),
+                        radius = outerRadius * pulseProgress,
+                        center = center,
+                        style = Stroke(width = 4f),
                     )
-                    drawLine(
-                        color = primary.copy(alpha = 0.88f),
-                        start = center,
-                        end = beamEnd,
-                        strokeWidth = 5f,
-                    )
+                    repeat(10) { trailIndex ->
+                        val trailFraction = 1f - (trailIndex / 10f)
+                        val radians = Math.toRadians(
+                            (sweepAngle - trailIndex * 4.5f).toDouble()
+                        )
+                        val beamEnd = Offset(
+                            x = center.x + cos(radians).toFloat() * outerRadius,
+                            y = center.y + sin(radians).toFloat() * outerRadius,
+                        )
+                        drawLine(
+                            color = primary.copy(alpha = 0.08f + 0.76f * trailFraction),
+                            start = center,
+                            end = beamEnd,
+                            strokeWidth = 2f + 4f * trailFraction,
+                        )
+                    }
                     profiles.take(24).forEach { profile ->
                         val angle = Math.toRadians((profile.userId.hashCode().toUInt().toLong() % 360).toDouble())
                         val fraction = (profile.distanceKm / radiusKm.coerceAtLeast(1f))

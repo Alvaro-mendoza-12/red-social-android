@@ -7,18 +7,28 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cake
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,8 +38,14 @@ import conectate.com.data.model.Notification
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import conectate.com.util.DateUtils
+import coil.compose.AsyncImage
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,11 +54,9 @@ fun NotificationScreen(
     viewModel: NotificationViewModel = hiltViewModel()
 ) {
     val state by viewModel.notificationsState.collectAsState()
-    val digestState by viewModel.digestState.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadNotifications()
-        viewModel.loadNotificationDigest()
     }
 
     Scaffold(
@@ -93,16 +107,10 @@ fun NotificationScreen(
                     }
                 }
                 is NotificationsUiState.Success -> {
+                    val grouped = remember(s.notifications) {
+                        s.notifications.groupBy { notificationDateSection(it.createdAt) }
+                    }
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        item(key = "digest-overview") {
-                            NotificationDigestOverviewCard(
-                                state = digestState,
-                                onConfigure = {
-                                    navController.navigate(Screen.NotificationSettings.route)
-                                },
-                                onRetry = viewModel::loadNotificationDigest
-                            )
-                        }
                         if (s.notifications.isEmpty()) {
                             item(key = "empty-notifications") {
                                 Column(
@@ -119,18 +127,31 @@ fun NotificationScreen(
                                 }
                             }
                         } else {
-                            items(s.notifications, key = { it.id }) { notification ->
-                                NotificationItem(
-                                    notification = notification,
-                                    onClick = {
-                                        viewModel.markAsRead(notification.id)
-                                        handleNotificationNavigation(navController, notification)
-                                    },
-                                    onDelete = {
-                                        viewModel.deleteNotification(notification.id)
+                            listOf("Hoy", "Ayer", "Anteriores").forEach { section ->
+                                val sectionItems = grouped[section].orEmpty()
+                                if (sectionItems.isNotEmpty()) {
+                                    item(key = "notification-section:$section") {
+                                        Text(
+                                            text = section,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(MaterialTheme.colorScheme.background)
+                                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                )
-                                Divider(thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.5f))
+                                    items(sectionItems, key = { it.id }) { notification ->
+                                        NotificationItem(
+                                            notification = notification,
+                                            onClick = {
+                                                viewModel.markAsRead(notification.id)
+                                                handleNotificationNavigation(navController, notification)
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -227,25 +248,53 @@ private fun NotificationDigestOverviewCard(
 @Composable
 fun NotificationItem(
     notification: Notification,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
+    onClick: () -> Unit
 ) {
-    val bgColor = if (notification.isRead) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+    val bgColor = if (notification.isRead) {
+        MaterialTheme.colorScheme.surface
+    } else {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.16f)
+    }
+    val type = resolveNotificationType(notification)
+    val eventStyle = notificationEventStyle(type)
+    val targetThumbnail = notificationTargetThumbnail(notification)
     
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(bgColor)
             .clickable { onClick() }
-            .padding(12.dp),
+            .padding(horizontal = 18.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircularProfileImage(
-            imageUrl = notification.actorAvatarUrl ?: "",
-            size = 48.dp
-        )
+        Box(modifier = Modifier.size(58.dp)) {
+            CircularProfileImage(
+                imageUrl = notification.actorAvatarUrl ?: "",
+                size = 54.dp
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(23.dp),
+                shape = CircleShape,
+                color = eventStyle.second,
+                border = androidx.compose.foundation.BorderStroke(
+                    2.dp,
+                    MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = eventStyle.first,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+        }
         
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -273,18 +322,73 @@ fun NotificationItem(
                 color = Color.Gray
             )
         }
-        
-        if (!notification.isRead) {
+
+        if (!targetThumbnail.isNullOrBlank()) {
+            Spacer(modifier = Modifier.width(10.dp))
+            AsyncImage(
+                model = targetThumbnail,
+                contentDescription = "Contenido relacionado",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 58.dp, height = 66.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+        } else if (!notification.isRead) {
+            Spacer(modifier = Modifier.width(10.dp))
             Box(
                 modifier = Modifier
-                    .size(8.dp)
-                    .background(MaterialTheme.colorScheme.primary, shape = androidx.compose.foundation.shape.CircleShape)
+                    .size(9.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
             )
         }
+    }
+}
 
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Close, contentDescription = "Borrar", tint = Color.Gray, modifier = Modifier.size(16.dp))
+private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = when (type) {
+    "like", "like_post", "like_video" -> Icons.Default.Favorite to Color(0xFFF44336)
+    "comment", "comment_post", "comment_video", "reply_post", "reply_video" ->
+        Icons.Default.ChatBubble to Color(0xFF1687F8)
+    "mention", "mention_post", "mention_video" ->
+        Icons.Default.AlternateEmail to Color(0xFF1687F8)
+    "follow", "friend_request", "friend_request_accepted" ->
+        Icons.Default.PersonAdd to Color(0xFF18A66A)
+    "birthday" -> Icons.Default.Cake to Color(0xFFEC4899)
+    "new_video", "share_video" -> Icons.Default.PlayCircle to Color(0xFF8B5CF6)
+    else -> Icons.Default.NotificationsActive to Color(0xFF64748B)
+}
+
+private fun notificationTargetThumbnail(notification: Notification): String? {
+    val keys = listOf(
+        "thumbnail_url",
+        "target_thumbnail_url",
+        "video_thumbnail_url",
+        "post_image_url",
+        "image_url",
+        "media_url"
+    )
+    return keys.firstNotNullOfOrNull { key ->
+        extractNotificationExtra(notification, key)
+    }
+}
+
+private fun notificationDateSection(createdAt: String): String {
+    val date = runCatching {
+        val raw = createdAt.trim()
+        val instant = runCatching { Instant.parse(raw) }.getOrElse {
+            runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrElse {
+                LocalDateTime.parse(raw.replace(" ", "T"))
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant()
+            }
         }
+        instant.atZone(ZoneId.systemDefault()).toLocalDate()
+    }.getOrNull() ?: return "Anteriores"
+    val today = LocalDate.now()
+    return when (date) {
+        today -> "Hoy"
+        today.minusDays(1) -> "Ayer"
+        else -> "Anteriores"
     }
 }
 

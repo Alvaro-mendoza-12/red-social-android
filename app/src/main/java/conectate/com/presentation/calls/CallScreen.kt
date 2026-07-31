@@ -718,13 +718,13 @@ private fun FloatingCallReaction(
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 4_200, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 7_200, easing = FastOutSlowInEasing)
         )
     }
     val p = progress.value
-    val offsetY = -190f * p
-    val alpha = if (p < 0.68f) 1f else ((1f - p) / 0.32f).coerceIn(0f, 1f)
-    val scale = 0.92f + (0.18f * p)
+    val offsetY = -260f * p
+    val alpha = if (p < 0.62f) 1f else ((1f - p) / 0.38f).coerceIn(0f, 1f)
+    val scale = 0.9f + (0.16f * p)
 
     Box(
         modifier = modifier

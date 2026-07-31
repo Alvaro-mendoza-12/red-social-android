@@ -67,6 +67,10 @@ class NotificationViewModel @Inject constructor(
         // Subscribe to Realtime notifications
         viewModelScope.launch {
             notificationRepository.observeNotifications().collect { notification ->
+                if (isChatCenterNotification(notification)) {
+                    updateUnreadCount()
+                    return@collect
+                }
                 // When a new notification arrives:
                 // 1. Show a local system alert (Foreground feedback)
                 val digestDeferred = (
@@ -162,13 +166,26 @@ class NotificationViewModel @Inject constructor(
             _notificationsState.value = NotificationsUiState.Loading
             notificationRepository.getNotifications()
                 .onSuccess { list ->
-                    _notificationsState.value = NotificationsUiState.Success(list)
+                    _notificationsState.value = NotificationsUiState.Success(
+                        list.filterNot(::isChatCenterNotification)
+                    )
                 }
                 .onFailure { e ->
                     _notificationsState.value = NotificationsUiState.Error(e.message ?: "Error desconocido")
                 }
             _isRefreshing.value = false
         }
+    }
+
+    private fun isChatCenterNotification(notification: Notification): Boolean {
+        val type = resolveNotificationType(notification)
+        return type in setOf(
+            "message",
+            "new_message",
+            "direct_message",
+            "group_message",
+            "community_message"
+        )
     }
 
     fun loadNotificationDigest() {

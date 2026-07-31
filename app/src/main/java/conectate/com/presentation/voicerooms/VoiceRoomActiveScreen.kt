@@ -1951,17 +1951,22 @@ fun FloatingReaction(reaction: ReactionEvent) {
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 4_200, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 7_200, easing = FastOutSlowInEasing)
         )
     }
     val p = progress.value
-    val offsetY = -200f * p
-    val opacity = if (p < 0.68f) 1f else ((1f - p) / 0.32f).coerceIn(0f, 1f)
+    val offsetY = -260f * p
+    val opacity = if (p < 0.62f) 1f else ((1f - p) / 0.38f).coerceIn(0f, 1f)
+    val scale = 0.9f + (0.16f * p)
 
     Box(
         modifier = Modifier
             .offset(y = offsetY.dp)
-            .graphicsLayer(alpha = opacity)
+            .graphicsLayer(
+                alpha = opacity,
+                scaleX = scale,
+                scaleY = scale
+            )
     ) {
         Text(reaction.emoji, style = MaterialTheme.typography.headlineLarge)
     }

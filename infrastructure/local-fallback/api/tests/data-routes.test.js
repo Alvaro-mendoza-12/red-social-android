@@ -11,6 +11,7 @@ const {
   currentUserOwnsStorageObject,
   currentUserOwnsStorageObjects,
   feedPostVisible,
+  isChatActivityNotification,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   normalizeFeedMode,
@@ -28,6 +29,17 @@ const {
   storageObjectExists,
   userIdentity,
 } = require('../src/data-routes')
+
+assert.strictEqual(isChatActivityNotification({ type: 'message' }), true)
+assert.strictEqual(isChatActivityNotification({ type: 'group_message' }), true)
+assert.strictEqual(
+  isChatActivityNotification({
+    type: 'message',
+    extra_data: { notification_type: 'account_suspended' },
+  }),
+  false,
+)
+assert.strictEqual(isChatActivityNotification({ type: 'comment_post' }), false)
 
 const semanticCorpus = buildPublicSemanticSearchCorpus({
   profiles: [
