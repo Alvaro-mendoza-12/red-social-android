@@ -133,7 +133,7 @@ export function createNovvinConversation(): NovvinConversation {
     messages: [
       createNovvinMessage(
         'assistant',
-        'Hola, soy Novvin. Puedo orientarte sobre Conectate y sobre los temas revisados de mi base local. No aprendo automáticamente de esta conversación.',
+        'Hola, soy Novvin. Puedo orientarte sobre la aplicación y sobre los temas revisados de mi base local. No aprendo automáticamente de esta conversación.',
         ['¿Cómo edito mi perfil?', '¿Cómo publico un video?', '¿Por qué el cielo es azul?'],
       ),
     ],

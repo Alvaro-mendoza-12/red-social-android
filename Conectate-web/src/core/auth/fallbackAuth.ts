@@ -170,7 +170,7 @@ async function fetchFallback(path: string, init: RequestInit): Promise<Response>
         }
       }
     }
-    console.error('Conectate Ubuntu backend is unreachable', error)
+    console.error('Novvin Ubuntu backend is unreachable', error)
     throw new Error(fallbackConnectionErrorMessage())
   }
 }

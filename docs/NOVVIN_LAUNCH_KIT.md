@@ -9,6 +9,13 @@ Documento breve para conseguir usuarios reales sin bots, cuentas falsas ni spam.
 
 Usa el enlace de Play para Android y el de web para quien quiera probar desde navegador.
 
+## Aportes voluntarios de validación
+
+Durante esta primera validación no hay suscripciones, funciones premium ni Google Play Billing.
+Quien quiera apoyar de forma voluntaria puede hacerlo por Yape al **918 440 948** o mediante el
+QR mostrado en la web. El aporte no entrega beneficios, insignias ni acceso especial; solo ayuda
+a cubrir servidores y pruebas. No se debe presentar como un pago obligatorio para usar Novvin.
+
 ## Propuesta de valor
 
 > Novvin es una red social en español para compartir videos, conversar por chat o voz y
@@ -58,9 +65,7 @@ externos.
 
 ## Primer ingreso
 
-La aplicación todavía no tiene un proveedor de cobro conectado: wallet, gifts y earnings
-son registros internos y no representan dinero recibido. Para registrar el primer ingreso
-real, configura un enlace propio de Mercado Pago, PayPal, Ko-fi, Buy Me a Coffee u otro
-proveedor que opere en tu país. Después de recibir una transacción, guarda fecha, importe,
-moneda, identificador del pago y comprobante; no insertes manualmente un earning en la base
-de datos.
+Para esta validación, los aportes voluntarios se reciben manualmente por Yape. Registra el
+importe real recibido, la fecha y el comprobante; no insertes manualmente un ingreso en la base
+de datos ni prometas funciones a cambio. Wallet, gifts y earnings siguen siendo registros
+internos y no representan dinero recibido.

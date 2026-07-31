@@ -1579,7 +1579,10 @@
 .auth-shell-centered {
   color: var(--app-text);
   color-scheme: dark;
-  background: var(--app-bg);
+  background:
+    radial-gradient(circle at 15% 12%, rgba(67, 225, 190, 0.16), transparent 34%),
+    radial-gradient(circle at 90% 88%, rgba(111, 95, 224, 0.16), transparent 35%),
+    var(--app-bg);
 }
 
 .auth-bg-scene {
@@ -1587,16 +1590,39 @@
 }
 
 .auth-layout-single {
-  width: min(480px, 100%);
+  width: min(540px, 100%);
 }
 
 .auth-card,
 .auth-panel-card {
-  border-radius: 8px;
-  border-color: var(--app-line);
+  border-radius: 26px;
+  border-color: color-mix(in srgb, var(--app-line) 78%, var(--app-blue));
   color: var(--app-text);
-  background: var(--app-panel);
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--app-panel) 94%, #1a7668), var(--app-panel));
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.auth-login-card {
+  gap: 1.15rem;
+}
+
+.auth-brand-lockup {
+  gap: 0.9rem;
+}
+
+.auth-brand-lockup .auth-logo-img {
+  width: 4rem;
+  height: 4rem;
+  object-fit: contain;
+  padding: 0.32rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 30px rgba(42, 224, 181, 0.2);
+}
+
+.auth-brand-lockup .brand-tag {
+  color: #071614;
+  background: linear-gradient(120deg, #65f3cd, #29d8ab);
 }
 
 .auth-panel-card p,
@@ -1612,6 +1638,18 @@
   background: var(--app-panel-raised);
 }
 
+.auth-card input {
+  min-height: 2.9rem;
+  border-radius: 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.auth-card input:focus {
+  border-color: var(--app-blue);
+  background: color-mix(in srgb, var(--app-panel-raised) 90%, var(--app-blue));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-blue) 22%, transparent);
+}
+
 .auth-panel-card .surface-subcard,
 .auth-panel-card .chip-btn,
 .auth-panel-card .ghost-btn {
@@ -1625,6 +1663,13 @@
   border-color: var(--app-blue);
   color: var(--app-blue-ink);
   background: var(--app-blue);
+}
+
+.auth-card .primary-btn {
+  min-height: 3rem;
+  border-radius: 14px;
+  font-size: 1rem;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--app-blue) 22%, transparent);
 }
 
 .auth-logo-img {

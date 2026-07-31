@@ -845,7 +845,7 @@ export function AppLayout() {
 
         <div className={isNavCollapsed ? 'brand-block rail-brand' : 'brand-block row-between'}>
           <Link to="/app/messages" className={isNavCollapsed ? 'brand-link compact' : 'brand-link'}>
-            <img src="/conectate-logo.svg" alt="Novvin" className="brand-logo" />
+            <img src="/novvin-logo.png" alt="Logo de Novvin" className="brand-logo" />
             {!isNavCollapsed ? (
               <span className="brand-copy">
                 <strong>Novvin</strong>

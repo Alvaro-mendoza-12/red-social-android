@@ -1,4 +1,4 @@
-const DEFAULT_PUBLIC_ORIGIN = 'https://conectate.com'
+const DEFAULT_PUBLIC_ORIGIN = 'https://red-social-android.vercel.app'
 
 function cleanOrigin(value: string | undefined): string {
   const trimmed = value?.trim().replace(/\/+$/, '')

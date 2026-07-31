@@ -1,14 +1,27 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=conectate.com'
 const WEB_APP_URL = 'https://red-social-android.vercel.app'
 
 export function MarketingLandingPage() {
+  const [copied, setCopied] = useState(false)
+
+  async function copyYapeNumber() {
+    try {
+      await navigator.clipboard.writeText('918 440 948')
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   return (
     <main className="marketing-page">
       <nav className="marketing-nav" aria-label="Navegación principal">
         <Link className="marketing-brand" to="/">
-          <img src="/conectate-logo.svg" alt="Novvin" />
+          <img src="/novvin-logo.png" alt="Novvin" />
           <span>Novvin</span>
         </Link>
         <div className="marketing-nav-actions">
@@ -38,7 +51,7 @@ export function MarketingLandingPage() {
           <div className="marketing-orb marketing-orb-two" />
           <div className="marketing-phone-card">
             <div className="marketing-phone-head">
-              <img src="/conectate-logo.svg" alt="" />
+              <img src="/novvin-logo.png" alt="" />
               <div><strong>Novvin</strong><span>Conecta y comparte</span></div>
             </div>
             <div className="marketing-feature-row"><span>🎬</span><div><strong>Videos</strong><small>Descubre y participa</small></div></div>
@@ -53,6 +66,29 @@ export function MarketingLandingPage() {
         <article><strong>01</strong><h2>Contenido con contexto</h2><p>Publica, comenta y vuelve a la conversación sin perderte.</p></article>
         <article><strong>02</strong><h2>Comunidades vivas</h2><p>Encuentra espacios de voz y grupos alrededor de tus intereses.</p></article>
         <article><strong>03</strong><h2>Un inicio sencillo</h2><p>Crea tu cuenta gratis y empieza desde tu teléfono o navegador.</p></article>
+      </section>
+
+      <section className="marketing-support" aria-labelledby="marketing-support-title">
+        <div className="marketing-support-copy">
+          <span className="marketing-kicker">Apoya la beta</span>
+          <h2 id="marketing-support-title">Ayúdanos a mantener Novvin en marcha.</h2>
+          <p>
+            Si te gusta Novvin, puedes hacer un aporte voluntario por Yape. No compra funciones,
+            insignias ni beneficios: solo ayuda a cubrir servidores y pruebas con usuarios reales.
+          </p>
+          <div className="marketing-yape-number">
+            <span>Número de Yape</span>
+            <strong>918 440 948</strong>
+            <button type="button" className="marketing-copy-btn" onClick={() => void copyYapeNumber()}>
+              {copied ? 'Número copiado' : 'Copiar número'}
+            </button>
+          </div>
+          <small className="marketing-support-note">Aporte totalmente voluntario · Sin servicios premium ni Play Billing</small>
+        </div>
+        <div className="marketing-support-qr-wrap">
+          <img className="marketing-support-qr" src="/yape-qr.png" alt="Código QR de Yape para apoyar voluntariamente a Novvin" />
+          <span>Escanea para aportar con Yape</span>
+        </div>
       </section>
 
       <section className="marketing-final-cta">

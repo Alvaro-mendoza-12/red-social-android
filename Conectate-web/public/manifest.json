@@ -1,11 +1,11 @@
 {
   "name": "Novvin Web",
   "short_name": "Novvin",
-  "description": "Social platform enterprise-level con voice rooms, disco, y más",
+  "description": "Novvin: chats, videos, salas de voz y comunidades en un solo lugar",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#f43f5e",
+  "theme_color": "#071614",
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "es",

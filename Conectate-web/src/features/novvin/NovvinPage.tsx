@@ -133,7 +133,7 @@ export function NovvinPage() {
     return (
       <StatusView
         title="Novvin necesita el servidor Ubuntu"
-        description="Inicia sesión mediante el backend principal de Conectate para usar Novvin v5."
+        description="Inicia sesión mediante el servidor principal de Novvin para usar Novvin v5."
       />
     )
   }

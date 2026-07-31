@@ -451,15 +451,15 @@ export function LoginPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <img src="/conectate-logo.svg" alt="Novvin" className="auth-logo-img" />
+                <img src="/novvin-logo.png" alt="Logo de Novvin" className="auth-logo-img" />
                 <div>
                   <p className="brand-tag auth-panel-tag">Novvin</p>
-                  <span>Red social privada</span>
+                  <span>Conecta, comparte y descubre</span>
                 </div>
               </div>
               <h1>Entrar a Novvin</h1>
               <p>
-                Accede con tu contraseña o aprueba un QR desde tu móvil.
+                Entra a tu espacio y continúa tus conversaciones desde cualquier dispositivo.
               </p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid auth-mode-grid-two">

@@ -64,14 +64,14 @@ export function RegisterPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <img src="/conectate-logo.svg" alt="Novvin" className="auth-logo-img" />
+                <img src="/novvin-logo.png" alt="Logo de Novvin" className="auth-logo-img" />
                 <div>
                   <p className="brand-tag auth-panel-tag">Novvin</p>
-                  <span>Red social privada</span>
+                  <span>Conecta, comparte y descubre</span>
                 </div>
               </div>
               <h1>Crear cuenta</h1>
-              <p>Usa tu servidor Ubuntu como backend principal.</p>
+              <p>Crea tu perfil gratis y empieza a conectar con personas y comunidades.</p>
             </div>
           </div>
 
