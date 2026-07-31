@@ -120,6 +120,16 @@ La salida incluye `total_users` (usuarios canónicos no eliminados), `total_vide
 los contadores de moderación. Si falta `ADMIN_TOKEN`, el script termina sin intentar
 crear usuarios ni alterar datos.
 
+Para medir la captación sin contar cuentas técnicas, ejecuta desde la misma VM:
+
+```bash
+SINCE_DATE="2026-07-01T00:00:00Z" bash scripts/fetch-acquisition-metrics.sh
+```
+
+La consulta excluye patrones de pruebas conocidos y cuenta solo cuentas locales con
+actividad en chats, publicaciones, videos, comunidades u otras funciones de usuario.
+No expone correos ni crea registros.
+
 `verify-ubuntu-modules.sh` valida en una sola pasada:
 
 - registro/login local y sesion JWT;
