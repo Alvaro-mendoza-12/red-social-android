@@ -11,8 +11,11 @@ const {
   currentUserOwnsStorageObject,
   currentUserOwnsStorageObjects,
   feedPostVisible,
+  enrichNotificationTarget,
   isChatActivityNotification,
+  isMessagingModuleNotification,
   messageContentOf,
+  notificationContentIndexes,
   normalizeMessageRow,
   previewFromMessage,
   normalizeProfileSectionOrder,
@@ -43,6 +46,82 @@ assert.strictEqual(
   false,
 )
 assert.strictEqual(isChatActivityNotification({ type: 'comment_post' }), false)
+assert.strictEqual(isMessagingModuleNotification({ type: 'call_invite' }), true)
+assert.strictEqual(isMessagingModuleNotification({ type: 'call_response' }), true)
+assert.strictEqual(isMessagingModuleNotification({ type: 'community_member_added' }), true)
+assert.strictEqual(
+  isMessagingModuleNotification({
+    type: 'activity',
+    target_type: 'call',
+    content: 'Llamada entrante',
+  }),
+  true,
+)
+assert.strictEqual(isMessagingModuleNotification({ type: 'admin_access_audit', target_type: 'profile' }), false)
+
+const notificationIndexes = notificationContentIndexes({
+  posts: [
+    {
+      id: 'post-1',
+      content: 'Publicación sin foto',
+      media_urls: ['https://cdn.example.com/post-1.jpg'],
+    },
+  ],
+  videos: [
+    {
+      id: 'video-1',
+      thumbnail_url: 'https://cdn.example.com/video-1.jpg',
+    },
+  ],
+  moments: [
+    {
+      id: 'moment-1',
+      media_url: 'https://cdn.example.com/moment-1.jpg',
+    },
+  ],
+})
+assert.deepStrictEqual(
+  enrichNotificationTarget(
+    {
+      type: 'comment_video',
+      target_id: 'video-1',
+      target_type: 'video',
+      extra_data: { comment_id: 'comment-1' },
+    },
+    notificationIndexes,
+  ).extra_data,
+  {
+    comment_id: 'comment-1',
+    video_id: 'video-1',
+    content_id: 'video-1',
+    content_type: 'video',
+    target_thumbnail_url: 'https://cdn.example.com/video-1.jpg',
+  },
+)
+assert.strictEqual(
+  enrichNotificationTarget(
+    {
+      type: 'like_post',
+      target_id: 'post-1',
+      target_type: 'post',
+      extra_data: {},
+    },
+    notificationIndexes,
+  ).extra_data.target_thumbnail_url,
+  'https://cdn.example.com/post-1.jpg',
+)
+assert.strictEqual(
+  enrichNotificationTarget(
+    {
+      type: 'comment_post',
+      target_id: 'post-1',
+      target_type: 'post',
+      extra_data: { comment_id: 'comment-post-1' },
+    },
+    notificationIndexes,
+  ).extra_data.target_preview_text,
+  'Publicación sin foto',
+)
 
 const contactJson = '{"name":"Ada","phones":["+593999999999"],"emails":[]}'
 assert.strictEqual(messageContentOf({ content: contactJson }), contactJson)

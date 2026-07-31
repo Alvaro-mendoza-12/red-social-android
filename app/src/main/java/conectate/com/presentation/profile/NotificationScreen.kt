@@ -38,6 +38,7 @@ import conectate.com.data.model.Notification
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import conectate.com.util.DateUtils
+import conectate.com.util.UbuntuMedia
 import coil.compose.AsyncImage
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -258,6 +259,8 @@ fun NotificationItem(
     val type = resolveNotificationType(notification)
     val eventStyle = notificationEventStyle(type)
     val targetThumbnail = notificationTargetThumbnail(notification)
+    val targetPreviewText = notificationTargetPreviewText(notification)
+    val targetContentType = notification.targetType?.trim()?.lowercase().orEmpty()
     
     Row(
         modifier = Modifier
@@ -303,11 +306,11 @@ fun NotificationItem(
                 lineHeight = 20.sp
             )
             
-            // Show comment preview if available
-            if (!notification.content.isNullOrBlank() && notification.type.contains("comment")) {
+            val commentPreview = notificationCommentPreview(notification)
+            if (!commentPreview.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "\"${notification.content}\"",
+                    text = "\"$commentPreview\"",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -326,13 +329,24 @@ fun NotificationItem(
         if (!targetThumbnail.isNullOrBlank()) {
             Spacer(modifier = Modifier.width(10.dp))
             AsyncImage(
-                model = targetThumbnail,
+                model = UbuntuMedia.resolveUrl(targetThumbnail) ?: targetThumbnail,
                 contentDescription = "Contenido relacionado",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(width = 58.dp, height = 66.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+        } else if (
+            targetPreviewText != null ||
+            targetContentType == "post" ||
+            targetContentType == "video" ||
+            targetContentType == "moment"
+        ) {
+            Spacer(modifier = Modifier.width(10.dp))
+            NotificationTargetFallback(
+                targetType = targetContentType,
+                previewText = targetPreviewText
             )
         } else if (!notification.isRead) {
             Spacer(modifier = Modifier.width(10.dp))
@@ -341,6 +355,46 @@ fun NotificationItem(
                     .size(9.dp)
                     .background(MaterialTheme.colorScheme.primary, CircleShape)
             )
+        }
+    }
+}
+
+@Composable
+private fun NotificationTargetFallback(
+    targetType: String,
+    previewText: String?
+) {
+    Surface(
+        modifier = Modifier.size(width = 58.dp, height = 66.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(
+            modifier = Modifier.padding(5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = if (targetType == "video" || targetType == "moment") {
+                    Icons.Default.PlayCircle
+                } else {
+                    Icons.Default.ChatBubble
+                },
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            if (!previewText.isNullOrBlank()) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = previewText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 8.sp,
+                    lineHeight = 9.sp,
+                    maxLines = 3,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -354,22 +408,42 @@ private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = whe
     "follow", "friend_request", "friend_request_accepted" ->
         Icons.Default.PersonAdd to Color(0xFF18A66A)
     "birthday" -> Icons.Default.Cake to Color(0xFFEC4899)
-    "new_video", "share_video" -> Icons.Default.PlayCircle to Color(0xFF8B5CF6)
+    "new_video", "share_video", "new_moment", "view_moment" ->
+        Icons.Default.PlayCircle to Color(0xFF8B5CF6)
     else -> Icons.Default.NotificationsActive to Color(0xFF64748B)
 }
 
 private fun notificationTargetThumbnail(notification: Notification): String? {
     val keys = listOf(
-        "thumbnail_url",
         "target_thumbnail_url",
+        "thumbnail_url",
         "video_thumbnail_url",
         "post_image_url",
+        "cover_url",
         "image_url",
         "media_url"
     )
     return keys.firstNotNullOfOrNull { key ->
         extractNotificationExtra(notification, key)
     }
+}
+
+private fun notificationTargetPreviewText(notification: Notification): String? =
+    extractNotificationExtra(notification, "target_preview_text")
+
+private fun notificationCommentPreview(notification: Notification): String? {
+    if (!resolveNotificationType(notification).contains("comment")) return null
+    val content = notification.content?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalized = content.lowercase()
+    if (
+        normalized == "comentó tu video." ||
+        normalized == "comentó tu video" ||
+        normalized == "comentó tu publicación." ||
+        normalized == "comentó tu publicación" ||
+        normalized == "comentó en tu video." ||
+        normalized == "comentó en tu publicación."
+    ) return null
+    return content
 }
 
 private fun notificationDateSection(createdAt: String): String {
@@ -408,7 +482,6 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "mention" -> " te mencionó en un comentario"
         "mention_video" -> " te mencionó en un comentario de video"
         "share_video" -> " compartió tu video"
-        "admin_warning_video" -> " te envió una advertencia sobre tu video"
         "like_post" -> " le dio like a tu publicación"
         "comment_post" -> " comentó tu publicación"
         "share_post" -> " compartió tu publicación"
@@ -441,15 +514,66 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "call_missed" -> " tiene una llamada perdida contigo"
         "view_moment" -> " vio tu estado"
         "new_moment" -> " subió un nuevo estado"
+        "challenge_invite" -> {
+            val title = extractNotificationExtra(n, "challenge_title")
+            if (title.isNullOrBlank()) " te invitó a participar en un reto"
+            else " te invitó al reto: $title"
+        }
         "voice_access_request" -> " solicitó acceso a la sección de voz"
         "account_suspended" -> " notificó una suspensión de cuenta"
         "account_enabled" -> " notificó que tu cuenta fue habilitada"
+        "admin_access_changed" -> adminAccessChangedAction(n)
+        "admin_access_audit" -> notificationContentAction(
+            notification = n,
+            actor = actor,
+            fallback = " cambió un permiso administrativo"
+        )
+        "admin_warning_video" -> notificationContentAction(
+            notification = n,
+            actor = actor,
+            fallback = " te envió una advertencia sobre tu video"
+        )
         "notification_digest" -> " preparó tu resumen de actividad"
-        else -> " realizó una acción"
+        else -> notificationContentAction(
+            notification = n,
+            actor = actor,
+            fallback = when (n.targetType?.trim()?.lowercase()) {
+                "post" -> " realizó una acción en tu publicación"
+                "video" -> " realizó una acción en tu video"
+                "moment" -> " realizó una acción en tu estado"
+                "profile" -> " realizó una acción en tu perfil"
+                else -> " generó una notificación"
+            }
+        )
     }
     
     builder.append(actionText)
     return builder.toAnnotatedString()
+}
+
+private fun notificationContentAction(
+    notification: Notification,
+    actor: String,
+    fallback: String
+): String {
+    val raw = notification.content?.trim()?.takeIf { it.isNotBlank() } ?: return fallback
+    val withoutActor = if (raw.startsWith(actor, ignoreCase = true)) {
+        raw.drop(actor.length)
+    } else {
+        raw
+    }.trimStart(' ', ',', ':', '-', '–')
+    if (withoutActor.isBlank()) return fallback
+    return " $withoutActor"
+}
+
+private fun adminAccessChangedAction(notification: Notification): String {
+    val content = notification.content?.trim().orEmpty()
+    val prefix = "Tu acceso administrativo fue"
+    if (content.startsWith(prefix, ignoreCase = true)) {
+        val access = content.drop(prefix.length).trim().trimEnd('.')
+        if (access.isNotBlank()) return " actualizó tu acceso administrativo a $access"
+    }
+    return " actualizó tu acceso administrativo"
 }
 
 fun handleNotificationNavigation(navController: NavController, n: Notification) {
@@ -473,7 +597,11 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
     // requiera ser exhaustivo.
     try {
     when (type) {
-        "follow", "friend_request_accepted", "birthday" -> navController.navigate(Screen.UserProfile.createRoute(n.actorId))
+        "follow", "friend_request_accepted", "birthday" -> {
+            if (n.actorId.isNotBlank()) {
+                navController.navigate(Screen.UserProfile.createRoute(n.actorId))
+            }
+        }
         "friend_request" -> navController.navigate(Screen.FriendRequests.route)
         "mention" -> {
             when {
@@ -525,7 +653,40 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
             n.targetId?.let { navController.navigate(Screen.MomentViewer.createRoute(it)) }
         }
         "voice_access_request" -> {
-            navController.navigate(Screen.UserProfile.createRoute(n.actorId))
+            if (n.actorId.isNotBlank()) {
+                navController.navigate(Screen.UserProfile.createRoute(n.actorId))
+            }
+        }
+        "admin_access_audit" -> {
+            val profileId = extractNotificationExtra(n, "target_user_id") ?: n.targetId
+            if (!profileId.isNullOrBlank()) {
+                navController.navigate(Screen.UserProfile.createRoute(profileId))
+            }
+        }
+        "admin_access_changed" -> {
+            navController.navigate(Screen.AdminPanel.route)
+        }
+        "challenge_invite" -> {
+            navController.navigate(Screen.Social.route)
+        }
+        "account_suspended", "account_enabled" -> {
+            navController.navigate(Screen.Profile.route)
+        }
+        else -> {
+            when (n.targetType?.trim()?.lowercase()) {
+                "video" -> resolvedVideoId?.let {
+                    navController.navigate(Screen.VideoPlayer.createRoute(it, focusCommentId = commentId))
+                }
+                "post" -> resolvedPostId?.let {
+                    navController.navigate(Screen.PostDetail.createRoute(it, focusCommentId = commentId))
+                }
+                "moment" -> n.targetId?.let {
+                    navController.navigate(Screen.MomentViewer.createRoute(it))
+                }
+                "profile" -> n.targetId?.let {
+                    navController.navigate(Screen.UserProfile.createRoute(it))
+                }
+            }
         }
     }
     } catch (error: Exception) {

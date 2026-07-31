@@ -320,21 +320,52 @@ fun HomeScreen(
             composable(
                 route = Screen.VideoPlayer.route,
                 arguments = listOf(
-                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("focusCommentId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
             ) { backStackEntry ->
-                conectate.com.presentation.videos.VideoPlayerScreen(navController = navController)
+                conectate.com.presentation.videos.VideoPlayerScreen(
+                    navController = navController,
+                    focusCommentId = backStackEntry.arguments?.getString("focusCommentId")
+                )
             }
 
             // ✅ FIX: Add PostDetail route to HomeScreen NavHost to ensure SocialScreen can navigate to it
             composable(
                 route = Screen.PostDetail.route,
                 arguments = listOf(
-                    androidx.navigation.navArgument("postId") { type = androidx.navigation.NavType.StringType }
+                    androidx.navigation.navArgument("postId") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("focusCommentId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
             ) { backStackEntry ->
                 val postId = backStackEntry.arguments?.getString("postId") ?: ""
-                conectate.com.presentation.posts.PostDetailScreen(navController = navController, postId = postId)
+                conectate.com.presentation.posts.PostDetailScreen(
+                    navController = navController,
+                    postId = postId,
+                    focusCommentId = backStackEntry.arguments?.getString("focusCommentId")
+                )
+            }
+
+            composable(
+                route = Screen.MomentViewer.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("momentId") {
+                        type = androidx.navigation.NavType.StringType
+                    }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.social.MomentViewerScreen(
+                    navController = navController,
+                    momentId = backStackEntry.arguments?.getString("momentId").orEmpty()
+                )
             }
 
             // ✅ FIX: Add Notifications route to HomeScreen NavHost (was missing, causing freeze)

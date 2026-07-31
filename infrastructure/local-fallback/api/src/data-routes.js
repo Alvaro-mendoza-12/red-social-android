@@ -910,6 +910,27 @@ async function localVideos(pool, limit = 5000) {
   return rows.map(normalizeImportedRow)
 }
 
+async function localMoments(pool, limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
+  const { rows } = await pool.query(
+    `SELECT
+        id::text,
+        user_id,
+        media_url,
+        media_type,
+        thumbnail_url,
+        caption,
+        created_at,
+        updated_at,
+        TRUE AS local_only
+     FROM fallback_moments
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [safeLimit],
+  )
+  return rows.map(normalizeImportedRow)
+}
+
 async function localVideoLikes(pool, videoIds, limit = 10_000) {
   const ids = Array.from(cleanSet(videoIds))
   if (ids.length === 0) return []
@@ -1934,22 +1955,174 @@ function normalizeNotification(row, profilesById) {
   }
 }
 
-const CHAT_ACTIVITY_NOTIFICATION_TYPES = new Set([
+const MESSAGING_MODULE_NOTIFICATION_TYPES = new Set([
   'message',
   'new_message',
   'direct_message',
   'group_message',
   'community_message',
+  'group_member_added',
+  'community_member_added',
+  'call',
+  'incoming_call',
+  'voice_call',
+  'video_call',
+  'call_invite',
+  'call_cancel',
+  'call_response',
+  'call_missed',
+  'missed_call',
+  'voice_invite',
+  'voice_return',
 ])
 
-function isChatActivityNotification(row) {
+const MESSAGING_MODULE_TARGET_TYPES = new Set([
+  'chat',
+  'direct_message',
+  'group_chat',
+  'community_chat',
+  'call',
+  'voice_call',
+  'video_call',
+])
+
+function notificationExtraData(row) {
+  if (row?.extra_data && typeof row.extra_data === 'object') return row.extra_data
+  if (typeof row?.extra_data !== 'string') return {}
+  try {
+    const parsed = JSON.parse(row.extra_data)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function notificationEffectiveType(row) {
   const baseType = normalizeId(row?.type || row?.notification_type)
-  const extraData = row?.extra_data && typeof row.extra_data === 'object'
-    ? row.extra_data
-    : {}
+  const extraData = notificationExtraData(row)
   const subtype = normalizeId(extraData.notification_type || extraData.notificationType)
-  if (subtype && !CHAT_ACTIVITY_NOTIFICATION_TYPES.has(subtype)) return false
-  return CHAT_ACTIVITY_NOTIFICATION_TYPES.has(subtype || baseType)
+  return subtype || baseType
+}
+
+function isMessagingModuleNotification(row) {
+  const type = notificationEffectiveType(row)
+  const targetType = normalizeId(row?.target_type || row?.targetType)
+  if (MESSAGING_MODULE_NOTIFICATION_TYPES.has(type)) return true
+  if (type.startsWith('call_') || type.endsWith('_message')) return true
+  if (MESSAGING_MODULE_TARGET_TYPES.has(targetType)) return true
+
+  const content = normalizeId(row?.content || row?.message || row?.body)
+  return (
+    content.includes('llamada entrante') ||
+    content.includes('llamada aceptada') ||
+    content.includes('llamada cancelada') ||
+    content.includes('llamada perdida') ||
+    content.includes('te está llamando')
+  )
+}
+
+// Kept as an alias for older callers and focused unit tests.
+function isChatActivityNotification(row) {
+  return isMessagingModuleNotification(row)
+}
+
+function notificationContentIndexes({ posts = [], videos = [], moments = [] } = {}) {
+  const postsById = new Map()
+  const videosById = new Map()
+  const momentsById = new Map()
+
+  for (const post of mergeRowsById(posts)) {
+    const id = normalizeId(textOf(post, ['id', 'post_id'], ''))
+    if (id) postsById.set(id, post)
+  }
+  for (const video of mergeRowsById(videos)) {
+    const id = normalizeId(textOf(video, ['id', 'video_id'], ''))
+    if (id) videosById.set(id, video)
+  }
+  for (const moment of mergeRowsById(moments)) {
+    const id = normalizeId(textOf(moment, ['id', 'moment_id'], ''))
+    if (id) momentsById.set(id, moment)
+  }
+  return { postsById, videosById, momentsById }
+}
+
+function enrichNotificationTarget(notification, indexes) {
+  const extraData = notificationExtraData(notification)
+  const type = notificationEffectiveType(notification)
+  const targetType = normalizeId(notification?.target_type || extraData.target_type)
+  const targetId = normalizeId(notification?.target_id)
+  const videoId = normalizeId(
+    extraData.video_id ||
+    extraData.videoId ||
+    ((targetType === 'video' || type.includes('video')) ? targetId : ''),
+  )
+  const postId = normalizeId(
+    extraData.post_id ||
+    extraData.postId ||
+    ((targetType === 'post' || type.includes('post')) ? targetId : ''),
+  )
+  const momentId = normalizeId(
+    extraData.moment_id ||
+    extraData.momentId ||
+    ((targetType === 'moment' || type.includes('moment')) ? targetId : ''),
+  )
+
+  let resolvedType = targetType
+  let resolvedId = ''
+  let thumbnailUrl = ''
+  let previewText = ''
+  if (videoId) {
+    const video = indexes.videosById.get(videoId)
+    resolvedType = 'video'
+    resolvedId = videoId
+    thumbnailUrl = textOf(video, [
+      'thumbnail_url',
+      'thumbnailUrl',
+      'cover_url',
+      'coverUrl',
+      'poster_url',
+      'video_url',
+    ], '')
+    previewText = textOf(video, ['title', 'caption', 'description'], '')
+  } else if (postId) {
+    const post = indexes.postsById.get(postId)
+    resolvedType = 'post'
+    resolvedId = postId
+    thumbnailUrl = textOf(post, [
+      'thumbnail_url',
+      'thumbnailUrl',
+      'cover_url',
+      'coverUrl',
+      'image_url',
+    ], '') || normalizePostMediaUrls(post)[0] || ''
+    previewText = textOf(post, ['content', 'caption', 'description'], '')
+  } else if (momentId) {
+    const moment = indexes.momentsById.get(momentId)
+    resolvedType = 'moment'
+    resolvedId = momentId
+    thumbnailUrl = textOf(moment, [
+      'thumbnail_url',
+      'thumbnailUrl',
+      'media_url',
+      'mediaUrl',
+    ], '')
+    previewText = textOf(moment, ['caption', 'content'], '')
+  }
+
+  if (!resolvedId) return notification
+  return {
+    ...notification,
+    target_id: resolvedId,
+    target_type: resolvedType,
+    extra_data: {
+      ...extraData,
+      [`${resolvedType}_id`]: resolvedId,
+      content_id: resolvedId,
+      content_type: resolvedType,
+      ...(thumbnailUrl ? { target_thumbnail_url: thumbnailUrl } : {}),
+      ...(previewText ? { target_preview_text: cleanText(previewText, 180) } : {}),
+    },
+  }
 }
 
 async function createLocalNotification(pool, input) {
@@ -1975,14 +2148,14 @@ async function createLocalNotification(pool, input) {
   const actorName = cleanText(input?.actorName || input?.actor_name, 160) || null
   const actorAvatarUrl = cleanText(input?.actorAvatarUrl || input?.actor_avatar_url, 700) || null
   const originalExtraData = input?.extraData && typeof input.extraData === 'object' ? input.extraData : {}
-  if (isChatActivityNotification({
+  if (isMessagingModuleNotification({
     type,
     target_type: targetType,
     extra_data: originalExtraData,
   })) {
-    // Chat already has its own realtime stream and unread counters. Keep the
-    // Android push alert, but do not duplicate every message in the social
-    // activity center or in PostgreSQL.
+    // Messages, groups, communities and calls already have their own streams,
+    // counters and histories. Keep the Android push/signalling alert, but do
+    // not duplicate those events in the social activity center or PostgreSQL.
     const notification = {
       id: crypto.randomUUID(),
       recipient_id: recipientId,
@@ -4215,20 +4388,36 @@ async function ensureLocalDataTables(pool) {
   )
   await pool.query(
     `DELETE FROM fallback_notifications
-     WHERE lower(type) IN (
+     WHERE lower(COALESCE(extra_data->>'notification_type', type)) IN (
        'message',
        'new_message',
        'direct_message',
        'group_message',
-       'community_message'
+       'community_message',
+       'group_member_added',
+       'community_member_added',
+       'call',
+       'incoming_call',
+       'voice_call',
+       'video_call',
+       'call_invite',
+       'call_cancel',
+       'call_response',
+       'call_missed',
+       'missed_call',
+       'voice_invite',
+       'voice_return'
      )
-       AND lower(COALESCE(extra_data->>'notification_type', type)) IN (
-         'message',
-         'new_message',
+       OR lower(COALESCE(target_type, '')) IN (
+         'chat',
          'direct_message',
-         'group_message',
-         'community_message'
-       )`,
+         'group_chat',
+         'community_chat',
+         'call',
+         'voice_call',
+         'video_call'
+       )
+       OR left(lower(COALESCE(type, '')), 5) = 'call_'`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_fcm_tokens (
@@ -5720,17 +5909,39 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
       const identity = userIdentity(user)
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 200, 500))
       const unreadOnly = String(req.query.unreadOnly || req.query.unread_only || '').toLowerCase() === 'true'
-      const [profiles, importedNotifications, fallbackNotifications] = await Promise.all([
+      const [
+        profiles,
+        importedNotifications,
+        fallbackNotifications,
+        importedPosts,
+        fallbackPosts,
+        importedVideos,
+        fallbackVideos,
+        importedMoments,
+        fallbackMoments,
+      ] = await Promise.all([
         allPublicProfiles(pool),
         importedRows(pool, 'notifications', 20_000),
         localNotifications(pool, 20_000),
+        importedRows(pool, 'posts', 10_000),
+        localPosts(pool, 10_000),
+        importedRows(pool, 'videos', 10_000),
+        localVideos(pool, 10_000),
+        importedRows(pool, 'moments', 10_000),
+        localMoments(pool, 10_000),
       ])
       const profilesById = indexProfiles(profiles)
+      const contentIndexes = notificationContentIndexes({
+        posts: [...importedPosts, ...fallbackPosts],
+        videos: [...importedVideos, ...fallbackVideos],
+        moments: [...importedMoments, ...fallbackMoments],
+      })
       const matchingNotifications = sortByDateDesc(
         [...importedNotifications, ...fallbackNotifications]
           .filter((row) => rowMatchesAny(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], identity.ids))
           .map((row) => normalizeNotification(row, profilesById))
-          .filter((row) => !isChatActivityNotification(row))
+          .filter((row) => !isMessagingModuleNotification(row))
+          .map((row) => enrichNotificationTarget(row, contentIndexes))
           .filter((row) => !unreadOnly || !row.is_read),
         ['created_at', 'updated_at'],
       )
@@ -12223,6 +12434,9 @@ module.exports = {
   feedPostVisible,
   invalidateImportedDataCache,
   isChatActivityNotification,
+  isMessagingModuleNotification,
+  enrichNotificationTarget,
+  notificationContentIndexes,
   messageContentOf,
   normalizeMessageRow,
   previewFromMessage,

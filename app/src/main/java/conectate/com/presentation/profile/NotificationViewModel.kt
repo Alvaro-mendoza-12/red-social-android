@@ -179,13 +179,44 @@ class NotificationViewModel @Inject constructor(
 
     private fun isChatCenterNotification(notification: Notification): Boolean {
         val type = resolveNotificationType(notification)
-        return type in setOf(
+        val targetType = notification.targetType?.trim()?.lowercase().orEmpty()
+        val content = notification.content?.trim()?.lowercase().orEmpty()
+        if (type in setOf(
             "message",
             "new_message",
             "direct_message",
             "group_message",
-            "community_message"
-        )
+            "community_message",
+            "group_member_added",
+            "community_member_added",
+            "call",
+            "incoming_call",
+            "voice_call",
+            "video_call",
+            "call_invite",
+            "call_cancel",
+            "call_response",
+            "call_missed",
+            "missed_call",
+            "voice_invite",
+            "voice_return"
+        )) return true
+        if (type.startsWith("call_") || type.endsWith("_message")) return true
+        if (targetType in setOf(
+                "chat",
+                "direct_message",
+                "group_chat",
+                "community_chat",
+                "call",
+                "voice_call",
+                "video_call"
+            )
+        ) return true
+        return content.contains("llamada entrante") ||
+            content.contains("llamada aceptada") ||
+            content.contains("llamada cancelada") ||
+            content.contains("llamada perdida") ||
+            content.contains("te está llamando")
     }
 
     fun loadNotificationDigest() {
