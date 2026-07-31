@@ -104,6 +104,22 @@ docker compose ps
 docker compose logs --tail=120 api edge signaling realtime-gateway
 ```
 
+### Consultar usuarios reales de forma segura
+
+El contador de usuarios debe salir del backend, no de las descargas de Google Play.
+Con una sesión JWT de un administrador ya iniciada, ejecuta la consulta de solo lectura
+sin guardar el token en el repositorio:
+
+```bash
+API_URL="https://tu-dominio-publico" \
+ADMIN_TOKEN="<JWT_DE_SESION_ADMIN>" \
+bash scripts/fetch-admin-stats.sh
+```
+
+La salida incluye `total_users` (usuarios canónicos no eliminados), `total_videos` y
+los contadores de moderación. Si falta `ADMIN_TOKEN`, el script termina sin intentar
+crear usuarios ni alterar datos.
+
 `verify-ubuntu-modules.sh` valida en una sola pasada:
 
 - registro/login local y sesion JWT;
