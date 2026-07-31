@@ -24,11 +24,13 @@
 .marketing-text-link { color: #d3e8e2; text-decoration: none; font-weight: 650; }
 .marketing-outline-btn,
 .marketing-secondary-btn,
-.marketing-primary-btn { border-radius: 999px; padding: 12px 18px; font-weight: 800; text-decoration: none; transition: transform .18s ease, filter .18s ease, background .18s ease; }
+.marketing-primary-btn,
+.marketing-share-btn { border-radius: 999px; padding: 12px 18px; font-weight: 800; text-decoration: none; transition: transform .18s ease, filter .18s ease, background .18s ease; }
 .marketing-outline-btn { color: #3ce3ba; border: 1px solid rgba(60, 227, 186, .6); }
 .marketing-primary-btn { color: #061511; background: linear-gradient(135deg, #63f2c9, #22d8aa); box-shadow: 0 12px 28px rgba(34, 216, 170, .2); }
 .marketing-secondary-btn { color: #effcf8; border: 1px solid rgba(232, 250, 244, .25); background: rgba(255, 255, 255, .06); }
-.marketing-outline-btn:hover, .marketing-secondary-btn:hover, .marketing-primary-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.marketing-share-btn { color: #d8fdf2; border: 1px solid rgba(101, 243, 205, .35); background: rgba(101, 243, 205, .09); cursor: pointer; }
+.marketing-outline-btn:hover, .marketing-secondary-btn:hover, .marketing-primary-btn:hover, .marketing-share-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
 
 .marketing-hero { max-width: 1220px; margin: 0 auto; min-height: 650px; display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(360px, .98fr); align-items: center; gap: clamp(38px, 8vw, 120px); }
 .marketing-hero-copy { max-width: 670px; }

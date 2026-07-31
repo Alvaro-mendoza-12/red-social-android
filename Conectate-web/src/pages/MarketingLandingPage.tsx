@@ -6,6 +6,7 @@ const WEB_APP_URL = 'https://red-social-android.vercel.app'
 
 export function MarketingLandingPage() {
   const [copied, setCopied] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
 
   async function copyYapeNumber() {
     try {
@@ -14,6 +15,26 @@ export function MarketingLandingPage() {
       window.setTimeout(() => setCopied(false), 2500)
     } catch {
       setCopied(false)
+    }
+  }
+
+  async function shareNovvin() {
+    const shareData = {
+      title: 'Novvin',
+      text: 'Prueba Novvin: videos, chats, comunidades y salas de voz en un solo lugar.',
+      url: PLAY_STORE_URL,
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData)
+        setShareStatus('Compartido')
+      } else {
+        await navigator.clipboard.writeText(PLAY_STORE_URL)
+        setShareStatus('Enlace copiado')
+      }
+      window.setTimeout(() => setShareStatus(null), 2500)
+    } catch {
+      setShareStatus(null)
     }
   }
 
@@ -43,6 +64,9 @@ export function MarketingLandingPage() {
               Descargar en Google Play
             </a>
             <Link className="marketing-secondary-btn" to="/register">Probar en la web</Link>
+            <button type="button" className="marketing-share-btn" onClick={() => void shareNovvin()}>
+              {shareStatus || 'Compartir Novvin'}
+            </button>
           </div>
           <p className="marketing-note">Gratis para empezar · Android y navegador · Comunidad en crecimiento</p>
         </div>

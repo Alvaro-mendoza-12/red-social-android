@@ -42,6 +42,19 @@ a cubrir servidores y pruebas. No se debe presentar como un pago obligatorio par
 > ¿Qué funcionó y qué te frenó? Responde con: dispositivo, función probada y si volverías
 > a usarla. No hace falta dejar una reseña positiva; buscamos una opinión sincera.
 
+### Secuencia de difusión de bajo costo
+
+1. Comparte la ficha de Google Play con 3 personas cercanas que usen Android y pídeles una
+   prueba concreta: crear cuenta, completar el perfil y enviar un mensaje.
+2. Comparte el enlace web en un grupo donde ya participes (Android, desarrollo o comunidad
+   local), explicando que es una beta y que se busca feedback honesto, no reseñas compradas.
+3. A las 24 horas pregunta qué dispositivo usaron, qué función probaron y si volverían a entrar.
+4. Cuenta como usuario nuevo solo a quien tenga registro completado y una acción dentro de
+   Novvin. Anota el canal de origen y no guardes contraseñas ni datos innecesarios.
+
+La portada web incluye “Compartir Novvin” para enviar la ficha desde Android o copiar el enlace
+cuando el navegador no ofrece Web Share.
+
 ## Registro de usuarios reales
 
 Mantén una fila por persona y no cuentes descargas como usuarios activos:
