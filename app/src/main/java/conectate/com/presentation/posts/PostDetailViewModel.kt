@@ -97,7 +97,9 @@ class PostDetailViewModel @Inject constructor(
             }.onFailure {
                 _uiState.value = _uiState.value.copy(
                     isLoadingPost = false,
-                    error = it.message ?: "Error al cargar la publicación"
+                    error = it.toUserFacingMessage(
+                        "Esta publicación ya no está disponible."
+                    )
                 )
             }
         }

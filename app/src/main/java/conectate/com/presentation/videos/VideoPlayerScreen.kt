@@ -53,6 +53,8 @@ import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.ShareRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.ConnectivityViewModel
+import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.video.RealPlaybackViewTracker
@@ -173,12 +175,14 @@ class VideoPlayerViewModel @Inject constructor(
                     },
                     onFailure = { error ->
                         _uiState.value = VideoPlayerUiState.Error(
-                            error.message ?: "Error al cargar video"
+                            error.toUserFacingMessage("Este video ya no está disponible.")
                         )
                     }
                 )
             } catch (e: Exception) {
-                _uiState.value = VideoPlayerUiState.Error(e.message ?: "Error")
+                _uiState.value = VideoPlayerUiState.Error(
+                    e.toUserFacingMessage("Este video ya no está disponible.")
+                )
             }
         }
     }
@@ -1012,6 +1016,14 @@ fun VideoPlayerScreen(
             }
 
             is VideoPlayerUiState.Success -> {
+                LaunchedEffect(focusCommentId, state.comments) {
+                    if (!focusResolved && !focusCommentId.isNullOrBlank() &&
+                        state.comments.none { it.id.equals(focusCommentId, ignoreCase = true) }
+                    ) {
+                        focusResolved = true
+                        AppFeedbackBus.show("Ese comentario fue eliminado o ya no está disponible.")
+                    }
+                }
                 val topLevelComments = remember(state.comments) {
                     state.comments.filter { it.parentId.isRootVideoCommentParent() }
                 }
@@ -1448,16 +1460,30 @@ fun VideoPlayerScreen(
             }
 
             is VideoPlayerUiState.Error -> {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
+                        .padding(padding)
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
+                    Icon(
+                        Icons.Default.HideSource,
+                        contentDescription = null,
+                        modifier = Modifier.size(52.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
                     Text(
                         text = state.message,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Volver")
+                    }
                 }
             }
         }

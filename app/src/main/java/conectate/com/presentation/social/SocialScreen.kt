@@ -142,6 +142,7 @@ fun SocialScreen(
     val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
+    val showLiveCarousel by viewModel.showLiveCarousel.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -257,6 +258,12 @@ fun SocialScreen(
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage == 2) {
             challengeViewModel.loadActiveChallenge()
+        }
+    }
+
+    LaunchedEffect(isConnected) {
+        if (isConnected && posts.isEmpty()) {
+            viewModel.recoverFeedAfterAppUpdate()
         }
     }
 
@@ -1657,7 +1664,7 @@ fun SocialScreen(
                                             onOpenSettings = { showFeedPreferences = true }
                                         )
                                     }
-                                    if (activeStreams.isNotEmpty()) {
+                                    if (showLiveCarousel && activeStreams.isNotEmpty()) {
                                         item(key = "active-lives") {
                                             conectate.com.presentation.live.LiveStreamsCarousel(
                                                 streams = activeStreams,

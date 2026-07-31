@@ -210,6 +210,13 @@ fun CommunityChatScreen(
             showAudioPickerDialog = true
         }
     }
+    val showJumpToLatest by remember(messages, listState) {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: messages.lastIndex
+            messages.size > 2 && lastVisible < messages.lastIndex - 1
+        }
+    }
 
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -533,6 +540,20 @@ fun CommunityChatScreen(
                                             }
                                         },
                                         onSwipeReply = { viewModel.onSwipeToReply(it) },
+                                        onReplyClick = { originalMessageId ->
+                                            scope.launch {
+                                                val originalIndex = messages.indexOfFirst {
+                                                    it.id.equals(originalMessageId, ignoreCase = true)
+                                                }
+                                                if (originalIndex >= 0) {
+                                                    listState.animateScrollToItem(originalIndex)
+                                                } else {
+                                                    snackbarHostState.showSnackbar(
+                                                        "El mensaje original ya no está disponible."
+                                                    )
+                                                }
+                                            }
+                                        },
                                         onSenderClick = { userId ->
                                             navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                         },
@@ -587,9 +608,7 @@ fun CommunityChatScreen(
                             }
                             val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
                             LaunchedEffect(imeBottom) {
-                                if (imeBottom > 0 &&
-                                    listState.firstVisibleItemIndex >= (messages.lastIndex - 3).coerceAtLeast(0)
-                                ) {
+                                if (imeBottom > 0) {
                                     listState.scrollToItem(messages.lastIndex)
                                 }
                             }
@@ -600,6 +619,24 @@ fun CommunityChatScreen(
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(state.message, color = MaterialTheme.colorScheme.error)
                         }
+                    }
+                }
+                if (selectedChannel?.type != "voice" && showJumpToLatest) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                if (messages.isNotEmpty()) {
+                                    listState.animateScrollToItem(messages.lastIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 14.dp, bottom = 12.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Ir al último mensaje")
                     }
                 }
             }

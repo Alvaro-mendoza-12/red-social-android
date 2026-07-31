@@ -32,6 +32,7 @@ class SocialViewModel @Inject constructor(
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
+    appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
     // challengeRepository removed (moved to ChallengeViewModel)
     private val friendRepository: conectate.com.data.repository.FriendRepository,
     val userRepository: conectate.com.data.repository.UserRepository,
@@ -80,6 +81,7 @@ class SocialViewModel @Inject constructor(
     val mutedCreatorIds: StateFlow<Set<String>> = feedPreferences.mutedCreatorIds
     val mutedTerms: StateFlow<Set<String>> = feedPreferences.mutedTerms
     val activeStreams = liveRepository.activeStreams
+    val showLiveCarousel = appSettingsPreferences.livesInSocialEnabled
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -188,6 +190,20 @@ class SocialViewModel @Inject constructor(
 
     fun refreshLives() {
         viewModelScope.launch { liveRepository.refreshActiveStreams() }
+    }
+
+    fun recoverFeedAfterAppUpdate() {
+        viewModelScope.launch {
+            repeat(3) { attempt ->
+                if (authService.ensureValidAccessToken().isSuccess) {
+                    loadPosts()
+                    loadCurrentUser()
+                    refreshLives()
+                    return@launch
+                }
+                kotlinx.coroutines.delay(500L * (attempt + 1))
+            }
+        }
     }
 
     private fun rankPosts(posts: List<Post>): List<Post> {

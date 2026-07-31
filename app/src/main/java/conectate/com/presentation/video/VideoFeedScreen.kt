@@ -211,6 +211,7 @@ fun VideoFeedScreen(
     val forYouVideos by viewModel.forYouVideos.collectAsState()
     val followingVideos by viewModel.followingVideos.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
+    val showLiveRecommendations by viewModel.showLiveRecommendations.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
@@ -267,16 +268,28 @@ fun VideoFeedScreen(
     var showPlaybackOptions by remember { mutableStateOf(false) }
     var showCreateMenu by remember { mutableStateOf(false) }
 
+    LaunchedEffect(isConnected) {
+        if (isConnected && forYouVideos.isEmpty() && followingVideos.isEmpty()) {
+            viewModel.recoverFeedAfterAppUpdate()
+        }
+    }
+
     val currentVideos = if (isSearchMode) searchResults 
                          else (if (selectedTab == 0) forYouVideos else followingVideos)
     val downloadedVideoIds = remember(offlineVideos) {
         offlineVideos.map { it.video.id.trim().lowercase() }.toSet()
     }
-    val feedEntries = remember(currentVideos, activeStreams, isSearchMode, selectedTab) {
+    val feedEntries = remember(
+        currentVideos,
+        activeStreams,
+        isSearchMode,
+        selectedTab,
+        showLiveRecommendations
+    ) {
         mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
-            includeLives = !isSearchMode && selectedTab == 0
+            includeLives = showLiveRecommendations && !isSearchMode && selectedTab == 0
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
@@ -1097,8 +1110,10 @@ private fun LiveFeedRecommendation(
             .background(Color.Black)
     ) {
         AsyncImage(
-            model = UbuntuMedia.resolveUrl(stream.hostAvatarUrl) ?: stream.hostAvatarUrl,
-            contentDescription = null,
+            model = UbuntuMedia.resolveUrl(stream.replayThumbnailUrl ?: stream.hostAvatarUrl)
+                ?: stream.replayThumbnailUrl
+                ?: stream.hostAvatarUrl,
+            contentDescription = "Vista previa del directo de ${stream.hostName}",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
@@ -1107,7 +1122,13 @@ private fun LiveFeedRecommendation(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.48f))
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.32f),
+                        0.48f to Color.Black.copy(alpha = 0.48f),
+                        1f to Color.Black.copy(alpha = 0.92f)
+                    )
+                )
         )
 
         Row(
@@ -1142,13 +1163,28 @@ private fun LiveFeedRecommendation(
                     Text(stream.viewerCount.toString(), color = Color.White, style = MaterialTheme.typography.labelMedium)
                 }
             }
+            Surface(
+                color = Color.Black.copy(alpha = 0.62f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = if (stream.source.equals("screen", ignoreCase = true)) {
+                        "PANTALLA"
+                    } else {
+                        "CÁMARA"
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
 
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.72f))
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1163,8 +1199,16 @@ private fun LiveFeedRecommendation(
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(stream.hostName, color = Color.White, fontWeight = FontWeight.Bold)
-                    Text("@${stream.hostName.lowercase().replace(" ", "")}", color = Color.White.copy(alpha = 0.75f))
+                    Text(
+                        stream.hostName.ifBlank { "Creador de Novvin" },
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Transmitiendo ahora · toca para ver su perfil",
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
             Text(
@@ -1176,11 +1220,15 @@ private fun LiveFeedRecommendation(
             Button(
                 onClick = onOpenLive,
                 modifier = Modifier.fillMaxWidth(),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE53935),
+                    contentColor = Color.White
+                )
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Ver directo")
+                Text("Entrar al directo", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1685,8 +1733,8 @@ private fun mixedVideoFeed(
     if (!includeLives || streams.isEmpty()) return videos.map(::VideoFeedVideoEntry)
     if (videos.isEmpty()) return streams.take(6).map(::VideoFeedLiveEntry)
 
-    val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 5) + 1)
-    var nextLiveAfter = 5
+    val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 12) + 1)
+    var nextLiveAfter = 12
     var liveIndex = 0
     videos.forEachIndexed { index, video ->
         result += VideoFeedVideoEntry(video)
@@ -1694,7 +1742,11 @@ private fun mixedVideoFeed(
         if (videoCount == nextLiveAfter) {
             result += VideoFeedLiveEntry(streams[liveIndex % streams.size])
             liveIndex += 1
-            nextLiveAfter += if (liveIndex % 2 == 0) 5 else 6
+            nextLiveAfter += when (liveIndex % 3) {
+                0 -> 10
+                1 -> 12
+                else -> 15
+            }
         }
     }
     return result

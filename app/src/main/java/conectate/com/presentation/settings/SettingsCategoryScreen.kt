@@ -54,11 +54,15 @@ class SettingsCategoryViewModel @Inject constructor(
     val callNotifications = preferences.callNotificationsEnabled
     val socialNotifications = preferences.socialNotificationsEnabled
     val liveNotifications = preferences.liveNotificationsEnabled
+    val livesInVideoFeed = preferences.livesInVideoFeedEnabled
+    val livesInSocial = preferences.livesInSocialEnabled
 
     fun setMessageNotifications(value: Boolean) = preferences.setMessageNotificationsEnabled(value)
     fun setCallNotifications(value: Boolean) = preferences.setCallNotificationsEnabled(value)
     fun setSocialNotifications(value: Boolean) = preferences.setSocialNotificationsEnabled(value)
     fun setLiveNotifications(value: Boolean) = preferences.setLiveNotificationsEnabled(value)
+    fun setLivesInVideoFeed(value: Boolean) = preferences.setLivesInVideoFeedEnabled(value)
+    fun setLivesInSocial(value: Boolean) = preferences.setLivesInSocialEnabled(value)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,6 +84,8 @@ fun SettingsCategoryScreen(
     val callNotifications by viewModel.callNotifications.collectAsState()
     val socialNotifications by viewModel.socialNotifications.collectAsState()
     val liveNotifications by viewModel.liveNotifications.collectAsState()
+    val livesInVideoFeed by viewModel.livesInVideoFeed.collectAsState()
+    val livesInSocial by viewModel.livesInSocial.collectAsState()
 
     Scaffold(
         topBar = {
@@ -143,6 +149,14 @@ fun SettingsCategoryScreen(
                 }
                 "videos" -> {
                     item {
+                        SettingToggleCard(
+                            "Directos intercalados",
+                            "Muestra un directo recomendado cada 10 a 15 videos.",
+                            livesInVideoFeed,
+                            viewModel::setLivesInVideoFeed,
+                        )
+                    }
+                    item {
                         SettingsDestination(
                             Icons.Default.Download,
                             "Videos descargados",
@@ -158,6 +172,14 @@ fun SettingsCategoryScreen(
                     }
                 }
                 "social" -> {
+                    item {
+                        SettingToggleCard(
+                            "Directos en Social",
+                            "Muestra los directos activos en la parte superior de Social.",
+                            livesInSocial,
+                            viewModel::setLivesInSocial,
+                        )
+                    }
                     item {
                         SettingToggleCard(
                             "Actividad social",

@@ -27,6 +27,7 @@ import androidx.navigation.NavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.presentation.components.PostCard
 import conectate.com.presentation.components.CommentItem
+import conectate.com.presentation.common.AppFeedbackBus
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -85,6 +86,9 @@ fun PostDetailScreen(
             // 0 = post, 1 = comments header, 2 = optional summary, then comments.
             listState.scrollToItem(idx + 2 + if (summaryItemVisible) 1 else 0)
             focusResolved = true
+        } else if (!uiState.isLoadingComments) {
+            focusResolved = true
+            AppFeedbackBus.show("Ese comentario fue eliminado o ya no está disponible.")
         }
     }
 
@@ -355,8 +359,29 @@ fun PostDetailScreen(
             if (state.isLoadingPost) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (state.error != null) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(state.error, color = Color.Red)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Default.HideSource,
+                        contentDescription = null,
+                        modifier = Modifier.size(52.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        state.error,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Volver")
+                    }
                 }
             } else if (state.post != null) {
                 LazyColumn(

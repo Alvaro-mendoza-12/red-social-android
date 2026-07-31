@@ -17,6 +17,8 @@ class AppSettingsPreferences @Inject constructor(
         private const val KEY_CALL_NOTIFICATIONS = "call_notifications_enabled"
         private const val KEY_SOCIAL_NOTIFICATIONS = "social_notifications_enabled"
         private const val KEY_LIVE_NOTIFICATIONS = "live_notifications_enabled"
+        private const val KEY_LIVES_IN_VIDEO_FEED = "lives_in_video_feed_enabled"
+        private const val KEY_LIVES_IN_SOCIAL = "lives_in_social_enabled"
         private const val KEY_DATA_SAVER = "data_saver_enabled"
         private const val KEY_AUTO_DOWNLOAD_WIFI = "auto_download_wifi"
         private const val KEY_AUTO_DOWNLOAD_MOBILE = "auto_download_mobile"
@@ -48,6 +50,16 @@ class AppSettingsPreferences @Inject constructor(
         prefs.getBoolean(KEY_LIVE_NOTIFICATIONS, true)
     )
     val liveNotificationsEnabled: StateFlow<Boolean> = _liveNotificationsEnabled
+
+    private val _livesInVideoFeedEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_LIVES_IN_VIDEO_FEED, true)
+    )
+    val livesInVideoFeedEnabled: StateFlow<Boolean> = _livesInVideoFeedEnabled
+
+    private val _livesInSocialEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_LIVES_IN_SOCIAL, true)
+    )
+    val livesInSocialEnabled: StateFlow<Boolean> = _livesInSocialEnabled
 
     private val _dataSaverEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_DATA_SAVER, false)
@@ -100,6 +112,16 @@ class AppSettingsPreferences @Inject constructor(
     fun setLiveNotificationsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_LIVE_NOTIFICATIONS, enabled).apply()
         _liveNotificationsEnabled.value = enabled
+    }
+
+    fun setLivesInVideoFeedEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LIVES_IN_VIDEO_FEED, enabled).apply()
+        _livesInVideoFeedEnabled.value = enabled
+    }
+
+    fun setLivesInSocialEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LIVES_IN_SOCIAL, enabled).apply()
+        _livesInSocialEnabled.value = enabled
     }
 
     fun setDataSaverEnabled(enabled: Boolean) {

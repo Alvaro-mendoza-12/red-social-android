@@ -27,6 +27,9 @@ class MomentViewModel @Inject constructor(
     private val _isUploading = MutableStateFlow(false)
     val isUploading: StateFlow<Boolean> = _isUploading.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(true)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private val _uploadError = MutableStateFlow<String?>(null)
     val uploadError = _uploadError.asStateFlow()
 
@@ -53,11 +56,14 @@ class MomentViewModel @Inject constructor(
      */
     fun refreshMoments() {
         viewModelScope.launch {
+            _isRefreshing.value = true
             try {
                 android.util.Log.d("MomentDebug", "MomentViewModel manually triggering repository refresh")
                 repository.refreshMoments()
             } catch (e: Exception) {
                 android.util.Log.e("MomentDebug", "Error in manual refresh", e)
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }

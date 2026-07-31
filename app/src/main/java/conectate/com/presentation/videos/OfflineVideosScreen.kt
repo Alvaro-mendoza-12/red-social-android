@@ -56,12 +56,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +71,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -504,15 +508,45 @@ private fun OfflineSwipeFeed(
     onCycleCompleted: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val pagerState = rememberPagerState(pageCount = { videos.size + 1 })
+    var playbackRequested by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableStateOf(1f) }
+    var isForeground by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    val latestPlaybackRequested by rememberUpdatedState(playbackRequested)
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_OFF
+            repeatMode = Player.REPEAT_MODE_ONE
             playWhenReady = true
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> {
+                    isForeground = true
+                    if (latestPlaybackRequested && pagerState.currentPage < videos.size) {
+                        player.play()
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    isForeground = false
+                    player.pause()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player.pause()
+        }
+    }
+
+    DisposableEffect(player) {
         onDispose { player.release() }
     }
 
@@ -526,8 +560,24 @@ private fun OfflineSwipeFeed(
         } else {
             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(entry.localVideoPath))))
             player.prepare()
-            player.playWhenReady = true
+            player.playWhenReady = isForeground && playbackRequested
         }
+    }
+
+    LaunchedEffect(isForeground, playbackRequested, pagerState.currentPage) {
+        if (
+            isForeground &&
+            playbackRequested &&
+            pagerState.currentPage < videos.size
+        ) {
+            player.play()
+        } else {
+            player.pause()
+        }
+    }
+
+    LaunchedEffect(playbackSpeed) {
+        player.setPlaybackSpeed(playbackSpeed)
     }
 
     Box(
@@ -572,7 +622,8 @@ private fun OfflineSwipeFeed(
                     modifier = Modifier
                         .fillMaxSize()
                         .clickable {
-                            if (player.isPlaying) player.pause() else player.play()
+                            playbackRequested = !playbackRequested
+                            if (playbackRequested && isForeground) player.play() else player.pause()
                         }
                 ) {
                     if (page == pagerState.currentPage) {
@@ -638,6 +689,21 @@ private fun OfflineSwipeFeed(
                 }
             }
             Spacer(Modifier.weight(1f))
+            Surface(
+                modifier = Modifier.clickable {
+                    playbackSpeed = if (playbackSpeed == 1f) 2f else 1f
+                },
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.62f)
+            ) {
+                Text(
+                    text = if (playbackSpeed == 2f) "2×" else "1×",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.Black.copy(alpha = 0.55f)

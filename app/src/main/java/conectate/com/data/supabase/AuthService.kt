@@ -368,13 +368,21 @@ class AuthService @Inject constructor(
         if (isLocalFallbackModeEnabled()) {
             val localSession = recoverPersistedLocalFallbackSession()
             if (localSession != null) {
+                // Publish the durable session immediately. A Play Store update can restart the
+                // process while the network tunnel/backend is still reconnecting; withholding
+                // this session made every feed perform its first request as an anonymous user.
+                _currentSession.value = localSession
+                _isInitializing.value = false
                 authScope.launch {
-                    try {
-                        val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
-                            .getOrElse { error ->
-                                Log.w("AuthService", "Ubuntu session could not be renewed at startup", error)
-                                return@launch
+                    val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
+                        .getOrElse { error ->
+                            Log.w("AuthService", "Ubuntu session could not be renewed at startup", error)
+                            if (isForcedLogout()) {
+                                _currentSession.value = null
                             }
+                            return@launch
+                        }
+                    try {
                         val restored = recoverPersistedLocalFallbackSession()
                         if (
                             restored != null &&
@@ -382,14 +390,14 @@ class AuthService @Inject constructor(
                         ) {
                             _currentSession.value = restored
                             syncLocalFallbackCompatibilitySession(refreshedToken)
-                        } else {
-                            _currentSession.value = null
                         }
-                    } finally {
-                        _isInitializing.value = false
+                    } catch (error: Exception) {
+                        // Keep the locally authenticated account on transient startup failures.
+                        // Subsequent foreground/feed requests renew the token automatically.
+                        Log.w("AuthService", "Ubuntu compatibility session sync deferred", error)
                     }
                 }
-                Log.d("AuthService", "Ubuntu backend: validating saved session at startup")
+                Log.d("AuthService", "Ubuntu backend: saved session restored; validation continues in background")
             } else {
                 _currentSession.value = null
                 clearPersistedSessionSnapshot()

@@ -366,6 +366,7 @@ fun MessageBubble(
     userBadges: List<conectate.com.data.model.Badge> = emptyList(),
     onUrlClick: (String) -> Unit = {},
     onSwipeReply: (Message) -> Unit = {},
+    onReplyClick: (String) -> Unit = {},
     onSenderClick: (String) -> Unit = {},
     currentUserId: String? = null,
     onReactionClick: (String) -> Unit = {},
@@ -535,7 +536,10 @@ fun MessageBubble(
                             .height(IntrinsicSize.Min) 
                             .padding(8.dp)
                             .clickable {
-                                // Potentially scroll to original message or just visual
+                                val originalId = quoted.id.ifBlank {
+                                    message.reply_to_id.orEmpty()
+                                }
+                                if (originalId.isNotBlank()) onReplyClick(originalId)
                             }
                     ) {
                         Box(

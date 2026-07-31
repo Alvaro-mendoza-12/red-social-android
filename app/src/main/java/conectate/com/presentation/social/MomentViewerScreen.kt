@@ -68,6 +68,7 @@ fun MomentViewerScreen(
     android.util.Log.d("MomentDebug", "Entering MomentViewerScreen for momentId: $momentId")
 
     val moments by viewModel.moments.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val viewers by viewModel.viewers.collectAsState()
     val visibleMoments = remember(moments, momentId) {
         val selectedMoment = moments.firstOrNull { it.id == momentId }
@@ -75,7 +76,7 @@ fun MomentViewerScreen(
         if (!selectedUserId.isNullOrBlank()) {
             moments.filter { it.userId == selectedUserId }
         } else {
-            moments
+            emptyList()
         }
     }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { visibleMoments.size })
@@ -83,8 +84,38 @@ fun MomentViewerScreen(
     val context = LocalContext.current
 
     if (visibleMoments.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isRefreshing) {
+                CircularProgressIndicator(color = Color.White)
+            } else {
+                Column(
+                    modifier = Modifier.padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Icon(
+                        Icons.Default.HistoryToggleOff,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(52.dp)
+                    )
+                    Text(
+                        "Este estado ya venció o fue eliminado.",
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Volver")
+                    }
+                }
+            }
         }
         return
     }

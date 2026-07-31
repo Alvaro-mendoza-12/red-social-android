@@ -34,7 +34,8 @@ class VideoFeedViewModel @Inject constructor(
     val userRepository: conectate.com.data.repository.UserRepository,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
-    private val offlineVideoRepository: conectate.com.data.repository.OfflineVideoRepository
+    private val offlineVideoRepository: conectate.com.data.repository.OfflineVideoRepository,
+    appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences
 ) : ViewModel() {
     
     // Two separate lists to avoid reloading when switching tabs
@@ -44,6 +45,7 @@ class VideoFeedViewModel @Inject constructor(
     private val _followingVideos = MutableStateFlow<List<Video>>(emptyList())
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
     val activeStreams = liveRepository.activeStreams
+    val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
     val offlineVideos = offlineVideoRepository.videos
     val offlineDownloadProgress = offlineVideoRepository.downloadProgress
     private val _downloadActionMessage = MutableStateFlow<String?>(null)
@@ -162,6 +164,19 @@ class VideoFeedViewModel @Inject constructor(
 
     fun refreshFeed() {
         if (_selectedTab.value == 0) loadForYouVideos() else loadFollowingVideos()
+    }
+
+    fun recoverFeedAfterAppUpdate() {
+        viewModelScope.launch {
+            repeat(3) { attempt ->
+                if (authService.ensureValidAccessToken().isSuccess) {
+                    refreshFeed()
+                    refreshLives()
+                    return@launch
+                }
+                delay(500L * (attempt + 1))
+            }
+        }
     }
 
     fun onSearchQueryChanged(query: String) {
