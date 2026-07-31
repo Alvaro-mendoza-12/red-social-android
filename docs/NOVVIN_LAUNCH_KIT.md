@@ -55,6 +55,9 @@ a cubrir servidores y pruebas. No se debe presentar como un pago obligatorio par
 La portada web incluye “Compartir Novvin” para enviar la ficha desde Android o copiar el enlace
 cuando el navegador no ofrece Web Share.
 
+Para destinos concretos y reglas de publicación, consulta
+[`NOVVIN_OUTREACH_TARGETS.md`](./NOVVIN_OUTREACH_TARGETS.md).
+
 ## Registro de usuarios reales
 
 Mantén una fila por persona y no cuentes descargas como usuarios activos:
