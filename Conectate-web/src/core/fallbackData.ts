@@ -163,6 +163,9 @@ export type FallbackRandomSession = {
     hobbies: string[]
     user_id: string | null
   }
+  last_message?: string | null
+  last_message_sender?: 'me' | 'peer' | null
+  unread_count?: number
   created_at: string
   updated_at: string
 }
@@ -172,6 +175,8 @@ export type FallbackRandomMessage = {
   client_message_id: string
   sender: 'me' | 'peer'
   content: string
+  content_type?: string
+  media_url?: string | null
   created_at: string
 }
 

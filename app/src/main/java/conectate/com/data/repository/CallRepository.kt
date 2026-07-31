@@ -129,7 +129,10 @@ class CallRepository @Inject constructor(
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
-    private val _isSpeaker = MutableStateFlow(false)
+    // Calls start on the loudspeaker so speech is intelligible on phones with
+    // a quiet earpiece. The user can still switch to earpiece/headset at any
+    // time from the call controls.
+    private val _isSpeaker = MutableStateFlow(true)
     val isSpeaker: StateFlow<Boolean> = _isSpeaker.asStateFlow()
 
     private val _incomingInvite = MutableStateFlow<CallInvite?>(null)
@@ -377,7 +380,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = peerAvatar,
             isVideo = isVideo
         )
-        _isSpeaker.value = isVideo
+        _isSpeaker.value = true
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -495,7 +498,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = peerProfile?.avatar_url,
             isVideo = false
         )
-        _isSpeaker.value = false
+        _isSpeaker.value = true
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -552,7 +555,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = invite.callerAvatarUrl,
             isVideo = invite.isVideo
         )
-        _isSpeaker.value = invite.isVideo
+        _isSpeaker.value = true
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,

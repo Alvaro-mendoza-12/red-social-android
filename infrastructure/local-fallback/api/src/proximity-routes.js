@@ -122,6 +122,16 @@ async function ensureProximityTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_random_sessions_users
     ON fallback_random_chat_sessions(status, lower(user_a::text), lower(user_b::text), updated_at DESC)
   `)
+  // Read cursors let the anonymous inbox expose a real unread count without
+  // mixing those messages into the normal notification stream.
+  await pool.query(
+    `ALTER TABLE fallback_random_chat_sessions
+     ADD COLUMN IF NOT EXISTS user_a_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  )
+  await pool.query(
+    `ALTER TABLE fallback_random_chat_sessions
+     ADD COLUMN IF NOT EXISTS user_b_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_random_chat_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -240,6 +250,26 @@ async function sessionPayload(pool, session, identity) {
     ? Number(session.user_a_reveal || 0)
     : Number(session.user_b_reveal || 0)
   const peer = await profileById(pool, peerId)
+  const readColumn = viewerId === normalizeId(session.user_a)
+    ? 'user_a_read_at'
+    : 'user_b_read_at'
+  const { rows: summaryRows } = await pool.query(
+    `SELECT
+       (SELECT content FROM fallback_random_chat_messages
+        WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 1) AS last_message,
+       (SELECT sender_id FROM fallback_random_chat_messages
+        WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 1) AS last_message_sender,
+       (SELECT COUNT(*)::int FROM fallback_random_chat_messages
+        WHERE session_id = $1::uuid) AS message_count,
+       (SELECT COUNT(*)::int FROM fallback_random_chat_messages
+        WHERE session_id = $1::uuid
+          AND lower(sender_id::text) <> $2
+          AND created_at > COALESCE((SELECT ${readColumn}
+                                     FROM fallback_random_chat_sessions
+                                     WHERE id = $1::uuid), to_timestamp(0))) AS unread_count`,
+    [session.id, viewerId],
+  )
+  const summary = summaryRows[0] || {}
   const alias = `Persona ${String(session.id).replace(/-/g, '').slice(0, 4).toUpperCase()}`
   return {
     id: session.id,
@@ -254,9 +284,40 @@ async function sessionPayload(pool, session, identity) {
       hobbies: peerRevealLevel >= 1 ? peer?.hobbies || [] : [],
       user_id: peerRevealLevel >= 3 ? peerId : null,
     },
+    last_message: summary.last_message || null,
+    last_message_sender: summary.last_message_sender
+      ? (identity.ids.has(normalizeId(summary.last_message_sender)) ? 'me' : 'peer')
+      : null,
+    unread_count: Number(summary.unread_count || 0),
+    message_count: Number(summary.message_count || 0),
     created_at: session.created_at,
     updated_at: session.updated_at,
   }
+}
+
+// Trust grows from actual conversation, never from a button that lets a
+// client skip levels. Four exchanged messages unlock the next level for both
+// participants, up to the three levels needed to reveal the normal profile.
+async function advanceAnonymousProgress(db, sessionId) {
+  const { rows: countRows } = await db.query(
+    `SELECT COUNT(*)::int AS total
+     FROM fallback_random_chat_messages
+     WHERE session_id = $1::uuid`,
+    [sessionId],
+  )
+  const total = Number(countRows[0]?.total || 0)
+  const level = Math.min(3, Math.floor(total / 4))
+  const { rows } = await db.query(
+    `UPDATE fallback_random_chat_sessions
+     SET user_a_reveal = GREATEST(user_a_reveal, $2),
+         user_b_reveal = GREATEST(user_b_reveal, $2),
+         updated_at = NOW()
+     WHERE id = $1::uuid
+     RETURNING id::text, user_a, user_b, status, user_a_reveal, user_b_reveal,
+               created_at, updated_at`,
+    [sessionId, level],
+  )
+  return rows[0] || null
 }
 
 function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
@@ -392,17 +453,8 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
         await client.query('ROLLBACK')
         return res.status(409).json({ error: 'RANDOM_ACTIVE_SESSION_LIMIT' })
       }
-      const { rows: ownPresenceRows } = await client.query(
-        `SELECT latitude::float8, longitude::float8, radius_km::float8
-         FROM fallback_proximity_presence
-         WHERE lower(user_id::text) = ANY($1::text[]) AND nearby_enabled = TRUE AND expires_at > NOW()
-         LIMIT 1`,
-        [identity.values],
-      )
-      if (!ownPresenceRows[0]) {
-        await client.query('ROLLBACK')
-        return res.status(409).json({ error: 'PROXIMITY_NOT_ENABLED' })
-      }
+      // Random chat is global. Location presence is only used by the nearby
+      // radar; a user can join the anonymous queue without sharing location.
       await client.query(
         `UPDATE fallback_proximity_presence
          SET random_enabled = TRUE,
@@ -421,19 +473,13 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       )
       const blocked = await blockedIds(client, identity)
       const { rows: queueRows } = await client.query(
-        `SELECT q.user_id, q.gender, q.looking_for,
-                p.latitude::float8, p.longitude::float8, p.radius_km::float8
+        `SELECT q.user_id, q.gender, q.looking_for
          FROM fallback_random_chat_queue q
-         JOIN fallback_proximity_presence p ON lower(p.user_id::text) = lower(q.user_id::text)
          WHERE lower(q.user_id::text) <> $1
-           AND p.nearby_enabled = TRUE
-           AND p.random_enabled = TRUE
-           AND p.expires_at > NOW()
          ORDER BY q.created_at
          FOR UPDATE OF q SKIP LOCKED`,
         [normalizeId(userId)],
       )
-      const ownPresence = ownPresenceRows[0]
       const existingPeerIds = new Set(existingSessions.map((session) => (
         normalizeId(session.user_a) === normalizeId(userId)
           ? normalizeId(session.user_b)
@@ -446,8 +492,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
           existingPeerIds.has(candidateId) ||
           !mutuallyCompatible({ gender, looking_for: lookingFor }, entry)
         ) return false
-        const distance = haversineKm(ownPresence.latitude, ownPresence.longitude, entry.latitude, entry.longitude)
-        return distance <= Math.min(Number(ownPresence.radius_km || 20), Number(entry.radius_km || 20), 20)
+        return true
       })
       if (!candidate) {
         await client.query('COMMIT')
@@ -558,6 +603,13 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
          LIMIT 500`,
         [sessionId],
       )
+      const readColumn = identity.ids.has(normalizeId(session.user_a))
+        ? 'user_a_read_at'
+        : 'user_b_read_at'
+      await pool.query(
+        `UPDATE fallback_random_chat_sessions SET ${readColumn} = NOW() WHERE id = $1::uuid`,
+        [sessionId],
+      )
       res.json({
         items: rows.map((row) => ({
           id: row.id,
@@ -592,9 +644,15 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!RANDOM_MESSAGE_TYPES.has(contentType)) {
         return res.status(400).json({ error: 'RANDOM_MESSAGE_TYPE_INVALID' })
       }
-      const revealSum = Number(session.user_a_reveal || 0) + Number(session.user_b_reveal || 0)
-      const requiredRevealSum = { text: 0, sticker: 2, audio: 3, image: 4 }[contentType]
-      if (revealSum < requiredRevealSum) {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM fallback_random_chat_messages WHERE session_id = $1::uuid`,
+        [sessionId],
+      )
+      const currentMessageCount = Number(countRows[0]?.total || 0)
+      // The composer unlocks one capability at a time. The current message
+      // is included so the third/sixth/ninth message can use its new control.
+      const requiredMessages = { text: 0, audio: 3, sticker: 6, image: 9 }[contentType]
+      if (currentMessageCount + 1 < requiredMessages) {
         return res.status(403).json({ error: 'RANDOM_MESSAGE_TYPE_LOCKED' })
       }
       if (contentType === 'text' && !content) return res.status(400).json({ error: 'MESSAGE_REQUIRED' })
@@ -620,6 +678,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
         )
         rows = existing.rows
       }
+      await advanceAnonymousProgress(pool, sessionId)
       await pool.query(`UPDATE fallback_random_chat_sessions SET updated_at = NOW() WHERE id = $1::uuid`, [sessionId])
       void publishRealtimeEvent(`random-chat:${sessionId}`, { event: 'random_message_created', sessionId, messageId: rows[0]?.id })
       res.status(201).json({ message: { ...rows[0], sender: 'me' } })
@@ -639,18 +698,11 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!session || !ownsSession(session, identity) || session.status !== 'active') {
         return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       }
-      const isUserA = identity.ids.has(normalizeId(session.user_a))
-      const currentLevel = Number(isUserA ? session.user_a_reveal : session.user_b_reveal)
-      const requested = numberBetween(req.body?.level, currentLevel, Math.min(3, currentLevel + 1), currentLevel + 1)
-      const nextLevel = Math.trunc(requested)
-      const column = isUserA ? 'user_a_reveal' : 'user_b_reveal'
-      const { rows } = await pool.query(
-        `UPDATE fallback_random_chat_sessions
-         SET ${column} = GREATEST(${column}, $2), updated_at = NOW()
-         WHERE id = $1::uuid
-         RETURNING id::text, user_a, user_b, status, user_a_reveal, user_b_reveal, created_at, updated_at`,
-        [sessionId, nextLevel],
-      )
+      // Kept as a compatibility endpoint for older clients, but the server
+      // no longer accepts a requested level. Progress is derived exclusively
+      // from exchanged messages in advanceAnonymousProgress().
+      const progressed = await advanceAnonymousProgress(pool, sessionId)
+      const rows = progressed ? [progressed] : []
       void publishRealtimeEvent(`random-chat:${sessionId}`, { event: 'random_reveal_updated', sessionId })
       res.json({ session: await sessionPayload(pool, rows[0], identity) })
     } catch (error) {

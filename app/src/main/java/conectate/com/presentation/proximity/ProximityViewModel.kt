@@ -177,31 +177,15 @@ class ProximityViewModel @Inject constructor(
         }
     }
 
-    fun startAnonymousMatch(
-        latitude: Double,
-        longitude: Double,
-        gender: String,
-        lookingFor: String
-    ) {
+    fun startAnonymousMatch(gender: String, lookingFor: String) {
         if (_randomStatus.value == "waiting") return
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             val token = accessTokenOrReport() ?: return@launch finishLoading()
-            val presenceResult = apiClient.updateProximityPresence(
-                accessToken = token,
-                latitude = latitude,
-                longitude = longitude,
-                radiusKm = _radiusKm.value,
-                gender = gender,
-                lookingFor = lookingFor,
-                randomEnabled = true
-            )
-            if (presenceResult.isFailure) {
-                reportFailure(presenceResult.exceptionOrNull())
-                return@launch finishLoading()
-            }
-            _nearbyEnabled.value = true
+            // Anonymous matching is global and does not require location
+            // permission. Nearby radar keeps its own presence flow; random
+            // chat only needs the authenticated queue request below.
             apiClient.startAnonymousMatch(token, gender, lookingFor)
                 .onSuccess { applyMatchResult(it, selectMatched = true) }
                 .onFailure(::reportFailure)
@@ -230,20 +214,6 @@ class ProximityViewModel @Inject constructor(
                 .onSuccess { sent ->
                     _anonymousMessages.value = (_anonymousMessages.value + sent)
                         .distinctBy { it.id.ifBlank { it.clientMessageId } }
-                }
-                .onFailure(::reportFailure)
-        }
-    }
-
-    fun revealNextLevel() {
-        val session = _anonymousSession.value ?: return
-        if (session.ownRevealLevel >= 3) return
-        viewModelScope.launch {
-            val token = accessTokenOrReport() ?: return@launch
-            apiClient.revealAnonymousProfile(token, session.id, session.ownRevealLevel + 1)
-                .onSuccess {
-                    updateAnonymousSession(it)
-                    maybePromoteToNormalChat(it)
                 }
                 .onFailure(::reportFailure)
         }

@@ -51,6 +51,10 @@ class WebRTCManager(
     private val accessTokenProvider: (() -> String?)? = null
 ) {
     companion object {
+        // A small, bounded receive gain fixes quiet calls on earpiece and
+        // budget devices without letting user-controlled participant sliders
+        // amplify indefinitely.
+        private const val REMOTE_AUDIO_GAIN = 1.25
         private val liveManagers = Collections.synchronizedMap(
             WeakHashMap<WebRTCManager, Unit>()
         )
@@ -401,15 +405,15 @@ class WebRTCManager(
     private fun initializeFactory() {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions())
 
-        // PREFER SOFTWARE AEC/NS for better compatibility with budget devices (Infinix/MediaTek)
-        // Hardware AEC often locks the mic on budget Android 12/13 versions.
+        // Hardware AEC/NS is enabled where the platform exposes it; WebRTC
+        // falls back to its software processors on devices without support.
         Log.i(
             "WebRTC",
             "Creating ADM with source=$preferredAudioInputSource, sampleRate=$preferredAudioSampleRate, lowLatency=$preferredLowLatencyAudio"
         )
         audioDeviceModule = JavaAudioDeviceModule.builder(context)
-            .setUseHardwareAcousticEchoCanceler(false) 
-            .setUseHardwareNoiseSuppressor(false)
+            .setUseHardwareAcousticEchoCanceler(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            .setUseHardwareNoiseSuppressor(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             .setUseLowLatency(preferredLowLatencyAudio)
             .setInputSampleRate(preferredAudioSampleRate)
             .setOutputSampleRate(preferredAudioSampleRate)
@@ -663,7 +667,7 @@ class WebRTCManager(
             }
             peerConnections[socketId]?.setAudioPlayout(remoteAudioPlaybackEnabled)
             track.setEnabled(remoteAudioPlaybackEnabled)
-            track.setVolume(if (remoteAudioPlaybackEnabled) 1.0 else 0.0)
+            track.setVolume(if (remoteAudioPlaybackEnabled) REMOTE_AUDIO_GAIN else 0.0)
             remoteAudioTracks[socketId] = track
             Log.i("WebRTCManager", "Remote Audio Track configured and enabled for $socketId")
         }
@@ -1339,7 +1343,7 @@ class WebRTCManager(
                         pc?.setAudioPlayout(remoteAudioPlaybackEnabled)
                         remoteAudioTracks[socketId]?.let { remoteTrack ->
                             remoteTrack.setEnabled(remoteAudioPlaybackEnabled)
-                            remoteTrack.setVolume(if (remoteAudioPlaybackEnabled) 1.0 else 0.0)
+                            remoteTrack.setVolume(if (remoteAudioPlaybackEnabled) REMOTE_AUDIO_GAIN else 0.0)
                         }
                     }
                 }
@@ -2090,13 +2094,17 @@ class WebRTCManager(
             remoteAudioTracks.values.forEach { track ->
                 runCatching {
                     track.setEnabled(enabled)
-                    track.setVolume(if (enabled) 1.0 else 0.0)
+                    track.setVolume(if (enabled) REMOTE_AUDIO_GAIN else 0.0)
                 }
             }
             Log.d("WebRTC", "Remote audio playback ${if (enabled) "ENABLED" else "DISABLED"}")
         }
     }
-    fun setAudioVolume(s: String, v: Double) { executor.execute { remoteAudioTracks[s]?.setVolume(v) } }
+    fun setAudioVolume(s: String, v: Double) {
+        executor.execute {
+            remoteAudioTracks[s]?.setVolume(v.coerceIn(0.0, 1.0) * REMOTE_AUDIO_GAIN)
+        }
+    }
     
     /**
      * Gets the local audio level. 

@@ -132,32 +132,41 @@ async function main() {
     method: 'POST',
     body: { level: 3 },
   })
-  assert.equal(clampedReveal.session.own_reveal_level, 1)
+  assert.equal(clampedReveal.session.own_reveal_level, 0)
 
-  await request(`/v1/data/proximity/random/sessions/${sessionId}/reveal`, {
-    token: userB.token,
-    method: 'POST',
-    body: { level: 1 },
-  })
+  async function sendText(account, label) {
+    return request(`/v1/data/proximity/random/sessions/${sessionId}/messages`, {
+      token: account.token,
+      method: 'POST',
+      expected: 201,
+      body: { clientMessageId: crypto.randomUUID(), content: label },
+    })
+  }
+
+  // Progress is earned from exchanged messages, not from a reveal button.
+  await sendText(userA, 'progreso 2')
+  await sendText(userA, 'progreso 3')
+  await sendText(userA, 'progreso 4')
   let aView = await request(`/v1/data/proximity/random/sessions/${sessionId}`, { token: userA.token })
+  assert.equal(aView.session.own_reveal_level, 1)
   assert.deepEqual(aView.session.peer.interests, ['fotografía'])
   assert.equal(aView.session.peer.user_id, null)
 
-  await request(`/v1/data/proximity/random/sessions/${sessionId}/reveal`, {
-    token: userB.token,
-    method: 'POST',
-    body: { level: 2 },
-  })
+  await sendText(userB, 'progreso 5')
+  await sendText(userB, 'progreso 6')
+  await sendText(userB, 'progreso 7')
+  await sendText(userB, 'progreso 8')
   aView = await request(`/v1/data/proximity/random/sessions/${sessionId}`, { token: userA.token })
+  assert.equal(aView.session.own_reveal_level, 2)
   assert.equal(aView.session.peer.display_name, 'Perfil revelado B')
   assert.equal(aView.session.peer.user_id, null)
 
-  await request(`/v1/data/proximity/random/sessions/${sessionId}/reveal`, {
-    token: userB.token,
-    method: 'POST',
-    body: { level: 3 },
-  })
+  await sendText(userA, 'progreso 9')
+  await sendText(userA, 'progreso 10')
+  await sendText(userA, 'progreso 11')
+  await sendText(userA, 'progreso 12')
   aView = await request(`/v1/data/proximity/random/sessions/${sessionId}`, { token: userA.token })
+  assert.equal(aView.session.own_reveal_level, 3)
   assert.equal(aView.session.peer.user_id, userB.id)
 
   await request(`/v1/data/proximity/random/sessions/${sessionId}`, { token: userB.token, method: 'DELETE' })
@@ -172,6 +181,7 @@ async function main() {
     ok: true,
     coordinatesNeverExposed: true,
     radiusEnforced: true,
+    randomGlobal: true,
     blocksEnforced: true,
     compatibleMatching: true,
     thirdPartyIsolation: true,

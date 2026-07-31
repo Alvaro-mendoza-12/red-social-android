@@ -99,8 +99,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-private enum class LocationAction { ENABLE_NEARBY, START_RANDOM }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProximityScreen(
@@ -124,24 +122,16 @@ fun ProximityScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var radiusSlider by remember(radiusKm) { mutableFloatStateOf(radiusKm.toFloat()) }
     var localError by remember { mutableStateOf<String?>(null) }
-    var pendingLocationAction by remember { mutableStateOf<LocationAction?>(null) }
+    var pendingLocationRequest by remember { mutableStateOf(false) }
 
-    fun performLocationAction(action: LocationAction) {
+    fun performLocationAction() {
         val location = getBestLastKnownLocation(context)
         if (location == null) {
             localError = "No se pudo obtener una ubicación reciente. Activa la ubicación del dispositivo e inténtalo de nuevo."
             return
         }
         viewModel.setRadius(radiusSlider.toDouble())
-        when (action) {
-            LocationAction.ENABLE_NEARBY -> viewModel.enableNearby(location.latitude, location.longitude)
-            LocationAction.START_RANDOM -> viewModel.startAnonymousMatch(
-                latitude = location.latitude,
-                longitude = location.longitude,
-                gender = gender,
-                lookingFor = lookingFor
-            )
-        }
+        viewModel.enableNearby(location.latitude, location.longitude)
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -149,17 +139,17 @@ fun ProximityScreen(
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        val action = pendingLocationAction
-        pendingLocationAction = null
-        if (granted && action != null) performLocationAction(action)
+        val requestPending = pendingLocationRequest
+        pendingLocationRequest = false
+        if (granted && requestPending) performLocationAction()
         else if (!granted) localError = "Se necesita permiso de ubicación para usar proximidad."
     }
 
-    fun requestLocation(action: LocationAction) {
+    fun requestLocation() {
         if (hasLocationPermission(context)) {
-            performLocationAction(action)
+            performLocationAction()
         } else {
-            pendingLocationAction = action
+            pendingLocationRequest = true
             locationPermissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -217,7 +207,7 @@ fun ProximityScreen(
                         radiusSlider = it
                         viewModel.setRadius(it.toDouble())
                     },
-                    onEnable = { requestLocation(LocationAction.ENABLE_NEARBY) },
+                    onEnable = { requestLocation() },
                     onRefresh = viewModel::refreshNearby,
                     onDisable = viewModel::disableNearby,
                     onOpenProfile = { navController.navigate(Screen.UserProfile.createRoute(it)) }
@@ -227,21 +217,17 @@ fun ProximityScreen(
                     session = session,
                     sessions = sessions,
                     messages = messages,
-                    radius = radiusSlider,
                     gender = gender,
                     lookingFor = lookingFor,
-                    onRadiusChange = {
-                        radiusSlider = it
-                        viewModel.setRadius(it.toDouble())
-                    },
                     onGenderChange = viewModel::setGender,
                     onLookingForChange = viewModel::setLookingFor,
-                    onStart = { requestLocation(LocationAction.START_RANDOM) },
+                    // Random chat is global; it must not ask for radar
+                    // permission or narrow the queue to the current zone.
+                    onStart = { viewModel.startAnonymousMatch(gender, lookingFor) },
                     onCancel = viewModel::cancelAnonymousMatch,
                     onSend = viewModel::sendAnonymousMessage,
                     onSendSticker = viewModel::sendAnonymousSticker,
                     onSendMedia = viewModel::sendAnonymousMedia,
-                    onReveal = viewModel::revealNextLevel,
                     onEnd = viewModel::endAnonymousSession,
                     onSelectSession = viewModel::selectAnonymousSession,
                     onBackToSessions = viewModel::showAnonymousSessionList,
@@ -505,10 +491,8 @@ private fun AnonymousTab(
     session: AnonymousChatSession?,
     sessions: List<AnonymousChatSession>,
     messages: List<AnonymousChatMessage>,
-    radius: Float,
     gender: String,
     lookingFor: String,
-    onRadiusChange: (Float) -> Unit,
     onGenderChange: (String) -> Unit,
     onLookingForChange: (String) -> Unit,
     onStart: () -> Unit,
@@ -516,7 +500,6 @@ private fun AnonymousTab(
     onSend: (String) -> Unit,
     onSendSticker: (String?, String) -> Unit,
     onSendMedia: (android.net.Uri, String) -> Unit,
-    onReveal: () -> Unit,
     onEnd: () -> Unit,
     onSelectSession: (String) -> Unit,
     onBackToSessions: () -> Unit,
@@ -531,7 +514,6 @@ private fun AnonymousTab(
             onSend = onSend,
             onSendSticker = onSendSticker,
             onSendMedia = onSendMedia,
-            onReveal = onReveal,
             onEnd = onEnd,
             onBack = onBackToSessions,
             normalChatPeerId = normalChatPeerId,
@@ -561,17 +543,29 @@ private fun AnonymousTab(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "Conoce a alguien sin mostrar tu identidad. Ambos deciden paso a paso qué compartir.",
+                        "Conoce personas de cualquier lugar sin mostrar tu identidad. Las opciones se desbloquean automáticamente mientras conversan.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         }
-        item { ProximityPrivacyNotice() }
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Alcance global: no usamos tu ubicación para emparejarte. Puedes mantener varios chats anónimos a la vez.",
+                    modifier = Modifier.padding(14.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         if (sessions.isNotEmpty()) {
             item {
                 Text(
-                    "Tus chats anónimos",
+            "Tus chats anónimos",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -590,7 +584,6 @@ private fun AnonymousTab(
                 )
             }
         }
-        item { RadiusControl(radius, onRadiusChange) }
         item { PreferenceSelector(
             label = "Me identifico como",
             value = gender,
@@ -651,7 +644,7 @@ private fun AnonymousTab(
         } }
         item {
             Text(
-                "Seguridad: no mostramos tu ubicación exacta ni tu perfil hasta que tú lo autorices.",
+                "Seguridad: tu identidad se revela por etapas según la conversación; no puedes saltarte el progreso.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -695,10 +688,33 @@ private fun AnonymousSessionRow(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "Nivel de confianza: ${session.friendshipPercent}%",
+                    session.lastMessage?.let { last ->
+                        "${if (session.lastMessageSender == "me") "Tú: " else ""}$last"
+                    } ?: "Sin mensajes todavía",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "Confianza: ${session.friendshipPercent}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (session.unreadCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        session.unreadCount.coerceAtMost(99).toString(),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    )
+                }
             }
         }
     }
@@ -744,7 +760,6 @@ private fun AnonymousConversation(
     onSend: (String) -> Unit,
     onSendSticker: (String?, String) -> Unit,
     onSendMedia: (android.net.Uri, String) -> Unit,
-    onReveal: () -> Unit,
     onEnd: () -> Unit,
     onBack: () -> Unit,
     normalChatPeerId: String?,
@@ -803,12 +818,12 @@ private fun AnonymousConversation(
             progress = session.friendshipPercent / 100f,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         )
-        Text(
-            when {
-                session.friendshipPercent >= 100 -> "Chat normal desbloqueado"
-                session.friendshipPercent >= 67 -> "Fotos desbloqueadas · falta compartir el perfil"
-                session.friendshipPercent >= 50 -> "Audios desbloqueados"
-                session.friendshipPercent >= 33 -> "Stickers desbloqueados"
+            Text(
+                when {
+                session.messageCount >= 12 -> "Chat normal desbloqueado"
+                session.messageCount >= 9 -> "Fotos desbloqueadas · falta compartir el perfil"
+                session.messageCount >= 6 -> "Stickers desbloqueados · faltan fotos"
+                session.messageCount >= 3 -> "Audios desbloqueados · faltan stickers y fotos"
                 else -> "Sigan conversando y compartiendo identidad para desbloquear opciones"
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -844,21 +859,6 @@ private fun AnonymousConversation(
                 Text("Continuar en chats")
             }
         }
-        if (session.ownRevealLevel < 3) {
-            OutlinedButton(
-                onClick = onReveal,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    when (session.ownRevealLevel) {
-                        0 -> "Compartir mis intereses"
-                        1 -> "Compartir mi nombre y foto"
-                        else -> "Compartir acceso a mi perfil"
-                    }
-                )
-            }
-        }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -869,24 +869,24 @@ private fun AnonymousConversation(
                 AnonymousMessageBubble(message)
             }
         }
-        if (session.friendshipPercent >= 33) {
+        if (session.messageCount >= 3) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 AssistChip(
-                    onClick = { showStickerPicker = true },
-                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
-                    label = { Text("Sticker") }
+                    onClick = { audioPicker.launch("audio/*") },
+                    leadingIcon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
+                    label = { Text("Audio") }
                 )
-                if (session.friendshipPercent >= 50) {
+                if (session.messageCount >= 6) {
                     AssistChip(
-                        onClick = { audioPicker.launch("audio/*") },
-                        leadingIcon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
-                        label = { Text("Audio") }
+                        onClick = { showStickerPicker = true },
+                        leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
+                        label = { Text("Sticker") }
                     )
                 }
-                if (session.friendshipPercent >= 67) {
+                if (session.messageCount >= 9) {
                     AssistChip(
                         onClick = { imagePicker.launch("image/*") },
                         leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },

@@ -171,6 +171,10 @@ data class AnonymousChatSession(
     val ownRevealLevel: Int,
     val peerRevealLevel: Int,
     val peer: AnonymousPeer,
+    val lastMessage: String? = null,
+    val lastMessageSender: String? = null,
+    val unreadCount: Int = 0,
+    val messageCount: Int = 0,
     val createdAt: String = "",
     val updatedAt: String = ""
 ) {
@@ -5826,6 +5830,10 @@ class LocalFallbackApiClient @Inject constructor(
                 hobbies = stringListOf(peer, "hobbies"),
                 userId = textOf(peer, "user_id").ifBlank { null }
             ),
+            lastMessage = textOf(row, "last_message").ifBlank { null },
+            lastMessageSender = textOf(row, "last_message_sender").ifBlank { null },
+            unreadCount = intOf(row, "unread_count"),
+            messageCount = intOf(row, "message_count"),
             createdAt = textOf(row, "created_at"),
             updatedAt = textOf(row, "updated_at")
         )

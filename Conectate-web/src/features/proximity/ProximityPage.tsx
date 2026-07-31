@@ -26,7 +26,6 @@ import {
   loadFallbackRandomMessages,
   loadFallbackRandomSession,
   matchFallbackRandomChat,
-  revealFallbackRandomProfile,
   sendFallbackRandomMessage,
   type FallbackNearbyProfile,
   type FallbackRandomMessage,
@@ -235,11 +234,10 @@ export function ProximityPage() {
   async function startMatching() {
     setError(null)
     try {
-      if (!enabled && !(await activate())) return
       const response = await matchFallbackRandomChat({ gender, lookingFor })
       setMatchStatus(response.status)
       setSession(response.session ?? null)
-      setInfo(response.status === 'waiting' ? 'Buscando una persona compatible cerca...' : 'Conexión anónima creada.')
+      setInfo(response.status === 'waiting' ? 'Buscando una persona compatible en todo el mundo...' : 'Conexión anónima creada.')
       if (response.session) await loadSessionMessages(response.session.id)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo iniciar la búsqueda aleatoria'))
@@ -280,17 +278,6 @@ export function ProximityPage() {
       setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
     } finally {
       setSending(false)
-    }
-  }
-
-  async function revealNextLevel() {
-    if (!session || session.own_reveal_level >= 3) return
-    try {
-      const response = await revealFallbackRandomProfile(session.id, session.own_reveal_level + 1)
-      setSession(response.session)
-      setInfo('Tu siguiente nivel de perfil quedó disponible para la otra persona.')
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo actualizar el nivel de confianza'))
     }
   }
 
@@ -395,17 +382,15 @@ export function ProximityPage() {
             <label>Me identifico como
               <select value={gender} onChange={(event) => setGender(event.target.value)}>
                 <option value="any">Prefiero no indicarlo</option>
-                <option value="male">Hombre</option>
-                <option value="female">Mujer</option>
-                <option value="nonbinary">No binario</option>
+                <option value="man">Hombre</option>
+                <option value="woman">Mujer</option>
               </select>
             </label>
             <label>Quiero conectar con
               <select value={lookingFor} onChange={(event) => setLookingFor(event.target.value)}>
                 <option value="any">Cualquier persona</option>
-                <option value="male">Hombres</option>
-                <option value="female">Mujeres</option>
-                <option value="nonbinary">Personas no binarias</option>
+                <option value="man">Hombres</option>
+                <option value="woman">Mujeres</option>
               </select>
             </label>
             {matchStatus === 'waiting' ? (
@@ -425,7 +410,7 @@ export function ProximityPage() {
               </div>
               <div className="random-peer-actions">
                 {peer?.user_id ? <Link className="ghost-btn" to={`/app/profile/${encodeURIComponent(peer.user_id)}`}>Ver perfil</Link> : null}
-                <button className="ghost-btn" type="button" onClick={() => void revealNextLevel()} disabled={session.own_reveal_level >= 3}><Eye aria-hidden="true" /> Revelar {Math.min(3, session.own_reveal_level + 1)}/3</button>
+                <small className="muted-copy">Los niveles se desbloquean mientras conversan</small>
                 <button className="icon-btn danger-text" type="button" onClick={() => void endSession()} title="Finalizar conversación" aria-label="Finalizar conversación"><X aria-hidden="true" /></button>
               </div>
             </header>
