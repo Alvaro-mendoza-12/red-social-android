@@ -5,6 +5,8 @@ import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { AppLayout } from './layout/AppLayout'
+import { MarketingLandingPage } from './pages/MarketingLandingPage'
+import './pages/marketing.css'
 
 const PostDetailPage = lazy(() =>
   import('./pages/feed/PostDetailPage').then((module) => ({ default: module.PostDetailPage })),
@@ -117,19 +119,12 @@ function RouteSuspense({ children }: { children: ReactNode }) {
 }
 
 function RootRoute() {
-  const { loading, user, configured } = useAuth()
-  if (!configured) {
-    return (
-      <StatusView
-        title="Configura el backend"
-        description="Agrega VITE_FALLBACK_API_URL en .env para usar tu servidor Ubuntu."
-      />
-    )
-  }
+  const { loading, user } = useAuth()
   if (loading) {
     return <StatusView title="Iniciando Novvin Web..." description="Verificando sesión." />
   }
-  return <Navigate to={user ? '/app/messages' : '/login'} replace />
+  if (user) return <Navigate to="/app/messages" replace />
+  return <MarketingLandingPage />
 }
 
 function AppRouter() {
