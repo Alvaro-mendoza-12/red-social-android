@@ -336,6 +336,13 @@
   box-shadow: none;
 }
 
+.app-shell .brand-logo {
+  object-fit: contain;
+  padding: 2px;
+  border-color: var(--app-line);
+  background: rgba(255, 255, 255, 0.96);
+}
+
 .app-shell:is(.theme-system, .theme-dark) .brand-copy strong,
 .app-shell:is(.theme-system, .theme-dark) .rail-profile-link,
 .app-shell:is(.theme-system, .theme-dark) .nav-item {
