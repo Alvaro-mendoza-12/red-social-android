@@ -5,18 +5,7 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=conectate.
 const WEB_APP_URL = 'https://red-social-android.vercel.app'
 
 export function MarketingLandingPage() {
-  const [copied, setCopied] = useState(false)
   const [shareStatus, setShareStatus] = useState<string | null>(null)
-
-  async function copyYapeNumber() {
-    try {
-      await navigator.clipboard.writeText('918 440 948')
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2500)
-    } catch {
-      setCopied(false)
-    }
-  }
 
   async function shareNovvin() {
     const shareData = {
@@ -90,29 +79,6 @@ export function MarketingLandingPage() {
         <article><strong>01</strong><h2>Contenido con contexto</h2><p>Publica, comenta y vuelve a la conversación sin perderte.</p></article>
         <article><strong>02</strong><h2>Comunidades vivas</h2><p>Encuentra espacios de voz y grupos alrededor de tus intereses.</p></article>
         <article><strong>03</strong><h2>Un inicio sencillo</h2><p>Crea tu cuenta gratis y empieza desde tu teléfono o navegador.</p></article>
-      </section>
-
-      <section className="marketing-support" aria-labelledby="marketing-support-title">
-        <div className="marketing-support-copy">
-          <span className="marketing-kicker">Apoya la beta</span>
-          <h2 id="marketing-support-title">Ayúdanos a mantener Novvin en marcha.</h2>
-          <p>
-            Si te gusta Novvin, puedes hacer un aporte voluntario por Yape. No compra funciones,
-            insignias ni beneficios: solo ayuda a cubrir servidores y pruebas con usuarios reales.
-          </p>
-          <div className="marketing-yape-number">
-            <span>Número de Yape</span>
-            <strong>918 440 948</strong>
-            <button type="button" className="marketing-copy-btn" onClick={() => void copyYapeNumber()}>
-              {copied ? 'Número copiado' : 'Copiar número'}
-            </button>
-          </div>
-          <small className="marketing-support-note">Aporte totalmente voluntario · Sin servicios premium ni Play Billing</small>
-        </div>
-        <div className="marketing-support-qr-wrap">
-          <img className="marketing-support-qr" src="/yape-qr.png" alt="Código QR de Yape para apoyar voluntariamente a Novvin" />
-          <span>Escanea para aportar con Yape</span>
-        </div>
       </section>
 
       <section className="marketing-final-cta">
