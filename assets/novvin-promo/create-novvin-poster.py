@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 background_path = ROOT / "assets" / "novvin-promo" / "novvin-social-background.png"
 logo_path = ROOT / "Conectate-web" / "public" / "novvin-logo.png"
 output_path = ROOT / "assets" / "novvin-promo" / "novvin-social-poster.png"
+video_path = ROOT / "assets" / "novvin-promo" / "novvin-social-promo.mp4"
 
 
 def font(size: int, bold: bool = False):
@@ -51,4 +53,22 @@ url_box = draw.textbbox((0, 0), url, font=font(24))
 draw.text(((1080 - (url_box[2] - url_box[0])) / 2, 1530), url, font=font(24), fill=(214, 238, 255, 255))
 
 canvas.convert("RGB").save(output_path, quality=95)
+
+# A lightweight silent vertical clip is suitable for Reels and ordinary posts.
+video = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 24, (1080, 1920))
+poster = cv2.imread(str(output_path))
+for frame_index in range(24 * 8):
+    progress = frame_index / (24 * 8 - 1)
+    scale = 1.0 + 0.035 * progress
+    resized = cv2.resize(poster, (round(1080 * scale), round(1920 * scale)), interpolation=cv2.INTER_LINEAR)
+    top = (resized.shape[0] - 1920) // 2
+    left = (resized.shape[1] - 1080) // 2
+    frame = resized[top : top + 1920, left : left + 1080]
+    if progress < 0.08:
+        frame = (frame * (progress / 0.08)).astype("uint8")
+    elif progress > 0.92:
+        frame = (frame * ((1.0 - progress) / 0.08)).astype("uint8")
+    video.write(frame)
+video.release()
 print(output_path)
+print(video_path)
