@@ -921,7 +921,8 @@ private fun MessageEditorStep(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp),
+                    .padding(top = 10.dp)
+                    .offset(y = -reliableBottomPadding),
                 verticalAlignment = Alignment.Bottom
             ) {
                 Column(
