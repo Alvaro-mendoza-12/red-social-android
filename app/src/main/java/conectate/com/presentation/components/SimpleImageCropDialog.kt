@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -236,61 +237,68 @@ fun SimpleImageCropDialog(
                     }
                 }
 
-                errorMessage?.let { message ->
-                    Text(
-                        text = message,
-                        color = Color(0xFFFFB4AB),
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                }
-                Text(
-                    text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
-                    color = Color.White.copy(alpha = 0.86f),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-
                 val availablePresets = remember(presets) {
                     (listOf(ImageCropPreset.FREE) + presets).distinct()
                 }
-                if (availablePresets.size > 1) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        availablePresets.forEach { preset ->
-                            val selected = selectedPreset == preset
-                            Surface(
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .clickable(enabled = !isSaving) {
-                                        selectedPreset = preset
-                                        crop = cropForPreset(preset, sourceAspect)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = -reliableBottomPadding),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    errorMessage?.let { message ->
+                        Text(
+                            text = message,
+                            color = Color(0xFFFFB4AB),
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
+                    Text(
+                        text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
+                        color = Color.White.copy(alpha = 0.86f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+
+                    if (availablePresets.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            availablePresets.forEach { preset ->
+                                val selected = selectedPreset == preset
+                                Surface(
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .clickable(enabled = !isSaving) {
+                                            selectedPreset = preset
+                                            crop = cropForPreset(preset, sourceAspect)
+                                        },
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        Color(0xFF242424)
                                     },
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    Color(0xFF242424)
-                                },
-                                contentColor = if (selected) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    Color.White
-                                },
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (selected) MaterialTheme.colorScheme.primary else Color(0xFF9E9E9E)
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(
-                                    text = preset.label,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
-                                )
+                                    contentColor = if (selected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        Color.White
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (selected) MaterialTheme.colorScheme.primary else Color(0xFF9E9E9E)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(
+                                        text = preset.label,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
+                                    )
+                                }
                             }
                         }
                     }
