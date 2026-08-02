@@ -835,7 +835,7 @@ private fun MessageEditorStep(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .offset(y = -reliableBottomPadding)
+                .offset(y = -(reliableBottomPadding + 12.dp))
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
                 .padding(
                     start = 12.dp,
@@ -918,6 +918,10 @@ private fun MessageEditorStep(
                 )
             }
 
+            // The caption row is visually lifted by the safe inset below. Reserve
+            // that height in the layout too so thumbnails and captions can never
+            // occupy the same pixels on compact or gesture-navigation devices.
+            Spacer(Modifier.height(reliableBottomPadding))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
