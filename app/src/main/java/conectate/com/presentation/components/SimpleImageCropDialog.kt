@@ -28,8 +28,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -270,15 +268,14 @@ fun SimpleImageCropDialog(
 
                     if (availablePresets.size > 1) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             availablePresets.forEach { preset ->
                                 val selected = selectedPreset == preset
                                 Surface(
                                     modifier = Modifier
+                                        .weight(1f)
                                         .heightIn(min = 48.dp)
                                         .clickable(enabled = !isSaving) {
                                             selectedPreset = preset
@@ -304,7 +301,12 @@ fun SimpleImageCropDialog(
                                         text = preset.label,
                                         color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp, vertical = 13.dp)
                                     )
                                 }
                             }
