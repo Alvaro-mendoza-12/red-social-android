@@ -119,6 +119,7 @@ fun SimpleImageCropDialog(
     onCropped: (Uri) -> Unit
 ) {
     val context = LocalContext.current
+    val reliableBottomPadding = rememberReliableBottomSafePadding()
     val scope = rememberCoroutineScope()
     var selectedPreset by remember(sourceUri) { mutableStateOf(initialPreset) }
     var sourceAspect by remember(sourceUri) { mutableStateOf(1f) }
@@ -144,7 +145,12 @@ fun SimpleImageCropDialog(
                     .fillMaxSize()
                     .safeDrawingPadding()
                     .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(
+                        start = 12.dp,
+                        top = 8.dp,
+                        end = 12.dp,
+                        bottom = reliableBottomPadding
+                    ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -230,6 +236,20 @@ fun SimpleImageCropDialog(
                     }
                 }
 
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = Color(0xFFFFB4AB),
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
+                Text(
+                    text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
+                    color = Color.White.copy(alpha = 0.86f),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+
                 val availablePresets = remember(presets) {
                     (listOf(ImageCropPreset.FREE) + presets).distinct()
                 }
@@ -246,9 +266,9 @@ fun SimpleImageCropDialog(
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
                                     .clickable(enabled = !isSaving) {
-                                    selectedPreset = preset
-                                    crop = cropForPreset(preset, sourceAspect)
-                                },
+                                        selectedPreset = preset
+                                        crop = cropForPreset(preset, sourceAspect)
+                                    },
                                 color = if (selected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
@@ -271,24 +291,10 @@ fun SimpleImageCropDialog(
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
                                 )
-                                }
+                            }
                         }
                     }
                 }
-
-                errorMessage?.let { message ->
-                    Text(
-                        text = message,
-                        color = Color(0xFFFFB4AB),
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                }
-                Text(
-                    text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
-                    color = Color.White.copy(alpha = 0.86f),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
             }
         }
     }
