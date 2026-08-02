@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -121,6 +123,7 @@ fun SimpleImageCropDialog(
 ) {
     val context = LocalContext.current
     val reliableBottomPadding = rememberReliableBottomSafePadding()
+    val cropControlsLift = reliableBottomPadding + 16.dp
     val scope = rememberCoroutineScope()
     var selectedPreset by remember(sourceUri) { mutableStateOf(initialPreset) }
     var sourceAspect by remember(sourceUri) { mutableStateOf(1f) }
@@ -240,10 +243,15 @@ fun SimpleImageCropDialog(
                 val availablePresets = remember(presets) {
                     (listOf(ImageCropPreset.FREE) + presets).distinct()
                 }
+                // Reserve the same height used by the visual lift. Without this
+                // spacer the preset strip is merely painted over the preview and
+                // can look correct on one phone while touching the gesture pill
+                // or covering the image on another.
+                Spacer(Modifier.height(cropControlsLift))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .offset(y = -reliableBottomPadding),
+                        .offset(y = -cropControlsLift),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     errorMessage?.let { message ->
