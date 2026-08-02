@@ -426,7 +426,7 @@ fun MomentViewerScreen(
                     .align(Alignment.BottomCenter)
                     .offset(y = -reliableBottomPadding)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = reliableBottomPadding)
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
