@@ -335,7 +335,7 @@ private fun RadarVisualization(
 ) {
     val sweepProgress = rememberRealtimeProgress(
         key = "radar-sweep",
-        durationMillis = 3_200L,
+        durationMillis = 2_800L,
         running = enabled,
         repeat = true,
     )
@@ -383,12 +383,22 @@ private fun RadarVisualization(
                 )
                 if (enabled) {
                     drawArc(
-                        color = primary.copy(alpha = 0.16f),
-                        startAngle = sweepAngle - 34f,
-                        sweepAngle = 34f,
+                        color = primary.copy(alpha = 0.28f),
+                        startAngle = sweepAngle - 48f,
+                        sweepAngle = 48f,
                         useCenter = true,
                         topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
                         size = androidx.compose.ui.geometry.Size(outerRadius * 2f, outerRadius * 2f),
+                    )
+                    val sweepRadians = Math.toRadians(sweepAngle.toDouble())
+                    drawLine(
+                        color = primary.copy(alpha = 0.92f),
+                        start = center,
+                        end = Offset(
+                            x = center.x + cos(sweepRadians).toFloat() * outerRadius,
+                            y = center.y + sin(sweepRadians).toFloat() * outerRadius,
+                        ),
+                        strokeWidth = 5f,
                     )
                     drawCircle(
                         color = primary.copy(alpha = (1f - pulseProgress) * 0.28f),
@@ -920,7 +930,6 @@ private fun AnonymousConversation(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .imePadding()
                 .padding(10.dp),
             verticalAlignment = Alignment.Bottom

@@ -418,6 +418,9 @@ private fun KeepMediaCanvasFixedWhileTyping() {
     DisposableEffect(dialogView) {
         val window = (dialogView.parent as? DialogWindowProvider)?.window
         val previousMode = window?.attributes?.softInputMode
+        // Let Compose receive the IME inset so the action row stays above the
+        // keyboard on short and tall devices. ADJUST_NOTHING caused the send
+        // controls to be painted underneath the keyboard on several OEMs.
         window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         onDispose {
             if (previousMode != null) window?.setSoftInputMode(previousMode)
