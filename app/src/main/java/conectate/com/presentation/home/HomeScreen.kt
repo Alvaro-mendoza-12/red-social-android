@@ -260,6 +260,10 @@ fun HomeScreen(
                 )
             }
 
+            composable(Screen.CoinsAndPayments.route) {
+                conectate.com.presentation.wallet.CoinsAndPaymentsScreen(navController = navController)
+            }
+
             composable(Screen.AccountSettings.route) {
                 conectate.com.presentation.profile.EditProfileScreen(navController = navController)
             }

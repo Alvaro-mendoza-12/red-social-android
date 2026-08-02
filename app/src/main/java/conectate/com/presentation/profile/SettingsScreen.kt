@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -143,6 +144,12 @@ fun SettingsScreen(
                     title = "Social",
                     subtitle = "Radar, actividad, directos y comunidades",
                     onClick = { navController.navigate(Screen.SettingsCategory.createRoute("social")) }
+                )
+                SettingsAreaButton(
+                    icon = Icons.Default.AccountBalanceWallet,
+                    title = "Monedas y pagos",
+                    subtitle = "Saldo, recargas, montos e historial",
+                    onClick = { navController.navigate(Screen.CoinsAndPayments.route) }
                 )
                 SettingsAreaButton(
                     icon = Icons.Default.Person,

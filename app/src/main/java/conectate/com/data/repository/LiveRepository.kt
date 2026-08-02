@@ -92,6 +92,8 @@ class LiveRepository @Inject constructor(
         private const val SUBSCRIPTION_RESTART_GRACE_MS = 1_000L
         private const val LOCAL_LIVE_REFRESH_MS = 5_000L
         private const val LOCAL_COMMENT_REFRESH_MS = 1_500L
+        private const val REACTION_BATCH_WINDOW_MS = 500L
+        private const val REACTION_BATCH_MAX = 10
     }
 
     private val scope = newSafeScope("LiveRepository", Dispatchers.IO)
@@ -112,6 +114,11 @@ class LiveRepository @Inject constructor(
     private val sessionStartupMutex = Mutex()
     private val sessionEndMutex = Mutex()
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
+    private val reactionBatchLock = Any()
+    private var reactionBatchJob: Job? = null
+    private var pendingReactionCount = 0
+    private var pendingReactionLiveId = ""
+    private var pendingReactionUserId = ""
     private val giftExpiryJobs = mutableMapOf<String, Job>()
     private val knownViewerSocketIds = mutableSetOf<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
@@ -957,16 +964,61 @@ class LiveRepository @Inject constructor(
     }
 
     fun sendReaction() {
-        var session = _activeSession.value ?: return
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val session = _activeSession.value ?: return
+        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return
 
-        var payload = org.json.JSONObject().apply {
-            put("liveId", session.stream.id)
-            put("userId", currentUserId)
-            put("kind", "heart")
+        // Respuesta local inmediata: el contador nunca espera el viaje de red.
+        _reactionCount.update { current -> current.coerceAtLeast(0L) + 1L }
+        val flushNow = synchronized(reactionBatchLock) {
+            if (pendingReactionLiveId.isNotBlank() && pendingReactionLiveId != session.stream.id) {
+                pendingReactionCount = 0
+            }
+            pendingReactionLiveId = session.stream.id
+            pendingReactionUserId = currentUserId
+            pendingReactionCount += 1
+            pendingReactionCount >= REACTION_BATCH_MAX
         }
-        runCatching { socket?.emit("send-reaction", payload) }
+        if (flushNow) {
+            reactionBatchJob?.cancel()
+            reactionBatchJob = scope.launch { flushPendingReactions() }
+        } else if (reactionBatchJob?.isActive != true) {
+            reactionBatchJob = scope.launch {
+                delay(REACTION_BATCH_WINDOW_MS)
+                flushPendingReactions()
+            }
+        }
+    }
+
+    private fun flushPendingReactions() {
+        val batch = synchronized(reactionBatchLock) {
+            val count = pendingReactionCount.coerceIn(0, REACTION_BATCH_MAX)
+            if (count <= 0 || pendingReactionLiveId.isBlank() || pendingReactionUserId.isBlank()) return
+            val value = Triple(pendingReactionLiveId, pendingReactionUserId, count)
+            pendingReactionCount -= count
+            if (pendingReactionCount == 0) {
+                pendingReactionLiveId = ""
+                pendingReactionUserId = ""
+            }
+            value
+        }
+        val payload = org.json.JSONObject().apply {
+            put("liveId", batch.first)
+            put("userId", batch.second)
+            put("kind", "heart")
+            put("count", batch.third)
+            put("clientBatchId", UUID.randomUUID().toString())
+        }
+        runCatching { socket?.emit("send-reaction-batch", payload) }
+        synchronized(reactionBatchLock) {
+            reactionBatchJob = null
+            if (pendingReactionCount > 0) {
+                reactionBatchJob = scope.launch {
+                    delay(REACTION_BATCH_WINDOW_MS)
+                    flushPendingReactions()
+                }
+            }
+        }
     }
 
     fun announceCommittedGift(receipt: GiftReceipt) {
@@ -1459,7 +1511,9 @@ class LiveRepository @Inject constructor(
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val count = data.optLong("reactionCount", 0L).coerceAtLeast(0L)
-                    _reactionCount.value = count
+                    // El agregado del directo es monótono. Si todavía hay taps
+                    // optimistas en tránsito, no hacemos saltar el número atrás.
+                    _reactionCount.update { local -> maxOf(local, count) }
                     sessionReactionCount = count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 }.onFailure { logMalformedSignal("reaction-count", it) }
             }
@@ -1910,6 +1964,13 @@ class LiveRepository @Inject constructor(
         stopAdaptiveQualityMonitor()
         reactionExpiryJobs.values.forEach { it.cancel() }
         reactionExpiryJobs.clear()
+        reactionBatchJob?.cancel()
+        reactionBatchJob = null
+        synchronized(reactionBatchLock) {
+            pendingReactionCount = 0
+            pendingReactionLiveId = ""
+            pendingReactionUserId = ""
+        }
         giftExpiryJobs.values.forEach { it.cancel() }
         giftExpiryJobs.clear()
 

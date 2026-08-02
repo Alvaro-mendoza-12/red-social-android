@@ -21,6 +21,7 @@ class WalletViewModel @Inject constructor(
 ) : ViewModel() {
     val coinBalance = walletRepository.coinBalance
     val availableGifts = walletRepository.availableGifts
+    val transactions = walletRepository.transactions
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -54,6 +55,7 @@ class WalletViewModel @Inject constructor(
             try {
                 walletRepository.fetchBalance()
                 walletRepository.fetchAvailableGifts()
+                walletRepository.fetchTransactionHistory()
                 walletRepository.fetchBillingCapabilities()
                     .onSuccess { _billingCapabilities.value = it }
             } finally {
@@ -134,4 +136,6 @@ class WalletViewModel @Inject constructor(
     fun consumeReceipt() {
         _lastReceipt.value = null
     }
+
+    fun currentAccountId(): String = walletRepository.currentAccountId().orEmpty()
 }

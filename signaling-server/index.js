@@ -1801,6 +1801,49 @@ liveIo.on('connection', (socket) => {
         }
     });
 
+    // Mobile clients aggregate rapid taps for 500 ms (or ten taps). The batch
+    // id prevents a reconnect/retry from counting the same hearts twice.
+    socket.on('send-reaction-batch', (data) => {
+        const liveId = requireJoinedScope(
+            socket,
+            'joinedLiveIds',
+            data?.liveId || socket.data.liveId,
+            'live',
+            'send-reaction-batch'
+        );
+        if (!liveId) return;
+
+        const userId = requireSocketUser(socket, data?.userId);
+        if (!userId) return;
+        const session = lives.get(liveId);
+        if (!session) return;
+
+        const count = Math.max(1, Math.min(10, Math.trunc(Number(data?.count || 1)) || 1));
+        const clientBatchId = String(data?.clientBatchId || '').trim();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientBatchId)) return;
+        if (!consumeRateLimitToken('live-reaction-batch', `${liveId}:${userId}`, 8, 2_000)) return;
+
+        session.reactionBatchIds ||= new Set();
+        if (session.reactionBatchIds.has(clientBatchId)) {
+            socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
+            return;
+        }
+        session.reactionBatchIds.add(clientBatchId);
+        if (session.reactionBatchIds.size > 500) {
+            session.reactionBatchIds.delete(session.reactionBatchIds.values().next().value);
+        }
+
+        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + count;
+        liveIo.to(liveId).emit('reaction', { liveId, kind: 'heart', userId, count });
+        liveIo.to(liveId).emit('reaction-count', {
+            liveId,
+            reactionCount: session.reactionCount
+        });
+        if (session.reactionCount % 25 < count) {
+            void setLiveReactionCount(liveId, session.reactionCount, session.hostAuthToken);
+        }
+    });
+
     // Cosmetic gift events are accepted only after the Ubuntu API verifies the
     // committed transaction for this authenticated sender.
     socket.on('gift-committed', async (data) => {

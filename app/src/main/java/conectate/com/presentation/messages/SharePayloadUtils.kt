@@ -7,9 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.Looper
 import android.os.Parcelable
 import android.provider.ContactsContract
 import android.provider.OpenableColumns
@@ -21,6 +25,9 @@ import conectate.com.util.canonicalizeMediaContentType
 import conectate.com.util.classifyIncomingShareKind
 import java.util.Locale
 import java.util.UUID
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class DeviceContactPayload(
     val name: String,
@@ -266,6 +273,73 @@ fun getBestLastKnownLocation(context: Context): Location? {
             runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
         }
         .maxByOrNull { it.time }
+}
+
+fun isDeviceLocationEnabled(context: Context): Boolean {
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        manager.isLocationEnabled
+    } else {
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).any { provider ->
+            runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
+        }
+    }
+}
+
+/** Solicita una lectura actual si Android todavía no tiene una ubicación reciente en caché. */
+@SuppressLint("MissingPermission")
+suspend fun getBestCurrentLocation(
+    context: Context,
+    freshForMillis: Long = 2 * 60_000L,
+    timeoutMillis: Long = 12_000L
+): Location? {
+    if (!hasLocationPermission(context) || !isDeviceLocationEnabled(context)) return null
+    val cached = getBestLastKnownLocation(context)
+    val cachedAge = cached?.let { System.currentTimeMillis() - it.time } ?: Long.MAX_VALUE
+    if (cached != null && cachedAge in 0..freshForMillis) return cached
+
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return cached
+    val provider = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+        .firstOrNull { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+        ?: return cached
+    val current = withTimeoutOrNull(timeoutMillis) {
+        suspendCancellableCoroutine<Location?> { continuation ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val cancellationSignal = CancellationSignal()
+                continuation.invokeOnCancellation { cancellationSignal.cancel() }
+                runCatching {
+                    manager.getCurrentLocation(
+                        provider,
+                        cancellationSignal,
+                        ContextCompat.getMainExecutor(context)
+                    ) { location -> if (continuation.isActive) continuation.resume(location) }
+                }.onFailure { if (continuation.isActive) continuation.resume(null) }
+            } else {
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        manager.removeUpdates(this)
+                        if (continuation.isActive) continuation.resume(location)
+                    }
+                    @Deprecated("Legacy LocationListener callback")
+                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+                    override fun onProviderEnabled(provider: String) = Unit
+                    override fun onProviderDisabled(provider: String) {
+                        manager.removeUpdates(this)
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                }
+                continuation.invokeOnCancellation { manager.removeUpdates(listener) }
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+                }.onFailure {
+                    manager.removeUpdates(listener)
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            }
+        }
+    }
+    return current ?: cached
 }
 
 fun formatCoordinate(value: Double): String {

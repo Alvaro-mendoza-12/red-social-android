@@ -57,3 +57,12 @@ data class CoinPurchaseVerification(
     val coins: Int,
     val balanceDiamonds: Int
 )
+
+data class WalletTransaction(
+    val id: String,
+    val type: String,
+    val amountDiamonds: Int,
+    val balanceAfterDiamonds: Int,
+    val description: String? = null,
+    val createdAt: String? = null
+)

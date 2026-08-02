@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -41,12 +43,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,6 +63,7 @@ import conectate.com.presentation.components.WebRtcVideoView
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.VideoTrack
+import kotlinx.coroutines.launch
 
 @Composable
 fun LiveSessionScaffold(
@@ -506,21 +511,33 @@ private fun LiveCommentComposer(
     disabledReason: String,
     modifier: Modifier = Modifier
 ) {
+    val reactionScale = remember { Animatable(1f) }
+    val reactionScope = rememberCoroutineScope()
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         IconButton(
-            onClick = onSendReaction,
+            onClick = {
+                onSendReaction()
+                reactionScope.launch {
+                    reactionScale.snapTo(1.24f)
+                    reactionScale.animateTo(1f, tween(180))
+                }
+            },
             modifier = Modifier
                 .size(52.dp)
+                .graphicsLayer {
+                    scaleX = reactionScale.value
+                    scaleY = reactionScale.value
+                }
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.42f))
         ) {
             Icon(
                 imageVector = Icons.Default.Favorite,
-                contentDescription = "Reaccionar",
+                contentDescription = "Dar me gusta",
                 tint = Color(0xFFFF5C8A)
             )
         }

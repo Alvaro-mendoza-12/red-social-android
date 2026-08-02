@@ -28,14 +28,22 @@ const RESERVED_QUERY_KEYS = new Set([
 ])
 
 const DEFAULT_VIRTUAL_GIFTS = [
-  { id: 'builtin-heart', name: 'Pulso Novvin', description: 'Un pulso luminoso para apoyar al creador', image_url: 'conectate://gift-assets/heart', price_diamonds: 5, sort_order: 1 },
-  { id: 'builtin-rose', name: 'Flor Aurora', description: 'Petalos de luz originales de Novvin', image_url: 'conectate://gift-assets/rose', price_diamonds: 25, sort_order: 2 },
-  { id: 'builtin-trophy', name: 'Copa Prisma', description: 'Una copa brillante para celebrar logros', image_url: 'conectate://gift-assets/trophy', price_diamonds: 50, sort_order: 3 },
-  { id: 'builtin-fireworks', name: 'Lluvia de Luz', description: 'Una celebracion que llena la pantalla', image_url: 'conectate://gift-assets/fireworks', price_diamonds: 100, sort_order: 4 },
-  { id: 'builtin-star', name: 'Nova', description: 'Una explosion estelar para grandes momentos', image_url: 'conectate://gift-assets/star', price_diamonds: 200, sort_order: 5 },
-  { id: 'builtin-orbit', name: 'Orbita', description: 'Un planeta de energia Novvin', image_url: 'conectate://gift-assets/orbit', price_diamonds: 35, sort_order: 6 },
-  { id: 'builtin-comet', name: 'Cometa', description: 'Una estela veloz para destacar el directo', image_url: 'conectate://gift-assets/comet', price_diamonds: 350, sort_order: 7 },
-  { id: 'builtin-crown', name: 'Corona Cosmica', description: 'La celebracion mas destacada del catalogo', image_url: 'conectate://gift-assets/crown', price_diamonds: 500, sort_order: 8 },
+  { id: 'builtin-heart', name: 'Pulso Novvin', description: 'Un pulso luminoso para apoyar al creador', image_url: 'conectate://gift-assets/pulse', price_diamonds: 5, price_credits: 0.5, animation_url: 'conectate://gift-animations/pulse', sort_order: 1 },
+  { id: 'builtin-rhythm', name: 'Ritmo Neon', description: 'Una onda musical dibujada para el directo', image_url: 'conectate://gift-assets/rhythm', price_diamonds: 10, price_credits: 1, animation_url: 'conectate://gift-animations/rhythm', sort_order: 2 },
+  { id: 'builtin-butterfly', name: 'Ala Boreal', description: 'Alas de color para un saludo ligero', image_url: 'conectate://gift-assets/butterfly', price_diamonds: 15, price_credits: 1.5, animation_url: 'conectate://gift-animations/butterfly', sort_order: 3 },
+  { id: 'builtin-rose', name: 'Flor Aurora', description: 'Petalos de luz originales de Novvin', image_url: 'conectate://gift-assets/aurora', price_diamonds: 25, price_credits: 2.5, animation_url: 'conectate://gift-animations/aurora', sort_order: 4 },
+  { id: 'builtin-orbit', name: 'Orbita', description: 'Un planeta de energia Novvin', image_url: 'conectate://gift-assets/orbit', price_diamonds: 35, price_credits: 3.5, animation_url: 'conectate://gift-animations/orbit', sort_order: 5 },
+  { id: 'builtin-trophy', name: 'Copa Prisma', description: 'Una copa brillante para celebrar logros', image_url: 'conectate://gift-assets/prism', price_diamonds: 50, price_credits: 5, animation_url: 'conectate://gift-animations/prism', sort_order: 6 },
+  { id: 'builtin-wave', name: 'Marea Celeste', description: 'Una ola luminosa que cruza la pantalla', image_url: 'conectate://gift-assets/wave', price_diamonds: 75, price_credits: 7.5, animation_url: 'conectate://gift-animations/wave', sort_order: 7 },
+  { id: 'builtin-fireworks', name: 'Lluvia de Luz', description: 'Una celebracion que llena la pantalla', image_url: 'conectate://gift-assets/fireworks', price_diamonds: 100, price_credits: 10, animation_url: 'conectate://gift-animations/fireworks', sort_order: 8 },
+  { id: 'builtin-rainbow', name: 'Arco Solar', description: 'Un arco de luz para celebrar juntos', image_url: 'conectate://gift-assets/rainbow', price_diamonds: 150, price_credits: 15, animation_url: 'conectate://gift-animations/rainbow', sort_order: 9 },
+  { id: 'builtin-star', name: 'Nova', description: 'Una explosion estelar para grandes momentos', image_url: 'conectate://gift-assets/nova', price_diamonds: 200, price_credits: 20, animation_url: 'conectate://gift-animations/nova', sort_order: 10 },
+  { id: 'builtin-crystal', name: 'Cristal Novvin', description: 'Una gema de energia para destacar', image_url: 'conectate://gift-assets/crystal', price_diamonds: 250, price_credits: 25, animation_url: 'conectate://gift-animations/crystal', sort_order: 11 },
+  { id: 'builtin-comet', name: 'Cometa', description: 'Una estela veloz para destacar el directo', image_url: 'conectate://gift-assets/comet', price_diamonds: 350, price_credits: 35, animation_url: 'conectate://gift-animations/comet', sort_order: 12 },
+  { id: 'builtin-rocket', name: 'Impulso', description: 'Un despegue completo para grandes metas', image_url: 'conectate://gift-assets/rocket', price_diamonds: 450, price_credits: 45, animation_url: 'conectate://gift-animations/rocket', sort_order: 13 },
+  { id: 'builtin-crown', name: 'Corona Cosmica', description: 'Una celebracion destacada del catalogo', image_url: 'conectate://gift-assets/crown', price_diamonds: 500, price_credits: 50, animation_url: 'conectate://gift-animations/crown', sort_order: 14 },
+  { id: 'builtin-portal', name: 'Portal Prisma', description: 'Abre una celebracion envolvente', image_url: 'conectate://gift-assets/portal', price_diamonds: 750, price_credits: 75, animation_url: 'conectate://gift-animations/portal', sort_order: 15 },
+  { id: 'builtin-phoenix', name: 'Fenix Aurora', description: 'La celebracion maxima del catalogo', image_url: 'conectate://gift-assets/phoenix', price_diamonds: 1000, price_credits: 100, animation_url: 'conectate://gift-animations/phoenix', sort_order: 16 },
 ]
 
 const SUPPORTED_RPC_NAMES = new Set([

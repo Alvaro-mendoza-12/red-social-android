@@ -9,6 +9,7 @@ import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,17 +18,19 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -138,7 +142,8 @@ fun SimpleImageCropDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .systemBarsPadding()
+                    .safeDrawingPadding()
+                    .imePadding()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -236,19 +241,29 @@ fun SimpleImageCropDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         availablePresets.forEach { preset ->
-                            AssistChip(
-                                onClick = {
+                            val selected = selectedPreset == preset
+                            Surface(
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clickable(enabled = !isSaving) {
                                     selectedPreset = preset
                                     crop = cropForPreset(preset, sourceAspect)
                                 },
-                                enabled = !isSaving,
-                                label = { Text(preset.label) },
-                                leadingIcon = if (selectedPreset == preset) {
-                                    { Text("✓") }
-                                } else {
-                                    null
-                                }
-                            )
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color(0xFF242424),
+                                contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selected) MaterialTheme.colorScheme.primary else Color(0xFF9E9E9E)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = preset.label,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -256,13 +271,13 @@ fun SimpleImageCropDialog(
                 errorMessage?.let { message ->
                     Text(
                         text = message,
-                        color = MaterialTheme.colorScheme.error,
+                        color = Color(0xFFFFB4AB),
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     )
                 }
                 Text(
                     text = "Arrastra cualquier borde o esquina. También puedes mover todo el marco.",
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = Color.White.copy(alpha = 0.86f),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )

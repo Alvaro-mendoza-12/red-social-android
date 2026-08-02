@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -63,6 +65,7 @@ fun GiftSelectionDialog(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val receipt by viewModel.lastReceipt.collectAsStateWithLifecycle()
     var confirmationGift by remember { mutableStateOf<VirtualGift?>(null) }
+    var previewGift by remember { mutableStateOf<VirtualGift?>(null) }
     var isPublic by remember { mutableStateOf(true) }
 
     LaunchedEffect(receipt?.transactionId) {
@@ -76,8 +79,10 @@ fun GiftSelectionDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.84f)
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
+                .padding(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
@@ -98,8 +103,8 @@ fun GiftSelectionDialog(
                 }
             }
 
-            OutlinedButton(onClick = onRecharge, modifier = Modifier.fillMaxWidth()) {
-                Text("Recargar con Google Play")
+            Button(onClick = onRecharge, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("Recargar monedas · elegir monto")
             }
 
             Divider()
@@ -117,8 +122,8 @@ fun GiftSelectionDialog(
                     TextButton(onClick = viewModel::refresh) { Text("Reintentar") }
                 }
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                    columns = GridCells.Adaptive(minSize = 104.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -152,7 +157,7 @@ fun GiftSelectionDialog(
             title = { Text("Confirmar regalo") },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GiftArtwork(gift.id, Modifier.size(112.dp))
+                    GiftArtwork(gift, Modifier.size(112.dp))
                     Text(gift.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text("Costo: ${gift.priceDiamonds} monedas")
                     Text(
@@ -181,11 +186,23 @@ fun GiftSelectionDialog(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmationGift = null }, enabled = sendingGiftId == null) {
-                    Text("Cancelar")
+                Row {
+                    OutlinedButton(
+                        onClick = { previewGift = gift },
+                        enabled = sendingGiftId == null
+                    ) {
+                        Text("Ver animación")
+                    }
+                    TextButton(onClick = { confirmationGift = null }, enabled = sendingGiftId == null) {
+                        Text("Cancelar")
+                    }
                 }
             }
         )
+    }
+
+    previewGift?.let { gift ->
+        GiftPreviewDialog(gift = gift, onDismiss = { previewGift = null })
     }
 
     error?.let { message ->
@@ -220,9 +237,38 @@ private fun GiftCatalogCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            GiftArtwork(gift.id, Modifier.size(72.dp))
+            GiftArtwork(gift, Modifier.size(72.dp))
             Text(gift.name, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
             Text("${gift.priceDiamonds} monedas", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Text("Incluye animación", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
         }
     }
+}
+
+@Composable
+private fun GiftPreviewDialog(gift: VirtualGift, onDismiss: () -> Unit) {
+    var replay by remember(gift.id) { mutableStateOf(0) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Vista previa · DEMO") },
+        text = {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(360.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                GiftAnimationStage(
+                    gift = gift,
+                    senderLabel = "Demostración · no descuenta monedas",
+                    runKey = "${gift.id}:$replay",
+                    preview = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { replay += 1 }) { Text("Repetir") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cerrar") }
+        }
+    )
 }

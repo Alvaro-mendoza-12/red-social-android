@@ -7,6 +7,8 @@ import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.BillingCapabilities
 import conectate.com.data.model.CoinProduct
 import conectate.com.data.model.CoinPurchaseVerification
+import conectate.com.data.model.WalletTransaction
+import conectate.com.data.model.withoutVisualDuplicates
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.get
@@ -59,7 +61,7 @@ class WalletRepository @Inject constructor(
                 imageUrl = "conectate://gift-assets/rose",
                 priceDiamonds = 25,
                 priceCredits = 4.99,
-                sortOrder = 2
+                sortOrder = 4
             ),
             VirtualGift(
                 id = "builtin-trophy",
@@ -68,7 +70,7 @@ class WalletRepository @Inject constructor(
                 imageUrl = "conectate://gift-assets/trophy",
                 priceDiamonds = 50,
                 priceCredits = 9.99,
-                sortOrder = 3
+                sortOrder = 6
             ),
             VirtualGift(
                 id = "builtin-fireworks",
@@ -77,7 +79,7 @@ class WalletRepository @Inject constructor(
                 imageUrl = "conectate://gift-assets/fireworks",
                 priceDiamonds = 100,
                 priceCredits = 19.99,
-                sortOrder = 4
+                sortOrder = 8
             ),
             VirtualGift(
                 id = "builtin-star",
@@ -86,7 +88,7 @@ class WalletRepository @Inject constructor(
                 imageUrl = "conectate://gift-assets/star",
                 priceDiamonds = 200,
                 priceCredits = 39.99,
-                sortOrder = 5
+                sortOrder = 10
             ),
             VirtualGift(
                 id = "builtin-orbit",
@@ -94,7 +96,7 @@ class WalletRepository @Inject constructor(
                 description = "Un planeta de energía Novvin",
                 imageUrl = "conectate://gift-assets/orbit",
                 priceDiamonds = 35,
-                sortOrder = 6
+                sortOrder = 5
             ),
             VirtualGift(
                 id = "builtin-comet",
@@ -102,7 +104,7 @@ class WalletRepository @Inject constructor(
                 description = "Una estela veloz para destacar el directo",
                 imageUrl = "conectate://gift-assets/comet",
                 priceDiamonds = 350,
-                sortOrder = 7
+                sortOrder = 12
             ),
             VirtualGift(
                 id = "builtin-crown",
@@ -110,7 +112,71 @@ class WalletRepository @Inject constructor(
                 description = "La celebración más destacada del catálogo",
                 imageUrl = "conectate://gift-assets/crown",
                 priceDiamonds = 500,
-                sortOrder = 8
+                sortOrder = 14
+            ),
+            VirtualGift(
+                id = "builtin-rhythm",
+                name = "Ritmo Neón",
+                description = "Una onda musical dibujada para el directo",
+                imageUrl = "conectate://gift-assets/rhythm",
+                priceDiamonds = 10,
+                sortOrder = 2
+            ),
+            VirtualGift(
+                id = "builtin-butterfly",
+                name = "Ala Boreal",
+                description = "Alas de color para un saludo ligero",
+                imageUrl = "conectate://gift-assets/butterfly",
+                priceDiamonds = 15,
+                sortOrder = 3
+            ),
+            VirtualGift(
+                id = "builtin-wave",
+                name = "Marea Celeste",
+                description = "Una ola luminosa que cruza la pantalla",
+                imageUrl = "conectate://gift-assets/wave",
+                priceDiamonds = 75,
+                sortOrder = 7
+            ),
+            VirtualGift(
+                id = "builtin-rainbow",
+                name = "Arco Solar",
+                description = "Un arco de luz para celebrar juntos",
+                imageUrl = "conectate://gift-assets/rainbow",
+                priceDiamonds = 150,
+                sortOrder = 9
+            ),
+            VirtualGift(
+                id = "builtin-crystal",
+                name = "Cristal Novvin",
+                description = "Una gema de energía para destacar",
+                imageUrl = "conectate://gift-assets/crystal",
+                priceDiamonds = 250,
+                sortOrder = 11
+            ),
+            VirtualGift(
+                id = "builtin-rocket",
+                name = "Impulso",
+                description = "Un despegue completo para grandes metas",
+                imageUrl = "conectate://gift-assets/rocket",
+                priceDiamonds = 450,
+                sortOrder = 13
+            ),
+            VirtualGift(
+                id = "builtin-portal",
+                name = "Portal Prisma",
+                description = "Abre una celebración envolvente",
+                imageUrl = "conectate://gift-assets/portal",
+                priceDiamonds = 750,
+                sortOrder = 15
+            ),
+            VirtualGift(
+                id = "builtin-phoenix",
+                name = "Fénix Aurora",
+                description = "La celebración máxima del catálogo",
+                imageUrl = "conectate://gift-assets/phoenix",
+                priceDiamonds = 1000,
+                sortOrder = 16
             )
         )
     }
@@ -120,6 +186,9 @@ class WalletRepository @Inject constructor(
 
     private val _availableGifts = MutableStateFlow<List<VirtualGift>>(emptyList())
     val availableGifts: StateFlow<List<VirtualGift>> = _availableGifts.asStateFlow()
+
+    private val _transactions = MutableStateFlow<List<WalletTransaction>>(emptyList())
+    val transactions: StateFlow<List<WalletTransaction>> = _transactions.asStateFlow()
 
     suspend fun fetchBalance() = withContext(Dispatchers.IO) {
         runCatching {
@@ -168,7 +237,7 @@ class WalletRepository @Inject constructor(
             _availableGifts.value = decodeObjects(response.bodyAsText())
                 .map { it.toVirtualGift() }
                 .filter { it.id.isNotBlank() && it.priceDiamonds > 0 }
-                .sortedWith(compareBy<VirtualGift> { it.sortOrder }.thenBy { it.name })
+                .withoutVisualDuplicates()
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch virtual gifts", error)
             if (!supabaseConfig.isConfigured) {
@@ -178,6 +247,50 @@ class WalletRepository @Inject constructor(
             }
         }
     }
+
+    suspend fun fetchTransactionHistory() = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!supabaseConfig.isConfigured) {
+                _transactions.value = emptyList()
+                return@runCatching
+            }
+            val userId = authService.getCurrentUserId()?.trim().orEmpty()
+            if (userId.isBlank()) {
+                _transactions.value = emptyList()
+                return@runCatching
+            }
+            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
+                restHeaders(authService.getAccessToken())
+                parameter("user_id", "eq.$userId")
+                parameter("select", "*")
+                parameter("order", "created_at.desc")
+                parameter("limit", "50")
+            }
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("No se pudo cargar el historial: ${response.status}")
+            }
+            _transactions.value = decodeObjects(response.bodyAsText()).mapNotNull { value ->
+                val id = value.string("id").orEmpty()
+                if (id.isBlank()) return@mapNotNull null
+                val direction = value.string("direction").orEmpty()
+                val rawAmount = value.int("amount_diamonds")
+                WalletTransaction(
+                    id = id,
+                    type = value.string("transaction_type") ?: value.string("type") ?: "movimiento",
+                    amountDiamonds = if (direction == "debit" && rawAmount > 0) -rawAmount else rawAmount,
+                    balanceAfterDiamonds = value.int("balance_after").takeIf { value.containsKey("balance_after") }
+                        ?: value.int("balance_after_diamonds"),
+                    description = value.string("description"),
+                    createdAt = value.string("created_at")
+                )
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Unable to fetch wallet transaction history", error)
+            _transactions.value = emptyList()
+        }
+    }
+
+    fun currentAccountId(): String? = authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
 
     suspend fun sendGift(
         receiverId: String,
