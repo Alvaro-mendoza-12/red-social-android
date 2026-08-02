@@ -834,7 +834,12 @@ private fun MessageEditorStep(
                 .fillMaxWidth()
                 .offset(y = -reliableBottomPadding)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
-                .padding(12.dp)
+                .padding(
+                    start = 12.dp,
+                    top = 12.dp,
+                    end = 12.dp,
+                    bottom = reliableBottomPadding
+                )
         ) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(selected.size) { index ->

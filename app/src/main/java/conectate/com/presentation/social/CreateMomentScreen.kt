@@ -522,7 +522,12 @@ fun MomentEditorView(
                 .background(Brush.verticalGradient(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 ))
-                .padding(16.dp)
+                .padding(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = reliableBottomPadding
+                )
         ) {
             // Caption
             OutlinedTextField(

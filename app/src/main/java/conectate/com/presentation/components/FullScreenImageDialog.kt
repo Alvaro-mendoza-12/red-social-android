@@ -354,6 +354,7 @@ fun FullScreenImageDialog(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .offset(y = -reliableBottomPadding)
+                            .padding(bottom = reliableBottomPadding)
                     ) {
                         bottomOverlay(pagerState.currentPage)
                     }
@@ -365,7 +366,7 @@ fun FullScreenImageDialog(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .offset(y = -reliableBottomPadding)
-                            .padding(bottom = 16.dp)
+                            .padding(bottom = reliableBottomPadding + 16.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(Color.Black.copy(alpha = 0.58f))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
