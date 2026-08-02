@@ -95,9 +95,25 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (!app || !notification?.recipient_id) return { sent: 0, failed: 0, disabled: true }
 
   const { rows } = await pool.query(
-    `SELECT token
+    `WITH recipient_ids AS (
+       SELECT lower($1::text) AS id
+       UNION
+       SELECT lower(id::text)
+         FROM fallback_users
+        WHERE lower(id::text) = lower($1::text)
+           OR lower(COALESCE(supabase_user_id::text, '')) = lower($1::text)
+       UNION
+       SELECT lower(supabase_user_id::text)
+         FROM fallback_users
+        WHERE supabase_user_id IS NOT NULL
+          AND (
+            lower(id::text) = lower($1::text)
+            OR lower(supabase_user_id::text) = lower($1::text)
+          )
+     )
+     SELECT token
        FROM fallback_fcm_tokens
-      WHERE lower(user_id) = lower($1)
+      WHERE lower(user_id) IN (SELECT id FROM recipient_ids WHERE id <> '')
       ORDER BY updated_at DESC`,
     [notification.recipient_id],
   )
@@ -118,6 +134,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
       android: {
         priority: 'high',
         ttl: isCall ? 45_000 : 24 * 60 * 60 * 1000,
+        directBootOk: true,
       },
       apns: {
         headers: {

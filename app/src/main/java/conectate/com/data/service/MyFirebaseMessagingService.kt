@@ -221,28 +221,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     return
                 }
 
-                // BUSY HANDLING: If already in a call, auto-reject this invite (Edge Case: Multiple Calls)
-                if (callRepository.activeCall.value != null && !callRepository.activeCall.value?.callId.equals(callId)) {
-                    android.util.Log.i(TAG, "User busy in another call. Auto-declining callId=$callId")
-                    serviceScope.launch {
-                        runCatching {
-                            val invite = conectate.com.data.model.CallInvite(
-                                callId = callId,
-                                title = callTitle,
-                                callerUserId = senderId,
-                                callerName = senderName,
-                                callerAvatarUrl = callerAvatar,
-                                contextType = contextType,
-                                contextId = contextId,
-                                isVideo = isVideoCall
-                            )
-                            callRepository.declineIncomingCall(invite)
-                        }
-                    }
-                    return
-                }
-
-                var invite = conectate.com.data.model.CallInvite(
+                val invite = conectate.com.data.model.CallInvite(
                     callId = callId,
                     title = callTitle,
                     callerUserId = senderId,
@@ -253,14 +232,42 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     isVideo = isVideoCall
                 )
 
-                var isForeground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                val isForeground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                var duplicateAlreadyPresented = false
+                if (isTargetingActiveAccount) {
+                    when (callRepository.incomingCallDisposition(invite)) {
+                        conectate.com.data.repository.IncomingCallDisposition.PRESENT -> {
+                            callRepository.presentIncomingInvite(invite)
+                        }
+                        conectate.com.data.repository.IncomingCallDisposition.IGNORE_DUPLICATE -> {
+                            duplicateAlreadyPresented = true
+                            if (isForeground) return
+                        }
+                        conectate.com.data.repository.IncomingCallDisposition.REJECT_BUSY -> {
+                            android.util.Log.i(TAG, "User busy in another call. Auto-declining callId=$callId")
+                            serviceScope.launch {
+                                callRepository.rejectIncomingWhileBusy(invite).onFailure { error ->
+                                    android.util.Log.w(TAG, "Busy response failed for callId=$callId", error)
+                                }
+                            }
+                            return
+                        }
+                        conectate.com.data.repository.IncomingCallDisposition.YIELD_OUTGOING -> {
+                            if (!callRepository.yieldOutgoingCallToIncoming(invite)) {
+                                serviceScope.launch { callRepository.rejectIncomingWhileBusy(invite) }
+                                return
+                            }
+                            callRepository.presentIncomingInvite(invite)
+                        }
+                    }
+                }
+
                 android.util.Log.i(
                     TAG,
-                    "Received call_invite via FCM: callId=$callId sender=$senderId foreground=$isForeground"
+                    "Received call_invite via FCM: callId=$callId sender=$senderId foreground=$isForeground duplicate=$duplicateAlreadyPresented"
                 )
                 if (isForeground && isTargetingActiveAccount) {
-                    // App open: show in-app incoming UI (avoids duplicate notifications)
-                    callRepository.presentIncomingInvite(invite)
+                    // The repository state already drives the in-app incoming UI.
                 } else {
                     if (!appSettingsPreferences.callNotificationsEnabled.value) {
                         android.util.Log.d(TAG, "Call notifications disabled by user preference.")
@@ -275,12 +282,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 var callId = (data["call_id"] ?: data["callId"] ?: targetId).trim()
                 if (callId.isNotBlank()) {
                     val action = (data["call_action"] ?: data["callAction"] ?: "cancel").trim()
+                    val cancelsPendingIncoming = callRepository.incomingInvite.value
+                        ?.callId
+                        ?.equals(callId, ignoreCase = true) == true
                     callRepository.handleExternalCallResponse(callId, action, senderId.orEmpty())
                     markCallRecentlyCancelled(callId)
                     var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.cancel(callId.hashCode())
-                    IncomingCallForegroundService.stop(this)
-                    if (isTargetingActiveAccount) {
+                    // A late cancel for a losing simultaneous call must never stop
+                    // the different call that won collision resolution.
+                    if (cancelsPendingIncoming) {
+                        IncomingCallForegroundService.stop(this)
+                    }
+                    if (isTargetingActiveAccount && cancelsPendingIncoming) {
                         callRepository.dismissIncomingInvite()
                     }
                 }

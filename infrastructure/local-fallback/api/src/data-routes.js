@@ -2174,9 +2174,14 @@ async function createLocalNotification(pool, input) {
     }
     try {
       const { sendPushForNotification } = require('./push-notifications')
-      void sendPushForNotification(pool, notification, originalExtraData).catch((error) => {
+      const pushDelivery = sendPushForNotification(pool, notification, originalExtraData).catch((error) => {
         console.error(`[push] Ephemeral message alert could not be delivered: ${error.message}`)
+        return { sent: 0, failed: 1, error: error.message }
       })
+      // A call request is short-lived. Wait for FCM to accept it before replying to
+      // the caller so a process restart cannot strand a fire-and-forget invite.
+      if (type.startsWith('call_')) await pushDelivery
+      else void pushDelivery
     } catch (error) {
       console.error(`[push] Ephemeral message sender could not be loaded: ${error.message}`)
     }

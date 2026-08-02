@@ -550,13 +550,13 @@ class NotificationRepository @Inject constructor(
             }
 
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            // A Play Store update or a backend migration can remove the remote row while the
+            // device still has the same Firebase token. Always upsert it for the active session;
+            // the local cache is only useful for logout bookkeeping, never as proof that the
+            // server still owns the token.
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
             val normalizedUserId = userId.trim().lowercase()
             val cacheKey = buildFcmRegistrationCacheKey(normalizedUserId, cleanToken)
-
-            if (prefs.getString(KEY_LAST_REGISTERED_FCM, null) == cacheKey) {
-                return Result.success(Unit)
-            }
 
             if (authService.isLocalFallbackSession()) {
                 return localFallbackApiClient.registerFcmToken(accessToken, cleanToken)

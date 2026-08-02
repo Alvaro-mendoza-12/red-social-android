@@ -30,6 +30,7 @@ private const val SESSION_GATE_INTERVAL_MS = 180_000L
 @Composable
 fun SessionSideEffects(
     isLoggedIn: Boolean,
+    activeUserId: String?,
     authRepository: AuthRepository,
     notificationRepository: NotificationRepository,
     onSuspensionDetected: (suspensionEndDate: String?, reason: String?) -> Unit,
@@ -82,8 +83,8 @@ fun SessionSideEffects(
         latestOnForceLogout()
     }
 
-    LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn) return@LaunchedEffect
+    LaunchedEffect(isLoggedIn, activeUserId) {
+        if (!isLoggedIn || activeUserId.isNullOrBlank()) return@LaunchedEffect
         runCatching {
             FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {

@@ -2,6 +2,8 @@ package conectate.com.presentation.common
 
 import android.content.Context
 import android.content.Intent
+import android.app.NotificationManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.runtime.Composable
@@ -11,6 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -22,6 +27,7 @@ import kotlinx.coroutines.withContext
 
 private const val TEST_RUNTIME_PREFS = "test_runtime_prefs"
 private const val DISABLE_STARTUP_PROMPTS_KEY = "disable_startup_prompts"
+private const val FULL_SCREEN_CALL_PROMPTED_KEY = "full_screen_call_prompted"
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -43,6 +49,21 @@ fun StartupPrompts() {
         }
     }
 
+    var showFullScreenCallDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val preferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
+            if (
+                !preferences.getBoolean(FULL_SCREEN_CALL_PROMPTED_KEY, false) &&
+                !notificationManager.canUseFullScreenIntent()
+            ) {
+                delay(1_500L)
+                showFullScreenCallDialog = true
+            }
+        }
+    }
+
     var showBatteryDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -60,6 +81,44 @@ fun StartupPrompts() {
                 android.util.Log.e("MainActivity", "Error checking battery optimization", e)
             }
         }
+    }
+
+    if (showFullScreenCallDialog) {
+        fun finishFullScreenPrompt() {
+            showFullScreenCallDialog = false
+            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(FULL_SCREEN_CALL_PROMPTED_KEY, true)
+                .apply()
+        }
+        AlertDialog(
+            onDismissRequest = { finishFullScreenPrompt() },
+            title = { Text("Recibir llamadas en pantalla completa") },
+            text = {
+                Text("Android necesita que autorices las alertas de llamada a pantalla completa para que aparezcan incluso con el teléfono bloqueado.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                        }.onFailure { error ->
+                            android.util.Log.e("StartupPrompts", "Could not open full-screen call settings", error)
+                        }
+                        finishFullScreenPrompt()
+                    }
+                ) { Text("Autorizar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { finishFullScreenPrompt() }) { Text("Ahora no") }
+            }
+        )
+        return
     }
 
     if (!showBatteryDialog) return
