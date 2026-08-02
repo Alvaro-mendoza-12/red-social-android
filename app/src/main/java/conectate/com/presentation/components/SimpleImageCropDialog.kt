@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
@@ -300,6 +301,7 @@ fun SimpleImageCropDialog(
                                     Text(
                                         text = preset.label,
                                         color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                        fontSize = 13.sp,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
