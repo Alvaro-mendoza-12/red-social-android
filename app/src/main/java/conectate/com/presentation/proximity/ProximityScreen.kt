@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,11 +91,13 @@ import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.CommentAudioPlayer
 import conectate.com.presentation.common.AppFeedbackBus
-import conectate.com.presentation.messages.getBestLastKnownLocation
+import conectate.com.presentation.messages.getBestCurrentLocation
 import conectate.com.presentation.messages.hasLocationPermission
+import conectate.com.presentation.messages.isDeviceLocationEnabled
 import conectate.com.presentation.messages.StickerPickerDialog
 import conectate.com.presentation.navigation.Screen
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -123,15 +126,27 @@ fun ProximityScreen(
     var radiusSlider by remember(radiusKm) { mutableFloatStateOf(radiusKm.toFloat()) }
     var localError by remember { mutableStateOf<String?>(null) }
     var pendingLocationRequest by remember { mutableStateOf(false) }
+    var locating by remember { mutableStateOf(false) }
+    val locationScope = rememberCoroutineScope()
 
     fun performLocationAction() {
-        val location = getBestLastKnownLocation(context)
-        if (location == null) {
-            localError = "No se pudo obtener una ubicación reciente. Activa la ubicación del dispositivo e inténtalo de nuevo."
+        if (locating) return
+        if (!isDeviceLocationEnabled(context)) {
+            localError = "La ubicación del dispositivo está desactivada. Actívala y vuelve a intentarlo."
             return
         }
-        viewModel.setRadius(radiusSlider.toDouble())
-        viewModel.enableNearby(location.latitude, location.longitude)
+        locationScope.launch {
+            locating = true
+            localError = null
+            val location = getBestCurrentLocation(context)
+            locating = false
+            if (location == null) {
+                localError = "No se obtuvo una ubicación actual. Comprueba que GPS o Wi-Fi estén activos e inténtalo de nuevo."
+                return@launch
+            }
+            viewModel.setRadius(radiusSlider.toDouble())
+            viewModel.enableNearby(location.latitude, location.longitude)
+        }
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -208,6 +223,7 @@ fun ProximityScreen(
                         viewModel.setRadius(it.toDouble())
                     },
                     onEnable = { requestLocation() },
+                    locating = locating,
                     onRefresh = viewModel::refreshNearby,
                     onDisable = viewModel::disableNearby,
                     onOpenProfile = { navController.navigate(Screen.UserProfile.createRoute(it)) }
@@ -247,6 +263,7 @@ private fun NearbyTab(
     radius: Float,
     onRadiusChange: (Float) -> Unit,
     onEnable: () -> Unit,
+    locating: Boolean,
     onRefresh: () -> Unit,
     onDisable: () -> Unit,
     onOpenProfile: (String) -> Unit
@@ -270,12 +287,17 @@ private fun NearbyTab(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onEnable,
+                    enabled = !locating,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(if (enabled) Icons.Default.LocationOn else Icons.Default.MyLocation, contentDescription = null)
+                    if (locating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(if (enabled) Icons.Default.LocationOn else Icons.Default.MyLocation, contentDescription = null)
+                    }
                     Spacer(Modifier.width(8.dp))
-                    Text(if (enabled) "Actualizar" else "Activar radar")
+                    Text(if (locating) "Buscando ubicación…" else if (enabled) "Actualizar" else "Activar radar")
                 }
                 if (enabled) {
                     IconButton(onClick = onRefresh) {
@@ -313,7 +335,7 @@ private fun RadarVisualization(
 ) {
     val sweepProgress = rememberRealtimeProgress(
         key = "radar-sweep",
-        durationMillis = 3_200L,
+        durationMillis = 2_800L,
         running = enabled,
         repeat = true,
     )
@@ -361,12 +383,22 @@ private fun RadarVisualization(
                 )
                 if (enabled) {
                     drawArc(
-                        color = primary.copy(alpha = 0.16f),
-                        startAngle = sweepAngle - 34f,
-                        sweepAngle = 34f,
+                        color = primary.copy(alpha = 0.28f),
+                        startAngle = sweepAngle - 48f,
+                        sweepAngle = 48f,
                         useCenter = true,
                         topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
                         size = androidx.compose.ui.geometry.Size(outerRadius * 2f, outerRadius * 2f),
+                    )
+                    val sweepRadians = Math.toRadians(sweepAngle.toDouble())
+                    drawLine(
+                        color = primary.copy(alpha = 0.92f),
+                        start = center,
+                        end = Offset(
+                            x = center.x + cos(sweepRadians).toFloat() * outerRadius,
+                            y = center.y + sin(sweepRadians).toFloat() * outerRadius,
+                        ),
+                        strokeWidth = 5f,
                     )
                     drawCircle(
                         color = primary.copy(alpha = (1f - pulseProgress) * 0.28f),
@@ -898,7 +930,6 @@ private fun AnonymousConversation(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .imePadding()
                 .padding(10.dp),
             verticalAlignment = Alignment.Bottom

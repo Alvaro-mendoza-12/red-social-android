@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -415,7 +416,10 @@ private fun KeepMediaCanvasFixedWhileTyping() {
     DisposableEffect(dialogView) {
         val window = (dialogView.parent as? DialogWindowProvider)?.window
         val previousMode = window?.attributes?.softInputMode
-        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        // Let Compose receive the IME inset so the action row stays above the
+        // keyboard on short and tall devices. ADJUST_NOTHING caused the send
+        // controls to be painted underneath the keyboard on several OEMs.
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         onDispose {
             if (previousMode != null) window?.setSoftInputMode(previousMode)
         }
@@ -447,8 +451,7 @@ private fun MessageGalleryStep(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
+            .safeDrawingPadding()
     ) {
         Row(
             modifier = Modifier
@@ -641,7 +644,8 @@ private fun MessageEditorStep(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .statusBarsPadding()
+            .safeDrawingPadding()
+            .imePadding()
     ) {
         HorizontalPager(
             state = pagerState,
@@ -829,8 +833,6 @@ private fun MessageEditorStep(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
-                .imePadding()
-                .navigationBarsPadding()
                 .padding(12.dp)
         ) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -941,7 +943,7 @@ private fun MessageEditorStep(
             ) {
                 Text(
                     text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = Color.White.copy(alpha = 0.86f),
                     modifier = Modifier.weight(1f)
                 )
                 FloatingActionButton(

@@ -391,14 +391,16 @@ fun VideoTrimmerView(
                 endMs = endMs,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(300.dp)
+                    .weight(1f)
+                    .heightIn(min = 120.dp, max = 300.dp)
                     .clip(RoundedCornerShape(12.dp))
             )
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(300.dp)
+                    .weight(1f)
+                    .heightIn(min = 120.dp, max = 300.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
@@ -455,6 +457,7 @@ fun MomentEditorView(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .safeDrawingPadding()
             .imePadding()
     ) {
         // Media Preview
@@ -516,7 +519,6 @@ fun MomentEditorView(
                 .background(Brush.verticalGradient(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 ))
-                .navigationBarsPadding()
                 .padding(16.dp)
         ) {
             // Caption
