@@ -758,7 +758,13 @@ class UserRepository @Inject constructor(
         return try {
             var normalizedUserId = normalizePrivacyUserId(userId)
             var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
-            if (!forceNetwork) {
+            if (
+                ProfileReadPolicy.canUseCompactCacheBeforeRemote(
+                    forceNetwork = forceNetwork,
+                    requestedUserId = normalizedUserId,
+                    currentUserId = currentUserId
+                )
+            ) {
                 if (normalizedUserId == currentUserId) {
                     getLocalProfile()
                         ?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }

@@ -453,6 +453,10 @@ assert.strictEqual(
   profileForViewer(protectedProfile, { viewerIsTarget: true }).profile_welcome,
   'Hola',
 )
+assert.strictEqual(
+  profileForViewer({ favorite_music_url: 'https://example.test/public-song.mp3' }).favorite_music_url,
+  'https://example.test/public-song.mp3',
+)
 
 assert.ok(
   recommendationPreferenceScore({ profileTermOverlap: 1 }) >
