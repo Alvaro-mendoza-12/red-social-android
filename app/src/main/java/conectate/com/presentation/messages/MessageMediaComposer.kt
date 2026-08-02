@@ -108,6 +108,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.components.rememberReliableBottomSafePadding
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -607,6 +608,7 @@ private fun MessageEditorStep(
     onSend: () -> Unit
 ) {
     val context = LocalContext.current
+    val reliableBottomPadding = rememberReliableBottomSafePadding()
     val active = selected.getOrNull(activeIndex) ?: return
     val edit = edits[active.uri] ?: ComposerEditState()
     val strokes = remember(active.uri, edit.strokes) { mutableStateListOf<List<Offset>>().apply { addAll(edit.strokes) } }
@@ -830,7 +832,12 @@ private fun MessageEditorStep(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
-                .padding(12.dp)
+                .padding(
+                    start = 12.dp,
+                    top = 12.dp,
+                    end = 12.dp,
+                    bottom = reliableBottomPadding
+                )
         ) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(selected.size) { index ->
@@ -906,43 +913,50 @@ private fun MessageEditorStep(
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
-            if (showCaptionInput) {
-                OutlinedTextField(
-                    value = caption,
-                    onValueChange = onCaptionChange,
-                    placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
-                    minLines = 1,
-                    maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        disabledTextColor = Color.White.copy(alpha = 0.55f),
-                        cursorColor = Color.White,
-                        focusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                        unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                        disabledContainerColor = Color.Black.copy(alpha = 0.42f),
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
-                        focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
-                        unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
-                    )
-                )
-            }
-            if (!error.isNullOrBlank()) {
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                Text(
-                    text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
-                    color = Color.White.copy(alpha = 0.86f),
+                Column(
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    if (showCaptionInput) {
+                        OutlinedTextField(
+                            value = caption,
+                            onValueChange = onCaptionChange,
+                            placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
+                            minLines = 1,
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                disabledTextColor = Color.White.copy(alpha = 0.55f),
+                                cursorColor = Color.White,
+                                focusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                                unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                                disabledContainerColor = Color.Black.copy(alpha = 0.42f),
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
+                                focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
+                                unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
+                            )
+                        )
+                    }
+                    if (!error.isNullOrBlank()) {
+                        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
+                        color = Color.White.copy(alpha = 0.86f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
                 FloatingActionButton(
                     onClick = { if (!isSending) onSend() },
                     containerColor = MaterialTheme.colorScheme.primary,

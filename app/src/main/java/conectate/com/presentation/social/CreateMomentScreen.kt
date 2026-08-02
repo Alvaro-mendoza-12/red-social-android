@@ -36,6 +36,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.components.rememberReliableBottomSafePadding
 import java.util.Locale
 
 private const val MAX_MOMENT_VIDEO_DURATION_MS = 25_000L
@@ -453,6 +454,7 @@ fun MomentEditorView(
     onBack: () -> Unit,
     onPost: () -> Unit
 ) {
+    val reliableBottomPadding = rememberReliableBottomSafePadding()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -519,7 +521,12 @@ fun MomentEditorView(
                 .background(Brush.verticalGradient(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 ))
-                .padding(16.dp)
+                .padding(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = reliableBottomPadding
+                )
         ) {
             // Caption
             OutlinedTextField(

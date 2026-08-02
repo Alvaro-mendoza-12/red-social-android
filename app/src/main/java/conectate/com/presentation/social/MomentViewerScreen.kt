@@ -44,6 +44,7 @@ import coil.compose.AsyncImage
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.rememberReliableBottomSafePadding
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
 import kotlinx.coroutines.delay
@@ -65,6 +66,7 @@ fun MomentViewerScreen(
     momentId: String,
     viewModel: MomentViewModel = hiltViewModel()
 ) {
+    val reliableBottomPadding = rememberReliableBottomSafePadding()
     android.util.Log.d("MomentDebug", "Entering MomentViewerScreen for momentId: $momentId")
 
     val moments by viewModel.moments.collectAsState()
@@ -423,7 +425,7 @@ fun MomentViewerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = reliableBottomPadding)
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

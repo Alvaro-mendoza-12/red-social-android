@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -225,6 +224,7 @@ fun FullScreenImageDialog(
     bottomOverlay: (@Composable (page: Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
+    val reliableBottomPadding = rememberReliableBottomSafePadding()
     val items = remember(imageUrl, mediaItems) {
         if (mediaItems.isNotEmpty()) {
             mediaItems
@@ -352,7 +352,7 @@ fun FullScreenImageDialog(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .navigationBarsPadding()
+                            .padding(bottom = reliableBottomPadding)
                     ) {
                         bottomOverlay(pagerState.currentPage)
                     }
@@ -363,8 +363,7 @@ fun FullScreenImageDialog(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
-                            .padding(bottom = 16.dp)
+                            .padding(bottom = reliableBottomPadding + 16.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(Color.Black.copy(alpha = 0.58f))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
