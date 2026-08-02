@@ -15,6 +15,7 @@ const {
   listScheduledMessageJobs,
   scheduleMessageJob,
 } = require('./scheduled-message-jobs')
+const { liveGiftLimitsConfiguration } = require('./gift-safety-config')
 
 const MAX_READ_ROWS = Number(process.env.POSTGREST_COMPAT_MAX_READ_ROWS || 10000)
 const RESERVED_QUERY_KEYS = new Set([
@@ -28,23 +29,32 @@ const RESERVED_QUERY_KEYS = new Set([
 ])
 
 const DEFAULT_VIRTUAL_GIFTS = [
-  { id: 'builtin-heart', name: 'Pulso Novvin', description: 'Un pulso luminoso para apoyar al creador', image_url: 'conectate://gift-assets/pulse', price_diamonds: 5, price_credits: 0.5, animation_url: 'conectate://gift-animations/pulse', sort_order: 1 },
-  { id: 'builtin-rhythm', name: 'Ritmo Neon', description: 'Una onda musical dibujada para el directo', image_url: 'conectate://gift-assets/rhythm', price_diamonds: 10, price_credits: 1, animation_url: 'conectate://gift-animations/rhythm', sort_order: 2 },
-  { id: 'builtin-butterfly', name: 'Ala Boreal', description: 'Alas de color para un saludo ligero', image_url: 'conectate://gift-assets/butterfly', price_diamonds: 15, price_credits: 1.5, animation_url: 'conectate://gift-animations/butterfly', sort_order: 3 },
-  { id: 'builtin-rose', name: 'Flor Aurora', description: 'Petalos de luz originales de Novvin', image_url: 'conectate://gift-assets/aurora', price_diamonds: 25, price_credits: 2.5, animation_url: 'conectate://gift-animations/aurora', sort_order: 4 },
-  { id: 'builtin-orbit', name: 'Orbita', description: 'Un planeta de energia Novvin', image_url: 'conectate://gift-assets/orbit', price_diamonds: 35, price_credits: 3.5, animation_url: 'conectate://gift-animations/orbit', sort_order: 5 },
-  { id: 'builtin-trophy', name: 'Copa Prisma', description: 'Una copa brillante para celebrar logros', image_url: 'conectate://gift-assets/prism', price_diamonds: 50, price_credits: 5, animation_url: 'conectate://gift-animations/prism', sort_order: 6 },
-  { id: 'builtin-wave', name: 'Marea Celeste', description: 'Una ola luminosa que cruza la pantalla', image_url: 'conectate://gift-assets/wave', price_diamonds: 75, price_credits: 7.5, animation_url: 'conectate://gift-animations/wave', sort_order: 7 },
-  { id: 'builtin-fireworks', name: 'Lluvia de Luz', description: 'Una celebracion que llena la pantalla', image_url: 'conectate://gift-assets/fireworks', price_diamonds: 100, price_credits: 10, animation_url: 'conectate://gift-animations/fireworks', sort_order: 8 },
-  { id: 'builtin-rainbow', name: 'Arco Solar', description: 'Un arco de luz para celebrar juntos', image_url: 'conectate://gift-assets/rainbow', price_diamonds: 150, price_credits: 15, animation_url: 'conectate://gift-animations/rainbow', sort_order: 9 },
-  { id: 'builtin-star', name: 'Nova', description: 'Una explosion estelar para grandes momentos', image_url: 'conectate://gift-assets/nova', price_diamonds: 200, price_credits: 20, animation_url: 'conectate://gift-animations/nova', sort_order: 10 },
-  { id: 'builtin-crystal', name: 'Cristal Novvin', description: 'Una gema de energia para destacar', image_url: 'conectate://gift-assets/crystal', price_diamonds: 250, price_credits: 25, animation_url: 'conectate://gift-animations/crystal', sort_order: 11 },
-  { id: 'builtin-comet', name: 'Cometa', description: 'Una estela veloz para destacar el directo', image_url: 'conectate://gift-assets/comet', price_diamonds: 350, price_credits: 35, animation_url: 'conectate://gift-animations/comet', sort_order: 12 },
-  { id: 'builtin-rocket', name: 'Impulso', description: 'Un despegue completo para grandes metas', image_url: 'conectate://gift-assets/rocket', price_diamonds: 450, price_credits: 45, animation_url: 'conectate://gift-animations/rocket', sort_order: 13 },
-  { id: 'builtin-crown', name: 'Corona Cosmica', description: 'Una celebracion destacada del catalogo', image_url: 'conectate://gift-assets/crown', price_diamonds: 500, price_credits: 50, animation_url: 'conectate://gift-animations/crown', sort_order: 14 },
-  { id: 'builtin-portal', name: 'Portal Prisma', description: 'Abre una celebracion envolvente', image_url: 'conectate://gift-assets/portal', price_diamonds: 750, price_credits: 75, animation_url: 'conectate://gift-animations/portal', sort_order: 15 },
-  { id: 'builtin-phoenix', name: 'Fenix Aurora', description: 'La celebracion maxima del catalogo', image_url: 'conectate://gift-assets/phoenix', price_diamonds: 1000, price_credits: 100, animation_url: 'conectate://gift-animations/phoenix', sort_order: 16 },
+  { id: '7a100001-0000-4000-8000-000000000001', name: 'Semilla Estelar', description: 'Una chispa pequeña para iniciar la celebración', image_url: 'conectate://gift-assets/starlight-seed', price_diamonds: 5, price_credits: 0, animation_url: 'conectate://gift-animations/starlight-seed', sort_order: 1 },
+  { id: '7a100002-0000-4000-8000-000000000002', name: 'Gota Aurora', description: 'Una gota de luz suave para saludar al creador', image_url: 'conectate://gift-assets/aurora-drop', price_diamonds: 10, price_credits: 0, animation_url: 'conectate://gift-animations/aurora-drop', sort_order: 2 },
+  { id: '7a100003-0000-4000-8000-000000000003', name: 'Chispa Prisma', description: 'Un destello multicolor que despierta el directo', image_url: 'conectate://gift-assets/prism-spark', price_diamonds: 15, price_credits: 0, animation_url: 'conectate://gift-animations/prism-spark', sort_order: 3 },
+  { id: '7a100004-0000-4000-8000-000000000004', name: 'Mariposa Luminosa', description: 'Alas brillantes para un saludo ligero', image_url: 'conectate://gift-assets/luminous-butterfly', price_diamonds: 25, price_credits: 0, animation_url: 'conectate://gift-animations/luminous-butterfly', sort_order: 4 },
+  { id: '7a100005-0000-4000-8000-000000000005', name: 'Flor Cometa', description: 'Pétalos que dejan una estela en el cielo', image_url: 'conectate://gift-assets/comet-flower', price_diamonds: 40, price_credits: 0, animation_url: 'conectate://gift-animations/comet-flower', sort_order: 5 },
+  { id: '7a100006-0000-4000-8000-000000000006', name: 'Luna de Cristal', description: 'Una luna tallada en reflejos boreales', image_url: 'conectate://gift-assets/crystal-moon', price_diamonds: 60, price_credits: 0, animation_url: 'conectate://gift-animations/crystal-moon', sort_order: 6 },
+  { id: '7a100007-0000-4000-8000-000000000007', name: 'Colibrí Solar', description: 'Un vuelo veloz cargado de energía', image_url: 'conectate://gift-assets/solar-hummingbird', price_diamonds: 90, price_credits: 0, animation_url: 'conectate://gift-animations/solar-hummingbird', sort_order: 7 },
+  { id: '7a100008-0000-4000-8000-000000000008', name: 'Medusa Nebulosa', description: 'Una criatura celeste que flota entre estrellas', image_url: 'conectate://gift-assets/nebula-jellyfish', price_diamonds: 130, price_credits: 0, animation_url: 'conectate://gift-animations/nebula-jellyfish', sort_order: 8 },
+  { id: '7a100009-0000-4000-8000-000000000009', name: 'Zorro Boreal', description: 'Un compañero ártico envuelto en auroras', image_url: 'conectate://gift-assets/boreal-fox', price_diamonds: 170, price_credits: 0, animation_url: 'conectate://gift-animations/boreal-fox', sort_order: 9 },
+  { id: '7a100010-0000-4000-8000-000000000010', name: 'Ballena Estelar', description: 'Una travesía serena por el océano cósmico', image_url: 'conectate://gift-assets/cosmic-whale', price_diamonds: 200, price_credits: 0, animation_url: 'conectate://gift-animations/cosmic-whale', sort_order: 10 },
+  { id: '7a100011-0000-4000-8000-000000000011', name: 'Jardín de Estrellas', description: 'Un jardín que florece con luz estelar', image_url: 'conectate://gift-assets/star-garden', price_diamonds: 250, price_credits: 0, animation_url: 'conectate://gift-animations/star-garden', sort_order: 11 },
+  { id: '7a100012-0000-4000-8000-000000000012', name: 'Orquídea Prisma', description: 'Cristales florales que reflejan todo el directo', image_url: 'conectate://gift-assets/crystal-orchid', price_diamonds: 300, price_credits: 0, animation_url: 'conectate://gift-animations/crystal-orchid', sort_order: 12 },
+  { id: '7a100013-0000-4000-8000-000000000013', name: 'Nave Prisma', description: 'Una nave de colores lista para despegar', image_url: 'conectate://gift-assets/prism-ship', price_diamonds: 350, price_credits: 0, animation_url: 'conectate://gift-animations/prism-ship', sort_order: 13 },
+  { id: '7a100014-0000-4000-8000-000000000014', name: 'Guardián del Bosque', description: 'El protector luminoso de un bosque encantado', image_url: 'conectate://gift-assets/forest-guardian', price_diamonds: 450, price_credits: 0, animation_url: 'conectate://gift-animations/forest-guardian', sort_order: 14 },
+  { id: '7a100015-0000-4000-8000-000000000015', name: 'Fénix Aurora', description: 'Renace entre fuego frío y luces boreales', image_url: 'conectate://gift-assets/aurora-phoenix', price_diamonds: 600, price_credits: 0, animation_url: 'conectate://gift-animations/aurora-phoenix', sort_order: 15 },
+  { id: '7a100016-0000-4000-8000-000000000016', name: 'Tren Estelar', description: 'Un viaje brillante que cruza toda la escena', image_url: 'conectate://gift-assets/star-train', price_diamonds: 750, price_credits: 0, animation_url: 'conectate://gift-animations/star-train', sort_order: 16 },
+  { id: '7a100017-0000-4000-8000-000000000017', name: 'Dragón Celeste', description: 'Un guardián majestuoso para grandes celebraciones', image_url: 'conectate://gift-assets/celestial-dragon', price_diamonds: 900, price_credits: 0, animation_url: 'conectate://gift-animations/celestial-dragon', sort_order: 17 },
+  { id: '7a100018-0000-4000-8000-000000000018', name: 'Isla Flotante', description: 'Un mundo suspendido que aparece sobre el directo', image_url: 'conectate://gift-assets/floating-island', price_diamonds: 1100, price_credits: 0, animation_url: 'conectate://gift-animations/floating-island', sort_order: 18 },
+  { id: '7a100019-0000-4000-8000-000000000019', name: 'Mundo Celeste', description: 'Un planeta completo nacido entre constelaciones', image_url: 'conectate://gift-assets/celestial-world', price_diamonds: 1400, price_credits: 0, animation_url: 'conectate://gift-animations/celestial-world', sort_order: 19 },
+  { id: '7a100020-0000-4000-8000-000000000020', name: 'Ópera de Luz', description: 'Una escena musical de luz, color y movimiento', image_url: 'conectate://gift-assets/light-opera', price_diamonds: 1800, price_credits: 0, animation_url: 'conectate://gift-animations/light-opera', sort_order: 20 },
+  { id: '7a100021-0000-4000-8000-000000000021', name: 'Palacio Boreal', description: 'La celebración imperial del cielo nocturno', image_url: 'conectate://gift-assets/aurora-palace', price_diamonds: 2200, price_credits: 0, animation_url: 'conectate://gift-animations/aurora-palace', sort_order: 21 },
+  { id: '7a100022-0000-4000-8000-000000000022', name: 'Reino del Tiempo', description: 'Un reino fantástico que controla cada instante', image_url: 'conectate://gift-assets/time-kingdom', price_diamonds: 2800, price_credits: 0, animation_url: 'conectate://gift-animations/time-kingdom', sort_order: 22 },
+  { id: '7a100023-0000-4000-8000-000000000023', name: 'Ascenso Galáctico', description: 'Una subida épica hacia el centro de la galaxia', image_url: 'conectate://gift-assets/galactic-ascent', price_diamonds: 3600, price_credits: 0, animation_url: 'conectate://gift-animations/galactic-ascent', sort_order: 23 },
+  { id: '7a100024-0000-4000-8000-000000000024', name: 'Génesis Aurora', description: 'El gran final Novvin: un universo nace en pantalla', image_url: 'conectate://gift-assets/aurora-genesis', price_diamonds: 5000, price_credits: 0, animation_url: 'conectate://gift-animations/aurora-genesis', sort_order: 24 },
 ]
+const DEFAULT_VIRTUAL_GIFT_IDS = new Set(DEFAULT_VIRTUAL_GIFTS.map((gift) => gift.id))
 
 const SUPPORTED_RPC_NAMES = new Set([
   'challenge_v3_vote_toggle',
@@ -435,6 +445,19 @@ async function ensurePostgrestCompatTables(pool) {
   for (const gift of DEFAULT_VIRTUAL_GIFTS) {
     await storeCompatRow(pool, 'virtual_gifts', { ...gift, is_active: true })
   }
+  await pool.query(`
+    UPDATE fallback_compat_rows
+    SET row = jsonb_set(row, '{is_active}', 'false'::jsonb, true),
+        updated_at = NOW()
+    WHERE table_name = 'virtual_gifts'
+      AND (
+        row_id LIKE 'builtin-%'
+        OR (
+          COALESCE(row->>'image_url', '') LIKE 'conectate://gift-assets/%'
+          AND NOT (row_id = ANY($1::text[]))
+        )
+      )
+  `, [Array.from(DEFAULT_VIRTUAL_GIFT_IDS)])
 }
 
 async function tableExists(pool, schemaName, tableName) {
@@ -943,6 +966,9 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
 
   if (tableName === 'profiles') {
     return rows.map((row) => sanitizeProfileRow(row, identity))
+  }
+  if (tableName === 'virtual_gifts') {
+    return rows.filter((row) => DEFAULT_VIRTUAL_GIFT_IDS.has(String(row.id || '').trim()) && row.is_active !== false)
   }
   if (tableName === 'users') {
     return rows
@@ -2962,16 +2988,19 @@ function googlePlayConfiguration() {
     packages = Object.fromEntries(
       Object.entries(rawPackages)
         .map(([productId, coins]) => [String(productId).trim(), Math.trunc(Number(coins) || 0)])
-        .filter(([productId, coins]) => productId && coins > 0 && coins <= 1_000_000),
+        .filter(([productId, coins]) => productId && coins > 0 && coins <= 1_000_000)
+        .slice(0, 8),
     )
   } catch (_) {
     packages = {}
   }
   const packageName = String(process.env.GOOGLE_PLAY_PACKAGE_NAME || 'conectate.com').trim()
+  const packageCount = Object.keys(packages).length
   const ready = Boolean(
     enabled &&
     packageName &&
-    Object.keys(packages).length > 0 &&
+    packageCount >= 6 &&
+    packageCount <= 8 &&
     serviceAccount?.client_email &&
     serviceAccount?.private_key,
   )
@@ -3037,6 +3066,7 @@ async function billingCapabilitiesRpc(pool, auth) {
     enabled: config.enabled,
     provider: 'google_play',
     products: Object.entries(config.packages).map(([product_id, coins]) => ({ product_id, coins })),
+    gift_limits: liveGiftLimitsConfiguration(),
   }
 }
 
@@ -3167,6 +3197,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   if (!receiverId || !giftId) throw httpError('GIFT_RECEIVER_AND_ID_REQUIRED', 400)
   if (!idempotencyKey) throw httpError('GIFT_IDEMPOTENCY_KEY_REQUIRED', 400)
   if (identityOwnsValue(identity, receiverId)) throw httpError('SELF_GIFT_FORBIDDEN', 400)
+  if (!DEFAULT_VIRTUAL_GIFT_IDS.has(giftId)) throw httpError('GIFT_NOT_FOUND', 404)
 
   const priorTransaction = (await importedAndCompatRows(pool, 'gift_transactions'))
     .find((row) => normalizeIdentityValue(row.idempotency_key) === idempotencyKey)
@@ -3200,6 +3231,8 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   if (!gift || gift.is_active === false) throw httpError('GIFT_NOT_FOUND', 404)
   const costDiamonds = Math.max(0, Math.trunc(Number(gift.price_diamonds || 0) || 0))
   if (costDiamonds <= 0) throw httpError('GIFT_PRICE_INVALID', 409)
+  const giftLimits = liveGiftLimitsConfiguration()
+  if (costDiamonds > giftLimits.max_coins_per_gift) throw httpError('GIFT_VALUE_LIMIT_EXCEEDED', 409)
   const profiles = await readTableRows(pool, 'profiles', {}, auth)
   const receiver = profiles.find((profile) =>
     [profile.id, profile.local_id, profile.user_id, profile.supabase_user_id]
@@ -3247,6 +3280,25 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       await client.query('COMMIT')
       inTransaction = false
     } else {
+    const now = Date.now()
+    const senderTransactions = existingTransactions.filter((row) =>
+      identityOwnsValue(identity, row.sender_id),
+    )
+    const giftsLastMinute = senderTransactions.filter((row) => {
+      const createdAt = Date.parse(String(row.created_at || ''))
+      return Number.isFinite(createdAt) && createdAt >= now - 60_000
+    }).length
+    if (giftsLastMinute >= giftLimits.max_gifts_per_minute) {
+      throw httpError('GIFT_RATE_LIMIT_EXCEEDED', 429)
+    }
+    const spentLastDay = senderTransactions.reduce((total, row) => {
+      const createdAt = Date.parse(String(row.created_at || ''))
+      if (!Number.isFinite(createdAt) || createdAt < now - 86_400_000) return total
+      return total + Math.max(0, Math.trunc(Number(row.amount_diamonds || 0) || 0))
+    }, 0)
+    if (spentLastDay + costDiamonds > giftLimits.max_coins_per_day) {
+      throw httpError('GIFT_DAILY_LIMIT_EXCEEDED', 409)
+    }
     if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_DIAMONDS', 409)
     newBalance = wallet.balance_diamonds - costDiamonds
     await storeCompatRow(client, 'wallets', {
@@ -3281,6 +3333,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       sender_balance_after: newBalance,
       status: 'committed',
       is_public: isPublic,
+      created_at: nowIso(),
     })
     await storeCompatRow(client, 'wallet_transactions', {
       id: crypto.randomUUID(),
@@ -4839,7 +4892,15 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 }
 
 module.exports = {
-  _test: { canUseReportEvidence, parsePollOptions, purgeImportedIdentityRows, readSpecificRows, rowId },
+  _test: {
+    DEFAULT_VIRTUAL_GIFTS,
+    canUseReportEvidence,
+    liveGiftLimitsConfiguration,
+    parsePollOptions,
+    purgeImportedIdentityRows,
+    readSpecificRows,
+    rowId,
+  },
   ensurePostgrestCompatTables,
   registerPostgrestCompatRoutes,
 }

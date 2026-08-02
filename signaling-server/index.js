@@ -1556,12 +1556,24 @@ async function finalizeLiveTermination(liveId, reason = 'ended') {
 function scheduleHostTerminationGrace(liveId, hostSnapshot) {
     clearPendingLiveTermination(liveId);
 
+    const scheduledSession = lives.get(liveId);
+    if (scheduledSession) scheduledSession.pendingHostSnapshot = hostSnapshot;
+
     const timer = setTimeout(async () => {
         liveEndTimers.delete(liveId);
         const session = lives.get(liveId);
         if (!session) return;
 
+        // A reconnect handler can already be validating ownership/moderation
+        // when the old timer callback has entered the event queue. Give that
+        // authenticated reservation a fresh bounded grace window.
+        if (session.hostJoinReservationToken) {
+            scheduleHostTerminationGrace(liveId, hostSnapshot);
+            return;
+        }
+
         if (session.host?.userId === hostSnapshot.userId) {
+            session.pendingHostSnapshot = null;
             console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${hostSnapshot.userId} reconnected to ${liveId} before grace timeout`);
             return;
         }
@@ -1589,6 +1601,43 @@ liveIo.on('connection', (socket) => {
         const role = data.role?.toString().trim().toLowerCase(); // "host" | "viewer"
 
         if (!liveId || !userId || (role !== 'host' && role !== 'viewer')) return;
+
+        // Reserve a pending reconnect synchronously, before any API await. A
+        // 90-second grace timer must not end the stream while the same,
+        // authenticated host is still being revalidated.
+        let reservedHostGrace = null;
+        if (role === 'host') {
+            const existingSession = lives.get(liveId);
+            const pendingHost = existingSession?.pendingHostSnapshot;
+            if (
+                existingSession &&
+                !existingSession.host &&
+                pendingHost?.userId === userId &&
+                liveEndTimers.has(liveId)
+            ) {
+                const reservationToken = crypto.randomUUID();
+                existingSession.hostJoinReservationToken = reservationToken;
+                reservedHostGrace = {
+                    session: existingSession,
+                    snapshot: pendingHost,
+                    token: reservationToken
+                };
+                clearPendingLiveTermination(liveId);
+            }
+        }
+        const restoreReservedHostGrace = () => {
+            const reservation = reservedHostGrace;
+            reservedHostGrace = null;
+            if (!reservation) return;
+            const currentSession = lives.get(liveId);
+            if (currentSession !== reservation.session) return;
+            if (currentSession.hostJoinReservationToken === reservation.token) {
+                currentSession.hostJoinReservationToken = null;
+            }
+            if (!currentSession.host) {
+                scheduleHostTerminationGrace(liveId, reservation.snapshot);
+            }
+        };
 
         if (!lives.has(liveId)) {
             const liveMeta = await getLiveStreamMeta(liveId, socket.data.authToken);
@@ -1647,18 +1696,31 @@ liveIo.on('connection', (socket) => {
                 console.warn(
                     `[SOCKET_DEBUG] [LIVE][JOIN] Rejected host ${userId} for ${liveId} because owner is ${liveMeta.hostUserId || 'missing'}`
                 );
+                restoreReservedHostGrace();
                 socket.emit('live-ended');
                 return;
             }
         }
 
-        const session = lives.get(liveId);
+        const sessionReference = lives.get(liveId);
+        if (!sessionReference) {
+            restoreReservedHostGrace();
+            socket.emit('live-ended');
+            return;
+        }
         let requestedModeration;
         try {
             requestedModeration = await getLiveModerationState(liveId, socket.data.authToken);
         } catch (error) {
             console.error(`[SOCKET_DEBUG] [LIVE][MODERATION] Could not authorize ${userId} for ${liveId}:`, error.message || error);
+            restoreReservedHostGrace();
             socket.emit('live-moderation-error', { error: 'No se pudo validar tu acceso al directo.' });
+            return;
+        }
+        const session = lives.get(liveId);
+        if (!socket.connected || !session || session !== sessionReference) {
+            restoreReservedHostGrace();
+            socket.emit('live-ended');
             return;
         }
         if (role !== 'host' && requestedModeration?.is_banned) {
@@ -1675,6 +1737,35 @@ liveIo.on('connection', (socket) => {
 
         if (role === 'host') {
             clearPendingLiveTermination(liveId);
+            const previousHost = session.host;
+            if (previousHost?.socketId && previousHost.socketId !== socket.id) {
+                liveIo.to(liveId).emit('host-disconnected', {
+                    socketId: previousHost.socketId,
+                    userId: previousHost.userId,
+                    replaced: true
+                });
+                const previousSocket = liveIo.sockets.get(previousHost.socketId);
+                if (previousSocket) {
+                    previousSocket.emit('live-session-replaced', {
+                        liveId,
+                        message: 'Este directo continúa desde otro dispositivo.'
+                    });
+                    previousSocket.data.joinedLiveIds?.delete(liveId);
+                    if (previousSocket.data.liveId === liveId) {
+                        previousSocket.data.liveId = null;
+                        previousSocket.data.liveRole = null;
+                    }
+                    previousSocket.leave(liveId);
+                }
+            }
+            if (
+                reservedHostGrace &&
+                session.hostJoinReservationToken === reservedHostGrace.token
+            ) {
+                session.hostJoinReservationToken = null;
+            }
+            reservedHostGrace = null;
+            session.pendingHostSnapshot = null;
             session.host = { socketId: socket.id, userId, name, avatarUrl, authToken: socket.data.authToken };
             session.hostAuthToken = socket.data.authToken;
             session.state = {
@@ -1759,16 +1850,32 @@ liveIo.on('connection', (socket) => {
         emitLiveModerationState(liveId, session);
     });
 
-    socket.on('end-live', async (data) => {
+    socket.on('end-live', async (data, acknowledge) => {
+        const requestedLiveId = data?.liveId?.toString().trim() || '';
+        const denyEnd = (reason) => {
+            socket.emit('end-live-denied', { liveId: requestedLiveId, reason });
+            if (typeof acknowledge === 'function') acknowledge({ ok: false, reason });
+        };
         const liveId = requireJoinedScope(socket, 'joinedLiveIds', data?.liveId, 'live', 'end-live');
-        if (!liveId) return;
+        if (!liveId) {
+            denyEnd('NOT_JOINED');
+            return;
+        }
 
         const session = lives.get(liveId);
-        if (!session) return;
+        if (!session) {
+            denyEnd('LIVE_NOT_FOUND');
+            return;
+        }
 
         // Only host can end
-        if (session.host?.socketId !== socket.id) return;
+        if (session.host?.socketId !== socket.id) {
+            denyEnd('HOST_SOCKET_REPLACED');
+            return;
+        }
 
+        socket.emit('end-live-confirmed', { liveId });
+        if (typeof acknowledge === 'function') acknowledge({ ok: true, liveId });
         await finalizeLiveTermination(liveId, 'host-ended');
     });
 
@@ -1821,7 +1928,15 @@ liveIo.on('connection', (socket) => {
         const count = Math.max(1, Math.min(10, Math.trunc(Number(data?.count || 1)) || 1));
         const clientBatchId = String(data?.clientBatchId || '').trim();
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientBatchId)) return;
-        if (!consumeRateLimitToken('live-reaction-batch', `${liveId}:${userId}`, 8, 2_000)) return;
+        if (!consumeRateLimitToken('live-reaction-batch', `${liveId}:${userId}`, 8, 2_000)) {
+            socket.emit('reaction-batch-rejected', {
+                liveId,
+                clientBatchId,
+                reactionCount: Math.max(0, Number(session.reactionCount || 0)),
+                reason: 'RATE_LIMITED'
+            });
+            return;
+        }
 
         session.reactionBatchIds ||= new Set();
         if (session.reactionBatchIds.has(clientBatchId)) {
@@ -1834,7 +1949,13 @@ liveIo.on('connection', (socket) => {
         }
 
         session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + count;
-        liveIo.to(liveId).emit('reaction', { liveId, kind: 'heart', userId, count });
+        liveIo.to(liveId).emit('reaction', {
+            liveId,
+            kind: 'heart',
+            userId,
+            count,
+            clientBatchId
+        });
         liveIo.to(liveId).emit('reaction-count', {
             liveId,
             reactionCount: session.reactionCount
@@ -1857,7 +1978,9 @@ liveIo.on('connection', (socket) => {
         if (!liveId) return;
         const transactionId = String(data?.transactionId || '').trim();
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transactionId)) return;
-        if (!consumeRateLimitToken('live-gift', `${liveId}:${socket.data.authUserId}`, 8, 10_000)) return;
+        // Match the authoritative wallet policy so every gift that can be
+        // committed during the minute can also display its verified animation.
+        if (!consumeRateLimitToken('live-gift', `${liveId}:${socket.data.authUserId}`, 20, 60_000)) return;
 
         try {
             const payload = await callUbuntuApi('/rest/v1/rpc/get_virtual_gift_receipt', {
@@ -2091,7 +2214,14 @@ liveIo.on('connection', (socket) => {
             // Host disconnect => keep the live alive for a grace window
             if (session.host?.socketId === socket.id) {
                 const disconnectedHost = session.host;
+                socket.to(liveId).emit('host-disconnected', {
+                    socketId: disconnectedHost.socketId,
+                    userId: disconnectedHost.userId,
+                    replaced: false,
+                    graceMs: HOST_DISCONNECT_GRACE_MS
+                });
                 session.host = null;
+                session.pendingHostSnapshot = disconnectedHost;
                 console.log(`[SOCKET_DEBUG] [LIVE][HOST] ${disconnectedHost.userId} disconnected from ${liveId}. Waiting ${HOST_DISCONNECT_GRACE_MS}ms for reconnection`
                 );
                 scheduleHostTerminationGrace(liveId, disconnectedHost);
@@ -2109,7 +2239,7 @@ liveIo.on('connection', (socket) => {
                 liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
                 await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
 
-                if (!session.host && viewerCount === 0) {
+                if (!session.host && viewerCount === 0 && !liveEndTimers.has(liveId)) {
                     clearPendingLiveTermination(liveId);
                     lives.delete(liveId);
                     await endLiveStream(liveId, session.hostAuthToken, session.reactionCount || 0);

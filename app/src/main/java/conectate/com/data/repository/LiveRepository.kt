@@ -37,9 +37,13 @@ import io.socket.client.IO
 import io.socket.client.Socket
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -68,6 +72,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import conectate.com.services.LiveForegroundService
 import java.time.Instant
 import java.net.HttpURLConnection
@@ -94,6 +99,9 @@ class LiveRepository @Inject constructor(
         private const val LOCAL_COMMENT_REFRESH_MS = 1_500L
         private const val REACTION_BATCH_WINDOW_MS = 500L
         private const val REACTION_BATCH_MAX = 10
+        private const val MAX_ACTIVE_REACTION_PARTICLES = 12
+        private const val SOURCE_PERSIST_TIMEOUT_MS = 4_000L
+        private const val LIVE_END_CONFIRMATION_TIMEOUT_MS = 3_000L
     }
 
     private val scope = newSafeScope("LiveRepository", Dispatchers.IO)
@@ -104,23 +112,39 @@ class LiveRepository @Inject constructor(
 
     private val signalingUrl: String
         get() = SignalingConfig.LIVE_URL
+    @Volatile
     private var socket: Socket? = null
     private var webRTCManager: WebRTCManager? = null
     private var commentsChannel: RealtimeChannel? = null
     private var commentsJob: Job? = null
+    @Volatile
     private var adaptiveQualityJob: Job? = null
     private var socketEndpointRecoveryJob: Job? = null
     private var mediaConnectionTimeoutJob: Job? = null
+    @Volatile
+    private var mediaTransitionJob: Job? = null
+    @Volatile
+    private var projectionStopJob: Job? = null
+    @Volatile
+    private var projectionStopToken: String? = null
+    private val projectionStopJobLock = Any()
+    private val projectionState = LiveProjectionStateCoordinator()
+    private val sourcePersistenceMutex = Mutex()
     private val sessionStartupMutex = Mutex()
     private val sessionEndMutex = Mutex()
-    private val reactionExpiryJobs = mutableMapOf<String, Job>()
+    private val closeCoordinator = LiveSessionCloseCoordinator()
+    private val mediaTransitionGate = LiveMediaTransitionGate()
+    private val reactionExpiryJobs = ConcurrentHashMap<String, Job>()
     private val reactionBatchLock = Any()
     private var reactionBatchJob: Job? = null
     private var pendingReactionCount = 0
     private var pendingReactionLiveId = ""
     private var pendingReactionUserId = ""
-    private val giftExpiryJobs = mutableMapOf<String, Job>()
-    private val knownViewerSocketIds = mutableSetOf<String>()
+    private val localReactionBatches = LinkedHashMap<String, Int>()
+    private val liveEndConfirmationLock = Any()
+    private var pendingLiveEndConfirmation: Pair<String, CompletableDeferred<Boolean>>? = null
+    private val giftExpiryJobs = ConcurrentHashMap<String, Job>()
+    private val knownViewerSocketIds = ConcurrentHashMap.newKeySet<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
     private var hostSessionStartedElapsedMs: Long = 0L
     @Volatile
@@ -187,6 +211,9 @@ class LiveRepository @Inject constructor(
 
     private val _currentSource = MutableStateFlow(LiveSource.CAMERA)
     val currentSource: StateFlow<LiveSource> = _currentSource.asStateFlow()
+
+    private val _isMediaTransitioning = MutableStateFlow(false)
+    val isMediaTransitioning: StateFlow<Boolean> = _isMediaTransitioning.asStateFlow()
 
     private val _quality = MutableStateFlow(LiveQuality.P720)
     val quality: StateFlow<LiveQuality> = _quality.asStateFlow()
@@ -584,6 +611,10 @@ class LiveRepository @Inject constructor(
                 }
             }
 
+            if (!closeCoordinator.resetForNewSession()) {
+                return@withContext Result.failure(Exception("El live anterior todavía se está cerrando"))
+            }
+
             var stream = getLiveStreamById(normalizedStreamId).getOrNull()
                 ?: return@withContext Result.failure(Exception("Live no encontrado"))
             if (!stream.hostUserId.equals(currentUserId, ignoreCase = true)) {
@@ -626,6 +657,9 @@ class LiveRepository @Inject constructor(
             )
             subscribeToComments(stream.id)
             Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            disconnectAndClear()
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("LiveRepository", "Host live failed", e)
             disconnectAndClear()
@@ -653,6 +687,10 @@ class LiveRepository @Inject constructor(
                 } else {
                     Result.failure(Exception("Ya hay un live activo"))
                 }
+            }
+
+            if (!closeCoordinator.resetForNewSession()) {
+                return@withContext Result.failure(Exception("El live anterior todavía se está cerrando"))
             }
 
             var stream = getLiveStreamById(normalizedStreamId).getOrNull()
@@ -693,6 +731,9 @@ class LiveRepository @Inject constructor(
             )
             subscribeToComments(stream.id)
             Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            disconnectAndClear()
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("LiveRepository", "Join live as viewer failed", e)
             disconnectAndClear()
@@ -723,7 +764,7 @@ class LiveRepository @Inject constructor(
         _quality.value = value
     }
 
-    fun startCamera(): Boolean {
+    fun startCamera(micEnabledOverride: Boolean? = null): Boolean {
         val session = _activeSession.value ?: return false
         if (session.role != LiveRole.HOST) return false
         if (!hasPermission(android.Manifest.permission.CAMERA)) {
@@ -731,43 +772,85 @@ class LiveRepository @Inject constructor(
             return false
         }
 
-        val q = _quality.value
         val manager = webRTCManager ?: return false
-        screenCaptureActive = false
-        _currentSource.value = LiveSource.CAMERA
-        _isVideoEnabled.value = true
-        refreshForegroundServiceType()
-        return runCatching {
-            manager.ensureLocalTracks()
-            manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
-            manager.startVideo(
-                isScreen = false,
-                intent = null,
-                isFront = true,
-                targetWidth = q.width,
-                targetHeight = q.height,
-                targetFps = 24,
-                onComplete = { started ->
-                    if (started) {
-                        emitLiveState()
-                    } else if (_currentSource.value == LiveSource.CAMERA) {
-                        _isVideoEnabled.value = false
-                        manager.setVideoSendEnabled(false, renegotiate = false)
-                        refreshForegroundServiceType()
-                        emitLiveState()
-                        _runtimeErrors.tryEmit("No se pudo iniciar la cámara del live.")
-                    }
-                }
-            )
-            true
-        }.getOrElse { error ->
-            android.util.Log.e("LiveRepository", "Unable to start live camera", error)
-            _runtimeErrors.tryEmit("No se pudo iniciar la cámara del live.")
-            false
+        if (!mediaTransitionGate.tryStart()) {
+            _runtimeErrors.tryEmit("Espera a que termine el cambio de fuente actual.")
+            return false
         }
+
+        _isMediaTransitioning.value = true
+        val sessionId = session.stream.id
+        val quality = _quality.value
+        val previousSource = _currentSource.value
+        val previousVideoEnabled = _isVideoEnabled.value
+        val previousProjectionToken = projectionState.activeToken()
+        projectionState.suppress(previousProjectionToken)
+        refreshForegroundServiceType(
+            sourceOverride = LiveSource.CAMERA,
+            updateSession = false,
+            videoEnabledOverride = true,
+            additionalSourceOverride = previousSource.takeIf { previousVideoEnabled }
+        )
+        mediaTransitionJob = scope.launch {
+            var sourceCommitted = false
+            try {
+                manager.ensureLocalTracks()
+                manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
+                val started = manager.startVideoAwait(
+                    isScreen = false,
+                    intent = null,
+                    isFront = true,
+                    targetWidth = quality.width,
+                    targetHeight = quality.height,
+                    targetFps = 24
+                )
+                val requestStillCurrent =
+                    _activeSession.value?.role == LiveRole.HOST &&
+                        _activeSession.value?.stream?.id.equals(sessionId, ignoreCase = true)
+                if (started && requestStillCurrent) {
+                    sourceCommitted = true
+                    projectionState.clearActive()
+                    screenCaptureActive = false
+                    _currentSource.value = LiveSource.CAMERA
+                    _isVideoEnabled.value = true
+                    micEnabledOverride?.let { enabled ->
+                        _isMicEnabled.value = enabled
+                        manager.setAudioEnabled(enabled)
+                    }
+                    updateSessionSource(LiveSource.CAMERA)
+                    refreshForegroundServiceType()
+                    manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
+                    emitLiveState()
+                    persistLiveSourceAsync(sessionId, LiveSource.CAMERA)
+                } else if (requestStillCurrent) {
+                    refreshForegroundServiceType()
+                    _runtimeErrors.emit("No se pudo iniciar la cámara del live. Se mantuvo la fuente anterior.")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.e("LiveRepository", "Unable to start live camera", error)
+                refreshForegroundServiceType()
+                _runtimeErrors.emit(
+                    if (sourceCommitted) {
+                        "La cámara inició, pero parte del estado remoto no pudo sincronizarse."
+                    } else {
+                        "No se pudo iniciar la cámara del live. Se mantuvo la fuente anterior."
+                    }
+                )
+            } finally {
+                _isMediaTransitioning.value = false
+                mediaTransitionGate.finish()
+                projectionState.clearSuppressed(previousProjectionToken)
+                if (mediaTransitionJob === currentCoroutineContext()[Job]) {
+                    mediaTransitionJob = null
+                }
+            }
+        }
+        return true
     }
 
-    fun startScreenShare(intent: Intent): Boolean {
+    fun startScreenShare(intent: Intent, micEnabledOverride: Boolean? = null): Boolean {
         val session = _activeSession.value ?: return false
         if (session.role != LiveRole.HOST) return false
 
@@ -777,31 +860,177 @@ class LiveRepository @Inject constructor(
         val isPortrait = metrics.heightPixels >= metrics.widthPixels
         val boundW = if (isPortrait) q.height else q.width
         val boundH = if (isPortrait) q.width else q.height
-        val oneShotProjectionIntent = Intent(intent)
+        if (!mediaTransitionGate.tryStart()) {
+            _runtimeErrors.tryEmit("Espera a que termine el cambio de fuente actual.")
+            return false
+        }
 
+        val previousSource = _currentSource.value
+        val previousVideoEnabled = _isVideoEnabled.value
+        val previousProjectionToken = projectionState.activeToken()
+        val projectionToken = UUID.randomUUID().toString()
+        val sessionId = session.stream.id
+        val oneShotProjectionIntent = Intent(intent)
+        _isMediaTransitioning.value = true
+        // Android 14+ requires the mediaProjection foreground type before
+        // ScreenCapturerAndroid creates its virtual display. This is provisional:
+        // the public source is committed only after WebRTC confirms capture.
         screenCaptureActive = true
-        _currentSource.value = LiveSource.SCREEN
-        _isVideoEnabled.value = true
-        refreshForegroundServiceType()
-        emitLiveState()
-        startScreenCaptureWhenForegroundReady(
-            sessionId = session.stream.id,
-            manager = manager,
-            projectionIntent = oneShotProjectionIntent,
-            width = boundW,
-            height = boundH
+        projectionState.beginPending(projectionToken, previousProjectionToken)
+        refreshForegroundServiceType(
+            sourceOverride = LiveSource.SCREEN,
+            updateSession = false,
+            videoEnabledOverride = true,
+            additionalSourceOverride = previousSource.takeIf { previousVideoEnabled }
         )
+
+        mediaTransitionJob = scope.launch {
+            var sourceCommitted = false
+            try {
+                val started = startScreenCaptureWhenForegroundReady(
+                    sessionId = sessionId,
+                    manager = manager,
+                    projectionIntent = oneShotProjectionIntent,
+                    width = boundW,
+                    height = boundH,
+                    projectionToken = projectionToken
+                )
+                val requestStillCurrent =
+                    _activeSession.value?.role == LiveRole.HOST &&
+                        _activeSession.value?.stream?.id.equals(sessionId, ignoreCase = true)
+                val pendingCommit = if (started && requestStillCurrent) {
+                    projectionState.commitPending(projectionToken)
+                } else {
+                    PendingProjectionCommit.INVALIDATED
+                }
+                if (
+                    started &&
+                    requestStillCurrent &&
+                    pendingCommit == PendingProjectionCommit.ACTIVATED
+                ) {
+                    sourceCommitted = true
+                    screenCaptureActive = true
+                    _currentSource.value = LiveSource.SCREEN
+                    _isVideoEnabled.value = true
+                    micEnabledOverride?.let { enabled ->
+                        _isMicEnabled.value = enabled
+                        manager.setAudioEnabled(enabled)
+                    }
+                    updateSessionSource(LiveSource.SCREEN)
+                    refreshForegroundServiceType()
+                    manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
+                    emitLiveState()
+                    persistLiveSourceAsync(sessionId, LiveSource.SCREEN)
+                } else if (
+                    started &&
+                    requestStillCurrent &&
+                    pendingCommit != PendingProjectionCommit.ACTIVATED
+                ) {
+                    projectionState.clearActive()
+                    screenCaptureActive = false
+                    _currentSource.value = LiveSource.SCREEN
+                    _isVideoEnabled.value = false
+                    updateSessionSource(LiveSource.SCREEN)
+                    manager.setVideoSendEnabled(false, renegotiate = false)
+                    manager.stopVideoAwait()
+                    refreshForegroundServiceType()
+                    emitLiveState()
+                    persistLiveSourceAsync(sessionId, LiveSource.SCREEN)
+                    _runtimeErrors.emit("La compartición de pantalla fue detenida antes de comenzar.")
+                } else if (requestStillCurrent) {
+                    screenCaptureActive = previousSource == LiveSource.SCREEN && previousVideoEnabled
+                    _currentSource.value = previousSource
+                    _isVideoEnabled.value = previousVideoEnabled
+                    refreshForegroundServiceType()
+                    emitLiveState()
+                    _runtimeErrors.emit("No se pudo compartir la pantalla. Se mantuvo la fuente anterior.")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (sourceCommitted) {
+                    screenCaptureActive = true
+                    _currentSource.value = LiveSource.SCREEN
+                    _isVideoEnabled.value = true
+                    updateSessionSource(LiveSource.SCREEN)
+                } else {
+                    screenCaptureActive = previousSource == LiveSource.SCREEN && previousVideoEnabled
+                    _currentSource.value = previousSource
+                    _isVideoEnabled.value = previousVideoEnabled
+                }
+                refreshForegroundServiceType()
+                emitLiveState()
+                android.util.Log.e("LiveRepository", "Unable to start screen capture", error)
+                _runtimeErrors.emit(
+                    if (sourceCommitted) {
+                        "La pantalla inició, pero parte del estado remoto no pudo sincronizarse."
+                    } else {
+                        "No se pudo compartir la pantalla. Se mantuvo la fuente anterior."
+                    }
+                )
+            } finally {
+                _isMediaTransitioning.value = false
+                mediaTransitionGate.finish()
+                projectionState.clearPending(projectionToken)
+                projectionState.clearSuppressed(previousProjectionToken)
+                if (mediaTransitionJob === currentCoroutineContext()[Job]) {
+                    mediaTransitionJob = null
+                }
+            }
+        }
         return true
     }
 
     fun stopVideo() {
         if (_activeSession.value?.role != LiveRole.HOST) return
-        _isVideoEnabled.value = false
+        beginVideoStop(_currentSource.value)
+    }
+
+    private fun beginVideoStop(
+        source: LiveSource,
+        micEnabledOverride: Boolean? = null
+    ): Boolean {
+        val session = _activeSession.value ?: return false
+        if (session.role != LiveRole.HOST) return false
+        val manager = webRTCManager ?: return false
+        if (!mediaTransitionGate.tryStart()) {
+            _runtimeErrors.tryEmit("Espera a que termine el cambio de fuente actual.")
+            return false
+        }
+
+        _isMediaTransitioning.value = true
+        projectionState.clearActive()
         screenCaptureActive = false
-        webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
-        webRTCManager?.stopVideo()
-        refreshForegroundServiceType()
-        emitLiveState()
+        _currentSource.value = source
+        _isVideoEnabled.value = false
+        micEnabledOverride?.let { enabled ->
+            _isMicEnabled.value = enabled
+            manager.setAudioEnabled(enabled)
+        }
+        updateSessionSource(source)
+        manager.setVideoSendEnabled(false, renegotiate = false)
+        mediaTransitionJob = scope.launch {
+            try {
+                manager.stopVideoAwait()
+                refreshForegroundServiceType()
+                emitLiveState()
+                persistLiveSourceAsync(session.stream.id, source)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.e("LiveRepository", "Unable to stop live video cleanly", error)
+                refreshForegroundServiceType()
+                emitLiveState()
+                _runtimeErrors.emit("El video se desactivó, pero la cámara tardó en liberarse.")
+            } finally {
+                _isMediaTransitioning.value = false
+                mediaTransitionGate.finish()
+                if (mediaTransitionJob === currentCoroutineContext()[Job]) {
+                    mediaTransitionJob = null
+                }
+            }
+        }
+        return true
     }
 
     fun canReuseScreenShareIntent(): Boolean =
@@ -851,6 +1080,10 @@ class LiveRepository @Inject constructor(
     ): Boolean {
         val session = _activeSession.value ?: return false
         if (session.role != LiveRole.HOST) return false
+        if (mediaTransitionGate.isTransitioning()) {
+            _runtimeErrors.tryEmit("Espera a que termine el cambio de fuente actual.")
+            return false
+        }
         val previousSource = _currentSource.value
         val manager = webRTCManager ?: return false
 
@@ -877,38 +1110,44 @@ class LiveRepository @Inject constructor(
             return false
         }
 
-        _isMicEnabled.value = micEnabled
-        manager.setAudioEnabled(micEnabled)
-
         if (!videoEnabled) {
-            _currentSource.value = source
-            _isVideoEnabled.value = false
-            screenCaptureActive = false
-            manager.setVideoSendEnabled(false, renegotiate = false)
-            manager.stopVideo()
-            refreshForegroundServiceType()
-            emitLiveState()
-            return true
+            return beginVideoStop(source, micEnabledOverride = micEnabled)
         }
 
-        val started = if (canReuseCurrentTrack) {
-            _currentSource.value = source
-            _isVideoEnabled.value = true
-            if (source != LiveSource.SCREEN) screenCaptureActive = false
-            refreshForegroundServiceType()
-            manager.setVideoSendEnabled(!_isPaused.value)
-            true
-        } else {
-            when (source) {
-                LiveSource.CAMERA -> startCamera()
-                LiveSource.SCREEN -> startScreenShare(checkNotNull(projectionIntent))
+        if (canReuseCurrentTrack) {
+            if (!mediaTransitionGate.tryStart()) {
+                _runtimeErrors.tryEmit("Espera a que termine el cambio de fuente actual.")
+                return false
+            }
+            _isMediaTransitioning.value = true
+            try {
+                _currentSource.value = source
+                _isVideoEnabled.value = true
+                _isMicEnabled.value = micEnabled
+                manager.setAudioEnabled(micEnabled)
+                if (source != LiveSource.SCREEN) {
+                    projectionState.clearActive()
+                    screenCaptureActive = false
+                }
+                updateSessionSource(source)
+                refreshForegroundServiceType()
+                manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
+                emitLiveState()
+                persistLiveSourceAsync(session.stream.id, source)
+                return true
+            } finally {
+                _isMediaTransitioning.value = false
+                mediaTransitionGate.finish()
             }
         }
-        if (started) {
-            manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
-            emitLiveState()
+
+        return when (source) {
+            LiveSource.CAMERA -> startCamera(micEnabledOverride = micEnabled)
+            LiveSource.SCREEN -> startScreenShare(
+                intent = checkNotNull(projectionIntent),
+                micEnabledOverride = micEnabled
+            )
         }
-        return started
     }
 
 
@@ -970,6 +1209,9 @@ class LiveRepository @Inject constructor(
 
         // Respuesta local inmediata: el contador nunca espera el viaje de red.
         _reactionCount.update { current -> current.coerceAtLeast(0L) + 1L }
+        val localReaction = LiveReaction(kind = "heart", userId = currentUserId)
+        _reactions.update { current -> (current + localReaction).takeLast(MAX_ACTIVE_REACTION_PARTICLES) }
+        scheduleReactionExpiry(localReaction)
         val flushNow = synchronized(reactionBatchLock) {
             if (pendingReactionLiveId.isNotBlank() && pendingReactionLiveId != session.stream.id) {
                 pendingReactionCount = 0
@@ -991,6 +1233,19 @@ class LiveRepository @Inject constructor(
     }
 
     private fun flushPendingReactions() {
+        val activeSocket = socket?.takeIf { it.connected() }
+        if (activeSocket == null) {
+            synchronized(reactionBatchLock) {
+                reactionBatchJob = null
+                if (pendingReactionCount > 0) {
+                    reactionBatchJob = scope.launch {
+                        delay(REACTION_BATCH_WINDOW_MS)
+                        flushPendingReactions()
+                    }
+                }
+            }
+            return
+        }
         val batch = synchronized(reactionBatchLock) {
             val count = pendingReactionCount.coerceIn(0, REACTION_BATCH_MAX)
             if (count <= 0 || pendingReactionLiveId.isBlank() || pendingReactionUserId.isBlank()) return
@@ -1002,15 +1257,30 @@ class LiveRepository @Inject constructor(
             }
             value
         }
+        val clientBatchId = UUID.randomUUID().toString()
+        synchronized(reactionBatchLock) {
+            localReactionBatches[clientBatchId] = batch.third
+            while (localReactionBatches.size > 100) {
+                localReactionBatches.remove(localReactionBatches.keys.first())
+            }
+        }
         val payload = org.json.JSONObject().apply {
             put("liveId", batch.first)
             put("userId", batch.second)
             put("kind", "heart")
             put("count", batch.third)
-            put("clientBatchId", UUID.randomUUID().toString())
+            put("clientBatchId", clientBatchId)
         }
-        runCatching { socket?.emit("send-reaction-batch", payload) }
+        val emitted = runCatching { activeSocket.emit("send-reaction-batch", payload) }.isSuccess
         synchronized(reactionBatchLock) {
+            if (!emitted) {
+                localReactionBatches.remove(clientBatchId)
+                if (pendingReactionLiveId.isBlank() || pendingReactionLiveId == batch.first) {
+                    pendingReactionLiveId = batch.first
+                    pendingReactionUserId = batch.second
+                    pendingReactionCount += batch.third
+                }
+            }
             reactionBatchJob = null
             if (pendingReactionCount > 0) {
                 reactionBatchJob = scope.launch {
@@ -1026,17 +1296,19 @@ class LiveRepository @Inject constructor(
         if (liveId.isBlank() || receipt.transactionId.isBlank()) return
         val activeLiveId = _activeSession.value?.stream?.id?.trim().orEmpty()
         if (!activeLiveId.equals(liveId, ignoreCase = true)) return
-        if (!receipt.isPublic) {
-            val event = LiveGiftEvent(
-                transactionId = receipt.transactionId,
-                liveStreamId = liveId,
-                senderId = receipt.senderId,
-                senderName = receipt.senderName,
-                receiverId = receipt.receiverId,
-                gift = receipt.gift
-            )
+        val event = LiveGiftEvent(
+            transactionId = receipt.transactionId,
+            liveStreamId = liveId,
+            senderId = receipt.senderId,
+            senderName = receipt.senderName,
+            receiverId = receipt.receiverId,
+            gift = receipt.gift
+        )
+        if (_giftEvents.value.none { it.transactionId == event.transactionId }) {
             _giftEvents.update { (it + event).takeLast(4) }
             scheduleGiftExpiry(event)
+        }
+        if (!receipt.isPublic) {
             return
         }
         val payload = org.json.JSONObject().apply {
@@ -1260,71 +1532,142 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    suspend fun endLive(): Result<Unit> = sessionEndMutex.withLock {
-        withContext(Dispatchers.IO) {
-        val session = _activeSession.value ?: return@withContext Result.success(Unit)
-        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+    suspend fun endLive(): Result<Unit> = closeCoordinator.closeOnce {
+        sessionEndMutex.withLock {
+            sessionStartupMutex.withLock {
+                withContext(Dispatchers.IO) {
+                    val session = _activeSession.value
+                    val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+                    val isHost = session?.role == LiveRole.HOST
+                    val peak = maxOf(peakViewerCount, _viewerCount.value).coerceAtLeast(0)
+                    val totalComments = sessionCommentCount.coerceAtLeast(0)
+                    val totalReactions = sessionReactionCount.coerceAtLeast(0)
 
-        // Best-effort DB update (host only)
-        if (session.role == LiveRole.HOST && currentUserId.isNotBlank()) {
-            var endedAt = Instant.now().toString()
-            val peak = maxOf(peakViewerCount, _viewerCount.value).coerceAtLeast(0)
-            val totalComments = sessionCommentCount.coerceAtLeast(0)
-            val totalReactions = sessionReactionCount.coerceAtLeast(0)
-            if (usesUbuntuPersistence()) {
-                val token = localAccessToken()
-                if (token.isNotBlank()) {
-                    localFallbackApiClient.updateLiveState(
-                        accessToken = token,
-                        liveId = session.stream.id,
-                        isActive = false,
-                        viewerCount = 0,
-                        peakViewerCount = peak,
-                        totalComments = totalComments,
-                        totalReactions = totalReactions
-                    ).onFailure { error ->
-                        android.util.Log.w("LiveRepository", "Unable to persist Ubuntu live end state", error)
+                    // Only the signaling server knows which host socket is
+                    // authoritative after a same-account device replacement.
+                    // Never let a stale device mark the shared live inactive.
+                    val serverConfirmedEnd = if (
+                        session != null && isHost && currentUserId.isNotBlank()
+                    ) {
+                        requestLiveEndConfirmation(session.stream.id, currentUserId)
+                    } else {
+                        !isHost
                     }
-                }
-            } else {
-                runCatching {
-                    try {
-                        supabaseConfig.client.postgrest["live_streams"].update({
-                            set("is_active", false)
-                            set("ended_at", endedAt)
-                            set("peak_viewer_count", peak)
-                            set("total_comments", totalComments)
-                            set("total_reactions", totalReactions)
-                        }) {
-                            filter { eq("id", session.stream.id) }
-                            filter { eq("host_user_id", currentUserId) }
-                        }
-                    } catch (e: Exception) {
-                        // Backwards compatibility: if stats columns don't exist yet, just end the live.
-                        supabaseConfig.client.postgrest["live_streams"].update({
-                            set("is_active", false)
-                        }) {
-                            filter { eq("id", session.stream.id) }
-                            filter { eq("host_user_id", currentUserId) }
-                        }
+
+                    disconnectAndClear()
+
+                    val remoteConfirmed = if (session != null && isHost) {
+                        serverConfirmedEnd && currentUserId.isNotBlank() && withTimeoutOrNull(8_000L) {
+                            persistEndedLiveSnapshot(
+                                session = session,
+                                currentUserId = currentUserId,
+                                peak = peak,
+                                totalComments = totalComments,
+                                totalReactions = totalReactions
+                            )
+                        } == true
+                    } else {
+                        true
+                    }
+                    runCatching { refreshActiveStreams() }
+                    if (remoteConfirmed) {
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(Exception("El live se cerró localmente, pero el servidor no confirmó el cierre."))
                     }
                 }
             }
-            runCatching {
-                socket?.emit(
-                    "end-live",
-                    org.json.JSONObject().apply {
-                        put("liveId", session.stream.id)
-                        put("userId", currentUserId)
-                    }
-                )
+        }
+    }
+
+    private suspend fun requestLiveEndConfirmation(liveId: String, userId: String): Boolean {
+        val activeSocket = socket?.takeIf { it.connected() } ?: return false
+        val confirmation = CompletableDeferred<Boolean>()
+        val normalizedLiveId = liveId.trim()
+        synchronized(liveEndConfirmationLock) {
+            pendingLiveEndConfirmation?.second?.complete(false)
+            pendingLiveEndConfirmation = normalizedLiveId to confirmation
+        }
+        val emitted = runCatching {
+            activeSocket.emit(
+                "end-live",
+                org.json.JSONObject().apply {
+                    put("liveId", normalizedLiveId)
+                    put("userId", userId)
+                }
+            )
+        }.isSuccess
+        if (!emitted) confirmation.complete(false)
+
+        val confirmed = withTimeoutOrNull(LIVE_END_CONFIRMATION_TIMEOUT_MS) {
+            confirmation.await()
+        } == true
+        synchronized(liveEndConfirmationLock) {
+            if (pendingLiveEndConfirmation?.second === confirmation) {
+                pendingLiveEndConfirmation = null
             }
         }
+        return confirmed
+    }
 
-        disconnectAndClear()
-        refreshActiveStreams()
-        Result.success(Unit)
+    private fun completeLiveEndConfirmation(liveId: String, confirmed: Boolean) {
+        val normalizedLiveId = liveId.trim()
+        val deferred = synchronized(liveEndConfirmationLock) {
+            pendingLiveEndConfirmation
+                ?.takeIf { (pendingId, _) -> pendingId.equals(normalizedLiveId, ignoreCase = true) }
+                ?.second
         }
+        deferred?.complete(confirmed)
+    }
+
+    private suspend fun persistEndedLiveSnapshot(
+        session: ActiveLiveSession,
+        currentUserId: String,
+        peak: Int,
+        totalComments: Int,
+        totalReactions: Int
+    ): Boolean {
+        if (usesUbuntuPersistence()) {
+            val token = localAccessToken()
+            if (token.isBlank()) return false
+            return localFallbackApiClient.updateLiveState(
+                accessToken = token,
+                liveId = session.stream.id,
+                isActive = false,
+                viewerCount = 0,
+                peakViewerCount = peak,
+                totalComments = totalComments,
+                totalReactions = totalReactions
+            ).onFailure { error ->
+                android.util.Log.w("LiveRepository", "Unable to persist Ubuntu live end state", error)
+            }.isSuccess
+        }
+
+        val endedAt = Instant.now().toString()
+        return runCatching {
+            try {
+                supabaseConfig.client.postgrest["live_streams"].update({
+                    set("is_active", false)
+                    set("ended_at", endedAt)
+                    set("peak_viewer_count", peak)
+                    set("total_comments", totalComments)
+                    set("total_reactions", totalReactions)
+                }) {
+                    filter { eq("id", session.stream.id) }
+                    filter { eq("host_user_id", currentUserId) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Backwards compatibility for databases without stats columns.
+                supabaseConfig.client.postgrest["live_streams"].update({
+                    set("is_active", false)
+                }) {
+                    filter { eq("id", session.stream.id) }
+                    filter { eq("host_user_id", currentUserId) }
+                }
+            }
+        }.isSuccess
     }
 
     private fun connectSocket(liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?) {
@@ -1335,7 +1678,8 @@ class LiveRepository @Inject constructor(
             if (userId.isBlank()) return
 
             if (webRTCManager == null) {
-                initializeWebRTC(userId = userId)
+                _runtimeErrors.tryEmit("El motor del live no está preparado.")
+                return
             }
             webRTCManager?.setRemoteAudioPlaybackEnabled(role == LiveRole.VIEWER)
             webRTCManager?.setAudioEnabled(role == LiveRole.HOST && _isMicEnabled.value)
@@ -1373,12 +1717,18 @@ class LiveRepository @Inject constructor(
                 )
             }
 
-            socket?.on(Socket.EVENT_CONNECT) {
-                var sid = socket?.id() ?: ""
+            createdSocket.on(Socket.EVENT_CONNECT) {
+                if (socket !== createdSocket) return@on
+                val active = _activeSession.value
+                if (
+                    active?.role != role ||
+                    !active.stream.id.equals(liveId, ignoreCase = true)
+                ) return@on
+                val sid = createdSocket.id()
                 webRTCManager?.setCurrentUser(userId, sid)
                 webRTCManager?.refreshManagedIceServers(force = true)
 
-                socket?.emit(
+                createdSocket.emit(
                     "join-live",
                     org.json.JSONObject().apply {
                         put("liveId", liveId.trim())
@@ -1398,7 +1748,8 @@ class LiveRepository @Inject constructor(
             }
 
             // Host gets viewer list + updates
-            socket?.on("current-viewers") { args ->
+            createdSocket.on("current-viewers") { args ->
+                if (socket !== createdSocket) return@on
                 if (role != LiveRole.HOST) return@on
                 runCatching {
                     val arr = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
@@ -1431,7 +1782,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("current-viewers", it) }
             }
 
-            socket?.on("viewer-joined") { args ->
+            createdSocket.on("viewer-joined") { args ->
+                if (socket !== createdSocket) return@on
                 if (role != LiveRole.HOST) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
@@ -1455,7 +1807,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("viewer-joined", it) }
             }
 
-            socket?.on("viewer-left") { args ->
+            createdSocket.on("viewer-left") { args ->
+                if (socket !== createdSocket) return@on
                 if (role != LiveRole.HOST) return@on
                 runCatching {
                     val sid = (args.firstOrNull() as? String)?.trim().orEmpty()
@@ -1468,7 +1821,8 @@ class LiveRepository @Inject constructor(
             }
 
             // Viewers get host info
-            socket?.on("host-info") { args ->
+            createdSocket.on("host-info") { args ->
+                if (socket !== createdSocket) return@on
                 if (role != LiveRole.VIEWER) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
@@ -1481,7 +1835,21 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("host-info", it) }
             }
 
-            socket?.on("viewer-count") { args ->
+            createdSocket.on("host-disconnected") { args ->
+                if (socket !== createdSocket) return@on
+                if (role != LiveRole.VIEWER) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val sid = data.optString("socketId").trim()
+                    if (sid.isNotBlank()) {
+                        webRTCManager?.onUserLeft(sid)
+                        scheduleLiveMediaTimeout()
+                    }
+                }.onFailure { logMalformedSignal("host-disconnected", it) }
+            }
+
+            createdSocket.on("viewer-count") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val count = data.optInt("viewerCount", 0).coerceAtLeast(0)
@@ -1491,7 +1859,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("viewer-count", it) }
             }
 
-            socket?.on("live-state") { args ->
+            createdSocket.on("live-state") { args ->
+                if (socket !== createdSocket) return@on
                 if (role != LiveRole.VIEWER) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
@@ -1503,11 +1872,58 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("live-state", it) }
             }
 
-            socket?.on("live-ended") {
-                disconnectAndClear()
+            createdSocket.on("end-live-confirmed") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    completeLiveEndConfirmation(data.optString("liveId"), confirmed = true)
+                }.onFailure { logMalformedSignal("end-live-confirmed", it) }
             }
 
-            socket?.on("reaction-count") { args ->
+            createdSocket.on("end-live-denied") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    completeLiveEndConfirmation(data.optString("liveId"), confirmed = false)
+                }.onFailure { logMalformedSignal("end-live-denied", it) }
+            }
+
+            createdSocket.on("live-ended") {
+                if (socket !== createdSocket) return@on
+                scope.launch {
+                    if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
+                        return@launch
+                    }
+                    closeCoordinator.closeOnce {
+                        disconnectAndClear()
+                        Result.success(Unit)
+                    }
+                }
+            }
+
+            createdSocket.on("live-session-replaced") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                completeLiveEndConfirmation(liveId, confirmed = false)
+                val message = runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject
+                    data?.optString("message")?.trim().orEmpty()
+                }.getOrDefault("").ifBlank {
+                    "Este directo continúa desde otro dispositivo."
+                }
+                scope.launch {
+                    if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
+                        return@launch
+                    }
+                    closeCoordinator.closeOnce {
+                        disconnectAndClear()
+                        Result.success(Unit)
+                    }
+                    _runtimeErrors.emit(message)
+                }
+            }
+
+            createdSocket.on("reaction-count") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val count = data.optLong("reactionCount", 0L).coerceAtLeast(0L)
@@ -1518,7 +1934,25 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("reaction-count", it) }
             }
 
-            socket?.on("live-moderation-state") { args ->
+            createdSocket.on("reaction-batch-rejected") { args ->
+                if (socket !== createdSocket) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val batchId = data.optString("clientBatchId").trim()
+                    if (batchId.isBlank()) return@runCatching
+                    val rejectedCount = synchronized(reactionBatchLock) {
+                        localReactionBatches.remove(batchId)
+                    } ?: return@runCatching
+                    val authoritativeCount = data.optLong("reactionCount", 0L).coerceAtLeast(0L)
+                    _reactionCount.update { optimistic ->
+                        maxOf(authoritativeCount, (optimistic - rejectedCount).coerceAtLeast(0L))
+                    }
+                    sessionReactionCount = authoritativeCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                }.onFailure { logMalformedSignal("reaction-batch-rejected", it) }
+            }
+
+            createdSocket.on("live-moderation-state") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val moderatorIds = buildSet {
@@ -1562,7 +1996,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("live-moderation-state", it) }
             }
 
-            socket?.on("live-moderation-viewers") { args ->
+            createdSocket.on("live-moderation-viewers") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val viewers = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
                     _liveViewers.value = buildList {
@@ -1585,18 +2020,28 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("live-moderation-viewers", it) }
             }
 
-            socket?.on("live-moderated") { args ->
+            createdSocket.on("live-moderated") { args ->
+                if (socket !== createdSocket) return@on
                 val message = runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject
                     data?.optString("message")?.trim().orEmpty()
                 }.getOrDefault("").ifBlank {
                     "El equipo de moderación te retiró de este directo."
                 }
-                disconnectAndClear()
-                _runtimeErrors.tryEmit(message)
+                scope.launch {
+                    if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
+                        return@launch
+                    }
+                    closeCoordinator.closeOnce {
+                        disconnectAndClear()
+                        Result.success(Unit)
+                    }
+                    _runtimeErrors.emit(message)
+                }
             }
 
-            socket?.on("live-moderation-error") { args ->
+            createdSocket.on("live-moderation-error") { args ->
+                if (socket !== createdSocket) return@on
                 val message = runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject
                     data?.optString("error")?.trim().orEmpty()
@@ -1606,17 +2051,25 @@ class LiveRepository @Inject constructor(
                 _runtimeErrors.tryEmit(message)
             }
 
-            socket?.on("reaction") { args ->
+            createdSocket.on("reaction") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val fromUserId = data.optString("userId", "").trim()
-                    val reaction = LiveReaction(kind = "heart", userId = fromUserId)
-                    _reactions.update { (it + listOf(reaction)).takeLast(40) }
-                    scheduleReactionExpiry(reaction)
+                    val batchId = data.optString("clientBatchId", "").trim()
+                    val isOwnOptimisticBatch = batchId.isNotBlank() && synchronized(reactionBatchLock) {
+                        localReactionBatches.remove(batchId) != null
+                    }
+                    if (isOwnOptimisticBatch) return@runCatching
+                    val count = data.optInt("count", 1).coerceIn(1, REACTION_BATCH_MAX)
+                    val incoming = List(count) { LiveReaction(kind = "heart", userId = fromUserId) }
+                    _reactions.update { (it + incoming).takeLast(MAX_ACTIVE_REACTION_PARTICLES) }
+                    incoming.forEach(::scheduleReactionExpiry)
                 }.onFailure { logMalformedSignal("reaction", it) }
             }
 
-            socket?.on("gift") { args ->
+            createdSocket.on("gift") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val giftData = data.optJSONObject("gift") ?: return@runCatching
@@ -1644,7 +2097,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("gift", it) }
             }
 
-            socket?.on("gift-error") { args ->
+            createdSocket.on("gift-error") { args ->
+                if (socket !== createdSocket) return@on
                 val message = runCatching {
                     (args.firstOrNull() as? org.json.JSONObject)?.optString("message")?.trim().orEmpty()
                 }.getOrDefault("").ifBlank { "No se pudo mostrar el regalo en el directo." }
@@ -1652,7 +2106,8 @@ class LiveRepository @Inject constructor(
             }
 
             // WebRTC signaling
-            socket?.on("offer") { args ->
+            createdSocket.on("offer") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val senderSocketId = data.optString("sender").trim()
@@ -1664,7 +2119,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("offer", it) }
             }
 
-            socket?.on("answer") { args ->
+            createdSocket.on("answer") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val sender = data.optString("sender").trim()
@@ -1676,7 +2132,8 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("answer", it) }
             }
 
-            socket?.on("ice-candidate") { args ->
+            createdSocket.on("ice-candidate") { args ->
+                if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val sender = data.optString("sender").trim()
@@ -1729,13 +2186,13 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    private fun initializeWebRTC(userId: String): Boolean {
+    private suspend fun initializeWebRTC(userId: String): Boolean {
         var events = object : conectate.com.data.webrtc.SignalingEvents {
             override fun onSendOffer(targetSocketId: String, offer: org.json.JSONObject) {
                 var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("offer", offer)
-                    put("userId", userId)
+                    put("userId", authService.getCurrentUserId()?.trim().orEmpty())
                 }
                 socket?.emit("offer", data)
             }
@@ -1744,7 +2201,7 @@ class LiveRepository @Inject constructor(
                 var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("answer", answer)
-                    put("userId", userId)
+                    put("userId", authService.getCurrentUserId()?.trim().orEmpty())
                 }
                 socket?.emit("answer", data)
             }
@@ -1753,7 +2210,7 @@ class LiveRepository @Inject constructor(
                 var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
                     put("candidate", candidate)
-                    put("userId", userId)
+                    put("userId", authService.getCurrentUserId()?.trim().orEmpty())
                 }
                 socket?.emit("ice-candidate", data)
             }
@@ -1788,7 +2245,7 @@ class LiveRepository @Inject constructor(
                     }
                 }
             } else {
-                manager.hardReset()
+                manager.hardResetAwait()
                 manager.setCurrentUser(userId, "")
                 manager.refreshManagedIceServers()
                 _isMediaReady.value = true
@@ -1944,25 +2401,57 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    private fun disconnectAndClear() {
+    private suspend fun disconnectAndClear() = withContext(NonCancellable) {
+        synchronized(liveEndConfirmationLock) {
+            pendingLiveEndConfirmation?.second?.complete(false)
+            pendingLiveEndConfirmation = null
+        }
+        val hadRenderedVideo = _localVideoTrack.value != null || _remoteVideoTracks.value.isNotEmpty()
+        _activeSession.value = null
+        _eglBaseContext.value = null
+        _localVideoTrack.value = null
+        _remoteVideoTracks.value = emptyMap()
+
         stopService()
         socketEndpointRecoveryJob?.cancel()
         socketEndpointRecoveryJob = null
         mediaConnectionTimeoutJob?.cancel()
         mediaConnectionTimeoutJob = null
         knownViewerSocketIds.clear()
-        try {
-            socket?.off()
-            socket?.disconnect()
-        } catch (_: Exception) { }
+        val socketToClose = socket
         socket = null
+        try {
+            socketToClose?.off()
+            socketToClose?.disconnect()
+        } catch (_: Exception) { }
 
-        runCatching { webRTCManager?.hardReset() }
+        val closingJob = currentCoroutineContext()[Job]
+        val adaptiveJob = adaptiveQualityJob
+        adaptiveQualityJob = null
+        adaptiveJob
+            ?.takeIf { producerJob -> producerJob !== closingJob }
+            ?.cancelAndJoin()
+        projectionState.reset()
+        val projectionJob = synchronized(projectionStopJobLock) {
+            projectionStopJob.also {
+                projectionStopJob = null
+                projectionStopToken = null
+            }
+        }
+        projectionJob
+            ?.takeIf { stopJob -> stopJob !== closingJob }
+            ?.cancelAndJoin()
+        mediaTransitionJob
+            ?.takeIf { transitionJob -> transitionJob !== closingJob }
+            ?.cancelAndJoin()
+        mediaTransitionJob = null
+        _isMediaTransitioning.value = false
+        mediaTransitionGate.finish()
 
         commentsJob?.cancel()
         commentsJob = null
-        stopAdaptiveQualityMonitor()
-        reactionExpiryJobs.values.forEach { it.cancel() }
+        lastAdaptiveQualityChangeAtMs = 0L
+        reactionExpiryJobs.values.toList().forEach { it.cancel() }
         reactionExpiryJobs.clear()
         reactionBatchJob?.cancel()
         reactionBatchJob = null
@@ -1970,8 +2459,9 @@ class LiveRepository @Inject constructor(
             pendingReactionCount = 0
             pendingReactionLiveId = ""
             pendingReactionUserId = ""
+            localReactionBatches.clear()
         }
-        giftExpiryJobs.values.forEach { it.cancel() }
+        giftExpiryJobs.values.toList().forEach { it.cancel() }
         giftExpiryJobs.clear()
 
         val channelToClose = commentsChannel
@@ -1984,7 +2474,14 @@ class LiveRepository @Inject constructor(
             }
         }
 
-        _activeSession.value = null
+        // Give Compose one frame to detach SurfaceViewRenderer sinks before the
+        // single WebRTC executor disposes their native tracks.
+        if (hadRenderedVideo) delay(96L)
+        runCatching { webRTCManager?.hardResetAwait() }
+            .onFailure { error ->
+                android.util.Log.e("LiveRepository", "Unable to reset live media cleanly", error)
+            }
+
         _comments.value = emptyList()
         _reactions.value = emptyList()
         _reactionCount.value = 0L
@@ -1997,9 +2494,6 @@ class LiveRepository @Inject constructor(
         _isPaused.value = false
         _isVideoEnabled.value = true
         _currentSource.value = LiveSource.CAMERA
-        _eglBaseContext.value = null
-        _localVideoTrack.value = null
-        _remoteVideoTracks.value = emptyMap()
         screenCaptureActive = false
         hostSessionStartedElapsedMs = 0L
     }
@@ -2094,10 +2588,20 @@ class LiveRepository @Inject constructor(
         return if (canUse1080) LiveQuality.P1080 else LiveQuality.P720
     }
 
-    private fun startService(stream: LiveStream, role: LiveRole) {
+    private fun startService(
+        stream: LiveStream,
+        role: LiveRole,
+        videoEnabledOverride: Boolean? = null,
+        additionalSourceOverride: LiveSource? = null
+    ) {
         if (role != LiveRole.HOST) return
         val liveId = normalizeLiveSessionId(stream.id) ?: return
-        val type = computeForegroundType(role = role, source = stream.source)
+        val type = computeForegroundType(
+            role = role,
+            source = stream.source,
+            videoEnabledOverride = videoEnabledOverride,
+            additionalSource = additionalSourceOverride?.name?.lowercase()
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && type == 0) {
             stopService()
             return
@@ -2118,13 +2622,26 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    private fun refreshForegroundServiceType() {
+    private fun refreshForegroundServiceType(
+        sourceOverride: LiveSource? = null,
+        updateSession: Boolean = true,
+        videoEnabledOverride: Boolean? = null,
+        additionalSourceOverride: LiveSource? = null
+    ) {
         var session = _activeSession.value ?: return
         if (session.role != LiveRole.HOST) return
 
-        val updatedStream = session.stream.copy(source = _currentSource.value.name.lowercase())
-        _activeSession.value = session.copy(stream = updatedStream)
-        startService(stream = updatedStream, role = session.role)
+        val serviceSource = sourceOverride ?: _currentSource.value
+        val updatedStream = session.stream.copy(source = serviceSource.name.lowercase())
+        if (updateSession) {
+            _activeSession.value = session.copy(stream = updatedStream)
+        }
+        startService(
+            stream = updatedStream,
+            role = session.role,
+            videoEnabledOverride = videoEnabledOverride,
+            additionalSourceOverride = additionalSourceOverride
+        )
     }
 
     private fun stopService() {
@@ -2133,7 +2650,12 @@ class LiveRepository @Inject constructor(
         } catch (_: Exception) { }
     }
 
-    private fun computeForegroundType(role: LiveRole, source: String): Int {
+    private fun computeForegroundType(
+        role: LiveRole,
+        source: String,
+        videoEnabledOverride: Boolean? = null,
+        additionalSource: String? = null
+    ): Int {
         if (role != LiveRole.HOST) return 0
 
         var type = 0
@@ -2144,12 +2666,18 @@ class LiveRepository @Inject constructor(
         ) {
             type = type or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
-        if (_isVideoEnabled.value) {
-            if (source.trim().lowercase() == "screen") {
+        if (videoEnabledOverride ?: _isVideoEnabled.value) {
+            val activeSources = setOfNotNull(
+                source.trim().lowercase().takeIf { it == "camera" || it == "screen" },
+                additionalSource?.trim()?.lowercase()?.takeIf { it == "camera" || it == "screen" }
+            )
+            if ("screen" in activeSources) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && screenCaptureActive) {
                     type = type or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 }
-            } else if (
+            }
+            if (
+                "camera" in activeSources &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                 hasPermission(android.Manifest.permission.CAMERA)
             ) {
@@ -2172,75 +2700,193 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    private fun startScreenCaptureWhenForegroundReady(
+    private suspend fun startScreenCaptureWhenForegroundReady(
         sessionId: String,
         manager: WebRTCManager,
         projectionIntent: Intent,
         width: Int,
-        height: Int
-    ) {
+        height: Int,
+        projectionToken: String
+    ): Boolean {
+        val foregroundReady = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            true
+        } else {
+            withTimeoutOrNull(5_000L) {
+                LiveForegroundService.foregroundState.first { state ->
+                    state.liveId.equals(sessionId, ignoreCase = true) &&
+                        state.types and android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0
+                }
+            } != null
+        }
+
+        val currentSession = _activeSession.value
+        val requestStillCurrent =
+            currentSession?.role == LiveRole.HOST &&
+                currentSession.stream.id.equals(sessionId, ignoreCase = true) &&
+                screenCaptureActive &&
+                mediaTransitionGate.isTransitioning()
+        if (!requestStillCurrent || !foregroundReady) return false
+
+        manager.ensureLocalTracks()
+        manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
+        return manager.startVideoAwait(
+            isScreen = true,
+            intent = projectionIntent,
+            isFront = true,
+            targetWidth = width,
+            targetHeight = height,
+            targetFps = 15,
+            onProjectionStopped = { onScreenProjectionStopped(sessionId, projectionToken) }
+        )
+    }
+
+    private fun onScreenProjectionStopped(sessionId: String, projectionToken: String) {
+        when (projectionState.markStopped(projectionToken)) {
+            ProjectionStopDisposition.PENDING,
+            ProjectionStopDisposition.IGNORED -> return
+            ProjectionStopDisposition.ACTIVE -> Unit
+        }
+
+        val newStopJob = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                var ownsTransition = false
+                while (projectionState.isActive(projectionToken)) {
+                    if (
+                        !projectionState.isSuppressed(projectionToken) &&
+                        mediaTransitionGate.tryStart()
+                    ) {
+                        ownsTransition = true
+                        break
+                    }
+                    delay(16L)
+                }
+                if (!ownsTransition) return@launch
+
+                _isMediaTransitioning.value = true
+                try {
+                    val session = _activeSession.value
+                    if (
+                        session?.role != LiveRole.HOST ||
+                        !session.stream.id.equals(sessionId, ignoreCase = true) ||
+                        _currentSource.value != LiveSource.SCREEN ||
+                        !projectionState.isActive(projectionToken) ||
+                        projectionState.isSuppressed(projectionToken)
+                    ) {
+                        return@launch
+                    }
+
+                    projectionState.clearActive(projectionToken)
+                    screenCaptureActive = false
+                    _currentSource.value = LiveSource.SCREEN
+                    _isVideoEnabled.value = false
+                    updateSessionSource(LiveSource.SCREEN)
+                    webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
+                    webRTCManager?.stopVideoAwait()
+                    refreshForegroundServiceType()
+                    emitLiveState()
+                    persistLiveSourceAsync(sessionId, LiveSource.SCREEN)
+                    _runtimeErrors.emit("La compartición de pantalla fue detenida.")
+                } finally {
+                    _isMediaTransitioning.value = false
+                    mediaTransitionGate.finish()
+                }
+            } finally {
+                val completedJob = currentCoroutineContext()[Job]
+                synchronized(projectionStopJobLock) {
+                    if (projectionStopJob === completedJob) {
+                        projectionStopJob = null
+                        projectionStopToken = null
+                    }
+                }
+            }
+        }
+        var installJob = false
+        var previousJob: Job? = null
+        synchronized(projectionStopJobLock) {
+            val runningJob = projectionStopJob
+            if (
+                runningJob == null ||
+                runningJob.isCompleted ||
+                projectionStopToken != projectionToken
+            ) {
+                previousJob = runningJob?.takeIf { !it.isCompleted }
+                projectionStopToken = projectionToken
+                projectionStopJob = newStopJob
+                installJob = true
+            }
+        }
+        if (!installJob) {
+            newStopJob.cancel()
+            return
+        }
+        previousJob?.cancel()
+        newStopJob.start()
+    }
+
+    private fun updateSessionSource(source: LiveSource) {
+        _activeSession.update { session ->
+            session?.copy(stream = session.stream.copy(source = source.name.lowercase()))
+        }
+    }
+
+    private fun persistLiveSourceAsync(liveId: String, source: LiveSource) {
         scope.launch {
-            val foregroundReady = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                true
+            sourcePersistenceMutex.withLock {
+                val currentSession = _activeSession.value
+                if (
+                    currentSession?.role != LiveRole.HOST ||
+                    !currentSession.stream.id.equals(liveId, ignoreCase = true) ||
+                    _currentSource.value != source
+                ) {
+                    return@withLock
+                }
+
+                val completed = withTimeoutOrNull(SOURCE_PERSIST_TIMEOUT_MS) {
+                    persistLiveSource(liveId, source)
+                    true
+                } ?: false
+                if (!completed) {
+                    android.util.Log.w(
+                        "LiveRepository",
+                        "Timed out persisting source ${source.name.lowercase()} for live $liveId"
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun persistLiveSource(liveId: String, source: LiveSource) {
+        try {
+            val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+            if (currentUserId.isBlank()) return
+            val wireSource = source.name.lowercase()
+
+            if (usesUbuntuPersistence()) {
+                val token = localAccessToken()
+                if (token.isBlank()) return
+                localFallbackApiClient.updateLiveState(
+                    accessToken = token,
+                    liveId = liveId,
+                    source = wireSource
+                ).onFailure { error ->
+                    android.util.Log.w("LiveRepository", "Unable to persist live source", error)
+                }
             } else {
-                withTimeoutOrNull(5_000L) {
-                    LiveForegroundService.foregroundState.first { state ->
-                        state.liveId.equals(sessionId, ignoreCase = true) &&
-                            state.types and android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0
+                runCatching {
+                    supabaseConfig.client.postgrest["live_streams"].update({
+                        set("source", wireSource)
+                    }) {
+                        filter { eq("id", liveId) }
+                        filter { eq("host_user_id", currentUserId) }
                     }
-                } != null
+                }.onFailure { error ->
+                    android.util.Log.w("LiveRepository", "Unable to persist live source", error)
+                }
             }
-
-            val currentSession = _activeSession.value
-            val requestStillCurrent =
-                currentSession?.role == LiveRole.HOST &&
-                    currentSession.stream.id.equals(sessionId, ignoreCase = true) &&
-                    _currentSource.value == LiveSource.SCREEN &&
-                    _isVideoEnabled.value &&
-                    screenCaptureActive
-
-            if (!requestStillCurrent) return@launch
-            if (!foregroundReady) {
-                screenCaptureActive = false
-                _isVideoEnabled.value = false
-                manager.setVideoSendEnabled(false, renegotiate = false)
-                refreshForegroundServiceType()
-                emitLiveState()
-                _runtimeErrors.emit("No se pudo iniciar el servicio para compartir la pantalla.")
-                return@launch
-            }
-
-            runCatching {
-                manager.ensureLocalTracks()
-                manager.setVideoSendEnabled(!_isPaused.value, renegotiate = false)
-                manager.startVideo(
-                    isScreen = true,
-                    intent = projectionIntent,
-                    isFront = true,
-                    targetWidth = width,
-                    targetHeight = height,
-                    targetFps = 15,
-                    onComplete = { started ->
-                        if (started) {
-                            emitLiveState()
-                        } else if (_currentSource.value == LiveSource.SCREEN) {
-                            screenCaptureActive = false
-                            _isVideoEnabled.value = false
-                            manager.setVideoSendEnabled(false, renegotiate = false)
-                            refreshForegroundServiceType()
-                            emitLiveState()
-                            _runtimeErrors.tryEmit("No se pudo iniciar la compartición de pantalla.")
-                        }
-                    }
-                )
-            }.onFailure { error ->
-                screenCaptureActive = false
-                _isVideoEnabled.value = false
-                refreshForegroundServiceType()
-                emitLiveState()
-                android.util.Log.e("LiveRepository", "Unable to start screen capture", error)
-                _runtimeErrors.emit("No se pudo iniciar la compartición de pantalla.")
-            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("LiveRepository", "Unable to persist live source", error)
         }
     }
 

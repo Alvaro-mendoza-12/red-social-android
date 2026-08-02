@@ -7,7 +7,10 @@ import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.BillingCapabilities
 import conectate.com.data.model.CoinProduct
 import conectate.com.data.model.CoinPurchaseVerification
+import conectate.com.data.model.GiftSafetyLimits
+import conectate.com.data.model.NOVVIN_CANONICAL_GIFT_CATALOG
 import conectate.com.data.model.WalletTransaction
+import conectate.com.data.model.mergeGiftCatalog
 import conectate.com.data.model.withoutVisualDuplicates
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
@@ -45,140 +48,7 @@ class WalletRepository @Inject constructor(
 ) {
     private companion object {
         private const val TAG = "WalletRepository"
-        private val LOCAL_GIFT_CATALOG = listOf(
-            VirtualGift(
-                id = "builtin-heart",
-                name = "Pulso Novvin",
-                description = "Un pulso luminoso para apoyar al creador",
-                imageUrl = "conectate://gift-assets/heart",
-                priceDiamonds = 5,
-                sortOrder = 1
-            ),
-            VirtualGift(
-                id = "builtin-rose",
-                name = "Flor Aurora",
-                description = "Pétalos de luz originales de Novvin",
-                imageUrl = "conectate://gift-assets/rose",
-                priceDiamonds = 25,
-                priceCredits = 4.99,
-                sortOrder = 4
-            ),
-            VirtualGift(
-                id = "builtin-trophy",
-                name = "Copa Prisma",
-                description = "Una copa brillante para celebrar logros",
-                imageUrl = "conectate://gift-assets/trophy",
-                priceDiamonds = 50,
-                priceCredits = 9.99,
-                sortOrder = 6
-            ),
-            VirtualGift(
-                id = "builtin-fireworks",
-                name = "Lluvia de Luz",
-                description = "Una celebración que llena la pantalla",
-                imageUrl = "conectate://gift-assets/fireworks",
-                priceDiamonds = 100,
-                priceCredits = 19.99,
-                sortOrder = 8
-            ),
-            VirtualGift(
-                id = "builtin-star",
-                name = "Nova",
-                description = "Una explosión estelar para grandes momentos",
-                imageUrl = "conectate://gift-assets/star",
-                priceDiamonds = 200,
-                priceCredits = 39.99,
-                sortOrder = 10
-            ),
-            VirtualGift(
-                id = "builtin-orbit",
-                name = "Órbita",
-                description = "Un planeta de energía Novvin",
-                imageUrl = "conectate://gift-assets/orbit",
-                priceDiamonds = 35,
-                sortOrder = 5
-            ),
-            VirtualGift(
-                id = "builtin-comet",
-                name = "Cometa",
-                description = "Una estela veloz para destacar el directo",
-                imageUrl = "conectate://gift-assets/comet",
-                priceDiamonds = 350,
-                sortOrder = 12
-            ),
-            VirtualGift(
-                id = "builtin-crown",
-                name = "Corona Cósmica",
-                description = "La celebración más destacada del catálogo",
-                imageUrl = "conectate://gift-assets/crown",
-                priceDiamonds = 500,
-                sortOrder = 14
-            ),
-            VirtualGift(
-                id = "builtin-rhythm",
-                name = "Ritmo Neón",
-                description = "Una onda musical dibujada para el directo",
-                imageUrl = "conectate://gift-assets/rhythm",
-                priceDiamonds = 10,
-                sortOrder = 2
-            ),
-            VirtualGift(
-                id = "builtin-butterfly",
-                name = "Ala Boreal",
-                description = "Alas de color para un saludo ligero",
-                imageUrl = "conectate://gift-assets/butterfly",
-                priceDiamonds = 15,
-                sortOrder = 3
-            ),
-            VirtualGift(
-                id = "builtin-wave",
-                name = "Marea Celeste",
-                description = "Una ola luminosa que cruza la pantalla",
-                imageUrl = "conectate://gift-assets/wave",
-                priceDiamonds = 75,
-                sortOrder = 7
-            ),
-            VirtualGift(
-                id = "builtin-rainbow",
-                name = "Arco Solar",
-                description = "Un arco de luz para celebrar juntos",
-                imageUrl = "conectate://gift-assets/rainbow",
-                priceDiamonds = 150,
-                sortOrder = 9
-            ),
-            VirtualGift(
-                id = "builtin-crystal",
-                name = "Cristal Novvin",
-                description = "Una gema de energía para destacar",
-                imageUrl = "conectate://gift-assets/crystal",
-                priceDiamonds = 250,
-                sortOrder = 11
-            ),
-            VirtualGift(
-                id = "builtin-rocket",
-                name = "Impulso",
-                description = "Un despegue completo para grandes metas",
-                imageUrl = "conectate://gift-assets/rocket",
-                priceDiamonds = 450,
-                sortOrder = 13
-            ),
-            VirtualGift(
-                id = "builtin-portal",
-                name = "Portal Prisma",
-                description = "Abre una celebración envolvente",
-                imageUrl = "conectate://gift-assets/portal",
-                priceDiamonds = 750,
-                sortOrder = 15
-            ),
-            VirtualGift(
-                id = "builtin-phoenix",
-                name = "Fénix Aurora",
-                description = "La celebración máxima del catálogo",
-                imageUrl = "conectate://gift-assets/phoenix",
-                priceDiamonds = 1000,
-                sortOrder = 16
-            )
-        )
+        private val LOCAL_GIFT_CATALOG = NOVVIN_CANONICAL_GIFT_CATALOG
     }
 
     private val _coinBalance = MutableStateFlow(0)
@@ -234,17 +104,14 @@ class WalletRepository @Inject constructor(
                 throw IllegalStateException("No se pudieron cargar regalos: ${response.status}")
             }
 
-            _availableGifts.value = decodeObjects(response.bodyAsText())
+            val remoteCatalog = decodeObjects(response.bodyAsText())
                 .map { it.toVirtualGift() }
                 .filter { it.id.isNotBlank() && it.priceDiamonds > 0 }
                 .withoutVisualDuplicates()
+            _availableGifts.value = mergeGiftCatalog(remoteCatalog, LOCAL_GIFT_CATALOG)
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch virtual gifts", error)
-            if (!supabaseConfig.isConfigured) {
-                _availableGifts.value = LOCAL_GIFT_CATALOG
-            } else {
-                _availableGifts.value = emptyList()
-            }
+            _availableGifts.value = LOCAL_GIFT_CATALOG
         }
     }
 
@@ -402,7 +269,16 @@ class WalletRepository @Inject constructor(
                     val id = product.string("product_id").orEmpty()
                     val coins = product.int("coins")
                     if (id.isBlank() || coins <= 0) null else CoinProduct(id, coins)
-                }
+                },
+                giftLimits = (objectValue["gift_limits"] as? JsonObject)?.let { limits ->
+                    GiftSafetyLimits(
+                        maxCoinsPerGift = limits.int("max_coins_per_gift").takeIf { it > 0 } ?: 5_000,
+                        maxCoinsPerDay = limits.int("max_coins_per_day").takeIf { it > 0 } ?: 25_000,
+                        maxGiftsPerMinute = limits.int("max_gifts_per_minute").takeIf { it > 0 } ?: 20,
+                        highValueConfirmationCoins = limits.int("high_value_confirmation_coins")
+                            .takeIf { it > 0 } ?: 900
+                    )
+                } ?: GiftSafetyLimits()
             )
         }
     }
@@ -538,7 +414,11 @@ class WalletRepository @Inject constructor(
     private fun parseSupabaseError(body: String): String? {
         return runCatching {
             val obj = supabaseConfig.json.parseToJsonElement(body) as? JsonObject
-            obj?.string("message") ?: obj?.string("details") ?: obj?.string("hint")
+            obj?.string("message")
+                ?: obj?.string("error")
+                ?: obj?.string("code")
+                ?: obj?.string("details")
+                ?: obj?.string("hint")
         }.getOrNull()
     }
 }

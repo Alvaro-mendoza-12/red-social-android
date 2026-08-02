@@ -466,6 +466,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
 
       const hasActive = req.body?.isActive !== undefined || req.body?.is_active !== undefined
       const isActive = Boolean(req.body?.isActive ?? req.body?.is_active)
+      const source = req.body?.source !== undefined ? sourceOf(req.body.source) : existing.source
       const viewerCount = intBetween(req.body?.viewerCount ?? req.body?.viewer_count, 0, 1_000_000, existing.viewer_count)
       const peakViewerCount = intBetween(
         req.body?.peakViewerCount ?? req.body?.peak_viewer_count,
@@ -492,6 +493,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
              peak_viewer_count = GREATEST(peak_viewer_count, $4, $5),
              total_comments = GREATEST(total_comments, $6),
              total_reactions = GREATEST(total_reactions, $7),
+             source = $8,
              started_at = CASE WHEN $2 AND $3 THEN COALESCE(started_at, NOW()) ELSE started_at END,
              ended_at = CASE WHEN $2 AND NOT $3 THEN COALESCE(ended_at, NOW()) ELSE ended_at END,
              updated_at = NOW()
@@ -500,7 +502,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
                    viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
                    is_active,
                    started_at, ended_at, created_at, updated_at`,
-        [liveId, hasActive, isActive, hasActive && !isActive ? 0 : viewerCount, peakViewerCount, totalComments, totalReactions],
+        [liveId, hasActive, isActive, hasActive && !isActive ? 0 : viewerCount, peakViewerCount, totalComments, totalReactions, source],
       )
       res.json({ stream: rows[0] })
     } catch (error) {

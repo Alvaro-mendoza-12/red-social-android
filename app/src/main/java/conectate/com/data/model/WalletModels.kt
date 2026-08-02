@@ -45,10 +45,22 @@ data class CoinProduct(
     val coins: Int
 )
 
+/**
+ * Límites publicados por el servidor. Son una ayuda de interfaz; el backend
+ * vuelve a validarlos dentro de la misma transacción que descuenta el saldo.
+ */
+data class GiftSafetyLimits(
+    val maxCoinsPerGift: Int = 5_000,
+    val maxCoinsPerDay: Int = 25_000,
+    val maxGiftsPerMinute: Int = 20,
+    val highValueConfirmationCoins: Int = 900
+)
+
 data class BillingCapabilities(
     val enabled: Boolean = false,
     val provider: String = "google_play",
-    val products: List<CoinProduct> = emptyList()
+    val products: List<CoinProduct> = emptyList(),
+    val giftLimits: GiftSafetyLimits = GiftSafetyLimits()
 )
 
 data class CoinPurchaseVerification(

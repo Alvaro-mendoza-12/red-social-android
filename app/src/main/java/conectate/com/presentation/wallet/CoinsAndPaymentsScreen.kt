@@ -60,7 +60,7 @@ fun CoinsAndPaymentsScreen(
     val uriHandler = LocalUriHandler.current
     var showRecharge by remember { mutableStateOf(false) }
     val displayedCoinAmounts = capabilities.products.map { it.coins }.ifEmpty {
-        listOf(70, 350, 700, 1400)
+        listOf(70, 140, 350, 700, 1_400, 3_500, 7_000, 14_000)
     }.distinct().sorted()
 
     Scaffold(
@@ -125,12 +125,18 @@ fun CoinsAndPaymentsScreen(
                         Text("Paquetes disponibles", fontWeight = FontWeight.Bold)
                         if (!capabilities.enabled) {
                             Text(
-                                "Montos preparados; la compra se habilita al conectar Play Console y la verificación del servidor.",
+                                "DEMO · sin precio ni cobro. La compra se habilita al conectar Play Console y la verificación del servidor.",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
                         displayedCoinAmounts.forEach { coins ->
-                            Text("• $coins monedas · precio mostrado por Google Play")
+                            Text(
+                                if (capabilities.enabled) {
+                                    "$coins monedas · precio localizado en Google Play"
+                                } else {
+                                    "$coins monedas · demostración"
+                                }
+                            )
                         }
                         Text(
                             "El cobro sólo se acredita después de la confirmación de Google Play.",

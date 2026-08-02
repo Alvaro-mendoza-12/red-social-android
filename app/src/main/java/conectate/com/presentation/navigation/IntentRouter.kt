@@ -252,6 +252,25 @@ object IntentRouter {
                 }
             }
 
+            "live_return" -> {
+                val destination = resolveLiveReturnRoute(
+                    liveId = incomingIntent.getStringExtra("live_id")
+                        ?: incomingIntent.getStringExtra("target_id"),
+                    role = incomingIntent.getStringExtra("live_role")
+                )
+                if (destination != null) {
+                    navigateNotificationDestination(
+                        incomingIntent,
+                        navController,
+                        authRepository,
+                        destination,
+                        launchSingleTop = true
+                    )
+                    clearIntent()
+                    return true
+                }
+            }
+
             "challenge_invite" -> {
                 navigateNotificationDestination(
                     incomingIntent,
@@ -271,12 +290,15 @@ object IntentRouter {
         incomingIntent: Intent,
         navController: NavHostController,
         authRepository: AuthRepository,
-        destinationRoute: String
+        destinationRoute: String,
+        launchSingleTop: Boolean = false
     ) {
         val target = notificationAccountTargetFromIntent(incomingIntent)
         val sessionUser = authRepository.getAuthStateFlow().value?.user
         if (target == null || target.matches(sessionUser?.id, sessionUser?.email)) {
-            navController.navigate(destinationRoute)
+            navController.navigate(destinationRoute) {
+                this.launchSingleTop = launchSingleTop
+            }
             return
         }
 
@@ -314,7 +336,7 @@ object IntentRouter {
                 preview = preview
             )
         ) {
-            launchSingleTop = true
+            this.launchSingleTop = true
         }
     }
 
@@ -476,5 +498,15 @@ object IntentRouter {
         ) { launchSingleTop = true }
         clearIntent()
         return true
+    }
+}
+
+internal fun resolveLiveReturnRoute(liveId: String?, role: String?): String? {
+    val normalizedLiveId = liveId?.trim().orEmpty()
+    if (normalizedLiveId.isBlank()) return null
+    return when (role?.trim()?.lowercase()) {
+        "host" -> Screen.LiveHost.createRoute(normalizedLiveId)
+        "viewer" -> Screen.LiveViewer.createRoute(normalizedLiveId)
+        else -> null
     }
 }

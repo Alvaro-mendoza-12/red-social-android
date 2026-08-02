@@ -71,6 +71,11 @@ class WalletViewModel @Inject constructor(
         isPublic: Boolean
     ) {
         if (_sendingGiftId.value != null) return
+        val limits = _billingCapabilities.value.giftLimits
+        if (gift.priceDiamonds > limits.maxCoinsPerGift) {
+            _error.value = "Este regalo supera el límite permitido por el servidor."
+            return
+        }
         if (coinBalance.value < gift.priceDiamonds) {
             _error.value = "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
             return
@@ -88,9 +93,18 @@ class WalletViewModel @Inject constructor(
             ).onSuccess { receipt ->
                 _lastReceipt.value = receipt
             }.onFailure { failure ->
+                val rawMessage = failure.message.orEmpty()
                 _error.value = when {
-                    failure.message.orEmpty().contains("INSUFFICIENT", ignoreCase = true) ->
+                    rawMessage.contains("INSUFFICIENT", ignoreCase = true) ->
                         "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
+                    rawMessage.contains("GIFT_VALUE_LIMIT", ignoreCase = true) ->
+                        "Este regalo supera el límite configurado para la cuenta."
+                    rawMessage.contains("GIFT_DAILY_LIMIT", ignoreCase = true) ->
+                        "Alcanzaste el límite diario de regalos. No se descontaron monedas."
+                    rawMessage.contains("GIFT_RATE_LIMIT", ignoreCase = true) ->
+                        "Estás enviando regalos demasiado rápido. Espera un momento y vuelve a intentarlo."
+                    rawMessage.contains("GIFT_NOT_FOUND", ignoreCase = true) ->
+                        "El catálogo cambió. Actualízalo y vuelve a seleccionar el regalo."
                     else -> failure.message ?: "No se pudo enviar el regalo. No se descontaron monedas."
                 }
             }

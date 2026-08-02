@@ -1,6 +1,7 @@
 package conectate.com.presentation.wallet
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -12,6 +13,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import conectate.com.R
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.visualKey
 import kotlin.math.PI
@@ -31,6 +35,42 @@ fun GiftArtwork(gift: VirtualGift, modifier: Modifier = Modifier) {
 
 @Composable
 private fun GiftArtworkByKey(visualKey: String, modifier: Modifier) {
+    val generatedArtwork = when (visualKey) {
+        "starlight-seed" -> R.drawable.gift_starlight_seed
+        "aurora-drop" -> R.drawable.gift_aurora_drop
+        "prism-spark" -> R.drawable.gift_prism_spark
+        "luminous-butterfly" -> R.drawable.gift_luminous_butterfly
+        "comet-flower" -> R.drawable.gift_comet_flower
+        "crystal-moon" -> R.drawable.gift_crystal_moon
+        "solar-hummingbird" -> R.drawable.gift_solar_hummingbird
+        "nebula-jellyfish" -> R.drawable.gift_nebula_jellyfish
+        "boreal-fox" -> R.drawable.gift_boreal_fox
+        "cosmic-whale" -> R.drawable.gift_cosmic_whale
+        "star-garden" -> R.drawable.gift_star_garden
+        "crystal-orchid" -> R.drawable.gift_crystal_orchid
+        "prism-ship" -> R.drawable.gift_prism_ship
+        "forest-guardian" -> R.drawable.gift_forest_guardian
+        "aurora-phoenix" -> R.drawable.gift_aurora_phoenix
+        "star-train" -> R.drawable.gift_star_train
+        "celestial-dragon" -> R.drawable.gift_celestial_dragon
+        "floating-island" -> R.drawable.gift_floating_island
+        "celestial-world" -> R.drawable.gift_celestial_world
+        "light-opera" -> R.drawable.gift_light_opera
+        "aurora-palace" -> R.drawable.gift_aurora_palace
+        "time-kingdom" -> R.drawable.gift_time_kingdom
+        "galactic-ascent" -> R.drawable.gift_galactic_ascent
+        "aurora-genesis" -> R.drawable.gift_aurora_genesis
+        else -> null
+    }
+    if (generatedArtwork != null) {
+        Image(
+            painter = painterResource(generatedArtwork),
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Fit
+        )
+        return
+    }
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val unit = size.minDimension / 100f

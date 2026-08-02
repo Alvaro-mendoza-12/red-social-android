@@ -14,11 +14,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import conectate.com.presentation.wallet.GiftSelectionDialog
 import conectate.com.presentation.wallet.GooglePlayRechargeDialog
@@ -62,6 +64,7 @@ fun LiveViewerScreen(
     val stream = session?.stream
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
+    var exitRequested by remember(liveId) { mutableStateOf(false) }
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
     var showGiftSheet by remember(liveId) { mutableStateOf(false) }
     var showRechargeDialog by remember(liveId) { mutableStateOf(false) }
@@ -69,8 +72,20 @@ fun LiveViewerScreen(
 
     fun leaveViewer() {
         manualLeaveRequested = true
-        exitGate.runOnce(viewModel::leaveLive)
-        navController.popBackStack()
+        exitGate.runOnce { exitRequested = true }
+    }
+
+    LaunchedEffect(exitRequested) {
+        if (!exitRequested) return@LaunchedEffect
+        // Remove the renderer from the composition before native tracks are
+        // released. This avoids SurfaceViewRenderer callbacks racing teardown.
+        withFrameNanos { }
+        viewModel.leaveLiveAndAwait().onFailure { error ->
+            android.util.Log.w("LiveViewerScreen", "Viewer cleanup did not finish cleanly", error)
+        }
+        if (!navController.popBackStack()) {
+            navController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+        }
     }
 
     DisposableEffect(liveId) {
@@ -101,6 +116,7 @@ fun LiveViewerScreen(
     LaunchedEffect(session, wasConnectedToLive, manualLeaveRequested) {
         if (wasConnectedToLive && session == null && !manualLeaveRequested) {
             AppFeedbackBus.show("Live finalizado")
+            exitGate.runOnce { }
             navController.popBackStack()
         }
     }
@@ -116,6 +132,7 @@ fun LiveViewerScreen(
         val error = uiError ?: return@LaunchedEffect
         AppFeedbackBus.showError(error)
         if (session == null) {
+            exitGate.runOnce { }
             navController.popBackStack()
         }
         viewModel.clearError()
@@ -169,8 +186,8 @@ fun LiveViewerScreen(
         stream = stream,
         viewerCount = viewerCount,
         reactionCount = reactionCount,
-        videoTrack = if (isPaused || !isVideoEnabled) null else hostTrack,
-        sharedEglContext = eglBaseContext,
+        videoTrack = if (exitRequested || isPaused || !isVideoEnabled) null else hostTrack,
+        sharedEglContext = if (exitRequested) null else eglBaseContext,
         mirrorVideo = false,
         videoScalingType = if (currentSource == conectate.com.data.model.LiveSource.SCREEN) {
             RendererCommon.ScalingType.SCALE_ASPECT_FIT

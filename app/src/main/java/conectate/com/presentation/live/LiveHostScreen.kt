@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -101,6 +102,7 @@ fun LiveHostScreen(
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
     var autoStarted by remember(liveId) { mutableStateOf(false) }
     var showEndDialog by remember { mutableStateOf(false) }
+    var endingLive by remember(liveId) { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showModerationDialog by remember { mutableStateOf(false) }
     var showMomentDialog by remember { mutableStateOf(false) }
@@ -282,10 +284,27 @@ fun LiveHostScreen(
         }
     }
 
-    LaunchedEffect(session?.stream?.id, autoStarted, currentSource, isVideoEnabled, isMediaReady) {
+    LaunchedEffect(
+        session?.stream?.id,
+        autoStarted,
+        currentSource,
+        isVideoEnabled,
+        isMediaReady,
+        isPaused,
+        localVideoTrack
+    ) {
         val activeSession = session ?: return@LaunchedEffect
         if (autoStarted || !isMediaReady) return@LaunchedEffect
         if (activeSession.role != LiveRole.HOST) return@LaunchedEffect
+        val isReturningToPreparedSession =
+            activeSession.stream.id.equals(liveId, ignoreCase = true) &&
+                (isPaused || !isVideoEnabled || localVideoTrack != null)
+        if (isReturningToPreparedSession) {
+            // Returning from the foreground-service notification must preserve
+            // pause/source state and never restart capture without consent.
+            autoStarted = true
+            return@LaunchedEffect
+        }
         if (!isVideoEnabled) {
             autoStarted = true
             return@LaunchedEffect
@@ -324,6 +343,18 @@ fun LiveHostScreen(
             navController.popBackStack()
         }
         viewModel.clearError()
+    }
+
+    LaunchedEffect(endingLive) {
+        if (!endingLive) return@LaunchedEffect
+        withFrameNanos { }
+        val result = viewModel.endLiveAndAwait()
+        if (result.isSuccess) {
+            AppFeedbackBus.show("Live finalizado")
+        } else {
+            AppFeedbackBus.showError("El live se cerró en este dispositivo, pero no se pudo confirmar el cierre remoto.")
+        }
+        navController.popBackStack()
     }
 
     BackHandler {
@@ -366,9 +397,7 @@ fun LiveHostScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showEndDialog = false
-                    AppFeedbackBus.show("Live finalizado")
-                    viewModel.endLive()
-                    navController.popBackStack()
+                    endingLive = true
                 }) {
                     Text("Finalizar")
                 }
@@ -526,8 +555,8 @@ fun LiveHostScreen(
         stream = session?.stream,
         viewerCount = viewerCount,
         reactionCount = reactionCount,
-        videoTrack = if (isVideoEnabled) localVideoTrack else null,
-        sharedEglContext = eglBaseContext,
+        videoTrack = if (endingLive || !isVideoEnabled) null else localVideoTrack,
+        sharedEglContext = if (endingLive) null else eglBaseContext,
         mirrorVideo = currentSource == LiveSource.CAMERA,
         videoScalingType = if (currentSource == LiveSource.SCREEN) {
             RendererCommon.ScalingType.SCALE_ASPECT_FIT

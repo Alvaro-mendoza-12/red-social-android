@@ -31,7 +31,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import android.media.projection.MediaProjection
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 interface SignalingEvents {
     fun onSendOffer(targetSocketId: String, offer: JSONObject)
@@ -193,6 +196,15 @@ class WebRTCManager(
     private val managedIceWaitTimeoutMs = 10_000L
     private val glareRecoveryTimeoutMs = 2_000L
     private val lowLatencyJitterPackets = 20
+    private val rendererDetachGraceMs = 96L
+    private class DeferredVideoCleanup(
+        val track: VideoTrack?,
+        val capturer: VideoCapturer?,
+        val helper: SurfaceTextureHelper?,
+        val source: VideoSource?
+    )
+    private val deferredVideoCleanupLock = Any()
+    private val deferredVideoCleanups = mutableListOf<DeferredVideoCleanup>()
     
     private val selfHostedTurnUrl: String get() = SignalingConfig.TURN_CREDENTIALS_URL.trim()
     private val hasManagedTurnConfigured: Boolean get() = selfHostedTurnUrl.isNotBlank()
@@ -314,13 +326,30 @@ class WebRTCManager(
      */
     fun hardReset() {
         executor.execute {
-            Log.w("WebRTCManager", "🔥 Performing STABILIZED RESET of media engine...")
-            // v6.0: We do NOT destroy the factory or ADM here.
-            // Full destruction locks hardware drivers on quick re-entry.
-            
-            // 1. Close all PeerConnections
-            peerConnections.values.forEach { it.dispose() }
-            peerConnections.clear()
+            runCatching { hardResetInternal() }
+                .onFailure { error -> Log.e("WebRTCManager", "Hard reset failed", error) }
+        }
+    }
+
+    suspend fun hardResetAwait() {
+        suspendCancellableCoroutine { continuation ->
+            executor.execute {
+                val failure = runCatching { hardResetInternal() }.exceptionOrNull()
+                if (continuation.isActive) {
+                    if (failure == null) continuation.resume(Unit)
+                    else continuation.resumeWithException(failure)
+                }
+            }
+        }
+    }
+
+    private fun hardResetInternal() {
+        Log.w("WebRTCManager", "🔥 Performing STABILIZED RESET of media engine...")
+        // Keep the factory and ADM alive; quick re-entry can otherwise leave
+        // device camera/audio drivers locked. Every native release is best-effort
+        // so one vendor failure cannot strand the remaining resources.
+        peerConnections.values.toList().forEach { peer -> runCatching { peer.dispose() } }
+        peerConnections.clear()
             
             // 2. Clear state maps
             remoteAudioTracks.clear()
@@ -345,19 +374,16 @@ class WebRTCManager(
             outgoingVideoEnabled = true
             localSocketId = ""
             
-            // 3. Stop local captures but keep factory alive
-            videoCapturer?.stopCapture()
-            surfaceTextureHelper?.dispose()
-            surfaceTextureHelper = null
-            videoCapturer?.dispose()
-            videoCapturer = null
-            localVideoSource?.dispose()
-            localVideoSource = null
-            _localVideoTrackFlow.value?.setEnabled(false)
-            _localVideoTrackFlow.value = null
-            
-            Log.i("WebRTCManager", "✅ Media state cleared and ready for fresh re-entry")
-        }
+        val capturer = videoCapturer.also { videoCapturer = null }
+        val helper = surfaceTextureHelper.also { surfaceTextureHelper = null }
+        val source = localVideoSource.also { localVideoSource = null }
+        val track = _localVideoTrackFlow.value
+        _localVideoTrackFlow.value = null
+        runCatching { track?.setEnabled(false) }
+        runCatching { track?.dispose() }
+        releaseVideoPipeline(capturer, helper, source)
+
+        Log.i("WebRTCManager", "✅ Media state cleared and ready for fresh re-entry")
     }
 
     /**
@@ -517,10 +543,12 @@ class WebRTCManager(
         surfaceTextureHelper?.dispose()
         surfaceTextureHelper = null
         
+        val localVideoTrack = _localVideoTrackFlow.value
+        _localVideoTrackFlow.value = null
+        runCatching { localVideoTrack?.setEnabled(false) }
+        runCatching { localVideoTrack?.dispose() }
         localVideoSource?.dispose()
         localVideoSource = null
-        _localVideoTrackFlow.value?.setEnabled(false)
-        _localVideoTrackFlow.value = null
         
         localAudioTrack?.dispose()
         localAudioTrack = null
@@ -542,6 +570,17 @@ class WebRTCManager(
         _signalingStates.value = emptyMap()
         _debugInfo.value = emptyMap()
         outgoingVideoEnabled = true
+
+        // A source swap can leave the replaced native pipeline in the short
+        // renderer-detach grace window. Drain those objects before the EGL
+        // context and factory disappear, even when the user exits immediately.
+        val deferredCleanups = synchronized(deferredVideoCleanupLock) {
+            deferredVideoCleanups.toList().also { deferredVideoCleanups.clear() }
+        }
+        deferredCleanups.forEach { cleanup ->
+            runCatching { cleanup.track?.dispose() }
+            releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
+        }
 
         factory?.dispose()
         factory = null
@@ -728,6 +767,45 @@ class WebRTCManager(
         runCatching { capturer?.dispose() }
         runCatching { helper?.dispose() }
         runCatching { source?.dispose() }
+    }
+
+    private fun releaseReplacedVideoPipelineAfterRendererDetach(
+        track: VideoTrack?,
+        capturer: VideoCapturer?,
+        helper: SurfaceTextureHelper?,
+        source: VideoSource?
+    ) {
+        // Stop hardware use immediately, but keep the native track/source alive
+        // briefly because a renderer may still be detaching its sink.
+        runCatching { track?.setEnabled(false) }
+        runCatching { capturer?.stopCapture() }
+        val cleanup = DeferredVideoCleanup(track, capturer, helper, source)
+        synchronized(deferredVideoCleanupLock) { deferredVideoCleanups += cleanup }
+        asyncScope.launch {
+            // StateFlow publishes the replacement immediately; retain the old
+            // native objects long enough for Compose to remove its renderer sink.
+            delay(rendererDetachGraceMs)
+            runCatching {
+                executor.execute {
+                    val ownsCleanup = synchronized(deferredVideoCleanupLock) {
+                        deferredVideoCleanups.remove(cleanup)
+                    }
+                    if (ownsCleanup) {
+                        runCatching { cleanup.track?.dispose() }
+                        releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
+                    }
+                }
+            }.onFailure { error ->
+                Log.w("WebRTCManager", "Could not schedule replaced video cleanup", error)
+                val ownsCleanup = synchronized(deferredVideoCleanupLock) {
+                    deferredVideoCleanups.remove(cleanup)
+                }
+                if (ownsCleanup) {
+                    runCatching { cleanup.track?.dispose() }
+                    releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
+                }
+            }
+        }
     }
 
     private fun <T> rekeyStateMap(
@@ -949,6 +1027,19 @@ class WebRTCManager(
         }
         executor.execute {
             Log.d("WebRTCManager", "onUserJoined: $ruid ($rsid)")
+            val existingPeerKey = resolvePeerKey(rsid, ruid)
+            val socketWasReplaced = existingPeerKey != null && existingPeerKey != rsid
+            if (socketWasReplaced) {
+                // A PeerConnection observer captures the target socket id at
+                // creation time. Migrating that connection would send fresh ICE
+                // candidates to the stale socket after a Socket.IO reconnect.
+                Log.i(
+                    "WebRTCManager",
+                    "Recreating peer for reconnected user $ruid ($existingPeerKey -> $rsid)"
+                )
+                detachPeerInternal(checkNotNull(existingPeerKey))?.let(::disposePeerAfterRendererDetach)
+            }
+            val reusedExistingPeer = existingPeerKey != null && !socketWasReplaced
             var pc = getOrCreatePC(rsid, ruid) ?: return@execute
             var peerKey = resolvePeerKey(rsid, ruid) ?: rsid.ifBlank { ruid }
             
@@ -960,8 +1051,8 @@ class WebRTCManager(
                  requestOffer(
                      socketId = peerKey,
                      pc = pc,
-                     iceRestart = false,
-                     reason = "user-joined"
+                     iceRestart = reusedExistingPeer,
+                     reason = if (reusedExistingPeer) "user-rejoined" else "user-joined"
                  )
             } else {
                  Log.i("WebRTC", "Polite peer waiting for offer from $peerKey")
@@ -1805,6 +1896,15 @@ class WebRTCManager(
     ) {
         executor.execute {
             var completionSent = false
+            val previousCapturer = videoCapturer
+            val previousHelper = surfaceTextureHelper
+            val previousSource = localVideoSource
+            val previousTrack = _localVideoTrackFlow.value
+            var candidateCapturer: VideoCapturer? = null
+            var candidateHelper: SurfaceTextureHelper? = null
+            var candidateSource: VideoSource? = null
+            var candidateTrack: VideoTrack? = null
+            var committed = false
             fun complete(success: Boolean) {
                 if (!completionSent) {
                     completionSent = true
@@ -1814,15 +1914,43 @@ class WebRTCManager(
             try {
                 Log.d("WebRTCManager", "Starting video: screen=$isScreen")
 
-                var previousCapturer = videoCapturer
-                var previousHelper = surfaceTextureHelper
-                var previousSource = localVideoSource
-                var previousTrack = _localVideoTrackFlow.value
-
-                // 1. Build the new pipeline first so source switches do not blank the UI.
                 ensureEngineReady()
+                fun makeEven(value: Int): Int = (value / 2) * 2
+
+                val metrics = context.resources.displayMetrics
+                val defaultFps = if (isScreen) 15 else 24
+                val fps = (targetFps ?: defaultFps).coerceIn(10, 60)
+                val (finalWidth, finalHeight) = if (isScreen) {
+                    // Preserve aspect ratio and fit within the requested bounds.
+                    val srcW = metrics.widthPixels.coerceAtLeast(1)
+                    val srcH = metrics.heightPixels.coerceAtLeast(1)
+                    val boundW = (targetWidth ?: 1280).coerceAtLeast(320)
+                    val boundH = (targetHeight ?: 720).coerceAtLeast(320)
+                    val scale = minOf(boundW.toFloat() / srcW.toFloat(), boundH.toFloat() / srcH.toFloat())
+                        .coerceIn(0.1f, 1f)
+                    makeEven((srcW * scale).toInt().coerceAtLeast(320)) to
+                        makeEven((srcH * scale).toInt().coerceAtLeast(320))
+                } else {
+                    makeEven((targetWidth ?: 960).coerceAtLeast(320)) to
+                        makeEven((targetHeight ?: 540).coerceAtLeast(240))
+                }
+
+                // Reconfiguring an existing camera in place avoids opening two
+                // camera devices concurrently, which fails on many OEM drivers.
+                val existingCamera = previousCapturer as? CameraVideoCapturer
+                if (!isScreen && existingCamera != null && previousTrack != null) {
+                    val changed = runCatching {
+                        existingCamera.changeCaptureFormat(finalWidth, finalHeight, fps)
+                        previousTrack.setEnabled(true)
+                        updateLocalVideoSenders(activeOutgoingVideoTrack())
+                    }.isSuccess
+                    complete(changed)
+                    return@execute
+                }
+
+                // Build the replacement pipeline first so source switches do not blank the UI.
                 var screenCapturerRef: VideoCapturer? = null
-                var capturer = if (isScreen) {
+                val capturer = if (isScreen) {
                     val projectionIntent = intent ?: run {
                         Log.e("WebRTCManager", "Screen share requested without MediaProjection intent")
                         complete(false)
@@ -1846,39 +1974,18 @@ class WebRTCManager(
                     complete(false)
                     return@execute
                 }
+                candidateCapturer = capturer
 
                 var f = factory ?: run {
                     complete(false)
                     return@execute
                 }
-                var source = f.createVideoSource(isScreen)
-                var helper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.eglBaseContext)
+                val source = f.createVideoSource(isScreen)
+                candidateSource = source
+                val helper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.eglBaseContext)
+                candidateHelper = helper
 
                 capturer.initialize(helper, context, source.capturerObserver)
-
-                fun makeEven(value: Int): Int = (value / 2) * 2
-
-                val metrics = context.resources.displayMetrics
-                val defaultFps = if (isScreen) 15 else 24
-                val fps = (targetFps ?: defaultFps).coerceIn(10, 60)
-
-                val (finalWidth, finalHeight) = if (isScreen) {
-                    // Preserve aspect ratio and fit within the requested bounds.
-                    val srcW = metrics.widthPixels.coerceAtLeast(1)
-                    val srcH = metrics.heightPixels.coerceAtLeast(1)
-                    val boundW = (targetWidth ?: 1280).coerceAtLeast(320)
-                    val boundH = (targetHeight ?: 720).coerceAtLeast(320)
-
-                    val scale = minOf(boundW.toFloat() / srcW.toFloat(), boundH.toFloat() / srcH.toFloat())
-                        .coerceIn(0.1f, 1f)
-                    var w = makeEven((srcW * scale).toInt().coerceAtLeast(320))
-                    var h = makeEven((srcH * scale).toInt().coerceAtLeast(320))
-                    w to h
-                } else {
-                    var w = makeEven((targetWidth ?: 960).coerceAtLeast(320))
-                    var h = makeEven((targetHeight ?: 540).coerceAtLeast(240))
-                    w to h
-                }
 
                 Log.i("WebRTCManager", "Starting capturer: ${finalWidth}x$finalHeight @${fps}fps (Screen: $isScreen)")
                 val captureProfiles = if (isScreen) {
@@ -1912,13 +2019,17 @@ class WebRTCManager(
 
                 if (!startedCapture) {
                     releaseVideoPipeline(capturer, helper, source)
+                    candidateCapturer = null
+                    candidateHelper = null
+                    candidateSource = null
                     Log.e("WebRTCManager", "No compatible capture profile could be started")
                     complete(false)
                     return@execute
                 }
 
-                var trackId = if (isScreen) "SCREEN_01" else "CAMERA_01"
-                var track = f.createVideoTrack(trackId, source).apply { setEnabled(true) }
+                val trackId = if (isScreen) "SCREEN_01" else "CAMERA_01"
+                val track = f.createVideoTrack(trackId, source).apply { setEnabled(true) }
+                candidateTrack = track
 
                 // 2. Swap atomically once the new track is actually ready.
                 videoCapturer = capturer
@@ -1926,13 +2037,16 @@ class WebRTCManager(
                 localVideoSource = source
                 _localVideoTrackFlow.value = track
                 updateLocalVideoSenders(activeOutgoingVideoTrack())
+                committed = true
 
-                previousTrack
-                    ?.takeIf { it.id() != track.id() }
-                    ?.let { oldTrack ->
-                        runCatching { oldTrack.setEnabled(false) }
-                    }
-                releaseVideoPipeline(previousCapturer, previousHelper, previousSource)
+                runCatching {
+                    releaseReplacedVideoPipelineAfterRendererDetach(
+                        track = previousTrack?.takeIf { it !== track },
+                        capturer = previousCapturer,
+                        helper = previousHelper,
+                        source = previousSource
+                    )
+                }
                 
                 // replaceTrack publishes through the video m-line negotiated at
                 // connection setup and avoids an offer/answer glare race.
@@ -1940,30 +2054,82 @@ class WebRTCManager(
             } catch (e: Exception) {
                 Log.e("WebRTCManager", "Error starting video: ${e.message}")
                 complete(false)
+            } finally {
+                if (!committed && candidateCapturer != null) {
+                    if (videoCapturer === candidateCapturer) {
+                        videoCapturer = previousCapturer
+                        surfaceTextureHelper = previousHelper
+                        localVideoSource = previousSource
+                        _localVideoTrackFlow.value = previousTrack
+                        runCatching { updateLocalVideoSenders(activeOutgoingVideoTrack()) }
+                    }
+                    releaseReplacedVideoPipelineAfterRendererDetach(
+                        track = candidateTrack,
+                        capturer = candidateCapturer,
+                        helper = candidateHelper,
+                        source = candidateSource
+                    )
+                }
             }
         }
     }
 
+    suspend fun startVideoAwait(
+        isScreen: Boolean,
+        intent: android.content.Intent? = null,
+        isFront: Boolean = true,
+        targetWidth: Int? = null,
+        targetHeight: Int? = null,
+        targetFps: Int? = null,
+        onProjectionStopped: () -> Unit = {}
+    ): Boolean = suspendCancellableCoroutine { continuation ->
+        startVideo(
+            isScreen = isScreen,
+            intent = intent,
+            isFront = isFront,
+            targetWidth = targetWidth,
+            targetHeight = targetHeight,
+            targetFps = targetFps,
+            onProjectionStopped = onProjectionStopped,
+            onComplete = { started ->
+                if (continuation.isActive) continuation.resume(started)
+            }
+        )
+    }
+
     fun stopVideo() {
-        executor.execute {
-            try {
-                var previousCapturer = videoCapturer
-                var previousHelper = surfaceTextureHelper
-                var previousSource = localVideoSource
-                var previousTrack = _localVideoTrackFlow.value
+        executor.execute { stopVideoInternal() }
+    }
 
-                videoCapturer = null
-                surfaceTextureHelper = null
-                localVideoSource = null
-
-                previousTrack?.setEnabled(false)
-                _localVideoTrackFlow.value = null
-                updateLocalVideoSenders(null)
-                releaseVideoPipeline(previousCapturer, previousHelper, previousSource)
-            } catch (e: Exception) {
-                Log.e("WebRTCManager", "Error in stopVideo: ${e.message}")
+    suspend fun stopVideoAwait() {
+        suspendCancellableCoroutine { continuation ->
+            executor.execute {
+                val failure = runCatching { stopVideoInternal() }.exceptionOrNull()
+                if (continuation.isActive) {
+                    if (failure == null) continuation.resume(Unit)
+                    else continuation.resumeWithException(failure)
+                }
             }
         }
+    }
+
+    private fun stopVideoInternal() {
+        val previousCapturer = videoCapturer
+        val previousHelper = surfaceTextureHelper
+        val previousSource = localVideoSource
+        val previousTrack = _localVideoTrackFlow.value
+
+        videoCapturer = null
+        surfaceTextureHelper = null
+        localVideoSource = null
+        _localVideoTrackFlow.value = null
+        updateLocalVideoSenders(null)
+        releaseReplacedVideoPipelineAfterRendererDetach(
+            track = previousTrack,
+            capturer = previousCapturer,
+            helper = previousHelper,
+            source = previousSource
+        )
     }
 
     private val renegotiateScope = newSafeScope("WebRTCManagerRenegotiate", Dispatchers.Default)
@@ -2051,22 +2217,34 @@ class WebRTCManager(
         executor.execute {
             var peerKey = resolvePeerKey(sid, sid) ?: sid.trim()
             Log.d("WebRTCManager", "Cleaning up state for disconnected user: $sid (resolved=$peerKey)")
-            peerConnections.remove(peerKey)?.dispose() // Full dispose instead of just close
-            _remoteVideoTracks.value = _remoteVideoTracks.value.toMutableMap().apply { remove(peerKey) }
-            _peerConnectionStates.value = _peerConnectionStates.value.toMutableMap().apply { remove(peerKey) }
-            _signalingStates.value = _signalingStates.value.toMutableMap().apply { remove(peerKey) }
-            _debugInfo.value = _debugInfo.value.toMutableMap().apply { remove(peerKey) }
-            remoteUserIds.remove(peerKey)
-            remoteAudioTracks.remove(peerKey)
-            makingOffer.remove(peerKey)
-            iceRetryCount.remove(peerKey)
-            iceCandidateQueue.remove(peerKey)
-            disconnectRecoveryJobs.remove(peerKey)?.cancel()
-            offerRetryJobs.remove(peerKey)?.cancel()
-            localOfferTimeoutJobs.remove(peerKey)?.cancel()
-            glareRecoveryJobs.remove(peerKey)?.cancel()
-            ignoreOffer.remove(peerKey)
-            isSettingRemoteAnswerPending.remove(peerKey)
+            detachPeerInternal(peerKey)?.let(::disposePeerAfterRendererDetach)
+        }
+    }
+
+    private fun detachPeerInternal(peerKey: String): PeerConnection? {
+        val peerToDispose = peerConnections.remove(peerKey)
+        _remoteVideoTracks.value = _remoteVideoTracks.value.toMutableMap().apply { remove(peerKey) }
+        _peerConnectionStates.value = _peerConnectionStates.value.toMutableMap().apply { remove(peerKey) }
+        _signalingStates.value = _signalingStates.value.toMutableMap().apply { remove(peerKey) }
+        _debugInfo.value = _debugInfo.value.toMutableMap().apply { remove(peerKey) }
+        remoteUserIds.remove(peerKey)
+        remoteAudioTracks.remove(peerKey)?.let { track -> runCatching { track.setEnabled(false) } }
+        makingOffer.remove(peerKey)
+        iceRetryCount.remove(peerKey)
+        iceCandidateQueue.remove(peerKey)
+        disconnectRecoveryJobs.remove(peerKey)?.cancel()
+        offerRetryJobs.remove(peerKey)?.cancel()
+        localOfferTimeoutJobs.remove(peerKey)?.cancel()
+        glareRecoveryJobs.remove(peerKey)?.cancel()
+        ignoreOffer.remove(peerKey)
+        isSettingRemoteAnswerPending.remove(peerKey)
+        return peerToDispose
+    }
+
+    private fun disposePeerAfterRendererDetach(peer: PeerConnection) {
+        asyncScope.launch {
+            delay(rendererDetachGraceMs)
+            runCatching { executor.execute { runCatching { peer.dispose() } } }
         }
     }
     

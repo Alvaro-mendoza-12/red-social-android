@@ -2,6 +2,8 @@ package conectate.com.presentation.wallet
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -21,8 +25,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -34,18 +40,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.data.model.GiftReceipt
+import conectate.com.data.model.GiftCategory
+import conectate.com.data.model.GiftTier
 import conectate.com.data.model.VirtualGift
+import conectate.com.data.model.category
+import conectate.com.data.model.tier
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,9 +75,14 @@ fun GiftSelectionDialog(
     val sendingGiftId by viewModel.sendingGiftId.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val receipt by viewModel.lastReceipt.collectAsStateWithLifecycle()
+    val billingCapabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
     var confirmationGift by remember { mutableStateOf<VirtualGift?>(null) }
     var previewGift by remember { mutableStateOf<VirtualGift?>(null) }
     var isPublic by remember { mutableStateOf(true) }
+    var selectedCategory by remember { mutableStateOf<GiftCategory?>(null) }
+    val visibleGifts = remember(gifts, selectedCategory) {
+        gifts.filter { selectedCategory == null || it.category() == selectedCategory }
+    }
 
     LaunchedEffect(receipt?.transactionId) {
         val committed = receipt ?: return@LaunchedEffect
@@ -90,7 +106,7 @@ fun GiftSelectionDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Enviar regalo", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                     Text("Para $receiverName", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -108,6 +124,26 @@ fun GiftSelectionDialog(
             }
 
             Divider()
+
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedCategory == null,
+                        onClick = { selectedCategory = null },
+                        label = { Text("Todos") }
+                    )
+                }
+                lazyRowItems(GiftCategory.values().toList()) { category ->
+                    FilterChip(
+                        selected = selectedCategory == category,
+                        onClick = { selectedCategory = category },
+                        label = { Text(category.displayName()) }
+                    )
+                }
+            }
 
             when {
                 loading && gifts.isEmpty() -> Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
@@ -127,10 +163,11 @@ fun GiftSelectionDialog(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(gifts, key = { it.id }) { gift ->
+                    items(visibleGifts, key = { it.id }) { gift ->
                         GiftCatalogCard(
                             gift = gift,
-                            enabled = sendingGiftId == null,
+                            enabled = sendingGiftId == null &&
+                                gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift,
                             onClick = { confirmationGift = gift }
                         )
                     }
@@ -148,17 +185,41 @@ fun GiftSelectionDialog(
                 }
                 Switch(checked = isPublic, onCheckedChange = { isPublic = it }, enabled = sendingGiftId == null)
             }
+            Text(
+                "Protección activa: máximo ${billingCapabilities.giftLimits.maxCoinsPerGift} monedas por regalo; el servidor también aplica límites diarios y de frecuencia.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 
     confirmationGift?.let { gift ->
+        val isHighValue = gift.priceDiamonds >=
+            billingCapabilities.giftLimits.highValueConfirmationCoins
+        var highValueAcknowledged by remember(gift.id) { mutableStateOf(false) }
+        var safetyCountdown by remember(gift.id) { mutableIntStateOf(if (isHighValue) 3 else 0) }
+        LaunchedEffect(gift.id, isHighValue) {
+            while (safetyCountdown > 0) {
+                delay(1_000)
+                safetyCountdown -= 1
+            }
+        }
         AlertDialog(
             onDismissRequest = { if (sendingGiftId == null) confirmationGift = null },
             title = { Text("Confirmar regalo") },
             text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     GiftArtwork(gift, Modifier.size(112.dp))
                     Text(gift.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    gift.description?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Para: $receiverName", fontWeight = FontWeight.Bold)
+                    Text(if (isPublic) "Visible en el directo" else "Envío privado")
                     Text("Costo: ${gift.priceDiamonds} monedas")
                     Text(
                         "Saldo después: ${(balance - gift.priceDiamonds).coerceAtLeast(0)} monedas",
@@ -167,11 +228,39 @@ fun GiftSelectionDialog(
                     if (balance < gift.priceDiamonds) {
                         Text("Tu saldo no alcanza para este regalo.", color = MaterialTheme.colorScheme.error)
                     }
+                    if (isHighValue) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Confirmación reforzada", fontWeight = FontWeight.Black)
+                                Text(
+                                    if (safetyCountdown > 0) {
+                                        "Puedes cancelar sin cargo. Revisa los datos durante $safetyCountdown s."
+                                    } else {
+                                        "La revisión terminó. El cargo sólo se realiza al pulsar Enviar."
+                                    }
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = highValueAcknowledged,
+                                        onCheckedChange = { highValueAcknowledged = it },
+                                        enabled = safetyCountdown == 0 && sendingGiftId == null
+                                    )
+                                    Text("Entiendo el costo y el destinatario")
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = sendingGiftId == null && balance >= gift.priceDiamonds,
+                    enabled = sendingGiftId == null &&
+                        balance >= gift.priceDiamonds &&
+                        gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift &&
+                        (!isHighValue || (safetyCountdown == 0 && highValueAcknowledged)),
                     onClick = {
                         viewModel.sendGift(receiverId, liveStreamId, gift, isPublic)
                     }
@@ -240,9 +329,22 @@ private fun GiftCatalogCard(
             GiftArtwork(gift, Modifier.size(72.dp))
             Text(gift.name, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
             Text("${gift.priceDiamonds} monedas", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-            Text("Incluye animación", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Text(gift.tier().displayName(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
         }
     }
+}
+
+private fun GiftCategory.displayName(): String = when (this) {
+    GiftCategory.WELCOME -> "Saludos"
+    GiftCategory.ENERGY -> "Energía"
+    GiftCategory.CELEBRATION -> "Celebración"
+    GiftCategory.PREMIUM -> "Premium"
+}
+
+private fun GiftTier.displayName(): String = when (this) {
+    GiftTier.MICRO -> "Animación breve"
+    GiftTier.FEATURED -> "Animación destacada"
+    GiftTier.CELEBRATION -> "Celebración completa"
 }
 
 @Composable

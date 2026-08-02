@@ -40,6 +40,8 @@ sql/migrations/20260425_hashtag_rpcs_2026.sql
 # Monetization System
 sql/migrations/20260425_virtual_gifts_wallet_2026.sql
 sql/migrations/20260425_wallet_gifts_rpcs_2026.sql
+sql/migrations/20260801_live_gift_catalog_v2.sql
+sql/migrations/20260802_secure_live_gift_transactions_v3.sql
 
 # Security Fixes
 sql/security/fix_storage_policies_restrictive_2026-04-25.sql

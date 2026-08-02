@@ -49,6 +49,7 @@ class LiveSessionViewModel @Inject constructor(
     val isMediaReady = liveRepository.isMediaReady
     val isPaused = liveRepository.isPaused
     val isVideoEnabled = liveRepository.isVideoEnabled
+    val isMediaTransitioning = liveRepository.isMediaTransitioning
     val currentSource = liveRepository.currentSource
     val eglBaseContext = liveRepository.eglBaseContext
     val localVideoTrack = liveRepository.localVideoTrack
@@ -175,6 +176,8 @@ class LiveSessionViewModel @Inject constructor(
         liveRepository.endLiveAsync()
     }
 
+    suspend fun endLiveAndAwait(): Result<Unit> = liveRepository.endLive()
+
     fun toggleMic(enabled: Boolean) {
         liveRepository.toggleMic(enabled)
     }
@@ -218,6 +221,8 @@ class LiveSessionViewModel @Inject constructor(
     fun leaveLive() {
         liveRepository.endLiveAsync()
     }
+
+    suspend fun leaveLiveAndAwait(): Result<Unit> = liveRepository.endLive()
 
     fun sendComment(text: String) {
         viewModelScope.launch(Dispatchers.IO) {

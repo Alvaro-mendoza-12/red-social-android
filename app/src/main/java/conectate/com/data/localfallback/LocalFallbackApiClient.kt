@@ -3085,6 +3085,7 @@ class LocalFallbackApiClient @Inject constructor(
         accessToken: String,
         liveId: String,
         isActive: Boolean? = null,
+        source: String? = null,
         viewerCount: Int? = null,
         peakViewerCount: Int? = null,
         totalComments: Int? = null,
@@ -3094,6 +3095,9 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val payload = buildJsonObject {
                 isActive?.let { put("isActive", it) }
+                source?.trim()?.lowercase()?.takeIf { it == "camera" || it == "screen" }?.let {
+                    put("source", it)
+                }
                 viewerCount?.let { put("viewerCount", it) }
                 peakViewerCount?.let { put("peakViewerCount", it) }
                 totalComments?.let { put("totalComments", it) }
