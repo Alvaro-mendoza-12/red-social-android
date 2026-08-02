@@ -64,6 +64,7 @@ import org.webrtc.VideoTrack
 fun LiveSessionScaffold(
     stream: LiveStream?,
     viewerCount: Int,
+    reactionCount: Long,
     videoTrack: VideoTrack?,
     sharedEglContext: EglBase.Context?,
     mirrorVideo: Boolean,
@@ -132,6 +133,7 @@ fun LiveSessionScaffold(
             LiveTopBar(
                 stream = stream,
                 viewerCount = viewerCount,
+                reactionCount = reactionCount,
                 leadingAction = leadingTopBarAction,
                 actions = topBarActions,
                 modifier = Modifier.fillMaxWidth()
@@ -289,6 +291,7 @@ private fun LiveVideoBackground(
 private fun LiveTopBar(
     stream: LiveStream?,
     viewerCount: Int,
+    reactionCount: Long,
     modifier: Modifier = Modifier,
     leadingAction: @Composable (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit
@@ -364,19 +367,6 @@ private fun LiveTopBar(
                                     .background(Color(0xFFE53935))
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                color = Color.White.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(999.dp)
-                            ) {
-                                Text(
-                                    text = "${viewerCount.coerceAtLeast(0)} viendo",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
                         }
                     }
                 }
@@ -388,9 +378,39 @@ private fun LiveTopBar(
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = actions
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(color = Color.Black.copy(alpha = 0.46f), shape = RoundedCornerShape(999.dp)) {
+                Text(
+                    text = "${viewerCount.coerceAtLeast(0)} viendo",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+            Surface(color = Color.Black.copy(alpha = 0.46f), shape = RoundedCornerShape(999.dp)) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = Color(0xFFFF5C8A),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "${reactionCount.coerceAtLeast(0)} me gusta",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+            actions()
+        }
     }
 }
 

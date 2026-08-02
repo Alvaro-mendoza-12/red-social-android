@@ -39,6 +39,7 @@ data class LiveStream(
     @SerialName("host_avatar_url") val hostAvatarUrl: String? = null,
     val source: String = "camera",
     @SerialName("viewer_count") val viewerCount: Int = 0,
+    @SerialName("total_reactions") val totalReactions: Long = 0,
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("started_at") val startedAt: String? = null,
@@ -64,7 +65,7 @@ data class LiveComment(
 
 data class LiveReaction(
     val id: String = UUID.randomUUID().toString(),
-    val emoji: String = "❤️",
+    val kind: String = "heart",
     val userId: String = "",
     val createdAtMs: Long = System.currentTimeMillis()
 )

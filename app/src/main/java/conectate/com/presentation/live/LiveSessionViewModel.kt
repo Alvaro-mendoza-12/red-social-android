@@ -8,6 +8,7 @@ import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.LiveRole
+import conectate.com.data.model.GiftReceipt
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -39,6 +40,8 @@ class LiveSessionViewModel @Inject constructor(
     val activeSession = liveRepository.activeSession
     val comments = liveRepository.comments
     val reactions = liveRepository.reactions
+    val reactionCount = liveRepository.reactionCount
+    val giftEvents = liveRepository.giftEvents
     val viewerCount = liveRepository.viewerCount
     val liveViewers = liveRepository.liveViewers
     val moderationState = liveRepository.moderationState
@@ -225,8 +228,12 @@ class LiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun sendReaction(emoji: String = "❤️") {
-        liveRepository.sendReaction(emoji)
+    fun sendReaction() {
+        liveRepository.sendReaction()
+    }
+
+    fun announceCommittedGift(receipt: GiftReceipt) {
+        liveRepository.announceCommittedGift(receipt)
     }
 
     fun updateModerationSettings(chatPaused: Boolean, blockedWords: List<String>) {

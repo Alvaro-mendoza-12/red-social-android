@@ -20,6 +20,9 @@ import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
 import conectate.com.data.model.LiveStream
 import conectate.com.data.model.LiveViewerParticipant
+import conectate.com.data.model.LiveGiftEvent
+import conectate.com.data.model.GiftReceipt
+import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
@@ -109,6 +112,7 @@ class LiveRepository @Inject constructor(
     private val sessionStartupMutex = Mutex()
     private val sessionEndMutex = Mutex()
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
+    private val giftExpiryJobs = mutableMapOf<String, Job>()
     private val knownViewerSocketIds = mutableSetOf<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
     private var hostSessionStartedElapsedMs: Long = 0L
@@ -146,6 +150,12 @@ class LiveRepository @Inject constructor(
 
     private val _reactions = MutableStateFlow<List<LiveReaction>>(emptyList())
     val reactions: StateFlow<List<LiveReaction>> = _reactions.asStateFlow()
+
+    private val _reactionCount = MutableStateFlow(0L)
+    val reactionCount: StateFlow<Long> = _reactionCount.asStateFlow()
+
+    private val _giftEvents = MutableStateFlow<List<LiveGiftEvent>>(emptyList())
+    val giftEvents: StateFlow<List<LiveGiftEvent>> = _giftEvents.asStateFlow()
 
     private val _viewerCount = MutableStateFlow(0)
     val viewerCount: StateFlow<Int> = _viewerCount.asStateFlow()
@@ -582,9 +592,10 @@ class LiveRepository @Inject constructor(
             }
 
             _viewerCount.value = stream.viewerCount
+            _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
             peakViewerCount = stream.viewerCount.coerceAtLeast(0)
             sessionCommentCount = 0
-            sessionReactionCount = 0
+            sessionReactionCount = stream.totalReactions.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
             _isMediaReady.value = false
 
             if (!initializeWebRTC(userId = currentUserId)) {
@@ -641,9 +652,10 @@ class LiveRepository @Inject constructor(
                 ?: return@withContext Result.failure(Exception("Live no encontrado"))
 
             _viewerCount.value = stream.viewerCount
+            _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
             peakViewerCount = stream.viewerCount.coerceAtLeast(0)
             sessionCommentCount = 0
-            sessionReactionCount = 0
+            sessionReactionCount = stream.totalReactions.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
             _isMediaReady.value = false
 
             if (!initializeWebRTC(userId = currentUserId)) {
@@ -944,7 +956,7 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    fun sendReaction(emoji: String = "❤️") {
+    fun sendReaction() {
         var session = _activeSession.value ?: return
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return
@@ -952,9 +964,34 @@ class LiveRepository @Inject constructor(
         var payload = org.json.JSONObject().apply {
             put("liveId", session.stream.id)
             put("userId", currentUserId)
-            put("emoji", emoji)
+            put("kind", "heart")
         }
         runCatching { socket?.emit("send-reaction", payload) }
+    }
+
+    fun announceCommittedGift(receipt: GiftReceipt) {
+        val liveId = receipt.liveStreamId?.trim().orEmpty()
+        if (liveId.isBlank() || receipt.transactionId.isBlank()) return
+        val activeLiveId = _activeSession.value?.stream?.id?.trim().orEmpty()
+        if (!activeLiveId.equals(liveId, ignoreCase = true)) return
+        if (!receipt.isPublic) {
+            val event = LiveGiftEvent(
+                transactionId = receipt.transactionId,
+                liveStreamId = liveId,
+                senderId = receipt.senderId,
+                senderName = receipt.senderName,
+                receiverId = receipt.receiverId,
+                gift = receipt.gift
+            )
+            _giftEvents.update { (it + event).takeLast(4) }
+            scheduleGiftExpiry(event)
+            return
+        }
+        val payload = org.json.JSONObject().apply {
+            put("liveId", liveId)
+            put("transactionId", receipt.transactionId)
+        }
+        runCatching { socket?.emit("gift-committed", payload) }
     }
 
     suspend fun refreshLiveReplays() = withContext(Dispatchers.IO) {
@@ -1418,6 +1455,15 @@ class LiveRepository @Inject constructor(
                 disconnectAndClear()
             }
 
+            socket?.on("reaction-count") { args ->
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val count = data.optLong("reactionCount", 0L).coerceAtLeast(0L)
+                    _reactionCount.value = count
+                    sessionReactionCount = count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                }.onFailure { logMalformedSignal("reaction-count", it) }
+            }
+
             socket?.on("live-moderation-state") { args ->
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
@@ -1509,13 +1555,46 @@ class LiveRepository @Inject constructor(
             socket?.on("reaction") { args ->
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
-                    val emoji = data.optString("emoji", "❤️").ifBlank { "❤️" }
                     val fromUserId = data.optString("userId", "").trim()
-                    val reaction = LiveReaction(emoji = emoji, userId = fromUserId)
+                    val reaction = LiveReaction(kind = "heart", userId = fromUserId)
                     _reactions.update { (it + listOf(reaction)).takeLast(40) }
                     scheduleReactionExpiry(reaction)
-                    sessionReactionCount += 1
                 }.onFailure { logMalformedSignal("reaction", it) }
+            }
+
+            socket?.on("gift") { args ->
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val giftData = data.optJSONObject("gift") ?: return@runCatching
+                    val transactionId = data.optString("transactionId").trim()
+                    val eventLiveId = data.optString("liveId").trim()
+                    if (transactionId.isBlank() || eventLiveId != liveId) return@runCatching
+                    val event = LiveGiftEvent(
+                        transactionId = transactionId,
+                        liveStreamId = eventLiveId,
+                        senderId = data.optString("senderId").trim(),
+                        senderName = data.optString("senderName", "Usuario").ifBlank { "Usuario" },
+                        receiverId = data.optString("receiverId").trim(),
+                        gift = VirtualGift(
+                            id = giftData.optString("id").trim(),
+                            name = giftData.optString("name", "Regalo Novvin").ifBlank { "Regalo Novvin" },
+                            imageUrl = giftData.optString("imageUrl").takeIf { it.isNotBlank() },
+                            animationUrl = giftData.optString("animationUrl").takeIf { it.isNotBlank() },
+                            priceDiamonds = giftData.optInt("priceDiamonds", 0).coerceAtLeast(0)
+                        )
+                    )
+                    if (_giftEvents.value.none { it.transactionId == transactionId }) {
+                        _giftEvents.update { (it + event).takeLast(4) }
+                        scheduleGiftExpiry(event)
+                    }
+                }.onFailure { logMalformedSignal("gift", it) }
+            }
+
+            socket?.on("gift-error") { args ->
+                val message = runCatching {
+                    (args.firstOrNull() as? org.json.JSONObject)?.optString("message")?.trim().orEmpty()
+                }.getOrDefault("").ifBlank { "No se pudo mostrar el regalo en el directo." }
+                _runtimeErrors.tryEmit(message)
             }
 
             // WebRTC signaling
@@ -1831,6 +1910,8 @@ class LiveRepository @Inject constructor(
         stopAdaptiveQualityMonitor()
         reactionExpiryJobs.values.forEach { it.cancel() }
         reactionExpiryJobs.clear()
+        giftExpiryJobs.values.forEach { it.cancel() }
+        giftExpiryJobs.clear()
 
         val channelToClose = commentsChannel
         commentsChannel = null
@@ -1845,6 +1926,8 @@ class LiveRepository @Inject constructor(
         _activeSession.value = null
         _comments.value = emptyList()
         _reactions.value = emptyList()
+        _reactionCount.value = 0L
+        _giftEvents.value = emptyList()
         _viewerCount.value = 0
         _liveViewers.value = emptyList()
         _moderationState.value = LiveModerationState()
@@ -1871,6 +1954,16 @@ class LiveRepository @Inject constructor(
             delay(ttlMs)
             _reactions.update { it.filterNot { r -> r.id == id } }
             reactionExpiryJobs.remove(id)?.cancel()
+        }
+    }
+
+    private fun scheduleGiftExpiry(event: LiveGiftEvent) {
+        val id = event.transactionId.trim()
+        if (id.isBlank() || giftExpiryJobs.containsKey(id)) return
+        giftExpiryJobs[id] = scope.launch {
+            delay(4_500L)
+            _giftEvents.update { it.filterNot { gift -> gift.transactionId == id } }
+            giftExpiryJobs.remove(id)?.cancel()
         }
     }
 

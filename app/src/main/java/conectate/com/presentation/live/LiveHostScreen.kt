@@ -48,6 +48,7 @@ import androidx.navigation.NavController
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
 import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import org.webrtc.RendererCommon
 
 private data class HostLiveSettingsDraft(
@@ -82,6 +83,8 @@ fun LiveHostScreen(
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
+    val reactionCount by viewModel.reactionCount.collectAsStateWithLifecycle()
+    val giftEvents by viewModel.giftEvents.collectAsStateWithLifecycle()
     val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val micEnabled by viewModel.isMicEnabled.collectAsStateWithLifecycle()
@@ -522,6 +525,7 @@ fun LiveHostScreen(
     LiveSessionScaffold(
         stream = session?.stream,
         viewerCount = viewerCount,
+        reactionCount = reactionCount,
         videoTrack = if (isVideoEnabled) localVideoTrack else null,
         sharedEglContext = eglBaseContext,
         mirrorVideo = currentSource == LiveSource.CAMERA,
@@ -533,7 +537,7 @@ fun LiveHostScreen(
         comments = comments,
         reactions = reactions,
         onSendComment = viewModel::sendComment,
-        onSendReaction = { viewModel.sendReaction("❤️") },
+        onSendReaction = viewModel::sendReaction,
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
@@ -554,6 +558,7 @@ fun LiveHostScreen(
         },
         topBarActions = {},
         floatingOverlay = {
+            GiftCelebrationOverlay(events = giftEvents)
             if (floatingChatEnabled) {
                 LiveFloatingChatWindow(
                     comments = comments,

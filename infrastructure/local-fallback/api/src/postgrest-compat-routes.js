@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
 const {
   publishChatMessageEvent,
   publishChallengeLiveEvent,
@@ -27,11 +28,14 @@ const RESERVED_QUERY_KEYS = new Set([
 ])
 
 const DEFAULT_VIRTUAL_GIFTS = [
-  { id: 'builtin-heart', name: 'Corazon', description: 'Un detalle para expresar carino', image_url: 'conectate://gift-assets/heart', price_diamonds: 10, price_credits: 1.99, sort_order: 1 },
-  { id: 'builtin-rose', name: 'Rosa', description: 'Una rosa virtual', image_url: 'conectate://gift-assets/rose', price_diamonds: 25, price_credits: 4.99, sort_order: 2 },
-  { id: 'builtin-trophy', name: 'Trofeo', description: 'Felicitacion para logros y retos', image_url: 'conectate://gift-assets/trophy', price_diamonds: 50, price_credits: 9.99, sort_order: 3 },
-  { id: 'builtin-fireworks', name: 'Fuegos Artificiales', description: 'Celebracion destacada', image_url: 'conectate://gift-assets/fireworks', price_diamonds: 100, price_credits: 19.99, sort_order: 4 },
-  { id: 'builtin-star', name: 'Superestrella', description: 'Regalo premium para creadores', image_url: 'conectate://gift-assets/star', price_diamonds: 200, price_credits: 39.99, sort_order: 5 },
+  { id: 'builtin-heart', name: 'Pulso Novvin', description: 'Un pulso luminoso para apoyar al creador', image_url: 'conectate://gift-assets/heart', price_diamonds: 5, sort_order: 1 },
+  { id: 'builtin-rose', name: 'Flor Aurora', description: 'Petalos de luz originales de Novvin', image_url: 'conectate://gift-assets/rose', price_diamonds: 25, sort_order: 2 },
+  { id: 'builtin-trophy', name: 'Copa Prisma', description: 'Una copa brillante para celebrar logros', image_url: 'conectate://gift-assets/trophy', price_diamonds: 50, sort_order: 3 },
+  { id: 'builtin-fireworks', name: 'Lluvia de Luz', description: 'Una celebracion que llena la pantalla', image_url: 'conectate://gift-assets/fireworks', price_diamonds: 100, sort_order: 4 },
+  { id: 'builtin-star', name: 'Nova', description: 'Una explosion estelar para grandes momentos', image_url: 'conectate://gift-assets/star', price_diamonds: 200, sort_order: 5 },
+  { id: 'builtin-orbit', name: 'Orbita', description: 'Un planeta de energia Novvin', image_url: 'conectate://gift-assets/orbit', price_diamonds: 35, sort_order: 6 },
+  { id: 'builtin-comet', name: 'Cometa', description: 'Una estela veloz para destacar el directo', image_url: 'conectate://gift-assets/comet', price_diamonds: 350, sort_order: 7 },
+  { id: 'builtin-crown', name: 'Corona Cosmica', description: 'La celebracion mas destacada del catalogo', image_url: 'conectate://gift-assets/crown', price_diamonds: 500, sort_order: 8 },
 ]
 
 const SUPPORTED_RPC_NAMES = new Set([
@@ -87,6 +91,9 @@ const SUPPORTED_RPC_NAMES = new Set([
   'secure_toggle_sticker_favorite',
   'secure_vote_poll_option',
   'send_virtual_gift',
+  'get_virtual_gift_receipt',
+  'billing_capabilities',
+  'verify_google_play_purchase',
   'subscribe_to_plan',
   'toggle_challenge_vote',
   'update_user_online_status',
@@ -115,6 +122,8 @@ const SUPPORTED_TABLES = new Set([
   'community_message_receipts',
   'community_messages',
   'creator_earnings',
+  'gift_transactions',
+  'billing_purchases',
   'creator_payout_accounts',
   'creator_program_applications',
   'fcm_tokens',
@@ -162,6 +171,7 @@ const SUPPORTED_TABLES = new Set([
   'voice_room_participants',
   'voice_rooms',
   'wallets',
+  'wallet_transactions',
 ])
 
 const ADMIN_WRITE_TABLES = new Set([
@@ -186,6 +196,8 @@ const PRIVATE_OWNER_FIELDS = new Map([
   ['chat_summary_cache', ['user_id']],
   ['chat_translation_settings', ['user_id']],
   ['creator_earnings', ['user_id', 'creator_id']],
+  ['gift_transactions', ['sender_id', 'receiver_id']],
+  ['billing_purchases', ['user_id']],
   ['creator_payout_accounts', ['user_id', 'creator_id']],
   ['creator_program_applications', ['user_id', 'creator_id']],
   ['fcm_tokens', ['user_id']],
@@ -197,6 +209,7 @@ const PRIVATE_OWNER_FIELDS = new Map([
   ['user_sticker_favorites', ['user_id']],
   ['user_subscriptions', ['user_id']],
   ['wallets', ['user_id']],
+  ['wallet_transactions', ['user_id']],
   ['voice_access_requests', ['user_id', 'requester_id']],
 ])
 
@@ -2922,6 +2935,217 @@ async function lockWalletForIdentity(client, identity) {
   return wallet
 }
 
+function googlePlayConfiguration() {
+  const enabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.LIVE_COIN_PURCHASES_ENABLED || '').trim().toLowerCase(),
+  )
+  let serviceAccount = null
+  let packages = {}
+  try {
+    serviceAccount = JSON.parse(String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '').trim())
+    if (serviceAccount?.private_key) {
+      serviceAccount.private_key = String(serviceAccount.private_key).replace(/\\n/g, '\n')
+    }
+  } catch (_) {
+    serviceAccount = null
+  }
+  try {
+    const rawPackages = JSON.parse(String(process.env.GOOGLE_PLAY_COIN_PACKAGES_JSON || '{}'))
+    packages = Object.fromEntries(
+      Object.entries(rawPackages)
+        .map(([productId, coins]) => [String(productId).trim(), Math.trunc(Number(coins) || 0)])
+        .filter(([productId, coins]) => productId && coins > 0 && coins <= 1_000_000),
+    )
+  } catch (_) {
+    packages = {}
+  }
+  const packageName = String(process.env.GOOGLE_PLAY_PACKAGE_NAME || 'conectate.com').trim()
+  const ready = Boolean(
+    enabled &&
+    packageName &&
+    Object.keys(packages).length > 0 &&
+    serviceAccount?.client_email &&
+    serviceAccount?.private_key,
+  )
+  return { enabled: ready, packageName, packages, serviceAccount }
+}
+
+async function googlePlayAccessToken(serviceAccount) {
+  const now = Math.floor(Date.now() / 1000)
+  const assertion = jwt.sign(
+    {
+      scope: 'https://www.googleapis.com/auth/androidpublisher',
+      aud: serviceAccount.token_uri || 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    },
+    serviceAccount.private_key,
+    { algorithm: 'RS256', issuer: serviceAccount.client_email },
+  )
+  const response = await fetch(serviceAccount.token_uri || 'https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.access_token) throw httpError('GOOGLE_PLAY_AUTH_FAILED', 502)
+  return payload.access_token
+}
+
+async function googlePlayProductPurchase(config, productId, purchaseToken, accessToken) {
+  const packageName = encodeURIComponent(config.packageName)
+  const product = encodeURIComponent(productId)
+  const token = encodeURIComponent(purchaseToken)
+  const response = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/products/${product}/tokens/${token}`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw httpError(payload?.error?.message || 'GOOGLE_PLAY_PURCHASE_NOT_FOUND', response.status === 404 ? 404 : 502)
+  return payload
+}
+
+async function consumeGooglePlayProduct(config, productId, purchaseToken, accessToken) {
+  const packageName = encodeURIComponent(config.packageName)
+  const product = encodeURIComponent(productId)
+  const token = encodeURIComponent(purchaseToken)
+  const response = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/products/${product}/tokens/${token}:consume`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw httpError(payload?.error?.message || 'GOOGLE_PLAY_CONSUME_FAILED', 502)
+  }
+}
+
+async function billingCapabilitiesRpc(pool, auth) {
+  const identity = await getAuthIdentity(pool, auth)
+  if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  const config = googlePlayConfiguration()
+  return {
+    enabled: config.enabled,
+    provider: 'google_play',
+    products: Object.entries(config.packages).map(([product_id, coins]) => ({ product_id, coins })),
+  }
+}
+
+async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
+  const identity = await getAuthIdentity(pool, auth)
+  if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  const config = googlePlayConfiguration()
+  if (!config.enabled) throw httpError('GOOGLE_PLAY_BILLING_DISABLED', 503)
+  const productId = String(messageBodyValue(body, 'product_id', '') || '').trim()
+  const purchaseToken = String(messageBodyValue(body, 'purchase_token', '') || '').trim()
+  const coins = config.packages[productId]
+  if (!coins || !purchaseToken || purchaseToken.length > 4096) throw httpError('GOOGLE_PLAY_PURCHASE_INVALID', 400)
+
+  const tokenHash = crypto.createHash('sha256').update(purchaseToken).digest('hex')
+  const existingPurchase = (await importedAndCompatRows(pool, 'billing_purchases'))
+    .find((row) => row.purchase_token_hash === tokenHash)
+  if (existingPurchase && !identityOwnsValue(identity, existingPurchase.user_id)) {
+    throw httpError('GOOGLE_PLAY_PURCHASE_ALREADY_CLAIMED', 409)
+  }
+  if (existingPurchase && String(existingPurchase.product_id || '').trim() !== productId) {
+    throw httpError('GOOGLE_PLAY_PRODUCT_MISMATCH', 409)
+  }
+
+  const accessToken = await googlePlayAccessToken(config.serviceAccount)
+  if (existingPurchase?.status === 'credited') {
+    let consumePending = existingPurchase.consumed !== true
+    if (existingPurchase.consumed !== true) {
+      try {
+        await consumeGooglePlayProduct(config, productId, purchaseToken, accessToken)
+        await storeCompatRow(pool, 'billing_purchases', { ...existingPurchase, consumed: true, consumed_at: nowIso() })
+        consumePending = false
+      } catch (error) {
+        await storeCompatRow(pool, 'billing_purchases', {
+          ...existingPurchase,
+          consume_error: String(error?.message || error).slice(0, 500),
+        })
+      }
+    }
+    const wallet = await walletForIdentity(pool, identity)
+    return { status: 'credited', credited: false, coins: 0, balance_diamonds: wallet.balance_diamonds, consume_pending: consumePending, idempotent_replay: true }
+  }
+
+  const purchase = await googlePlayProductPurchase(config, productId, purchaseToken, accessToken)
+  const purchaseState = Math.trunc(Number(purchase.purchaseState ?? 1))
+  if (purchaseState === 2) return { status: 'pending', credited: false, coins: 0 }
+  if (purchaseState !== 0) throw httpError('GOOGLE_PLAY_PURCHASE_NOT_COMPLETED', 409)
+  const accountHashes = new Set(identity.values.map((value) =>
+    crypto.createHash('sha256').update(String(value)).digest('hex'),
+  ))
+  const obfuscatedAccountId = String(purchase.obfuscatedExternalAccountId || '').trim().toLowerCase()
+  if (!obfuscatedAccountId || !accountHashes.has(obfuscatedAccountId)) {
+    throw httpError('GOOGLE_PLAY_ACCOUNT_MISMATCH', 409)
+  }
+
+  const client = await pool.connect()
+  let inTransaction = false
+  let balance = 0
+  try {
+    await client.query('BEGIN')
+    inTransaction = true
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tokenHash])
+    const wallet = await lockWalletForIdentity(client, identity)
+    const duplicates = await importedAndCompatRows(client, 'billing_purchases')
+    const duplicate = duplicates.find((row) => row.purchase_token_hash === tokenHash)
+    if (duplicate) {
+      if (!identityOwnsValue(identity, duplicate.user_id)) throw httpError('GOOGLE_PLAY_PURCHASE_ALREADY_CLAIMED', 409)
+      if (String(duplicate.product_id || '').trim() !== productId) throw httpError('GOOGLE_PLAY_PRODUCT_MISMATCH', 409)
+      balance = wallet.balance_diamonds
+    } else {
+      balance = wallet.balance_diamonds + coins
+      await storeCompatRow(client, 'wallets', { ...wallet, balance_diamonds: balance })
+      await storeCompatRow(client, 'billing_purchases', {
+        id: crypto.randomUUID(),
+        user_id: identity.preferredUserId,
+        product_id: productId,
+        purchase_token_hash: tokenHash,
+        order_id: purchase.orderId || null,
+        coins,
+        status: 'credited',
+        consumed: false,
+        purchased_at: purchase.purchaseTimeMillis ? new Date(Number(purchase.purchaseTimeMillis)).toISOString() : nowIso(),
+      })
+      await storeCompatRow(client, 'wallet_transactions', {
+        id: crypto.randomUUID(),
+        user_id: identity.preferredUserId,
+        direction: 'credit',
+        transaction_type: 'google_play_coin_purchase',
+        amount_diamonds: coins,
+        balance_after: balance,
+        reference_id: tokenHash,
+      })
+    }
+    await client.query('COMMIT')
+    inTransaction = false
+  } catch (error) {
+    if (inTransaction) await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    client.release()
+  }
+
+  let consumePending = false
+  try {
+    await consumeGooglePlayProduct(config, productId, purchaseToken, accessToken)
+  } catch (error) {
+    consumePending = true
+  }
+  const stored = (await importedAndCompatRows(pool, 'billing_purchases'))
+    .find((row) => row.purchase_token_hash === tokenHash)
+  if (stored) await storeCompatRow(pool, 'billing_purchases', {
+    ...stored,
+    consumed: !consumePending,
+    consumed_at: consumePending ? null : nowIso(),
+  })
+  return { status: 'credited', credited: true, coins, balance_diamonds: balance, consume_pending: consumePending, idempotent_replay: false }
+}
+
 async function sendVirtualGiftRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -2930,8 +3154,39 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   const receiverId = normalizeIdentityValue(messageBodyValue(body, 'receiver_id', ''))
   const giftId = String(messageBodyValue(body, 'gift_id', '') || '').trim().slice(0, 160)
   const liveStreamId = normalizeIdentityValue(messageBodyValue(body, 'live_stream_id', '')) || null
+  const idempotencyKey = validUuidOrNull(messageBodyValue(body, 'idempotency_key', ''))
+  const isPublic = messageBodyValue(body, 'is_public', true) !== false
   if (!receiverId || !giftId) throw httpError('GIFT_RECEIVER_AND_ID_REQUIRED', 400)
+  if (!idempotencyKey) throw httpError('GIFT_IDEMPOTENCY_KEY_REQUIRED', 400)
   if (identityOwnsValue(identity, receiverId)) throw httpError('SELF_GIFT_FORBIDDEN', 400)
+
+  const priorTransaction = (await importedAndCompatRows(pool, 'gift_transactions'))
+    .find((row) => normalizeIdentityValue(row.idempotency_key) === idempotencyKey)
+  if (priorTransaction) {
+    if (!identityOwnsValue(identity, priorTransaction.sender_id)) throw httpError('GIFT_IDEMPOTENCY_CONFLICT', 409)
+    const samePayload =
+      normalizeIdentityValue(priorTransaction.receiver_id) === receiverId &&
+      String(priorTransaction.gift_id || '').trim() === giftId &&
+      (normalizeIdentityValue(priorTransaction.live_stream_id) || null) === liveStreamId &&
+      (priorTransaction.is_public !== false) === isPublic
+    if (!samePayload) throw httpError('GIFT_IDEMPOTENCY_CONFLICT', 409)
+    return {
+      ok: true,
+      transaction_id: priorTransaction.id,
+      earning_id: priorTransaction.earning_id || null,
+      sender_balance_diamonds: priorTransaction.sender_balance_after,
+      gift_id: priorTransaction.gift_id,
+      gift_name: priorTransaction.gift_name,
+      gift_image_url: priorTransaction.gift_image_url || null,
+      gift_animation_url: priorTransaction.gift_animation_url || null,
+      sender_id: priorTransaction.sender_id,
+      sender_name: priorTransaction.sender_name,
+      receiver_id: priorTransaction.receiver_id,
+      live_stream_id: priorTransaction.live_stream_id || null,
+      is_public: priorTransaction.is_public !== false,
+      idempotent_replay: true,
+    }
+  }
 
   const gift = await findCompatEntity(pool, 'virtual_gifts', giftId)
   if (!gift || gift.is_active === false) throw httpError('GIFT_NOT_FOUND', 404)
@@ -2949,16 +3204,41 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     if (!live || normalizeIdentityValue(live.host_user_id || live.user_id) !== receiverId) {
       throw httpError('LIVE_STREAM_RECEIVER_MISMATCH', 409)
     }
+    const rawActive = live.is_active ?? live.isActive
+    if (!(rawActive === true || rawActive === 1 || String(rawActive).toLowerCase() === 'true')) {
+      throw httpError('LIVE_STREAM_NOT_ACTIVE', 409)
+    }
   }
 
   const client = await pool.connect()
   let inTransaction = false
   let newBalance = 0
   const earningId = crypto.randomUUID()
+  let transaction = null
+  let replay = false
   try {
     await client.query('BEGIN')
     inTransaction = true
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [idempotencyKey])
     const wallet = await lockWalletForIdentity(client, identity)
+    const existingTransactions = await importedAndCompatRows(client, 'gift_transactions')
+    const existing = existingTransactions.find((row) =>
+      normalizeIdentityValue(row.idempotency_key) === idempotencyKey,
+    )
+    if (existing) {
+      if (!identityOwnsValue(identity, existing.sender_id)) throw httpError('GIFT_IDEMPOTENCY_CONFLICT', 409)
+      const samePayload =
+        normalizeIdentityValue(existing.receiver_id) === receiverId &&
+        String(existing.gift_id || '').trim() === giftId &&
+        (normalizeIdentityValue(existing.live_stream_id) || null) === liveStreamId &&
+        (existing.is_public !== false) === isPublic
+      if (!samePayload) throw httpError('GIFT_IDEMPOTENCY_CONFLICT', 409)
+      transaction = existing
+      newBalance = Math.max(0, Math.trunc(Number(existing.sender_balance_after || wallet.balance_diamonds) || 0))
+      replay = true
+      await client.query('COMMIT')
+      inTransaction = false
+    } else {
     if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_DIAMONDS', 409)
     newBalance = wallet.balance_diamonds - costDiamonds
     await storeCompatRow(client, 'wallets', {
@@ -2977,6 +3257,32 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       amount_diamonds: costDiamonds,
       status: 'pending',
     })
+    transaction = await storeCompatRow(client, 'gift_transactions', {
+      id: idempotencyKey,
+      idempotency_key: idempotencyKey,
+      earning_id: earningId,
+      sender_id: identity.preferredUserId,
+      sender_name: identity.displayName,
+      receiver_id: receiverId,
+      gift_id: giftId,
+      gift_name: gift.name || 'Regalo Novvin',
+      gift_image_url: gift.image_url || null,
+      gift_animation_url: gift.animation_url || null,
+      live_stream_id: liveStreamId,
+      amount_diamonds: costDiamonds,
+      sender_balance_after: newBalance,
+      status: 'committed',
+      is_public: isPublic,
+    })
+    await storeCompatRow(client, 'wallet_transactions', {
+      id: crypto.randomUUID(),
+      user_id: identity.preferredUserId,
+      direction: 'debit',
+      transaction_type: 'virtual_gift',
+      amount_diamonds: costDiamonds,
+      balance_after: newBalance,
+      reference_id: transaction.id,
+    })
     await storeCompatRow(client, 'notifications', {
       id: crypto.randomUUID(),
       recipient_id: receiverId,
@@ -2993,6 +3299,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     })
     await client.query('COMMIT')
     inTransaction = false
+    }
   } catch (error) {
     if (inTransaction) await client.query('ROLLBACK').catch(() => {})
     throw error
@@ -3000,7 +3307,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     client.release()
   }
 
-  void publishRealtimeEvent(`user:${receiverId}`, {
+  if (!replay) void publishRealtimeEvent(`user:${receiverId}`, {
     event: 'virtual_gift_received',
     giftId,
     senderId: identity.preferredUserId,
@@ -3008,11 +3315,32 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   })
   return {
     ok: true,
+    transaction_id: transaction.id,
     earning_id: earningId,
     sender_balance_diamonds: newBalance,
     gift_id: giftId,
+    gift_name: transaction.gift_name,
+    gift_image_url: transaction.gift_image_url || null,
+    gift_animation_url: transaction.gift_animation_url || null,
+    sender_id: transaction.sender_id,
+    sender_name: transaction.sender_name,
     receiver_id: receiverId,
+    live_stream_id: liveStreamId,
+    is_public: transaction.is_public !== false,
+    idempotent_replay: replay,
   }
+}
+
+async function getVirtualGiftReceiptRpc(pool, auth, body) {
+  const identity = await getAuthIdentity(pool, auth)
+  if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  const transactionId = validUuidOrNull(messageBodyValue(body, 'transaction_id', ''))
+  if (!transactionId) throw httpError('GIFT_TRANSACTION_ID_REQUIRED', 400)
+  const transaction = (await importedAndCompatRows(pool, 'gift_transactions'))
+    .find((row) => normalizeIdentityValue(row.id) === transactionId)
+  if (!transaction || transaction.status !== 'committed') throw httpError('GIFT_TRANSACTION_NOT_FOUND', 404)
+  if (!identityOwnsValue(identity, transaction.sender_id)) throw httpError('GIFT_TRANSACTION_FORBIDDEN', 403)
+  return transaction
 }
 
 async function subscribeToPlanRpc(pool, auth, body) {
@@ -4295,6 +4623,12 @@ async function handleRpc(pool, req, rpcName) {
       return searchStickersRpc(pool, auth, body)
     case 'send_virtual_gift':
       return sendVirtualGiftRpc(pool, auth, body)
+    case 'get_virtual_gift_receipt':
+      return getVirtualGiftReceiptRpc(pool, auth, body)
+    case 'billing_capabilities':
+      return billingCapabilitiesRpc(pool, auth)
+    case 'verify_google_play_purchase':
+      return verifyGooglePlayPurchaseRpc(pool, auth, body)
     case 'subscribe_to_plan':
       return subscribeToPlanRpc(pool, auth, body)
     case 'secure_set_chat_preferences': {

@@ -57,6 +57,14 @@ ADMIN_USER_IDS=
 ALLOW_LEGACY_ADMIN_EMAIL_ADMINS=false
 ADMIN_EMAILS=
 
+# Monedas para regalos en Android. Mantener desactivado hasta configurar los
+# productos consumibles en Play Console y la cuenta de servicio Android Publisher.
+LIVE_COIN_PURCHASES_ENABLED=false
+GOOGLE_PLAY_PACKAGE_NAME=conectate.com
+GOOGLE_PLAY_COIN_PACKAGES_JSON={"novvin_coins_70":70,"novvin_coins_350":350,"novvin_coins_700":700,"novvin_coins_1400":1400}
+# JSON completo de la cuenta de servicio, inyectado como secreto; nunca se incluye en la app.
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=
+
 # IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
 # 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion
 # y hace el primer entrenamiento casi 10 veces mas costoso que 512.

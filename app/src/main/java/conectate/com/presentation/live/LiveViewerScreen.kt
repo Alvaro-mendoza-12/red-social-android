@@ -19,6 +19,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
+import conectate.com.presentation.wallet.GiftCelebrationOverlay
+import conectate.com.presentation.wallet.GiftSelectionDialog
+import conectate.com.presentation.wallet.GooglePlayRechargeDialog
 import java.util.concurrent.atomic.AtomicBoolean
 import org.webrtc.RendererCommon
 
@@ -41,6 +44,8 @@ fun LiveViewerScreen(
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
+    val reactionCount by viewModel.reactionCount.collectAsStateWithLifecycle()
+    val giftEvents by viewModel.giftEvents.collectAsStateWithLifecycle()
     val remoteTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
@@ -58,6 +63,8 @@ fun LiveViewerScreen(
     var wasConnectedToLive by remember(liveId) { mutableStateOf(false) }
     var manualLeaveRequested by remember(liveId) { mutableStateOf(false) }
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
+    var showGiftSheet by remember(liveId) { mutableStateOf(false) }
+    var showRechargeDialog by remember(liveId) { mutableStateOf(false) }
     val exitGate = remember(liveId) { LiveViewerExitGate() }
 
     fun leaveViewer() {
@@ -130,6 +137,27 @@ fun LiveViewerScreen(
         )
     }
 
+    if (showGiftSheet && stream != null) {
+        GiftSelectionDialog(
+            receiverId = stream.hostUserId,
+            receiverName = stream.hostName.ifBlank { "creador" },
+            liveStreamId = stream.id,
+            onDismiss = { showGiftSheet = false },
+            onRecharge = { showRechargeDialog = true },
+            onGiftSent = { receipt ->
+                viewModel.announceCommittedGift(receipt)
+                AppFeedbackBus.show("Regalo enviado")
+            }
+        )
+    }
+
+    if (showRechargeDialog) {
+        GooglePlayRechargeDialog(
+            accountId = viewModel.getCurrentUserId().orEmpty(),
+            onDismiss = { showRechargeDialog = false }
+        )
+    }
+
     val stateOverlayText = when {
         isPaused -> "LIVE EN PAUSA"
         !isVideoEnabled && currentSource == conectate.com.data.model.LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
@@ -140,6 +168,7 @@ fun LiveViewerScreen(
     LiveSessionScaffold(
         stream = stream,
         viewerCount = viewerCount,
+        reactionCount = reactionCount,
         videoTrack = if (isPaused || !isVideoEnabled) null else hostTrack,
         sharedEglContext = eglBaseContext,
         mirrorVideo = false,
@@ -151,7 +180,7 @@ fun LiveViewerScreen(
         comments = comments,
         reactions = reactions,
         onSendComment = viewModel::sendComment,
-        onSendReaction = { viewModel.sendReaction("❤️") },
+        onSendReaction = viewModel::sendReaction,
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
@@ -178,6 +207,10 @@ fun LiveViewerScreen(
                 )
             }
             LiveActionChip(
+                text = "Regalar",
+                onClick = { showGiftSheet = true }
+            )
+            LiveActionChip(
                 text = "Compartir",
                 onClick = {
                     val shareIntent = Intent(Intent.ACTION_SEND)
@@ -196,6 +229,9 @@ fun LiveViewerScreen(
                 text = "Salir",
                 onClick = ::leaveViewer
             )
+        },
+        floatingOverlay = {
+            GiftCelebrationOverlay(events = giftEvents)
         },
         creatorControls = {
             if (moderation.canModerate) {

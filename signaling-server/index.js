@@ -695,6 +695,19 @@ async function setLiveViewerCount(liveId, viewerCount, accessToken) {
     }
 }
 
+async function setLiveReactionCount(liveId, reactionCount, accessToken) {
+    if (!accessToken) return;
+    try {
+        await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
+            method: 'PATCH',
+            accessToken,
+            body: { totalReactions: Math.max(0, Number(reactionCount || 0)) }
+        });
+    } catch (error) {
+        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to update total_reactions for ${liveId}:`, error.message || error);
+    }
+}
+
 async function setLiveStreamActive(liveId, accessToken) {
     if (!accessToken) return;
     try {
@@ -708,13 +721,17 @@ async function setLiveStreamActive(liveId, accessToken) {
     }
 }
 
-async function endLiveStream(liveId, accessToken) {
+async function endLiveStream(liveId, accessToken, reactionCount = 0) {
     if (!accessToken) return;
     try {
         await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
             method: 'PATCH',
             accessToken,
-            body: { isActive: false, viewerCount: 0 }
+            body: {
+                isActive: false,
+                viewerCount: 0,
+                totalReactions: Math.max(0, Number(reactionCount || 0))
+            }
         });
     } catch (error) {
         console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to end ${liveId}:`, error.message || error);
@@ -728,12 +745,13 @@ async function getLiveStreamMeta(liveId, accessToken) {
         return {
             exists: Boolean(stream?.id),
             isActive: Boolean(stream?.is_active ?? stream?.isActive),
-            hostUserId: (stream?.host_user_id || stream?.hostUserId || '').toString().trim()
+            hostUserId: (stream?.host_user_id || stream?.hostUserId || '').toString().trim(),
+            totalReactions: Math.max(0, Number(stream?.total_reactions ?? stream?.totalReactions ?? 0) || 0)
         };
     } catch (error) {
-        if (error?.status === 404) return { exists: false, isActive: false, hostUserId: '' };
+        if (error?.status === 404) return { exists: false, isActive: false, hostUserId: '', totalReactions: 0 };
         console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to read ${liveId}:`, error.message || error);
-        return { exists: false, isActive: false, hostUserId: '' };
+        return { exists: false, isActive: false, hostUserId: '', totalReactions: 0 };
     }
 }
 
@@ -1525,14 +1543,14 @@ async function finalizeLiveTermination(liveId, reason = 'ended') {
     const accessToken = session?.host?.authToken || session?.hostAuthToken || '';
 
     if (!lives.has(liveId)) {
-        await endLiveStream(liveId, accessToken);
+        await endLiveStream(liveId, accessToken, session?.reactionCount || 0);
         return;
     }
 
     console.log(`[SOCKET_DEBUG] [LIVE][END] ${reason}: ${liveId}`);
     liveIo.to(liveId).emit('live-ended');
     lives.delete(liveId);
-    await endLiveStream(liveId, accessToken);
+    await endLiveStream(liveId, accessToken, session?.reactionCount || 0);
 }
 
 function scheduleHostTerminationGrace(liveId, hostSnapshot) {
@@ -1604,6 +1622,8 @@ liveIo.on('connection', (socket) => {
                 host: null,
                 hostAuthToken: '',
                 viewers: new Map(),
+                reactionCount: liveMeta.totalReactions,
+                announcedGiftTransactionIds: new Set(),
                 state: {
                     source: 'camera',
                     isPaused: false,
@@ -1697,6 +1717,7 @@ liveIo.on('connection', (socket) => {
             // Emit count
             const viewerCount = session.viewers.size;
             liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
+            socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
             await setLiveStreamActive(liveId, session.hostAuthToken);
             await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
             emitLiveModerationState(liveId, session);
@@ -1733,6 +1754,7 @@ liveIo.on('connection', (socket) => {
 
         const viewerCount = session.viewers.size;
         liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
+        socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
         await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
         emitLiveModerationState(liveId, session);
     });
@@ -1750,7 +1772,7 @@ liveIo.on('connection', (socket) => {
         await finalizeLiveTermination(liveId, 'host-ended');
     });
 
-    // Reactions (floating UI like TikTok)
+    // Free hearts are ephemeral UI events; this process owns the room aggregate.
     socket.on('send-reaction', (data) => {
         const liveId = requireJoinedScope(
             socket,
@@ -1761,11 +1783,70 @@ liveIo.on('connection', (socket) => {
         );
         if (!liveId) return;
 
-        const emoji = (data?.emoji || '❤️').toString().trim() || '❤️';
         const userId = requireSocketUser(socket, data?.userId);
         if (!userId) return;
 
-        liveIo.to(liveId).emit('reaction', { liveId, emoji, userId });
+        const session = lives.get(liveId);
+        if (!session) return;
+        if (!consumeRateLimitToken('live-reaction', `${liveId}:${userId}`, 12, 2_000)) return;
+
+        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + 1;
+        liveIo.to(liveId).emit('reaction', { liveId, kind: 'heart', userId });
+        liveIo.to(liveId).emit('reaction-count', {
+            liveId,
+            reactionCount: session.reactionCount
+        });
+        if (session.reactionCount % 25 === 0) {
+            void setLiveReactionCount(liveId, session.reactionCount, session.hostAuthToken);
+        }
+    });
+
+    // Cosmetic gift events are accepted only after the Ubuntu API verifies the
+    // committed transaction for this authenticated sender.
+    socket.on('gift-committed', async (data) => {
+        const liveId = requireJoinedScope(
+            socket,
+            'joinedLiveIds',
+            data?.liveId || socket.data.liveId,
+            'live',
+            'gift-committed'
+        );
+        if (!liveId) return;
+        const transactionId = String(data?.transactionId || '').trim();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transactionId)) return;
+        if (!consumeRateLimitToken('live-gift', `${liveId}:${socket.data.authUserId}`, 8, 10_000)) return;
+
+        try {
+            const payload = await callUbuntuApi('/rest/v1/rpc/get_virtual_gift_receipt', {
+                method: 'POST',
+                accessToken: socket.data.authToken,
+                body: { p_transaction_id: transactionId }
+            });
+            const receipt = Array.isArray(payload) ? payload[0] : payload;
+            if (!receipt || String(receipt.live_stream_id || '').trim() !== liveId) return;
+            if (receipt.is_public === false) return;
+            const session = lives.get(liveId);
+            if (!session || session.announcedGiftTransactionIds?.has(transactionId)) return;
+            session.announcedGiftTransactionIds ||= new Set();
+            session.announcedGiftTransactionIds.add(transactionId);
+            liveIo.to(liveId).emit('gift', {
+                transactionId: receipt.id,
+                liveId,
+                senderId: receipt.sender_id,
+                senderName: receipt.sender_name || 'Usuario',
+                receiverId: receipt.receiver_id,
+                gift: {
+                    id: receipt.gift_id,
+                    name: receipt.gift_name || 'Regalo Novvin',
+                    imageUrl: receipt.gift_image_url || null,
+                    animationUrl: receipt.gift_animation_url || null,
+                    priceDiamonds: Math.max(0, Number(receipt.amount_diamonds || 0))
+                }
+            });
+        } catch (error) {
+            console.error(`[SOCKET_DEBUG] [LIVE][GIFT] Could not verify ${transactionId}:`, error.message || error);
+            socket.emit('gift-error', { message: 'No se pudo verificar la animación del regalo.' });
+        }
     });
 
     socket.on('update-live-state', (data) => {
@@ -1988,7 +2069,7 @@ liveIo.on('connection', (socket) => {
                 if (!session.host && viewerCount === 0) {
                     clearPendingLiveTermination(liveId);
                     lives.delete(liveId);
-                    await endLiveStream(liveId, session.hostAuthToken);
+                    await endLiveStream(liveId, session.hostAuthToken, session.reactionCount || 0);
                 }
             }
         }

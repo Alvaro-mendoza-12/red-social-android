@@ -26,6 +26,7 @@ class LiveViewModel @Inject constructor(
     val activeSession = liveRepository.activeSession
     val comments = liveRepository.comments
     val reactions = liveRepository.reactions
+    val reactionCount = liveRepository.reactionCount
     val viewerCount = liveRepository.viewerCount
     val isMicEnabled = liveRepository.isMicEnabled
     val isVideoEnabled = liveRepository.isVideoEnabled
@@ -87,8 +88,8 @@ class LiveViewModel @Inject constructor(
         }
     }
 
-    fun sendReaction(emoji: String = "❤️") {
-        liveRepository.sendReaction(emoji)
+    fun sendReaction() {
+        liveRepository.sendReaction()
     }
 
     fun toggleMic(enabled: Boolean) {

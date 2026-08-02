@@ -3,6 +3,10 @@ package conectate.com.data.repository
 import android.util.Log
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.WalletBalance
+import conectate.com.data.model.GiftReceipt
+import conectate.com.data.model.BillingCapabilities
+import conectate.com.data.model.CoinProduct
+import conectate.com.data.model.CoinPurchaseVerification
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.get
@@ -23,6 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -41,17 +46,16 @@ class WalletRepository @Inject constructor(
         private val LOCAL_GIFT_CATALOG = listOf(
             VirtualGift(
                 id = "builtin-heart",
-                name = "Corazón",
-                description = "Un corazón para expresar tu cariño",
+                name = "Pulso Novvin",
+                description = "Un pulso luminoso para apoyar al creador",
                 imageUrl = "conectate://gift-assets/heart",
-                priceDiamonds = 10,
-                priceCredits = 1.99,
+                priceDiamonds = 5,
                 sortOrder = 1
             ),
             VirtualGift(
                 id = "builtin-rose",
-                name = "Rosa",
-                description = "Una rosa virtual",
+                name = "Flor Aurora",
+                description = "Pétalos de luz originales de Novvin",
                 imageUrl = "conectate://gift-assets/rose",
                 priceDiamonds = 25,
                 priceCredits = 4.99,
@@ -59,8 +63,8 @@ class WalletRepository @Inject constructor(
             ),
             VirtualGift(
                 id = "builtin-trophy",
-                name = "Trofeo",
-                description = "Felicitación para logros y retos",
+                name = "Copa Prisma",
+                description = "Una copa brillante para celebrar logros",
                 imageUrl = "conectate://gift-assets/trophy",
                 priceDiamonds = 50,
                 priceCredits = 9.99,
@@ -68,8 +72,8 @@ class WalletRepository @Inject constructor(
             ),
             VirtualGift(
                 id = "builtin-fireworks",
-                name = "Fuegos Artificiales",
-                description = "Celebración destacada",
+                name = "Lluvia de Luz",
+                description = "Una celebración que llena la pantalla",
                 imageUrl = "conectate://gift-assets/fireworks",
                 priceDiamonds = 100,
                 priceCredits = 19.99,
@@ -77,12 +81,36 @@ class WalletRepository @Inject constructor(
             ),
             VirtualGift(
                 id = "builtin-star",
-                name = "Superestrella",
-                description = "Regalo premium para creadores",
+                name = "Nova",
+                description = "Una explosión estelar para grandes momentos",
                 imageUrl = "conectate://gift-assets/star",
                 priceDiamonds = 200,
                 priceCredits = 39.99,
                 sortOrder = 5
+            ),
+            VirtualGift(
+                id = "builtin-orbit",
+                name = "Órbita",
+                description = "Un planeta de energía Novvin",
+                imageUrl = "conectate://gift-assets/orbit",
+                priceDiamonds = 35,
+                sortOrder = 6
+            ),
+            VirtualGift(
+                id = "builtin-comet",
+                name = "Cometa",
+                description = "Una estela veloz para destacar el directo",
+                imageUrl = "conectate://gift-assets/comet",
+                priceDiamonds = 350,
+                sortOrder = 7
+            ),
+            VirtualGift(
+                id = "builtin-crown",
+                name = "Corona Cósmica",
+                description = "La celebración más destacada del catálogo",
+                imageUrl = "conectate://gift-assets/crown",
+                priceDiamonds = 500,
+                sortOrder = 8
             )
         )
     }
@@ -153,10 +181,11 @@ class WalletRepository @Inject constructor(
 
     suspend fun sendGift(
         receiverId: String,
-        amount: Int,
         giftId: String,
-        liveStreamId: String? = null
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        liveStreamId: String? = null,
+        isPublic: Boolean = true,
+        idempotencyKey: String
+    ): Result<GiftReceipt> = withContext(Dispatchers.IO) {
         runCatching {
             if (!supabaseConfig.isConfigured) {
                 throw IllegalStateException("La tienda de regalos no está configurada para este entorno")
@@ -179,7 +208,7 @@ class WalletRepository @Inject constructor(
 
             val gift = _availableGifts.value.firstOrNull { it.id == cleanGiftId }
                 ?: fetchGiftById(token, cleanGiftId)
-            val canonicalCost = gift?.priceDiamonds ?: amount
+            val canonicalCost = gift?.priceDiamonds ?: 0
             if (canonicalCost <= 0) {
                 throw IllegalArgumentException("El regalo seleccionado no tiene precio valido")
             }
@@ -195,6 +224,8 @@ class WalletRepository @Inject constructor(
                     put("p_sender_id", senderId)
                     put("p_receiver_id", cleanReceiverId)
                     put("p_gift_id", cleanGiftId)
+                    put("p_idempotency_key", idempotencyKey)
+                    put("p_is_public", isPublic)
                     put("p_message", JsonNull)
                     if (cleanLiveStreamId.isBlank()) {
                         put("p_live_stream_id", JsonNull)
@@ -210,11 +241,90 @@ class WalletRepository @Inject constructor(
                 )
             }
 
-            val newBalance = decodeFirstObject(body)
-                ?.int("sender_balance_diamonds")
-                ?: (_coinBalance.value - canonicalCost).coerceAtLeast(0)
+            val receipt = decodeFirstObject(body)
+                ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
+            val newBalance = receipt.int("sender_balance_diamonds")
             _coinBalance.value = newBalance.coerceAtLeast(0)
-            true
+            GiftReceipt(
+                transactionId = receipt.string("transaction_id")
+                    ?: throw IllegalStateException("El comprobante del regalo no es válido"),
+                liveStreamId = receipt.string("live_stream_id") ?: cleanLiveStreamId.takeIf { it.isNotBlank() },
+                senderId = senderId,
+                senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
+                receiverId = cleanReceiverId,
+                gift = gift ?: VirtualGift(
+                    id = cleanGiftId,
+                    name = receipt.string("gift_name").orEmpty().ifBlank { "Regalo Novvin" },
+                    imageUrl = receipt.string("gift_image_url"),
+                    animationUrl = receipt.string("gift_animation_url"),
+                    priceDiamonds = canonicalCost
+                ),
+                senderBalanceDiamonds = newBalance,
+                isPublic = receipt.string("is_public")?.toBooleanStrictOrNull() ?: isPublic,
+                idempotentReplay = receipt.string("idempotent_replay")?.toBooleanStrictOrNull() ?: false
+            )
+        }
+    }
+
+    suspend fun fetchBillingCapabilities(): Result<BillingCapabilities> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!supabaseConfig.isConfigured) return@runCatching BillingCapabilities()
+            val token = authService.getAccessToken()
+                ?: throw IllegalStateException("No hay token de acceso")
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/billing_capabilities") {
+                restHeaders(token)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { })
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException(parseSupabaseError(body) ?: "No se pudo consultar Google Play")
+            }
+            val objectValue = decodeFirstObject(body) ?: return@runCatching BillingCapabilities()
+            BillingCapabilities(
+                enabled = objectValue.boolean("enabled"),
+                provider = objectValue.string("provider") ?: "google_play",
+                products = (objectValue["products"] as? JsonArray).orEmpty().mapNotNull { element ->
+                    val product = element as? JsonObject ?: return@mapNotNull null
+                    val id = product.string("product_id").orEmpty()
+                    val coins = product.int("coins")
+                    if (id.isBlank() || coins <= 0) null else CoinProduct(id, coins)
+                }
+            )
+        }
+    }
+
+    suspend fun verifyGooglePlayPurchase(
+        productId: String,
+        purchaseToken: String
+    ): Result<CoinPurchaseVerification> = withContext(Dispatchers.IO) {
+        runCatching {
+            val token = authService.getAccessToken()
+                ?: throw IllegalStateException("No hay token de acceso")
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/verify_google_play_purchase") {
+                restHeaders(token)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("p_product_id", productId)
+                    put("p_purchase_token", purchaseToken)
+                })
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException(parseSupabaseError(body) ?: "Google Play no pudo verificar la compra")
+            }
+            val value = decodeFirstObject(body)
+                ?: throw IllegalStateException("La verificación no devolvió un resultado")
+            val verified = CoinPurchaseVerification(
+                status = value.string("status") ?: "unknown",
+                credited = value.boolean("credited"),
+                coins = value.int("coins"),
+                balanceDiamonds = value.int("balance_diamonds")
+            )
+            if (verified.status == "credited") {
+                _coinBalance.value = verified.balanceDiamonds.coerceAtLeast(0)
+            }
+            verified
         }
     }
 
@@ -304,6 +414,12 @@ class WalletRepository @Inject constructor(
 
     private fun JsonObject.double(key: String): Double {
         return this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
+    }
+
+    private fun JsonObject.boolean(key: String): Boolean {
+        return this[key]?.jsonPrimitive?.booleanOrNull
+            ?: this[key]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+            ?: false
     }
 
     private fun parseSupabaseError(body: String): String? {

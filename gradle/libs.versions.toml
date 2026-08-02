@@ -52,6 +52,7 @@ multiplatformSettings = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
 jsoup = "1.17.2"
 desugarJdkLibs = "2.1.5"
+playBilling = "9.1.0"
 
 # Room
 room = "2.6.1"
@@ -141,6 +142,7 @@ multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settin
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 android-desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
+google-play-billing = { group = "com.android.billingclient", name = "billing", version.ref = "playBilling" }
 
 # Room
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
