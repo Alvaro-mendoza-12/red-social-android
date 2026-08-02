@@ -5,6 +5,8 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
@@ -51,10 +53,9 @@ class WebRTCManager(
     private val accessTokenProvider: (() -> String?)? = null
 ) {
     companion object {
-        // A small, bounded receive gain fixes quiet calls on earpiece and
-        // budget devices without letting user-controlled participant sliders
-        // amplify indefinitely.
-        private const val REMOTE_AUDIO_GAIN = 1.25
+        // Keep remote audio at WebRTC's reference level. Extra gain on the
+        // handset speaker makes echo cancellation less effective on some devices.
+        private const val REMOTE_AUDIO_GAIN = 1.0
         private val liveManagers = Collections.synchronizedMap(
             WeakHashMap<WebRTCManager, Unit>()
         )
@@ -411,9 +412,17 @@ class WebRTCManager(
             "WebRTC",
             "Creating ADM with source=$preferredAudioInputSource, sampleRate=$preferredAudioSampleRate, lowLatency=$preferredLowLatencyAudio"
         )
+        val hardwareAecAvailable = runCatching { AcousticEchoCanceler.isAvailable() }.getOrDefault(false)
+        val hardwareNoiseSuppressorAvailable = runCatching { NoiseSuppressor.isAvailable() }.getOrDefault(false)
+        Log.i(
+            "WebRTC",
+            "Voice processing: hardwareAEC=$hardwareAecAvailable hardwareNS=$hardwareNoiseSuppressorAvailable"
+        )
         audioDeviceModule = JavaAudioDeviceModule.builder(context)
-            .setUseHardwareAcousticEchoCanceler(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-            .setUseHardwareNoiseSuppressor(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            // Availability is a capability check, not an Android-version check. AEC/NS exist
+            // on many Android 7-9 phones too; unsupported devices keep WebRTC's software path.
+            .setUseHardwareAcousticEchoCanceler(hardwareAecAvailable)
+            .setUseHardwareNoiseSuppressor(hardwareNoiseSuppressorAvailable)
             .setUseLowLatency(preferredLowLatencyAudio)
             .setInputSampleRate(preferredAudioSampleRate)
             .setOutputSampleRate(preferredAudioSampleRate)
@@ -927,6 +936,17 @@ class WebRTCManager(
     fun onUserJoined(remoteSocketId: String, remoteUserId: String) {
         var rsid = remoteSocketId.trim()
         var ruid = remoteUserId.trim()
+        if (rsid.isBlank() || ruid.isBlank()) return
+        if (
+            (currentUserId.isNotBlank() && currentUserId.equals(ruid, ignoreCase = true)) ||
+            (localSocketId.isNotBlank() && localSocketId == rsid)
+        ) {
+            // Never create a peer connection to our own socket/account. A delayed
+            // participant snapshot during reconnect could otherwise feed our mic
+            // back as a remote track and sound like a strong echo.
+            Log.w("WebRTCManager", "Ignoring self participant $ruid ($rsid)")
+            return
+        }
         executor.execute {
             Log.d("WebRTCManager", "onUserJoined: $ruid ($rsid)")
             var pc = getOrCreatePC(rsid, ruid) ?: return@execute

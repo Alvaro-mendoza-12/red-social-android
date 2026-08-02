@@ -129,9 +129,8 @@ class CallRepository @Inject constructor(
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
-    // Calls start on the loudspeaker so speech is intelligible on phones with
-    // a quiet earpiece. The user can still switch to earpiece/headset at any
-    // time from the call controls.
+    // The concrete route is selected when a call starts: direct voice calls use
+    // the earpiece, while video and multi-user calls use the loudspeaker.
     private val _isSpeaker = MutableStateFlow(true)
     val isSpeaker: StateFlow<Boolean> = _isSpeaker.asStateFlow()
 
@@ -228,12 +227,7 @@ class CallRepository @Inject constructor(
                 val isVideo = payload.isVideo
 
                 if (callId.isBlank() || callerUserId.isBlank()) return@collect
-                if (_activeCall.value != null) {
-                    // Busy: ignore (or optionally auto-decline)
-                    return@collect
-                }
-
-                _incomingInvite.value = CallInvite(
+                handleRealtimeIncomingInvite(CallInvite(
                     callId = callId,
                     title = title.ifBlank { "Llamada" },
                     callerUserId = callerUserId,
@@ -242,8 +236,7 @@ class CallRepository @Inject constructor(
                     contextType = contextType.ifBlank { "dm" },
                     contextId = contextId,
                     isVideo = isVideo
-                )
-                startForegroundIncomingRingtone()
+                ))
             }
         }
 
@@ -312,19 +305,24 @@ class CallRepository @Inject constructor(
                         scheduleConnectingTimeout(callId)
                     }
                 }
-                "decline" -> {
+                "decline", "busy" -> {
                     pendingInvitees.remove(fromUserId)
                     if (call.connectionState == CallConnectionState.RINGING_OUTGOING && pendingInvitees.isEmpty()) {
-                        endCallInternal(reason = "Llamada rechazada")
+                        endCallInternal(reason = if (safeAction == "busy") "Usuario ocupado" else "Llamada rechazada")
                     }
                 }
-                "end" -> {
+                "end", "ended" -> {
                     callTonePlayer.stopRingback()
                     endCallInternal(reason = "Llamada finalizada")
                 }
-                "cancel" -> {
+                "cancel", "collision", "missed" -> {
                     if (call.connectionState == CallConnectionState.RINGING_OUTGOING || call.connectionState == CallConnectionState.CONNECTING) {
-                        endCallInternal(reason = "Llamada cancelada")
+                        val reason = when (safeAction) {
+                            "missed" -> "Llamada no contestada"
+                            "collision" -> "Llamada combinada"
+                            else -> "Llamada cancelada"
+                        }
+                        endCallInternal(reason = reason)
                     }
                 }
             }
@@ -380,7 +378,9 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = peerAvatar,
             isVideo = isVideo
         )
-        _isSpeaker.value = true
+        // Voice calls start on the earpiece, like a regular phone call. Keeping every
+        // call on the loudspeaker was the largest avoidable source of acoustic echo.
+        _isSpeaker.value = isVideo || normalizedContextType != "dm"
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -498,7 +498,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = peerProfile?.avatar_url,
             isVideo = false
         )
-        _isSpeaker.value = true
+        _isSpeaker.value = normalizedContextType != "dm"
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -555,7 +555,7 @@ class CallRepository @Inject constructor(
             peerAvatarUrl = invite.callerAvatarUrl,
             isVideo = invite.isVideo
         )
-        _isSpeaker.value = true
+        _isSpeaker.value = invite.isVideo || normalizedContextType != "dm"
         _participants.value = listOf(
             CallParticipant(
                 userId = currentUserId,
@@ -766,9 +766,9 @@ class CallRepository @Inject constructor(
     private fun handleUbuntuCallInvite(payload: kotlinx.serialization.json.JsonObject) {
         val callId = payload.stringValue("callId", "call_id")
         val callerUserId = payload.stringValue("callerUserId", "caller_user_id")
-        if (callId.isBlank() || callerUserId.isBlank() || _activeCall.value != null) return
+        if (callId.isBlank() || callerUserId.isBlank()) return
 
-        _incomingInvite.value = CallInvite(
+        handleRealtimeIncomingInvite(CallInvite(
             callId = callId,
             title = payload.stringValue("title").ifBlank { "Llamada" },
             callerUserId = callerUserId,
@@ -777,8 +777,7 @@ class CallRepository @Inject constructor(
             contextType = payload.stringValue("contextType", "context_type").ifBlank { "dm" },
             contextId = payload.stringValue("contextId", "context_id").ifBlank { null },
             isVideo = payload.booleanValue("isVideo", "is_video")
-        )
-        startForegroundIncomingRingtone()
+        ))
     }
 
     private fun handleUbuntuCallResponse(payload: kotlinx.serialization.json.JsonObject) {
@@ -828,9 +827,76 @@ class CallRepository @Inject constructor(
 
     fun presentIncomingInvite(invite: CallInvite) {
         if (_activeCall.value != null) return
+        val existing = _incomingInvite.value
+        if (existing != null && !existing.callId.equals(invite.callId, ignoreCase = true)) return
         clearEndedCallSummary()
         _incomingInvite.value = invite
         startForegroundIncomingRingtone()
+    }
+
+    internal fun incomingCallDisposition(invite: CallInvite): IncomingCallDisposition {
+        return resolveIncomingCallDisposition(
+            activeCall = _activeCall.value,
+            pendingIncoming = _incomingInvite.value,
+            currentUserId = authService.getCurrentUserId(),
+            incoming = invite
+        )
+    }
+
+    /** Reject a second or third call without stopping the active call's audio or ringback. */
+    suspend fun rejectIncomingWhileBusy(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        runCatching {
+            sendCallResponse(
+                targetUserId = invite.callerUserId,
+                callId = invite.callId,
+                action = "decline",
+                fromUserId = currentUserId,
+                notificationAction = "busy"
+            )
+        }
+    }
+
+    /** Replace our losing outgoing attempt with the winning simultaneous incoming call. */
+    fun yieldOutgoingCallToIncoming(invite: CallInvite): Boolean {
+        if (incomingCallDisposition(invite) != IncomingCallDisposition.YIELD_OUTGOING) return false
+        val losingCall = _activeCall.value ?: return false
+        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val losingTargets = pendingInvitees.toList()
+        scope.launch {
+            losingTargets.forEach { target ->
+                runCatching {
+                    sendCallResponse(
+                        targetUserId = target,
+                        callId = losingCall.callId,
+                        action = "cancel",
+                        fromUserId = currentUserId,
+                        notificationAction = "collision"
+                    )
+                }.onFailure { error ->
+                    logBestEffortFailure("cancelLosingSimultaneousCall", error, losingCall.callId)
+                }
+            }
+        }
+        endCallInternal(reason = "Llamada combinada")
+        clearEndedCallSummary(losingCall.callId)
+        return true
+    }
+
+    private fun handleRealtimeIncomingInvite(invite: CallInvite) {
+        when (incomingCallDisposition(invite)) {
+            IncomingCallDisposition.PRESENT -> presentIncomingInvite(invite)
+            IncomingCallDisposition.IGNORE_DUPLICATE -> Unit
+            IncomingCallDisposition.REJECT_BUSY -> scope.launch {
+                rejectIncomingWhileBusy(invite).onFailure { error ->
+                    logBestEffortFailure("rejectIncomingWhileBusy", error, invite.callId)
+                }
+            }
+            IncomingCallDisposition.YIELD_OUTGOING -> {
+                if (yieldOutgoingCallToIncoming(invite)) presentIncomingInvite(invite)
+            }
+        }
     }
 
     private fun startForegroundIncomingRingtone() {
@@ -946,12 +1012,14 @@ class CallRepository @Inject constructor(
                     "accept" -> "Llamada aceptada"
                     "missed" -> "Llamada no contestada"
                     "end" -> "Llamada finalizada"
+                    "busy" -> "Usuario ocupado"
+                    "collision" -> "Llamada simultánea combinada"
                     "decline" -> "Llamada rechazada"
                     else -> "Llamada cancelada"
                 },
                 extraData = buildJsonObject {
                     put("call_id", callId)
-                    put("call_action", action)
+                    put("call_action", notificationAction)
                     put("from_user_id", fromUserId)
                 }
             ).getOrThrow()
@@ -967,6 +1035,8 @@ class CallRepository @Inject constructor(
                     content = when (notificationAction.trim().lowercase()) {
                         "missed" -> "Llamada no contestada"
                         "end" -> "Llamada finalizada"
+                        "busy" -> "Usuario ocupado"
+                        "collision" -> "Llamada simultánea combinada"
                         "decline" -> "Llamada rechazada"
                         else -> "Llamada cancelada"
                     },
@@ -1028,7 +1098,13 @@ class CallRepository @Inject constructor(
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10_000
-                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
+                // Keep polling as a fallback for carrier networks, older
+                // Android WebViews and restrictive Wi‑Fi. Forcing WebSocket
+                // made otherwise valid calls stay in "Conectando…" forever.
+                transports = arrayOf(
+                    io.socket.engineio.client.transports.Polling.NAME,
+                    io.socket.engineio.client.transports.WebSocket.NAME
+                )
                 attachBearerToken(authService.getAccessToken())
             }
             val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
@@ -1742,6 +1818,17 @@ class CallRepository @Inject constructor(
                 @Suppress("DEPRECATION")
                 audioManager.abandonAudioFocus(null)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // setCommunicationDevice() survives until it is explicitly
+                // cleared (or the process dies). Leaving it selected leaks the
+                // call route into voice rooms and later calls, which can create
+                // speaker feedback or a silent earpiece on newer Androids.
+                audioManager.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION")
+                run { audioManager.isSpeakerphoneOn = false }
+            }
+            audioManager.isMicrophoneMute = false
             audioManager.mode = AudioManager.MODE_NORMAL
         } catch (e: Exception) {
             android.util.Log.w("CallRepository", "Failed to release call audio session", e)

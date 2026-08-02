@@ -163,6 +163,7 @@ fun MainActivityContent(
 
         SessionSideEffects(
             isLoggedIn = isLoggedIn,
+            activeUserId = session?.user?.id ?: authRepository.getCurrentUserId(),
             authRepository = authRepository,
             notificationRepository = notificationRepository,
             onSuspensionDetected = { suspensionEndDate, reason ->

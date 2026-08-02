@@ -585,6 +585,7 @@ class VoiceRoomRepository @Inject constructor(
                     audioManager.isMicrophoneMute = false
                 }
                 routeVoiceOutput(audioManager, desiredSpeakerOn)
+                webRTCManager?.setSpeakerphoneOn(desiredSpeakerOn)
                 return
             }
 
@@ -617,6 +618,7 @@ class VoiceRoomRepository @Inject constructor(
                 audioManager.isMicrophoneMute = false
             }
             routeVoiceOutput(audioManager, desiredSpeakerOn)
+            webRTCManager?.setSpeakerphoneOn(desiredSpeakerOn)
             isAudioSessionPrepared = true
         } catch (e: Exception) {
             android.util.Log.w("VoiceRoomRepository", "Failed to prepare voice audio session", e)
@@ -707,6 +709,12 @@ class VoiceRoomRepository @Inject constructor(
             // v25.0: Delayed mode reset to ensure WebRTC has fully detached from hardware
             scope.launch {
                 delay(300)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                } else {
+                    @Suppress("DEPRECATION")
+                    run { audioManager.isSpeakerphoneOn = false }
+                }
                 audioManager.mode = AudioManager.MODE_NORMAL
                 android.util.Log.d("VoiceRoomRepository", "Audio mode reset to NORMAL")
             }
@@ -1656,6 +1664,11 @@ class VoiceRoomRepository @Inject constructor(
                 var sid = data.optString("socketId").trim()
                 var uid = data.optString("userId").trim()
                 if (sid.isBlank() || uid.isBlank()) return@on
+                val selfId = authService.getCurrentUserId()?.trim().orEmpty()
+                if (uid.equals(selfId, ignoreCase = true) || sid == createdSocket.id()) {
+                    android.util.Log.w("VoiceRoomRepository", "Ignoring self user-joined event for $uid via $sid")
+                    return@on
+                }
                 val displayName = data.optString("name", "Invitado")
                 android.util.Log.i("VoiceRoomRepository", "👤 Remote User Joined: $displayName ($uid) via $sid")
                 
@@ -2204,6 +2217,7 @@ class VoiceRoomRepository @Inject constructor(
         // INITIAL IDENTITY SET
         webRTCManager?.setCurrentUser(userId, "")
         webRTCManager?.refreshManagedIceServers()
+        webRTCManager?.setSpeakerphoneOn(desiredSpeakerOn)
         
         // Collect video tracks
         scope.launch {
