@@ -163,6 +163,8 @@ class WebRTCManager(
     @Volatile
     private var selectedCameraFilter: LiveCameraFilter = LiveCameraFilter.NONE
     private var cameraFilterProcessor: LiveCameraFilterProcessor? = null
+    @Volatile
+    private var cameraFilterPerformanceListener: ((LiveFilterPerformanceState) -> Unit)? = null
     private var outgoingVideoEnabled: Boolean = true
     
     private val _localVideoTrackFlow = MutableStateFlow<VideoTrack?>(null)
@@ -1891,6 +1893,24 @@ class WebRTCManager(
         executor.execute {
             cameraFilterProcessor?.select(filter)
         }
+        if (cameraFilterProcessor == null) {
+            cameraFilterPerformanceListener?.invoke(
+                if (filter == LiveCameraFilter.NONE) {
+                    LiveFilterPerformanceState.NATURAL
+                } else {
+                    LiveFilterPerformanceState.FULL
+                }
+            )
+        }
+    }
+
+    fun setCameraFilterPerformanceListener(
+        listener: ((LiveFilterPerformanceState) -> Unit)?
+    ) {
+        cameraFilterPerformanceListener = listener
+        cameraFilterProcessor?.let { processor ->
+            listener?.invoke(processor.currentPerformanceState)
+        }
     }
 
 
@@ -1995,7 +2015,12 @@ class WebRTCManager(
                 val source = f.createVideoSource(isScreen)
                 candidateSource = source
                 if (!isScreen) {
-                    candidateCameraFilterProcessor = LiveCameraFilterProcessor(selectedCameraFilter)
+                    candidateCameraFilterProcessor = LiveCameraFilterProcessor(
+                        initialFilter = selectedCameraFilter,
+                        onPerformanceStateChanged = { state ->
+                            cameraFilterPerformanceListener?.invoke(state)
+                        }
+                    )
                         .also(source::setVideoProcessor)
                 }
                 val helper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.eglBaseContext)

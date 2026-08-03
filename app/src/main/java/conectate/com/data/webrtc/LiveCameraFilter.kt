@@ -53,13 +53,27 @@ internal object LiveCameraFilterColorMath {
 }
 
 /**
+ * Runtime state of the camera filter pipeline. This is surfaced to the host
+ * so a device can degrade the decorative effect without silently changing the
+ * broadcaster's selected filter.
+ */
+enum class LiveFilterPerformanceState {
+    NATURAL,
+    FULL,
+    REDUCED,
+    TEMPORARILY_PAUSED,
+    NOT_APPLIED_TO_SCREEN
+}
+
+/**
  * Applies inexpensive I420 color transforms before WebRTC publishes a camera
  * frame. The processor fails open: unsupported frames, memory pressure or a
  * sustained slow device send the original frame instead of interrupting LIVE.
  */
 class LiveCameraFilterProcessor(
     initialFilter: LiveCameraFilter = LiveCameraFilter.NONE,
-    private val nanoTime: () -> Long = System::nanoTime
+    private val nanoTime: () -> Long = System::nanoTime,
+    private val onPerformanceStateChanged: (LiveFilterPerformanceState) -> Unit = {}
 ) : VideoProcessor {
 
     private val selected = AtomicReference(initialFilter)
@@ -73,13 +87,32 @@ class LiveCameraFilterProcessor(
     @Volatile
     private var bypassUntilNs = 0L
 
+    @Volatile
+    private var performanceState = initialFilter.performanceState()
+
+    @Volatile
+    private var reducedFrameToggle = false
+
+    @Volatile
+    private var fastRecoveryStreak = 0
+
+    init {
+        notifyPerformanceState(performanceState)
+    }
+
     val filter: LiveCameraFilter
         get() = selected.get()
+
+    val currentPerformanceState: LiveFilterPerformanceState
+        get() = performanceState
 
     fun select(filter: LiveCameraFilter) {
         selected.set(filter)
         slowFrameStreak = 0
         bypassUntilNs = 0L
+        reducedFrameToggle = false
+        fastRecoveryStreak = 0
+        updatePerformanceState(filter.performanceState())
     }
 
     override fun setSink(sink: VideoSink?) {
@@ -94,9 +127,34 @@ class LiveCameraFilterProcessor(
         val target = sink ?: return
         val activeFilter = selected.get()
         val startedAt = nanoTime()
-        if (activeFilter == LiveCameraFilter.NONE || startedAt < bypassUntilNs) {
+        if (activeFilter == LiveCameraFilter.NONE) {
+            updatePerformanceState(LiveFilterPerformanceState.NATURAL)
             target.onFrame(frame)
             return
+        }
+
+        if (startedAt < bypassUntilNs) {
+            updatePerformanceState(LiveFilterPerformanceState.TEMPORARILY_PAUSED)
+            target.onFrame(frame)
+            return
+        }
+
+        if (performanceState == LiveFilterPerformanceState.TEMPORARILY_PAUSED) {
+            // The device has had a short recovery window. Try the full effect
+            // again and let the measured frame time decide whether to reduce.
+            updatePerformanceState(LiveFilterPerformanceState.FULL)
+            slowFrameStreak = 0
+            fastRecoveryStreak = 0
+        }
+
+        if (performanceState == LiveFilterPerformanceState.REDUCED) {
+            reducedFrameToggle = !reducedFrameToggle
+            if (!reducedFrameToggle) {
+                // Preserve the selected look while halving CPU work on slow
+                // devices. The UI explicitly reports this reduced state.
+                target.onFrame(frame)
+                return
+            }
         }
 
         val filteredFrame = runCatching { createFilteredFrame(frame, activeFilter) }.getOrNull()
@@ -113,13 +171,41 @@ class LiveCameraFilterProcessor(
 
         val elapsedNs = nanoTime() - startedAt
         val budgetNs = PROCESSING_BUDGET_MS * NANOS_PER_MILLISECOND
-        slowFrameStreak = if (elapsedNs > budgetNs) slowFrameStreak + 1 else 0
+        if (elapsedNs > budgetNs) {
+            slowFrameStreak += 1
+            fastRecoveryStreak = 0
+        } else {
+            slowFrameStreak = 0
+            fastRecoveryStreak += 1
+        }
+        if (slowFrameStreak >= REDUCED_SLOW_FRAMES) {
+            updatePerformanceState(LiveFilterPerformanceState.REDUCED)
+        } else if (
+            performanceState == LiveFilterPerformanceState.REDUCED &&
+            fastRecoveryStreak >= FAST_RECOVERY_FRAMES
+        ) {
+            reducedFrameToggle = false
+            updatePerformanceState(LiveFilterPerformanceState.FULL)
+        }
         if (slowFrameStreak >= MAX_SLOW_FRAMES) {
             // Camera effects are decorative. Prefer stable video/audio over
-            // retaining an effect that overloads a low-end or overheated phone.
+            // retaining an effect that overloads a low-end or overheated phone,
+            // while exposing this state to the host instead of hiding it.
             bypassUntilNs = nanoTime() + THERMAL_BYPASS_MS * NANOS_PER_MILLISECOND
             slowFrameStreak = 0
+            fastRecoveryStreak = 0
+            updatePerformanceState(LiveFilterPerformanceState.TEMPORARILY_PAUSED)
         }
+    }
+
+    private fun updatePerformanceState(next: LiveFilterPerformanceState) {
+        if (performanceState == next) return
+        performanceState = next
+        notifyPerformanceState(next)
+    }
+
+    private fun notifyPerformanceState(state: LiveFilterPerformanceState) {
+        runCatching { onPerformanceStateChanged(state) }
     }
 
     private fun createFilteredFrame(
@@ -216,8 +302,17 @@ class LiveCameraFilterProcessor(
 
     private companion object {
         const val PROCESSING_BUDGET_MS = 24L
+        const val REDUCED_SLOW_FRAMES = 2
         const val MAX_SLOW_FRAMES = 3
+        const val FAST_RECOVERY_FRAMES = 6
         const val THERMAL_BYPASS_MS = 2_000L
         const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }
+
+private fun LiveCameraFilter.performanceState(): LiveFilterPerformanceState =
+    if (this == LiveCameraFilter.NONE) {
+        LiveFilterPerformanceState.NATURAL
+    } else {
+        LiveFilterPerformanceState.FULL
+    }

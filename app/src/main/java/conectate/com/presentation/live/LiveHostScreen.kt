@@ -57,6 +57,7 @@ import androidx.navigation.NavController
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
 import conectate.com.data.webrtc.LiveCameraFilter
+import conectate.com.data.webrtc.LiveFilterPerformanceState
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import org.webrtc.RendererCommon
@@ -104,6 +105,7 @@ fun LiveHostScreen(
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
     val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
+    val cameraFilterPerformance by viewModel.cameraFilterPerformance.collectAsStateWithLifecycle()
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
     val hostPreparation by viewModel.hostPreparation.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
@@ -481,6 +483,14 @@ fun LiveHostScreen(
                             "El estilo se aplica a la señal publicada y puede pausarse automáticamente si el equipo necesita proteger la transmisión.",
                             color = Color.Gray
                         )
+                        Text(
+                            "Estado: ${cameraFilterPerformance.hostLabel()}",
+                            color = when (cameraFilterPerformance) {
+                                LiveFilterPerformanceState.TEMPORARILY_PAUSED -> Color(0xFFB3261E)
+                                LiveFilterPerformanceState.REDUCED -> Color(0xFF8A5A00)
+                                else -> Color.Gray
+                            }
+                        )
                     }
                 }
             },
@@ -668,6 +678,14 @@ private fun LiveCameraFilter.hostLabel(): String = when (this) {
     LiveCameraFilter.VIVID -> "Vívido"
     LiveCameraFilter.SOFT -> "Suave"
     LiveCameraFilter.MONO -> "Mono"
+}
+
+private fun LiveFilterPerformanceState.hostLabel(): String = when (this) {
+    LiveFilterPerformanceState.NATURAL -> "Natural (sin filtro)"
+    LiveFilterPerformanceState.FULL -> "Completo"
+    LiveFilterPerformanceState.REDUCED -> "Reducido para proteger el rendimiento"
+    LiveFilterPerformanceState.TEMPORARILY_PAUSED -> "Pausado temporalmente; se reintentará"
+    LiveFilterPerformanceState.NOT_APPLIED_TO_SCREEN -> "No se aplica al compartir pantalla"
 }
 
 @Composable

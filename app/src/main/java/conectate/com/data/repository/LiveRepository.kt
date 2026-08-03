@@ -24,12 +24,14 @@ import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.local.prefs.LivePreferences
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.webrtc.LiveCameraFilter
+import conectate.com.data.webrtc.LiveFilterPerformanceState
 import conectate.com.data.webrtc.WebRTCManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
@@ -87,7 +89,8 @@ class LiveRepository @Inject constructor(
     private val authService: AuthService,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
-    private val storageService: StorageService
+    private val storageService: StorageService,
+    private val livePreferences: LivePreferences
 ) {
     private companion object {
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
@@ -213,8 +216,14 @@ class LiveRepository @Inject constructor(
     private val _currentSource = MutableStateFlow(LiveSource.CAMERA)
     val currentSource: StateFlow<LiveSource> = _currentSource.asStateFlow()
 
-    private val _cameraFilter = MutableStateFlow(LiveCameraFilter.NONE)
+    private val _cameraFilter = MutableStateFlow(livePreferences.cameraFilter)
     val cameraFilter: StateFlow<LiveCameraFilter> = _cameraFilter.asStateFlow()
+
+    private val _cameraFilterPerformance = MutableStateFlow(
+        _cameraFilter.value.toDefaultPerformanceState()
+    )
+    val cameraFilterPerformance: StateFlow<LiveFilterPerformanceState> =
+        _cameraFilterPerformance.asStateFlow()
 
     private val _isMediaTransitioning = MutableStateFlow(false)
     val isMediaTransitioning: StateFlow<Boolean> = _isMediaTransitioning.asStateFlow()
@@ -770,6 +779,8 @@ class LiveRepository @Inject constructor(
 
     fun setCameraFilter(filter: LiveCameraFilter) {
         _cameraFilter.value = filter
+        livePreferences.setCameraFilter(filter)
+        updateCameraFilterPerformanceForSource()
         webRTCManager?.setCameraFilter(filter)
     }
 
@@ -821,6 +832,7 @@ class LiveRepository @Inject constructor(
                     projectionState.clearActive()
                     screenCaptureActive = false
                     _currentSource.value = LiveSource.CAMERA
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = true
                     micEnabledOverride?.let { enabled ->
                         _isMicEnabled.value = enabled
@@ -920,6 +932,7 @@ class LiveRepository @Inject constructor(
                     sourceCommitted = true
                     screenCaptureActive = true
                     _currentSource.value = LiveSource.SCREEN
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = true
                     micEnabledOverride?.let { enabled ->
                         _isMicEnabled.value = enabled
@@ -938,6 +951,7 @@ class LiveRepository @Inject constructor(
                     projectionState.clearActive()
                     screenCaptureActive = false
                     _currentSource.value = LiveSource.SCREEN
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = false
                     updateSessionSource(LiveSource.SCREEN)
                     manager.setVideoSendEnabled(false, renegotiate = false)
@@ -949,6 +963,7 @@ class LiveRepository @Inject constructor(
                 } else if (requestStillCurrent) {
                     screenCaptureActive = previousSource == LiveSource.SCREEN && previousVideoEnabled
                     _currentSource.value = previousSource
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = previousVideoEnabled
                     refreshForegroundServiceType()
                     emitLiveState()
@@ -960,11 +975,13 @@ class LiveRepository @Inject constructor(
                 if (sourceCommitted) {
                     screenCaptureActive = true
                     _currentSource.value = LiveSource.SCREEN
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = true
                     updateSessionSource(LiveSource.SCREEN)
                 } else {
                     screenCaptureActive = previousSource == LiveSource.SCREEN && previousVideoEnabled
                     _currentSource.value = previousSource
+                    updateCameraFilterPerformanceForSource()
                     _isVideoEnabled.value = previousVideoEnabled
                 }
                 refreshForegroundServiceType()
@@ -2234,6 +2251,9 @@ class LiveRepository @Inject constructor(
                     accessTokenProvider = { authService.getAccessToken() }
                 ).also { created ->
                     created.setCurrentUser(userId, "")
+                    created.setCameraFilterPerformanceListener { state ->
+                        onCameraFilterPerformanceChanged(state)
+                    }
                     created.setCameraFilter(_cameraFilter.value)
                     created.refreshManagedIceServers()
                     _isMediaReady.value = true
@@ -2255,6 +2275,9 @@ class LiveRepository @Inject constructor(
                     }
                 }
             } else {
+                manager.setCameraFilterPerformanceListener { state ->
+                    onCameraFilterPerformanceChanged(state)
+                }
                 manager.hardResetAwait()
                 manager.setCurrentUser(userId, "")
                 manager.setCameraFilter(_cameraFilter.value)
@@ -2270,6 +2293,26 @@ class LiveRepository @Inject constructor(
             _localVideoTrack.value = null
             _remoteVideoTracks.value = emptyMap()
             false
+        }
+    }
+
+    private fun onCameraFilterPerformanceChanged(state: LiveFilterPerformanceState) {
+        _cameraFilterPerformance.value = if (
+            screenCaptureActive || _currentSource.value == LiveSource.SCREEN
+        ) {
+            LiveFilterPerformanceState.NOT_APPLIED_TO_SCREEN
+        } else {
+            state
+        }
+    }
+
+    private fun updateCameraFilterPerformanceForSource() {
+        _cameraFilterPerformance.value = if (
+            screenCaptureActive || _currentSource.value == LiveSource.SCREEN
+        ) {
+            LiveFilterPerformanceState.NOT_APPLIED_TO_SCREEN
+        } else {
+            _cameraFilter.value.toDefaultPerformanceState()
         }
     }
 
@@ -2506,6 +2549,7 @@ class LiveRepository @Inject constructor(
         _isVideoEnabled.value = true
         _currentSource.value = LiveSource.CAMERA
         screenCaptureActive = false
+        updateCameraFilterPerformanceForSource()
         hostSessionStartedElapsedMs = 0L
     }
 
@@ -2940,6 +2984,13 @@ class LiveRepository @Inject constructor(
         return if (trim().equals("screen", ignoreCase = true)) LiveSource.SCREEN else LiveSource.CAMERA
     }
 }
+
+private fun LiveCameraFilter.toDefaultPerformanceState(): LiveFilterPerformanceState =
+    if (this == LiveCameraFilter.NONE) {
+        LiveFilterPerformanceState.NATURAL
+    } else {
+        LiveFilterPerformanceState.FULL
+    }
 
 internal fun normalizeLiveSessionId(rawValue: String?): String? {
     val value = rawValue?.trim().orEmpty()

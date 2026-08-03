@@ -36,4 +36,25 @@ class LiveCameraFilterTest {
         assertEquals(0, LiveCameraFilterColorMath.chroma(2, LiveCameraFilter.WARM, true))
         assertEquals(255, LiveCameraFilterColorMath.luma(255, LiveCameraFilter.WARM))
     }
+
+    @Test
+    fun `processor reports filter performance changes`() {
+        val states = mutableListOf<LiveFilterPerformanceState>()
+        val processor = LiveCameraFilterProcessor(
+            initialFilter = LiveCameraFilter.VIVID,
+            onPerformanceStateChanged = states::add
+        )
+
+        processor.select(LiveCameraFilter.NONE)
+        processor.select(LiveCameraFilter.MONO)
+
+        assertEquals(
+            listOf(
+                LiveFilterPerformanceState.FULL,
+                LiveFilterPerformanceState.NATURAL,
+                LiveFilterPerformanceState.FULL
+            ),
+            states
+        )
+    }
 }

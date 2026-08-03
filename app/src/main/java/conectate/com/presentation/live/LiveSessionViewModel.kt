@@ -53,6 +53,7 @@ class LiveSessionViewModel @Inject constructor(
     val isMediaTransitioning = liveRepository.isMediaTransitioning
     val currentSource = liveRepository.currentSource
     val cameraFilter = liveRepository.cameraFilter
+    val cameraFilterPerformance = liveRepository.cameraFilterPerformance
     val eglBaseContext = liveRepository.eglBaseContext
     val localVideoTrack = liveRepository.localVideoTrack
     val remoteVideoTracks = liveRepository.remoteVideoTracks
