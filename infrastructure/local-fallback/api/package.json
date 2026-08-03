@@ -22,6 +22,7 @@
     "test:admin": "node tests/admin-moderation-routes.test.js",
     "test:proximity": "node tests/proximity-routes.test.js",
     "test:live-moderation": "node tests/live-moderation-routes.test.js",
+    "test:live-collaboration": "node tests/live-collaboration-routes.test.js",
     "test:gift-limits": "node tests/gift-limits.test.js",
     "test:security": "node tests/request-security.test.js && node tests/account-status.test.js && node tests/postgrest-security.test.js",
     "test:system-health": "node tests/system-health.test.js",

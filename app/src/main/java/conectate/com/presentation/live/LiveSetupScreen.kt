@@ -72,6 +72,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import conectate.com.data.model.LiveQuality
 import conectate.com.data.model.LiveSource
+import conectate.com.data.model.LiveCollaborationCapabilities
 import conectate.com.data.repository.LiveRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
@@ -123,6 +124,10 @@ class LiveSetupViewModel @Inject constructor(
     private val _networkAvailable = MutableStateFlow(hasUsableNetwork(context))
     val networkAvailable: StateFlow<Boolean> = _networkAvailable.asStateFlow()
 
+    private val _collaborationCapabilities = MutableStateFlow(LiveCollaborationCapabilities())
+    val collaborationCapabilities: StateFlow<LiveCollaborationCapabilities> =
+        _collaborationCapabilities.asStateFlow()
+
     private val _isStarting = MutableStateFlow(false)
     val isStarting: StateFlow<Boolean> = _isStarting.asStateFlow()
 
@@ -139,6 +144,8 @@ class LiveSetupViewModel @Inject constructor(
                 _displayName.value = profile?.displayName
                     ?: profile?.username
                     ?: "Tu perfil"
+                liveRepository.getLiveCollaborationCapabilities()
+                    .onSuccess { capabilities -> _collaborationCapabilities.value = capabilities }
             }
         }
     }
@@ -250,6 +257,7 @@ fun LiveSetupScreen(
     val micEnabled by viewModel.micEnabled.collectAsStateWithLifecycle()
     val quality by viewModel.quality.collectAsStateWithLifecycle()
     val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
+    val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val avatarUrl by viewModel.avatarUrl.collectAsStateWithLifecycle()
     val displayName by viewModel.displayName.collectAsStateWithLifecycle()
     val networkAvailable by viewModel.networkAvailable.collectAsStateWithLifecycle()
@@ -540,9 +548,19 @@ fun LiveSetupScreen(
                     Divider()
                     SetupCapabilityRow(
                         title = "Invitados y batallas",
-                        detail = "La interfaz se habilitará al conectar un proveedor SFU y autoridad de puntuación.",
-                        available = false,
-                        badge = "Requiere SFU"
+                        detail = if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
+                            "Invita hasta ${collaborationCapabilities.maxGuests} personas y crea batallas con puntuación del servidor."
+                        } else {
+                            "La interfaz se habilitará al conectar un proveedor SFU y autoridad de puntuación."
+                        },
+                        available = collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable,
+                        badge = if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
+                            "Disponible"
+                        } else if (collaborationCapabilities.guestsBattlesEnabled) {
+                            "Requiere SFU"
+                        } else {
+                            "Bloqueado por configuración"
+                        }
                     )
                     Divider()
                     SetupCapabilityRow(
@@ -577,7 +595,11 @@ fun LiveSetupScreen(
 
             item {
                 Text(
-                    text = "Audiencia actual: público. Invitados y batallas requieren un SFU y autoridad de puntuación en servidor; permanecen bloqueados hasta que esa infraestructura pueda hacer cumplir los permisos.",
+                    text = if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
+                        "Audiencia actual: pública. Los invitados y las batallas usan permisos del SFU y puntuación confirmada por el servidor."
+                    } else {
+                        "Audiencia actual: pública. Invitados y batallas requieren un SFU y autoridad de puntuación en servidor; permanecen bloqueados hasta que esa infraestructura pueda hacer cumplir los permisos."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp)

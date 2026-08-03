@@ -20,6 +20,10 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveChapter
 import conectate.com.data.model.LiveStream
+import conectate.com.data.model.LiveBattle
+import conectate.com.data.model.LiveCollaborationCapabilities
+import conectate.com.data.model.LiveGuestInvitation
+import conectate.com.data.model.LiveSfuSession
 import conectate.com.data.model.ActiveChallenge
 import conectate.com.data.model.Chat
 import conectate.com.data.model.Challenge
@@ -410,6 +414,39 @@ private data class LocalFallbackLiveReplayResponse(
 @Serializable
 private data class LocalFallbackLiveChapterResponse(
     val chapter: LiveChapter? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveCapabilitiesResponse(
+    val guestsBattlesEnabled: Boolean = false,
+    val sfuAvailable: Boolean = false,
+    val maxGuests: Int = 0,
+    val scoringSources: List<String> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackLiveSfuTokenResponse(
+    val wsUrl: String = "",
+    val roomName: String = "",
+    val token: String = "",
+    val expiresAt: Long = 0L,
+    val role: String = "viewer",
+    val maxGuests: Int = 0
+)
+
+@Serializable
+private data class LocalFallbackLiveInvitationResponse(
+    val invitation: LiveGuestInvitation? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveInvitationsResponse(
+    val invitations: List<LiveGuestInvitation> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackLiveBattleResponse(
+    val battle: LiveBattle? = null
 )
 
 @Serializable
@@ -3035,6 +3072,196 @@ class LocalFallbackApiClient @Inject constructor(
             "$baseUrl/v1/data/live?limit=$cleanLimit",
             accessToken
         ).map { it.items }
+    }
+
+    suspend fun loadLiveCollaborationCapabilities(
+        accessToken: String
+    ): Result<LiveCollaborationCapabilities> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveCapabilitiesResponse>(
+            "$baseUrl/v1/data/live/capabilities",
+            accessToken
+        ).map { response ->
+            LiveCollaborationCapabilities(
+                guestsBattlesEnabled = response.guestsBattlesEnabled,
+                sfuAvailable = response.sfuAvailable,
+                maxGuests = response.maxGuests,
+                scoringSources = response.scoringSources
+            )
+        }
+    }
+
+    suspend fun issueLiveSfuSession(
+        accessToken: String,
+        liveId: String,
+        role: String
+    ): Result<LiveSfuSession> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/sfu-token"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("role", role.trim().lowercase()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val payload = json.decodeFromString<LocalFallbackLiveSfuTokenResponse>(body)
+                Result.success(
+                    LiveSfuSession(
+                        wsUrl = payload.wsUrl,
+                        roomName = payload.roomName,
+                        token = payload.token,
+                        expiresAt = payload.expiresAt,
+                        role = payload.role,
+                        maxGuests = payload.maxGuests
+                    )
+                )
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun inviteLiveGuest(
+        accessToken: String,
+        liveId: String,
+        inviteeUserId: String,
+        requestNonce: String = UUID.randomUUID().toString()
+    ): Result<LiveGuestInvitation> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/invitations"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("inviteeUserId", inviteeUserId.trim())
+                    put("requestNonce", requestNonce.trim())
+                })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val invitation = json.decodeFromString<LocalFallbackLiveInvitationResponse>(body).invitation
+                    ?: return Result.failure(Exception("El servidor no devolvió la invitación."))
+                Result.success(invitation)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadLiveGuestInvitations(
+        accessToken: String,
+        liveId: String
+    ): Result<List<LiveGuestInvitation>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveInvitationsResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/invitations",
+            accessToken
+        ).map { it.invitations }
+    }
+
+    suspend fun respondToLiveGuestInvitation(
+        accessToken: String,
+        liveId: String,
+        invitationId: String,
+        status: String
+    ): Result<LiveGuestInvitation> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/invitations/${urlEncode(invitationId)}"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("status", status.trim().lowercase()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val invitation = json.decodeFromString<LocalFallbackLiveInvitationResponse>(body).invitation
+                    ?: return Result.failure(Exception("El servidor no devolvió la invitación."))
+                Result.success(invitation)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun startLiveBattle(
+        accessToken: String,
+        liveId: String,
+        opponentUserId: String
+    ): Result<LiveBattle> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("opponentUserId", opponentUserId.trim()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val battle = json.decodeFromString<LocalFallbackLiveBattleResponse>(body).battle
+                    ?: return Result.failure(Exception("El servidor no devolvió la batalla."))
+                Result.success(battle)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadLiveBattle(
+        accessToken: String,
+        liveId: String,
+        battleId: String
+    ): Result<LiveBattle> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveBattleResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles/${urlEncode(battleId)}",
+            accessToken
+        ).mapCatching { response ->
+            response.battle ?: throw IllegalStateException("Batalla no encontrada")
+        }
+    }
+
+    suspend fun endLiveBattle(
+        accessToken: String,
+        liveId: String,
+        battleId: String
+    ): Result<LiveBattle> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles/${urlEncode(battleId)}/end"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {})
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val battle = json.decodeFromString<LocalFallbackLiveBattleResponse>(body).battle
+                    ?: return Result.failure(Exception("El servidor no devolvió la batalla."))
+                Result.success(battle)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun loadLiveStream(accessToken: String, liveId: String): Result<LiveStream> {

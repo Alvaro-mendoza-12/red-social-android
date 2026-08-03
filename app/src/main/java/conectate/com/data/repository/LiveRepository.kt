@@ -13,6 +13,7 @@ import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.ActiveLiveSession
 import conectate.com.data.model.LiveComment
+import conectate.com.data.model.LiveCollaborationCapabilities
 import conectate.com.data.model.LiveQuality
 import conectate.com.data.model.LiveReaction
 import conectate.com.data.model.LiveModerationState
@@ -510,6 +511,16 @@ class LiveRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun getLiveCollaborationCapabilities(): Result<LiveCollaborationCapabilities> =
+        withContext(Dispatchers.IO) {
+            if (!usesUbuntuPersistence()) {
+                return@withContext Result.success(LiveCollaborationCapabilities())
+            }
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            localFallbackApiClient.loadLiveCollaborationCapabilities(token)
+        }
 
     suspend fun createLiveStream(
         title: String,

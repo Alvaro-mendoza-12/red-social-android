@@ -1,5 +1,69 @@
 const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
 const { publishRealtimeEvent } = require('./realtime-publish')
+
+const LIVE_GUESTS_BATTLES_FLAG = 'LIVE_GUESTS_BATTLES_ENABLED'
+const LIVE_SFU_FLAG = 'LIVE_SFU_ENABLED'
+const DEFAULT_MAX_LIVE_GUESTS = 4
+const INVITATION_TTL_MINUTES = 5
+
+function envFlag(name) {
+  return /^(1|true|yes|on)$/i.test(String(process.env[name] || '').trim())
+}
+
+function liveGuestsBattlesEnabled() {
+  return envFlag(LIVE_GUESTS_BATTLES_FLAG)
+}
+
+function liveSfuConfiguration() {
+  return {
+    enabled: envFlag(LIVE_SFU_FLAG),
+    url: String(process.env.LIVEKIT_URL || '').trim().replace(/\/+$/, ''),
+    apiKey: String(process.env.LIVEKIT_API_KEY || '').trim(),
+    apiSecret: String(process.env.LIVEKIT_API_SECRET || '').trim(),
+    maxGuests: Math.min(
+      8,
+      Math.max(1, Number.parseInt(process.env.LIVE_MAX_GUESTS || DEFAULT_MAX_LIVE_GUESTS, 10) || DEFAULT_MAX_LIVE_GUESTS),
+    ),
+  }
+}
+
+function liveRoomName(liveId) {
+  return `novvin-live-${normalizeId(liveId)}`
+}
+
+function roleGrant(role) {
+  const isPublisher = role === 'host' || role === 'guest'
+  return {
+    roomJoin: true,
+    canPublish: isPublisher,
+    canSubscribe: true,
+    canPublishData: isPublisher,
+    canUpdateOwnMetadata: role === 'host' || role === 'guest',
+  }
+}
+
+function issueLiveSfuToken({ liveId, userId, displayName, role, configuration, now = Math.floor(Date.now() / 1000) }) {
+  const expiresAt = now + 10 * 60
+  const token = jwt.sign(
+    {
+      iss: configuration.apiKey,
+      sub: normalizeId(userId),
+      name: cleanText(displayName, 160) || 'Usuario',
+      iat: now,
+      nbf: now - 5,
+      exp: expiresAt,
+      video: {
+        ...roleGrant(role),
+        room: liveRoomName(liveId),
+      },
+      metadata: JSON.stringify({ liveId: normalizeId(liveId), role }),
+    },
+    configuration.apiSecret,
+    { algorithm: 'HS256' },
+  )
+  return { token, expiresAt }
+}
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
@@ -195,6 +259,96 @@ async function ensureLiveTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_live_chapters_timeline
     ON fallback_live_chapters(live_id, offset_ms ASC, created_at ASC)
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_guest_invitations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      host_user_id TEXT NOT NULL,
+      invitee_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'rejected', 'canceled', 'expired')),
+      request_nonce TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      responded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (live_id, request_nonce),
+      CHECK (lower(host_user_id) <> lower(invitee_user_id))
+    )
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_live_guest_pending
+    ON fallback_live_guest_invitations(live_id, lower(invitee_user_id))
+    WHERE status = 'pending'
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_guest_invitee
+    ON fallback_live_guest_invitations(lower(invitee_user_id), status, created_at DESC)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_participants (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('host', 'guest', 'viewer')),
+      participant_identity TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'invited'
+        CHECK (state IN ('invited', 'connected', 'disconnected', 'removed')),
+      joined_at TIMESTAMPTZ,
+      left_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (live_id, user_id),
+      UNIQUE (live_id, participant_identity)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_participants_live_state
+    ON fallback_live_participants(live_id, state, role)
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_battles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      live_id UUID NOT NULL REFERENCES fallback_live_streams(id) ON DELETE CASCADE,
+      left_user_id TEXT NOT NULL,
+      right_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'ended', 'canceled')),
+      score_version BIGINT NOT NULL DEFAULT 0 CHECK (score_version >= 0),
+      left_score BIGINT NOT NULL DEFAULT 0 CHECK (left_score >= 0),
+      right_score BIGINT NOT NULL DEFAULT 0 CHECK (right_score >= 0),
+      winner_user_id TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ended_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (lower(left_user_id) <> lower(right_user_id)),
+      CHECK (winner_user_id IS NULL OR lower(winner_user_id) IN (lower(left_user_id), lower(right_user_id)))
+    )
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_live_active_battle
+    ON fallback_live_battles(live_id)
+    WHERE status = 'active'
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_live_battle_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      battle_id UUID NOT NULL REFERENCES fallback_live_battles(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('gift_ledger', 'channel_points', 'system')),
+      event_type TEXT NOT NULL,
+      actor_user_id TEXT,
+      points BIGINT NOT NULL CHECK (points > 0),
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (battle_id, event_id)
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_live_battle_events_timeline
+    ON fallback_live_battle_events(battle_id, occurred_at ASC)
+  `)
 }
 
 async function resolvedProfile(pool, user) {
@@ -295,6 +449,79 @@ async function isLiveBanned(pool, liveId, identity) {
   return rows.length > 0
 }
 
+function requireLiveCollaborationFeature(res) {
+  if (liveGuestsBattlesEnabled()) return true
+  res.status(404).json({ error: 'LIVE_GUESTS_BATTLES_DISABLED' })
+  return false
+}
+
+function requireInternalLiveEvent(req, res) {
+  const expected = String(process.env.LIVE_INTERNAL_EVENTS_TOKEN || '').trim()
+  const supplied = String(req.headers['x-live-internal-token'] || '').trim()
+  if (!expected || !supplied || supplied !== expected) {
+    res.status(404).json({ error: 'NOT_FOUND' })
+    return false
+  }
+  return true
+}
+
+async function invitationForUser(pool, liveId, userId) {
+  const { rows } = await pool.query(
+    `SELECT id::text, live_id::text, host_user_id, invitee_user_id, status,
+            request_nonce, expires_at, responded_at, created_at, updated_at
+     FROM fallback_live_guest_invitations
+     WHERE live_id = $1::uuid
+       AND lower(invitee_user_id) = lower($2)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [liveId, userId],
+  )
+  return rows[0] || null
+}
+
+async function invitationByNonce(pool, liveId, requestNonce) {
+  const { rows } = await pool.query(
+    `SELECT id::text, live_id::text, host_user_id, invitee_user_id, status,
+            request_nonce, expires_at, responded_at, created_at, updated_at
+     FROM fallback_live_guest_invitations
+     WHERE live_id = $1::uuid AND request_nonce = $2
+     LIMIT 1`,
+    [liveId, requestNonce],
+  )
+  return rows[0] || null
+}
+
+async function invitationById(pool, liveId, invitationId) {
+  const { rows } = await pool.query(
+    `SELECT id::text, live_id::text, host_user_id, invitee_user_id, status,
+            request_nonce, expires_at, responded_at, created_at, updated_at
+     FROM fallback_live_guest_invitations
+     WHERE live_id = $1::uuid AND id = $2::uuid
+     LIMIT 1`,
+    [liveId, invitationId],
+  )
+  return rows[0] || null
+}
+
+async function activeGuestCount(pool, liveId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM fallback_live_guest_invitations
+     WHERE live_id = $1::uuid
+       AND status = 'accepted'`,
+    [liveId],
+  )
+  return Number(rows[0]?.count || 0)
+}
+
+async function publishLiveCollaborationEvent(liveId, payload) {
+  await publishRealtimeEvent(`live-collaboration:${liveId}`, {
+    event: 'live_collaboration',
+    liveId,
+    ...(payload || {}),
+  })
+}
+
 async function appendModerationAudit(pool, {
   liveId,
   actorUserId,
@@ -339,6 +566,380 @@ async function moderationState(pool, stream, identity) {
 }
 
 function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
+  app.get('/v1/data/live/capabilities', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const configuration = liveSfuConfiguration()
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({
+        guestsBattlesEnabled: liveGuestsBattlesEnabled(),
+        sfuAvailable: liveGuestsBattlesEnabled() && configuration.enabled &&
+          Boolean(configuration.url && configuration.apiKey && configuration.apiSecret),
+        maxGuests: configuration.maxGuests,
+        scoringSources: ['gift_ledger', 'channel_points'],
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/sfu-token', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const configuration = liveSfuConfiguration()
+      if (!configuration.enabled || !configuration.url || !configuration.apiKey || !configuration.apiSecret) {
+        return res.status(503).json({ error: 'LIVE_SFU_NOT_CONFIGURED' })
+      }
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream || !stream.is_active) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const requestedRole = normalizeId(req.body?.role || 'viewer')
+      if (!['host', 'guest', 'viewer'].includes(requestedRole)) {
+        return res.status(400).json({ error: 'LIVE_SFU_ROLE_INVALID' })
+      }
+      if (requestedRole === 'host' && !ownsStream(stream, identity)) {
+        return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      }
+      if (requestedRole === 'guest') {
+        const invitation = await invitationForUser(pool, liveId, identity.displayUserId)
+        if (!invitation || invitation.status !== 'accepted') {
+          return res.status(403).json({ error: 'LIVE_GUEST_INVITATION_REQUIRED' })
+        }
+      }
+      const participant = issueLiveSfuToken({
+        liveId,
+        userId: identity.displayUserId,
+        displayName: identity.displayName,
+        role: requestedRole,
+        configuration,
+      })
+      await pool.query(
+        `INSERT INTO fallback_live_participants(
+           live_id, user_id, role, participant_identity, state, joined_at, updated_at
+         )
+         VALUES ($1::uuid, $2, $3, $4, 'invited', NULL, NOW())
+         ON CONFLICT (live_id, user_id)
+         DO UPDATE SET role = EXCLUDED.role,
+                       participant_identity = EXCLUDED.participant_identity,
+                       state = 'invited',
+                       left_at = NULL,
+                       updated_at = NOW()` ,
+        [liveId, identity.displayUserId, requestedRole, identity.displayUserId],
+      )
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({
+        wsUrl: configuration.url,
+        roomName: liveRoomName(liveId),
+        token: participant.token,
+        expiresAt: participant.expiresAt,
+        role: requestedRole,
+        maxGuests: configuration.maxGuests,
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/guests/invitations', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      const inviteeUserId = cleanText(req.body?.inviteeUserId || req.body?.invitee_user_id, 160).toLowerCase()
+      const requestNonce = cleanText(req.body?.requestNonce || req.body?.request_nonce, 128) || crypto.randomUUID()
+      if (!inviteeUserId || identity.ids.includes(inviteeUserId)) {
+        return res.status(400).json({ error: 'LIVE_INVITATION_TARGET_INVALID' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_live_guest_invitations(
+           live_id, host_user_id, invitee_user_id, status, request_nonce, expires_at
+         )
+         VALUES ($1::uuid, $2, $3, 'pending', $4, NOW() + ($5::int * INTERVAL '1 minute'))
+         ON CONFLICT (live_id, request_nonce) DO NOTHING
+         RETURNING id::text, live_id::text, host_user_id, invitee_user_id, status,
+                   request_nonce, expires_at, responded_at, created_at, updated_at`,
+        [liveId, identity.displayUserId, inviteeUserId, requestNonce, INVITATION_TTL_MINUTES],
+      )
+      const invitation = rows[0] || await invitationByNonce(pool, liveId, requestNonce)
+      if (!invitation) return res.status(409).json({ error: 'LIVE_INVITATION_CONFLICT' })
+      await publishLiveCollaborationEvent(liveId, {
+        type: 'guest_invitation_created',
+        invitation,
+      })
+      res.status(rows[0] ? 201 : 200).json({ invitation })
+    } catch (error) {
+      if (error?.code === '23505') return res.status(409).json({ error: 'LIVE_INVITATION_ALREADY_PENDING' })
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/live/:liveId/guests/invitations', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const identity = userIdentity(user)
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const isHost = ownsStream(stream, identity)
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_guest_invitations
+         SET status = 'expired', updated_at = NOW()
+         WHERE live_id = $1::uuid AND status = 'pending' AND expires_at <= NOW()
+         RETURNING id`,
+        [liveId],
+      )
+      void rows
+      const result = await pool.query(
+        `SELECT id::text, live_id::text, host_user_id, invitee_user_id, status,
+                request_nonce, expires_at, responded_at, created_at, updated_at
+         FROM fallback_live_guest_invitations
+         WHERE live_id = $1::uuid
+           AND ($2::boolean OR lower(invitee_user_id) = ANY($3::text[]))
+         ORDER BY created_at DESC
+         LIMIT 50`,
+        [liveId, isHost, identity.values],
+      )
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ invitations: result.rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/live/:liveId/guests/invitations/:invitationId', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const invitationId = validUuid(req.params.invitationId)
+      if (!liveId || !invitationId) return res.status(400).json({ error: 'LIVE_INVITATION_ID_INVALID' })
+      const identity = userIdentity(user)
+      const action = normalizeId(req.body?.status || req.body?.action)
+      if (!['accepted', 'rejected'].includes(action)) {
+        return res.status(400).json({ error: 'LIVE_INVITATION_STATUS_INVALID' })
+      }
+      const existing = await invitationById(pool, liveId, invitationId)
+      if (!existing) return res.status(404).json({ error: 'LIVE_INVITATION_NOT_FOUND' })
+      if (!identity.ids.includes(normalizeId(existing.invitee_user_id))) {
+        return res.status(403).json({ error: 'LIVE_INVITEE_REQUIRED' })
+      }
+      if (existing.status !== 'pending' || new Date(existing.expires_at).getTime() <= Date.now()) {
+        return res.status(409).json({ error: 'LIVE_INVITATION_NOT_PENDING' })
+      }
+      if (action === 'accepted' && (await activeGuestCount(pool, liveId)) >= liveSfuConfiguration().maxGuests) {
+        return res.status(409).json({ error: 'LIVE_GUEST_LIMIT_REACHED' })
+      }
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_guest_invitations
+         SET status = $3, responded_at = NOW(), updated_at = NOW()
+         WHERE id = $1::uuid AND live_id = $2::uuid AND status = 'pending' AND expires_at > NOW()
+         RETURNING id::text, live_id::text, host_user_id, invitee_user_id, status,
+                   request_nonce, expires_at, responded_at, created_at, updated_at`,
+        [invitationId, liveId, action],
+      )
+      const invitation = rows[0]
+      if (!invitation) return res.status(409).json({ error: 'LIVE_INVITATION_NOT_PENDING' })
+      if (action === 'accepted') {
+        await pool.query(
+          `INSERT INTO fallback_live_participants(
+             live_id, user_id, role, participant_identity, state, updated_at
+           ) VALUES ($1::uuid, $2, 'guest', $2, 'invited', NOW())
+           ON CONFLICT (live_id, user_id)
+           DO UPDATE SET role = 'guest', state = 'invited', updated_at = NOW()`,
+          [liveId, identity.displayUserId],
+        )
+      }
+      await publishLiveCollaborationEvent(liveId, {
+        type: `guest_invitation_${action}`,
+        invitation,
+      })
+      res.json({ invitation })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/battles', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      const opponentUserId = cleanText(req.body?.opponentUserId || req.body?.opponent_user_id, 160).toLowerCase()
+      if (!opponentUserId || identity.ids.includes(opponentUserId)) {
+        return res.status(400).json({ error: 'LIVE_BATTLE_OPPONENT_INVALID' })
+      }
+      const invitation = await invitationForUser(pool, liveId, opponentUserId)
+      if (!invitation || invitation.status !== 'accepted') {
+        return res.status(409).json({ error: 'LIVE_BATTLE_GUEST_NOT_ACCEPTED' })
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_live_battles(live_id, left_user_id, right_user_id, status)
+         VALUES ($1::uuid, $2, $3, 'active')
+         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
+                   score_version, left_score, right_score, winner_user_id,
+                   started_at, ended_at, created_at, updated_at`,
+        [liveId, identity.displayUserId, opponentUserId],
+      )
+      const battle = rows[0]
+      await publishLiveCollaborationEvent(liveId, { type: 'battle_started', battle })
+      res.status(201).json({ battle })
+    } catch (error) {
+      if (error?.code === '23505') return res.status(409).json({ error: 'LIVE_BATTLE_ALREADY_ACTIVE' })
+      next(error)
+    }
+  })
+
+  app.get('/v1/data/live/:liveId/battles/:battleId', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const battleId = validUuid(req.params.battleId)
+      if (!liveId || !battleId) return res.status(400).json({ error: 'LIVE_BATTLE_ID_INVALID' })
+      const identity = userIdentity(user)
+      const { rows } = await pool.query(
+        `SELECT id::text, live_id::text, left_user_id, right_user_id, status,
+                score_version, left_score, right_score, winner_user_id,
+                started_at, ended_at, created_at, updated_at
+         FROM fallback_live_battles
+         WHERE id = $1::uuid AND live_id = $2::uuid
+           AND (lower(left_user_id) = ANY($3::text[]) OR lower(right_user_id) = ANY($3::text[]))
+         LIMIT 1`,
+        [battleId, liveId, identity.values],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'LIVE_BATTLE_NOT_FOUND' })
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ battle: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/battles/:battleId/end', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const battleId = validUuid(req.params.battleId)
+      if (!liveId || !battleId) return res.status(400).json({ error: 'LIVE_BATTLE_ID_INVALID' })
+      const identity = userIdentity(user)
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_battles
+         SET status = 'ended',
+             winner_user_id = CASE
+               WHEN left_score > right_score THEN left_user_id
+               WHEN right_score > left_score THEN right_user_id
+               ELSE NULL
+             END,
+             ended_at = NOW(), updated_at = NOW()
+         WHERE id = $1::uuid AND live_id = $2::uuid AND status = 'active'
+           AND (lower(left_user_id) = ANY($3::text[]) OR lower(right_user_id) = ANY($3::text[]))
+         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
+                   score_version, left_score, right_score, winner_user_id,
+                   started_at, ended_at, created_at, updated_at`,
+        [battleId, liveId, identity.values],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'LIVE_BATTLE_NOT_ACTIVE' })
+      await publishLiveCollaborationEvent(liveId, { type: 'battle_ended', battle: rows[0] })
+      res.json({ battle: rows[0] })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/internal/live/battles/:battleId/events', async (req, res, next) => {
+    let client
+    try {
+      if (!liveGuestsBattlesEnabled() || !requireInternalLiveEvent(req, res)) return
+      const battleId = validUuid(req.params.battleId)
+      if (!battleId) return res.status(400).json({ error: 'LIVE_BATTLE_ID_INVALID' })
+      const eventId = cleanText(req.body?.eventId || req.body?.event_id, 160)
+      const source = normalizeId(req.body?.source)
+      const eventType = cleanText(req.body?.eventType || req.body?.event_type, 80)
+      const actorUserId = cleanText(req.body?.actorUserId || req.body?.actor_user_id, 160).toLowerCase()
+      const points = intBetween(req.body?.points, 1, 1_000_000, 0)
+      if (!eventId || !eventType || !actorUserId || !['gift_ledger', 'channel_points', 'system'].includes(source) || points <= 0) {
+        return res.status(400).json({ error: 'LIVE_BATTLE_EVENT_INVALID' })
+      }
+      client = await pool.connect()
+      await client.query('BEGIN')
+      const battleResult = await client.query(
+        `SELECT id::text, live_id::text, left_user_id, right_user_id, status
+         FROM fallback_live_battles WHERE id = $1::uuid FOR UPDATE`,
+        [battleId],
+      )
+      const battle = battleResult.rows[0]
+      if (!battle || battle.status !== 'active') {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ error: 'LIVE_BATTLE_NOT_ACTIVE' })
+      }
+      const actor = normalizeId(actorUserId)
+      const side = actor === normalizeId(battle.left_user_id)
+        ? 'left_score'
+        : actor === normalizeId(battle.right_user_id) ? 'right_score' : null
+      if (!side) {
+        await client.query('ROLLBACK')
+        return res.status(403).json({ error: 'LIVE_BATTLE_ACTOR_INVALID' })
+      }
+      const inserted = await client.query(
+        `INSERT INTO fallback_live_battle_events(
+           battle_id, event_id, source, event_type, actor_user_id, points
+         ) VALUES ($1::uuid, $2, $3, $4, $5, $6)
+         ON CONFLICT (battle_id, event_id) DO NOTHING
+         RETURNING id::text`,
+        [battleId, eventId, source, eventType, actorUserId, points],
+      )
+      if (!inserted.rows[0]) {
+        await client.query('COMMIT')
+        return res.json({ duplicate: true })
+      }
+      const updated = await client.query(
+        `UPDATE fallback_live_battles
+         SET ${side} = ${side} + $2, score_version = score_version + 1, updated_at = NOW()
+         WHERE id = $1::uuid
+         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
+                   score_version, left_score, right_score, winner_user_id,
+                   started_at, ended_at, created_at, updated_at`,
+        [battleId, points],
+      )
+      await client.query('COMMIT')
+      await publishLiveCollaborationEvent(battle.live_id, {
+        type: 'battle_score_updated',
+        battle: updated.rows[0],
+        eventId,
+      })
+      res.status(201).json({ battle: updated.rows[0], eventId })
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client?.release()
+    }
+  })
+
   app.get('/v1/data/live', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -993,5 +1594,8 @@ module.exports = {
   cleanBlockedWords,
   containsBlockedWord,
   ensureLiveTables,
+  issueLiveSfuToken,
+  liveGuestsBattlesEnabled,
+  liveSfuConfiguration,
   registerLiveRoutes,
 }
