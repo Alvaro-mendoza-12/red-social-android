@@ -13,6 +13,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -50,6 +52,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import conectate.com.data.model.Video
+import conectate.com.data.model.Post
 import conectate.com.data.repository.VideoRepository
 import conectate.com.util.UbuntuMedia
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -210,6 +213,7 @@ fun VideoFeedScreen(
 ) {
     val forYouVideos by viewModel.forYouVideos.collectAsState()
     val followingVideos by viewModel.followingVideos.collectAsState()
+    val socialHighlights by viewModel.socialHighlights.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val showLiveRecommendations by viewModel.showLiveRecommendations.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
@@ -284,12 +288,14 @@ fun VideoFeedScreen(
         activeStreams,
         isSearchMode,
         selectedTab,
-        showLiveRecommendations
+        showLiveRecommendations,
+        socialHighlights
     ) {
         mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
-            includeLives = showLiveRecommendations && !isSearchMode && selectedTab == 0
+            includeLives = showLiveRecommendations && !isSearchMode && selectedTab == 0,
+            socialPosts = if (!isSearchMode && selectedTab == 0) socialHighlights else emptyList()
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
@@ -936,6 +942,14 @@ fun VideoFeedScreen(
                                 },
                                 onOpenProfile = {
                                     onNavigateToProfile(entry.stream.hostUserId)
+                                }
+                            )
+                        }
+                        is VideoFeedSocialEntry -> {
+                            SocialHighlightsPage(
+                                posts = entry.posts,
+                                onPostClick = { post ->
+                                    navController.navigate(Screen.PostDetail.createRoute(post.id))
                                 }
                             )
                         }
@@ -1725,21 +1739,32 @@ private data class VideoFeedLiveEntry(
     override val stableKey: String = "live:${stream.id}"
 }
 
+private data class VideoFeedSocialEntry(
+    val posts: List<Post>
+) : VideoFeedEntry {
+    override val stableKey: String = "social:${posts.joinToString(",") { it.id }}"
+}
+
 private fun mixedVideoFeed(
     videos: List<Video>,
     streams: List<conectate.com.data.model.LiveStream>,
-    includeLives: Boolean
+    includeLives: Boolean,
+    socialPosts: List<Post> = emptyList()
 ): List<VideoFeedEntry> {
-    if (!includeLives || streams.isEmpty()) return videos.map(::VideoFeedVideoEntry)
-    if (videos.isEmpty()) return streams.take(6).map(::VideoFeedLiveEntry)
+    if (videos.isEmpty()) {
+        val liveEntries = if (includeLives) streams.take(6).map(::VideoFeedLiveEntry) else emptyList()
+        val socialEntry = socialPosts.takeIf { it.isNotEmpty() }?.let(::VideoFeedSocialEntry)
+        return liveEntries + listOfNotNull(socialEntry)
+    }
 
-    val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 12) + 1)
+    val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 10) + 2)
     var nextLiveAfter = 12
     var liveIndex = 0
+    var socialInserted = false
     videos.forEachIndexed { index, video ->
         result += VideoFeedVideoEntry(video)
         val videoCount = index + 1
-        if (videoCount == nextLiveAfter) {
+        if (includeLives && streams.isNotEmpty() && videoCount == nextLiveAfter) {
             result += VideoFeedLiveEntry(streams[liveIndex % streams.size])
             liveIndex += 1
             nextLiveAfter += when (liveIndex % 3) {
@@ -1748,8 +1773,119 @@ private fun mixedVideoFeed(
                 else -> 15
             }
         }
+        if (!socialInserted && socialPosts.isNotEmpty() && videoCount == 8) {
+            result += VideoFeedSocialEntry(socialPosts.take(8))
+            socialInserted = true
+        }
     }
     return result
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SocialHighlightsPage(
+    posts: List<Post>,
+    onPostClick: (Post) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B1220)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF16233A)),
+            shape = MaterialTheme.shapes.extraLarge
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(Modifier.padding(horizontal = 18.dp)) {
+                    Text(
+                        "También puede interesarte",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "Publicaciones de Social seleccionadas para ti",
+                        color = Color.White.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    lazyItems(posts, key = { it.id }) { post ->
+                        val media = post.mediaUrls.firstOrNull() ?: post.mediaUrlLegacy
+                        Card(
+                            onClick = { onPostClick(post) },
+                            modifier = Modifier.width(190.dp).height(250.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF243756)),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Column {
+                                if (!media.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = UbuntuMedia.resolveUrl(media) ?: media,
+                                        contentDescription = "Publicación de ${post.userName}",
+                                        modifier = Modifier.fillMaxWidth().height(132.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(132.dp)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    listOf(Color(0xFF5B4BDB), Color(0xFF1DB6A5))
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("Social", color = Color.White, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        post.userName.ifBlank { "Usuario" },
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        post.content.ifBlank { "Ver publicación" },
+                                        color = Color.White.copy(alpha = 0.82f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 3,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "${post.likeCount} me gusta · ${post.commentCount} comentarios",
+                                        color = Color.White.copy(alpha = 0.64f),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Desliza horizontalmente para ver más",
+                    color = Color.White.copy(alpha = 0.64f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                )
+            }
+        }
+    }
 }
 
 private fun formatVideoMonthYear(value: String): String {

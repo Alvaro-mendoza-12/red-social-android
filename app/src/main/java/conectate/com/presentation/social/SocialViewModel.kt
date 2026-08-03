@@ -88,6 +88,8 @@ class SocialViewModel @Inject constructor(
 
     private val _friends = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val friends: StateFlow<List<conectate.com.data.model.User>> = _friends.asStateFlow()
+    private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
+    val recommendedPeople: StateFlow<List<conectate.com.data.model.User>> = _recommendedPeople.asStateFlow()
     private val _reactionUsers = MutableStateFlow<List<PostReactionUser>>(emptyList())
     val reactionUsers: StateFlow<List<PostReactionUser>> = _reactionUsers.asStateFlow()
     private val _reactionsLoading = MutableStateFlow(false)
@@ -118,6 +120,39 @@ class SocialViewModel @Inject constructor(
         loadPosts()
         loadCurrentUser()
         loadFriends()
+        loadRecommendedPeople()
+    }
+
+    private fun loadRecommendedPeople() {
+        viewModelScope.launch {
+            val currentId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+            if (currentId.isBlank()) return@launch
+            userRepository.getUsersByFollowerThreshold(0)
+                .onSuccess { candidates ->
+                    val candidateIds = candidates.map { it.id }.filter { it.isNotBlank() }
+                    val followedIds = userRepository.getFollowedUserIds(candidateIds).getOrDefault(emptySet())
+                    val friendIds = _friends.value.map { it.id.trim().lowercase() }.toSet()
+                    _recommendedPeople.value = candidates
+                        .filter { it.id.trim().lowercase() != currentId }
+                        .filterNot { it.isSuspendedNow }
+                        .filterNot { followedIds.contains(it.id.trim().lowercase()) }
+                        .filterNot { friendIds.contains(it.id.trim().lowercase()) }
+                        .distinctBy { it.id.trim().lowercase() }
+                        .sortedWith(compareByDescending<conectate.com.data.model.User> { it.is_verified }.thenByDescending { it.followers_count ?: 0 })
+                        .take(12)
+                }
+        }
+    }
+
+    fun followRecommendedUser(user: conectate.com.data.model.User) {
+        _recommendedPeople.value = _recommendedPeople.value.filterNot { it.id == user.id }
+        viewModelScope.launch {
+            userRepository.followUser(user.id).onFailure {
+                _recommendedPeople.value = (_recommendedPeople.value + user)
+                    .distinctBy { it.id }
+                    .take(12)
+            }
+        }
     }
 
     private fun loadCurrentUser() {
@@ -137,6 +172,7 @@ class SocialViewModel @Inject constructor(
             val userId = authService.getCurrentUserId() ?: return@launch
             friendRepository.getFriends(userId).onSuccess {
                 _friends.value = it
+                loadRecommendedPeople()
                 if (_posts.value.isNotEmpty()) {
                     _posts.value = rankPosts(_posts.value)
                 }

@@ -139,6 +139,7 @@ fun SocialScreen(
     sharedUri: String? = null
 ) {
     val posts by viewModel.posts.collectAsState()
+    val recommendedPeople by viewModel.recommendedPeople.collectAsState()
     val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
@@ -1677,6 +1678,19 @@ fun SocialScreen(
                                             )
                                         }
                                     }
+                                    if (recommendedPeople.isNotEmpty() && feedMode == SocialFeedMode.DISCOVER) {
+                                        item(key = "recommended-people") {
+                                            RecommendedPeopleRail(
+                                                users = recommendedPeople,
+                                                onOpenProfile = { userId ->
+                                                    if (userId != viewModel.currentUserId) {
+                                                        navController.navigate(Screen.UserProfile.createRoute(userId))
+                                                    }
+                                                },
+                                                onFollow = viewModel::followRecommendedUser
+                                            )
+                                        }
+                                    }
                                     items(posts, key = { it.id }) { post ->
                                         PostCard(
                                             post = post,
@@ -1878,6 +1892,96 @@ fun SocialScreen(
                 navController.navigate(route)
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecommendedPeopleRail(
+    users: List<conectate.com.data.model.User>,
+    onOpenProfile: (String) -> Unit,
+    onFollow: (conectate.com.data.model.User) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 14.dp)) {
+                Text("Personas que quizá conozcas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(
+                    "Perfiles públicos relacionados con tu actividad",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(users, key = { it.id }) { user ->
+                    Card(
+                        onClick = { onOpenProfile(user.id) },
+                        modifier = Modifier.width(156.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (user.safeProfileImage != null) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(user.safeProfileImage),
+                                        contentDescription = "Foto de ${user.displayName}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        user.displayName.take(1).uppercase(),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                            Text(
+                                user.displayName,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${user.followers_count ?: 0} seguidores",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedButton(
+                                onClick = { onFollow(user) },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Seguir", maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
