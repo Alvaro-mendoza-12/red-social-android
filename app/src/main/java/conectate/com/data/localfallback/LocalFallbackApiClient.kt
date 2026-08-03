@@ -420,6 +420,7 @@ private data class LocalFallbackLiveChapterResponse(
 private data class LocalFallbackLiveCapabilitiesResponse(
     val guestsBattlesEnabled: Boolean = false,
     val sfuAvailable: Boolean = false,
+    val channelPointsEnabled: Boolean = false,
     val maxGuests: Int = 0,
     val scoringSources: List<String> = emptyList()
 )
@@ -3085,6 +3086,7 @@ class LocalFallbackApiClient @Inject constructor(
             LiveCollaborationCapabilities(
                 guestsBattlesEnabled = response.guestsBattlesEnabled,
                 sfuAvailable = response.sfuAvailable,
+                channelPointsEnabled = response.channelPointsEnabled,
                 maxGuests = response.maxGuests,
                 scoringSources = response.scoringSources
             )

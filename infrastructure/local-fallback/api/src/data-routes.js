@@ -5111,10 +5111,12 @@ async function ensureLocalDataTables(pool) {
   const { ensureMomentsTables } = require('./moments-routes')
   const { ensureAdminModerationTables } = require('./admin-moderation-routes')
   const { ensureLiveTables } = require('./live-routes')
+  const { ensureLivePointsTables } = require('./live-points-routes')
   const { ensureProximityTables } = require('./proximity-routes')
   await ensureMomentsTables(pool)
   await ensureAdminModerationTables(pool)
   await ensureLiveTables(pool)
+  await ensureLivePointsTables(pool)
   await ensureProximityTables(pool)
   await ensureNotificationDigestTables(pool)
 }
@@ -5124,6 +5126,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
   const { registerLiveRoutes } = require('./live-routes')
+  const { registerLivePointsRoutes } = require('./live-points-routes')
   const { registerProximityRoutes } = require('./proximity-routes')
   const threadSummaryLimiter = createFixedWindowRateLimiter({
     limit: Math.max(2, Math.min(Number(process.env.AI_THREAD_SUMMARY_RATE_LIMIT_PER_MINUTE) || 10, 60)),
@@ -5146,6 +5149,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     invalidateProfileCache: invalidateImportedDataCache,
   })
   registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerNotificationDigestRoutes(app, {
     pool,

@@ -576,6 +576,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         guestsBattlesEnabled: liveGuestsBattlesEnabled(),
         sfuAvailable: liveGuestsBattlesEnabled() && configuration.enabled &&
           Boolean(configuration.url && configuration.apiKey && configuration.apiSecret),
+        channelPointsEnabled: /^(1|true|yes|on)$/i.test(String(process.env.LIVE_CHANNEL_POINTS_ENABLED || '').trim()) &&
+          Boolean(String(process.env.LIVE_POINTS_SESSION_SECRET || '').trim()),
         maxGuests: configuration.maxGuests,
         scoringSources: ['gift_ledger', 'channel_points'],
       })

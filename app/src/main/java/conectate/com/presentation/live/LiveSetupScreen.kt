@@ -547,6 +547,17 @@ fun LiveSetupScreen(
                     )
                     Divider()
                     SetupCapabilityRow(
+                        title = "Puntos del canal",
+                        detail = if (collaborationCapabilities.channelPointsEnabled) {
+                            "Los espectadores ganan puntos por tiempo visible y canjean recompensas del creador."
+                        } else {
+                            "Sistema de puntos separado de monedas; requiere activar la política antifraude del servidor."
+                        },
+                        available = collaborationCapabilities.channelPointsEnabled,
+                        badge = if (collaborationCapabilities.channelPointsEnabled) "Disponible" else "Bloqueado por configuración"
+                    )
+                    Divider()
+                    SetupCapabilityRow(
                         title = "Invitados y batallas",
                         detail = if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
                             "Invita hasta ${collaborationCapabilities.maxGuests} personas y crea batallas con puntuación del servidor."
