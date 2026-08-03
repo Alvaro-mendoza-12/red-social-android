@@ -286,7 +286,11 @@ fun isDeviceLocationEnabled(context: Context): Boolean {
     }
 }
 
-/** Solicita una lectura actual si Android todavía no tiene una ubicación reciente en caché. */
+/**
+ * Obtiene una lectura actual cuando la caché está vacía o vencida. Varias capas
+ * de Android conceden el permiso antes de que exista un lastKnownLocation, por
+ * lo que consultar sólo esa caché produce un falso error en el primer uso.
+ */
 @SuppressLint("MissingPermission")
 suspend fun getBestCurrentLocation(
     context: Context,
@@ -294,14 +298,18 @@ suspend fun getBestCurrentLocation(
     timeoutMillis: Long = 12_000L
 ): Location? {
     if (!hasLocationPermission(context) || !isDeviceLocationEnabled(context)) return null
+
     val cached = getBestLastKnownLocation(context)
     val cachedAge = cached?.let { System.currentTimeMillis() - it.time } ?: Long.MAX_VALUE
     if (cached != null && cachedAge in 0..freshForMillis) return cached
 
-    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return cached
-    val provider = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-        .firstOrNull { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         ?: return cached
+    val provider = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+        .firstOrNull { candidate ->
+            runCatching { manager.isProviderEnabled(candidate) }.getOrDefault(false)
+        } ?: return cached
+
     val current = withTimeoutOrNull(timeoutMillis) {
         suspendCancellableCoroutine<Location?> { continuation ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -312,8 +320,12 @@ suspend fun getBestCurrentLocation(
                         provider,
                         cancellationSignal,
                         ContextCompat.getMainExecutor(context)
-                    ) { location -> if (continuation.isActive) continuation.resume(location) }
-                }.onFailure { if (continuation.isActive) continuation.resume(null) }
+                    ) { location ->
+                        if (continuation.isActive) continuation.resume(location)
+                    }
+                }.onFailure {
+                    if (continuation.isActive) continuation.resume(null)
+                }
             } else {
                 val listener = object : LocationListener {
                     override fun onLocationChanged(location: Location) {
