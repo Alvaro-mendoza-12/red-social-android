@@ -2,7 +2,9 @@ package conectate.com.presentation.video
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import conectate.com.data.model.Post
 import conectate.com.data.model.Video
+import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.VideoRepository
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +31,7 @@ import javax.inject.Inject
 @HiltViewModel
 class VideoFeedViewModel @Inject constructor(
     private val videoRepository: VideoRepository,
+    private val postRepository: PostRepository,
     private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager, // Injected
     private val authService: AuthService,
     val userRepository: conectate.com.data.repository.UserRepository,
@@ -44,6 +47,8 @@ class VideoFeedViewModel @Inject constructor(
 
     private val _followingVideos = MutableStateFlow<List<Video>>(emptyList())
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
+    private val _socialHighlights = MutableStateFlow<List<Post>>(emptyList())
+    val socialHighlights: StateFlow<List<Post>> = _socialHighlights.asStateFlow()
     val activeStreams = liveRepository.activeStreams
     val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
     val offlineVideos = offlineVideoRepository.videos
@@ -128,7 +133,24 @@ class VideoFeedViewModel @Inject constructor(
         voiceMessageManager.setScope(viewModelScope)
         offlineVideoRepository.refreshForCurrentAccount()
         loadForYouVideos()
+        loadSocialHighlights()
         loadFollowedUsers()
+    }
+
+    private fun loadSocialHighlights() {
+        viewModelScope.launch {
+            runCatching {
+                postRepository.getGlobalPosts(limit = 8, mode = "discover").collect { posts ->
+                    _socialHighlights.value = posts
+                        .filter { it.id.isNotBlank() && it.userId != currentUserId }
+                        .distinctBy { it.id }
+                        .take(8)
+                }
+            }.onFailure { error ->
+                android.util.Log.w("VideoFeedVM", "Social highlights unavailable", error)
+                _socialHighlights.value = emptyList()
+            }
+        }
     }
 
     private fun loadFollowedUsers() {
