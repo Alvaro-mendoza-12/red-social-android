@@ -25,6 +25,7 @@ import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.local.prefs.LivePreferences
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
@@ -90,6 +91,7 @@ class LiveRepository @Inject constructor(
     private val authService: AuthService,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val liveKitRoomBridge: LiveKitRoomBridge,
     private val storageService: StorageService,
     private val livePreferences: LivePreferences
 ) {
@@ -521,6 +523,35 @@ class LiveRepository @Inject constructor(
             if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
             localFallbackApiClient.loadLiveCollaborationCapabilities(token)
         }
+
+    val liveKitState: StateFlow<LiveKitRoomBridge.State>
+        get() = liveKitRoomBridge.state
+
+    suspend fun connectLiveKit(
+        liveId: String,
+        role: String,
+        publishAudio: Boolean,
+        publishCamera: Boolean
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!usesUbuntuPersistence()) {
+            return@withContext Result.failure(Exception("LiveKit requiere el backend Ubuntu configurado."))
+        }
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        val normalizedId = normalizeLiveSessionId(liveId)
+            ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+        localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
+            .fold(
+                onSuccess = { session ->
+                    liveKitRoomBridge.connect(session, publishAudio, publishCamera)
+                },
+                onFailure = { error -> Result.failure(error) }
+            )
+    }
+
+    fun disconnectLiveKit() {
+        liveKitRoomBridge.disconnect()
+    }
 
     suspend fun createLiveStream(
         title: String,

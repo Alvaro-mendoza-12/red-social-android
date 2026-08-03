@@ -8,6 +8,7 @@ import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.LiveRole
+import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.common.toUserFacingMessage
@@ -57,6 +58,7 @@ class LiveSessionViewModel @Inject constructor(
     val eglBaseContext = liveRepository.eglBaseContext
     val localVideoTrack = liveRepository.localVideoTrack
     val remoteVideoTracks = liveRepository.remoteVideoTracks
+    val liveKitState: StateFlow<LiveKitRoomBridge.State> = liveRepository.liveKitState
 
     private val _isFollowingHost = MutableStateFlow<Boolean?>(null)
     val isFollowingHost: StateFlow<Boolean?> = _isFollowingHost.asStateFlow()
@@ -177,6 +179,22 @@ class LiveSessionViewModel @Inject constructor(
 
     fun endLive() {
         liveRepository.endLiveAsync()
+    }
+
+    suspend fun connectLiveKit(
+        liveId: String,
+        role: String,
+        publishAudio: Boolean,
+        publishCamera: Boolean
+    ): Result<Unit> = liveRepository.connectLiveKit(
+        liveId = liveId,
+        role = role,
+        publishAudio = publishAudio,
+        publishCamera = publishCamera
+    )
+
+    fun disconnectLiveKit() {
+        liveRepository.disconnectLiveKit()
     }
 
     suspend fun endLiveAndAwait(): Result<Unit> = liveRepository.endLive()

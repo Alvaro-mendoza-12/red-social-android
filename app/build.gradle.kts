@@ -285,6 +285,7 @@ dependencies {
     implementation(libs.zxing.core)
 
     implementation(libs.webrtc)
+    implementation(libs.livekit.android)
     implementation(libs.socket.io.client) {
         exclude(group = "org.json", module = "json")
     }

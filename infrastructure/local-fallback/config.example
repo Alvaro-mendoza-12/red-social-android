@@ -69,6 +69,16 @@ LIVE_GIFT_HIGH_VALUE_CONFIRMATION_COINS=900
 # JSON completo de la cuenta de servicio, inyectado como secreto; nunca se incluye en la app.
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=
 
+# LiveKit SFU para invitados, batallas y salas colaborativas.
+# Mantener apagado hasta verificar el backend. Estas claves viven solo en el
+# servidor (nunca en Android, el APK ni el repositorio).
+LIVE_GUESTS_BATTLES_ENABLED=false
+LIVE_SFU_ENABLED=false
+LIVE_MAX_GUESTS=4
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
 # IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
 # 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion
 # y hace el primer entrenamiento casi 10 veces mas costoso que 512.
