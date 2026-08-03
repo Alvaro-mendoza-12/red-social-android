@@ -1,0 +1,39 @@
+package conectate.com.data.webrtc
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class LiveCameraFilterTest {
+
+    @Test
+    fun `wire values are stable and unknown values fall back to natural`() {
+        assertEquals(LiveCameraFilter.WARM, LiveCameraFilter.fromWireValue(" WARM "))
+        assertEquals(LiveCameraFilter.NONE, LiveCameraFilter.fromWireValue("future_filter"))
+        assertEquals(LiveCameraFilter.NONE, LiveCameraFilter.fromWireValue(null))
+    }
+
+    @Test
+    fun `mono neutralizes both chroma planes`() {
+        assertEquals(128, LiveCameraFilterColorMath.chroma(20, LiveCameraFilter.MONO, true))
+        assertEquals(128, LiveCameraFilterColorMath.chroma(240, LiveCameraFilter.MONO, false))
+    }
+
+    @Test
+    fun `warm and cool move chroma in opposite directions`() {
+        val warmU = LiveCameraFilterColorMath.chroma(100, LiveCameraFilter.WARM, true)
+        val warmV = LiveCameraFilterColorMath.chroma(100, LiveCameraFilter.WARM, false)
+        val coolU = LiveCameraFilterColorMath.chroma(100, LiveCameraFilter.COOL, true)
+        val coolV = LiveCameraFilterColorMath.chroma(100, LiveCameraFilter.COOL, false)
+
+        assertTrue(warmU < warmV)
+        assertTrue(coolU > coolV)
+    }
+
+    @Test
+    fun `all transforms clamp to an eight bit video channel`() {
+        assertEquals(255, LiveCameraFilterColorMath.chroma(250, LiveCameraFilter.WARM, false))
+        assertEquals(0, LiveCameraFilterColorMath.chroma(2, LiveCameraFilter.WARM, true))
+        assertEquals(255, LiveCameraFilterColorMath.luma(255, LiveCameraFilter.WARM))
+    }
+}

@@ -352,7 +352,7 @@ private fun GiftPreviewDialog(gift: VirtualGift, onDismiss: () -> Unit) {
     var replay by remember(gift.id) { mutableStateOf(0) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Vista previa · DEMO") },
+        title = { Text("Vista previa") },
         text = {
             Box(
                 modifier = Modifier.fillMaxWidth().height(360.dp),
@@ -360,7 +360,7 @@ private fun GiftPreviewDialog(gift: VirtualGift, onDismiss: () -> Unit) {
             ) {
                 GiftAnimationStage(
                     gift = gift,
-                    senderLabel = "Demostración · no descuenta monedas",
+                    senderLabel = "Previsualización · no descuenta monedas",
                     runKey = "${gift.id}:$replay",
                     preview = true
                 )

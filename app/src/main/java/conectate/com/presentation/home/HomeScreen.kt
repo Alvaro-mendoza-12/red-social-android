@@ -261,7 +261,14 @@ fun HomeScreen(
             }
 
             composable(Screen.CoinsAndPayments.route) {
-                conectate.com.presentation.wallet.CoinsAndPaymentsScreen(navController = navController)
+                conectate.com.presentation.wallet.CoinsAndPaymentsScreen(
+                    navController = navController,
+                    mainNavController = mainNavController
+                )
+            }
+
+            composable(Screen.CreatorEarnings.route) {
+                conectate.com.presentation.wallet.CreatorEarningsScreen(navController = navController)
             }
 
             composable(Screen.AccountSettings.route) {

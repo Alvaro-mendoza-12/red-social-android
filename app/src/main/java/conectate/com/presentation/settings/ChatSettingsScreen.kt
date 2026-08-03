@@ -162,7 +162,7 @@ fun ChatSettingsScreen(
                 SettingSwitchRow(
                     icon = Icons.Default.VolumeUp,
                     title = "Sonidos de chat",
-                    subtitle = "Reproduce un tono al enviar y recibir mensajes.",
+                    subtitle = "Tonos de mensajes y celebraciones de regalos en directos.",
                     checked = chatSoundsEnabled,
                     onCheckedChange = viewModel::toggleChatSounds
                 )

@@ -1,5 +1,6 @@
 package conectate.com.presentation.wallet
 
+import android.content.Context
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -8,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,26 +28,42 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.visualKey
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-private const val MAX_GIFT_QUEUE_SIZE = 2
+private const val MAX_GIFT_QUEUE_SIZE = 3
+private const val STATIC_FALLBACK_MS = 300L
+private val GiftPink = Color(0xFFFF4F87)
+private val GiftPurple = Color(0xFF8F67FF)
+private val GiftCyan = Color(0xFF35D7FF)
+private val GiftGold = Color(0xFFFFC857)
+private val GiftMint = Color(0xFF65F5B5)
+private val GiftPalette = listOf(GiftPink, GiftPurple, GiftCyan, GiftGold, GiftMint)
 
 /**
- * Mantiene como máximo un regalo protagonista y uno en espera. Los IDs vistos
+ * Mantiene como máximo un regalo protagonista y dos en espera. Los IDs vistos
  * no vuelven a reproducirse cuando Realtime recompone la misma lista.
  */
 internal class GiftEventQueue(private val capacity: Int = MAX_GIFT_QUEUE_SIZE) {
@@ -53,8 +72,11 @@ internal class GiftEventQueue(private val capacity: Int = MAX_GIFT_QUEUE_SIZE) {
 
     fun offerAll(events: List<LiveGiftEvent>) {
         events.forEach { event ->
-            if (event.transactionId.isBlank() || !seen.add(event.transactionId)) return@forEach
-            if (queued.size < capacity) queued.addLast(event)
+            if (event.transactionId.isBlank() || event.transactionId in seen) return@forEach
+            if (queued.size < capacity) {
+                seen.add(event.transactionId)
+                queued.addLast(event)
+            }
         }
         while (seen.size > 100) seen.remove(seen.first())
     }
@@ -66,12 +88,34 @@ internal class GiftEventQueue(private val capacity: Int = MAX_GIFT_QUEUE_SIZE) {
     }
 
     fun size(): Int = queued.size
+
+    fun clear() {
+        queued.clear()
+    }
 }
 
 @Composable
 fun GiftCelebrationOverlay(events: List<LiveGiftEvent>, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val queue = remember { GiftEventQueue() }
     var protagonist by remember { mutableStateOf<LiveGiftEvent?>(null) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_DESTROY) {
+                GiftSoundEngine.stopAll()
+                queue.clear()
+                protagonist = null
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            GiftSoundEngine.stopAll()
+            queue.clear()
+        }
+    }
 
     LaunchedEffect(events.map { it.transactionId }) {
         queue.offerAll(events)
@@ -80,22 +124,34 @@ fun GiftCelebrationOverlay(events: List<LiveGiftEvent>, modifier: Modifier = Mod
 
     LaunchedEffect(protagonist?.transactionId) {
         val event = protagonist ?: return@LaunchedEffect
-        delay(giftAnimationDurationMs(event.gift.priceDiamonds).toLong() + 120L)
+        val profile = giftMotionProfile(event.gift.visualKey())
+        // LiveGiftEvent sólo se crea tras el commit/ack del servidor. La vista
+        // previa llama GiftAnimationStage directamente y jamás llega aquí.
+        GiftSoundEngine.playConfirmed(context.applicationContext, giftSceneSpec(profile).sound)
+        val displayDuration = if (giftAnimationsEnabled(context)) {
+            giftAnimationDurationMs(event.gift.priceDiamonds).toLong() + 120L
+        } else {
+            STATIC_FALLBACK_MS
+        }
+        delay(displayDuration)
         queue.complete(event.transactionId)
+        // Si una ráfaga superó la cola visible, toma el siguiente confirmado
+        // al liberar espacio sin reproducir IDs ya celebrados.
+        queue.offerAll(events)
         protagonist = queue.peek()
     }
 
     val event = protagonist ?: return
     GiftAnimationStage(
         gift = event.gift,
-        senderLabel = "${event.senderName} envió este regalo",
+        senderLabel = "${event.senderName} envió ${event.gift.name}",
         runKey = event.transactionId,
         preview = false,
         modifier = modifier
     )
 }
 
-/** La vista previa y el evento confirmado comparten exactamente el mismo motor. */
+/** La vista previa y el evento confirmado comparten exactamente el motor visual. */
 @Composable
 fun GiftAnimationStage(
     gift: VirtualGift,
@@ -105,18 +161,11 @@ fun GiftAnimationStage(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val animationsEnabled = remember(runKey) {
-        runCatching {
-            Settings.Global.getFloat(
-                context.contentResolver,
-                Settings.Global.ANIMATOR_DURATION_SCALE,
-                1f
-            ) > 0f
-        }.getOrDefault(true)
-    }
+    val animationsEnabled = remember(runKey) { giftAnimationsEnabled(context) }
     val tier = giftAnimationTier(gift.priceDiamonds)
     val duration = giftAnimationDurationMs(gift.priceDiamonds)
-    val motion = giftMotionProfile(gift.visualKey())
+    val profile = giftMotionProfile(gift.visualKey())
+    val spec = giftSceneSpec(profile)
     val progress = remember(runKey) { Animatable(if (animationsEnabled) 0f else 0.58f) }
 
     LaunchedEffect(runKey, animationsEnabled) {
@@ -126,209 +175,550 @@ fun GiftAnimationStage(
     val value = progress.value
     val fade = when {
         !animationsEnabled -> 1f
-        value < 0.10f -> value / 0.10f
-        preview && value > 0.90f -> ((1f - value) / 0.10f).coerceIn(0f, 1f)
-        !preview && value > 0.86f -> ((1f - value) / 0.14f).coerceIn(0f, 1f)
+        value < 0.08f -> value / 0.08f
+        preview && value > 0.91f -> ((1f - value) / 0.09f).coerceIn(0f, 1f)
+        !preview && value > 0.88f -> ((1f - value) / 0.12f).coerceIn(0f, 1f)
         else -> 1f
     }
-    val transform = giftMotionTransform(motion, value, animationsEnabled)
-    val colors = listOf(
-        Color(0xFFFF4F87),
-        Color(0xFF8F67FF),
-        Color(0xFF35D7FF),
-        Color(0xFFFFC857)
-    )
-    val particleCount = when (motion) {
-        GiftMotionProfile.GENESIS -> 40
-        GiftMotionProfile.ASCENT -> 34
-        GiftMotionProfile.KINGDOM, GiftMotionProfile.PALACE -> 30
-        else -> listOf(8, 16, 24)[tier]
+    val transform = giftMotionTransform(profile, value, animationsEnabled)
+    val baseArtSize = when (tier) {
+        0 -> 112.dp
+        1 -> 158.dp
+        else -> 198.dp
     }
-    val artSize = when (motion) {
-        GiftMotionProfile.GENESIS -> 216.dp
-        GiftMotionProfile.ASCENT, GiftMotionProfile.KINGDOM -> 204.dp
-        else -> listOf(104.dp, 148.dp, 188.dp)[tier]
-    }
+    val artSize = (baseArtSize.value * spec.artScale).dp
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .then(
-                if (tier == 2) {
+                if (spec.fullScreen) {
                     Modifier.background(
                         Brush.radialGradient(
-                            listOf(Color(0x668F67FF).copy(alpha = fade * 0.42f), Color.Transparent)
+                            listOf(
+                                GiftPurple.copy(alpha = fade * 0.32f),
+                                Color.Black.copy(alpha = fade * 0.16f),
+                                Color.Transparent
+                            )
                         )
                     )
                 } else Modifier
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (animationsEnabled) {
-            Canvas(Modifier.fillMaxSize().alpha(fade)) {
-                repeat(particleCount) { index ->
-                    val phase = motion.ordinal * 0.31f
-                    val angle = index * (PI * 2 / particleCount) - PI / 2 + value * PI + phase
-                    val wave = 0.85f + 0.15f * sin(value * PI * 4 + index)
-                    val distance = size.minDimension *
-                        (0.04f + value * (0.18f + tier * 0.075f)) * wave.toFloat()
-                    val point = center + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
-                    val radius = (2.6f + (index % 4) * 1.45f + tier) * density
-                    drawCircle(colors[(index + motion.ordinal) % colors.size].copy(alpha = fade), radius, point)
-                    if (tier == 2 && index % 4 == 0) {
-                        drawLine(
-                            color = colors[(index + 1) % colors.size].copy(alpha = fade * 0.62f),
-                            start = center,
-                            end = point,
-                            strokeWidth = 1.2f * density
-                        )
-                    }
-                }
-            }
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+
+        Canvas(Modifier.fillMaxSize().alpha(fade)) {
+            drawGiftEnvironment(profile, spec, value, animationsEnabled)
         }
 
-        Column(
+        Box(
             modifier = Modifier
+                .size(artSize)
                 .graphicsLayer {
                     scaleX = transform.scale
                     scaleY = transform.scale
                     rotationZ = transform.rotation
-                    translationX = transform.translationX * density
-                    translationY = transform.translationY * density
+                    translationX = transform.translationX * widthPx * 0.5f
+                    translationY = transform.translationY * heightPx * 0.5f
                 }
-                .alpha(fade)
-                .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(28.dp))
-                .padding(horizontal = 28.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .alpha(fade),
+            contentAlignment = Alignment.Center
         ) {
-            GiftArtwork(gift, Modifier.size(artSize))
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(
+                            GiftPalette[(profile.ordinal + 1) % GiftPalette.size].copy(alpha = 0.38f),
+                            Color.Transparent
+                        )
+                    ),
+                    radius = size.minDimension * 0.54f
+                )
+            }
+            GiftArtwork(gift, Modifier.fillMaxSize())
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 18.dp)
+                .padding(bottom = if (preview) 12.dp else 104.dp)
+                .alpha(fade)
+                .background(Color.Black.copy(alpha = 0.80f), RoundedCornerShape(22.dp))
+                .padding(horizontal = 20.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
                 text = gift.name,
                 color = Color.White,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center
             )
             Text(
                 text = senderLabel,
                 color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
         }
     }
 }
 
-internal enum class GiftMotionProfile {
-    SEED,
-    DROP,
-    SPARK,
-    BUTTERFLY,
-    FLOWER,
-    MOON,
-    HUMMINGBIRD,
-    JELLYFISH,
-    FOX,
-    WHALE,
-    GARDEN,
-    ORCHID,
-    SHIP,
-    GUARDIAN,
-    PHOENIX,
-    TRAIN,
-    DRAGON,
-    ISLAND,
-    WORLD,
-    OPERA,
-    PALACE,
-    KINGDOM,
-    ASCENT,
-    GENESIS
+internal fun giftAnimationsEnabled(context: Context): Boolean {
+    if (AppSettingsPreferences.isReduceMotionEnabled(context)) return false
+    return runCatching {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) > 0f
+    }.getOrDefault(true)
 }
 
-internal data class GiftMotionTransform(
-    val scale: Float,
-    val rotation: Float,
-    val translationX: Float,
-    val translationY: Float
-)
+private fun DrawScope.drawGiftEnvironment(
+    profile: GiftMotionProfile,
+    spec: GiftSceneSpec,
+    progress: Float,
+    animationsEnabled: Boolean
+) {
+    val p = if (animationsEnabled) progress.coerceIn(0f, 1f) else 0.58f
+    val hero = heroPoint(profile, p, animationsEnabled)
+    val phase = spec.effect.ordinal * 0.37f
 
-internal fun giftMotionProfile(visualKey: String): GiftMotionProfile = when (visualKey) {
-    "aurora-drop" -> GiftMotionProfile.DROP
-    "prism-spark" -> GiftMotionProfile.SPARK
-    "luminous-butterfly" -> GiftMotionProfile.BUTTERFLY
-    "comet-flower" -> GiftMotionProfile.FLOWER
-    "crystal-moon" -> GiftMotionProfile.MOON
-    "solar-hummingbird" -> GiftMotionProfile.HUMMINGBIRD
-    "nebula-jellyfish" -> GiftMotionProfile.JELLYFISH
-    "boreal-fox" -> GiftMotionProfile.FOX
-    "cosmic-whale" -> GiftMotionProfile.WHALE
-    "star-garden" -> GiftMotionProfile.GARDEN
-    "crystal-orchid" -> GiftMotionProfile.ORCHID
-    "prism-ship" -> GiftMotionProfile.SHIP
-    "forest-guardian" -> GiftMotionProfile.GUARDIAN
-    "aurora-phoenix" -> GiftMotionProfile.PHOENIX
-    "star-train" -> GiftMotionProfile.TRAIN
-    "celestial-dragon" -> GiftMotionProfile.DRAGON
-    "floating-island" -> GiftMotionProfile.ISLAND
-    "celestial-world" -> GiftMotionProfile.WORLD
-    "light-opera" -> GiftMotionProfile.OPERA
-    "aurora-palace" -> GiftMotionProfile.PALACE
-    "time-kingdom" -> GiftMotionProfile.KINGDOM
-    "galactic-ascent" -> GiftMotionProfile.ASCENT
-    "aurora-genesis" -> GiftMotionProfile.GENESIS
-    else -> GiftMotionProfile.SEED
+    if (!animationsEnabled) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(GiftPalette[profile.ordinal % GiftPalette.size].copy(alpha = 0.28f), Color.Transparent),
+                center = hero
+            ),
+            radius = size.minDimension * 0.30f,
+            center = hero
+        )
+        return
+    }
+
+    if (spec.fullScreen) {
+        repeat(spec.layerCount) { layer ->
+            val layerProgress = (p * (0.7f + layer * 0.08f) + layer * 0.11f) % 1f
+            drawCircle(
+                color = GiftPalette[(profile.ordinal + layer) % GiftPalette.size]
+                    .copy(alpha = (1f - layerProgress) * 0.16f),
+                radius = size.minDimension * (0.12f + layerProgress * 0.72f),
+                center = center,
+                style = Stroke((1.2f + layer * 0.45f) * density)
+            )
+        }
+    }
+
+    when (spec.effect) {
+        GiftSceneEffect.GERMINATION -> {
+            drawLine(GiftMint.copy(alpha = 0.68f), Offset(center.x, size.height * 0.78f), hero, 4f * density)
+            repeat(7) { index ->
+                val y = size.height * (0.72f - index * 0.055f)
+                val side = if (index % 2 == 0) -1f else 1f
+                drawOval(
+                    GiftPalette[index % GiftPalette.size].copy(alpha = 0.45f + p * 0.35f),
+                    Offset(center.x + side * (8f + index) * density, y),
+                    Size(12f * density, 6f * density)
+                )
+            }
+        }
+
+        GiftSceneEffect.RAIN_RIPPLE -> {
+            repeat(9) { index ->
+                val x = size.width * (0.08f + index * 0.105f)
+                val drop = ((p * 1.8f + index * 0.13f) % 1f)
+                drawLine(
+                    GiftCyan.copy(alpha = 0.18f + drop * 0.45f),
+                    Offset(x, size.height * (drop - 0.10f)),
+                    Offset(x, size.height * (drop + 0.06f)),
+                    1.4f * density
+                )
+            }
+            repeat(4) { ring ->
+                val ripple = ((p * 1.5f + ring * 0.22f) % 1f)
+                drawOval(
+                    GiftCyan.copy(alpha = (1f - ripple) * 0.55f),
+                    Offset(center.x - size.width * ripple * 0.38f, center.y - 10f * density - size.height * ripple * 0.04f),
+                    Size(size.width * ripple * 0.76f, size.height * ripple * 0.08f),
+                    style = Stroke(1.6f * density)
+                )
+            }
+        }
+
+        GiftSceneEffect.PRISM_BURST -> repeat(18) { index ->
+            val angle = index * PI * 2 / 18 + p * PI
+            val inner = size.minDimension * 0.10f
+            val outer = size.minDimension * (0.16f + 0.26f * p + (index % 3) * 0.025f)
+            val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+            drawLine(
+                GiftPalette[index % GiftPalette.size].copy(alpha = 0.74f),
+                hero + direction * inner,
+                hero + direction * outer,
+                (1.4f + index % 3) * density
+            )
+        }
+
+        GiftSceneEffect.WING_TRAIL -> {
+            drawPathTrail(profile, p, 18, GiftPink, 7f)
+            repeat(6) { index ->
+                val q = (p - index * 0.035f).coerceAtLeast(0f)
+                val point = heroPoint(profile, q, true)
+                val wing = (10f + index * 2f) * density
+                drawArc(GiftCyan.copy(alpha = (1f - index / 6f) * 0.55f), 190f, 150f, false, point - Offset(wing, wing), Size(wing * 2, wing * 2), style = Stroke(1.2f * density))
+            }
+        }
+
+        GiftSceneEffect.PETAL_COMET -> {
+            drawPathTrail(profile, p, 18, GiftPink, 9f)
+            repeat(18) { index ->
+                val angle = index * 2.4f + p * 9f
+                val distance = size.minDimension * (0.05f + (index % 6) * 0.025f)
+                val point = hero + Offset(
+                    cos(angle).toFloat() * distance,
+                    sin(angle).toFloat() * distance
+                )
+                drawOval(GiftPalette[index % GiftPalette.size].copy(alpha = 0.62f), point, Size(7f * density, 12f * density))
+            }
+        }
+
+        GiftSceneEffect.LUNAR_ORBITS -> {
+            repeat(3) { orbit ->
+                val radiusX = size.minDimension * (0.20f + orbit * 0.09f)
+                val radiusY = radiusX * 0.42f
+                rotate(-18f + orbit * 17f, center) {
+                    drawOval(
+                        GiftPalette[(orbit + 1) % GiftPalette.size].copy(alpha = 0.48f),
+                        center - Offset(radiusX, radiusY),
+                        Size(radiusX * 2, radiusY * 2),
+                        style = Stroke((1.3f + orbit * 0.4f) * density)
+                    )
+                }
+                val angle = p * PI * 2 * (orbit + 1) + orbit
+                drawCircle(
+                    GiftGold,
+                    (3f + orbit) * density,
+                    center + Offset(cos(angle).toFloat() * radiusX, sin(angle).toFloat() * radiusY)
+                )
+            }
+        }
+
+        GiftSceneEffect.GLITTER_DUST -> {
+            // El colibrí atraviesa la escena; cada punto usa una posición pasada
+            // de su trayectoria y produce una estela real, no un halo estático.
+            repeat(spec.particleCount) { index ->
+                val q = (p - index * 0.018f).coerceAtLeast(0f)
+                val point = heroPoint(profile, q, true)
+                val wobble = Offset(
+                    sin(index * 2.13f + p * 18f) * (3f + index * 0.20f) * density,
+                    cos(index * 1.71f + p * 14f) * (3f + index * 0.16f) * density
+                )
+                val alpha = (1f - index / spec.particleCount.toFloat()) * 0.92f
+                drawSpark(point + wobble, (2.2f + index % 3) * density, GiftPalette[index % GiftPalette.size], alpha)
+            }
+        }
+
+        GiftSceneEffect.NEBULA_TENTACLES -> {
+            repeat(7) { strand ->
+                var last = hero + Offset((strand - 3) * 5f * density, 18f * density)
+                repeat(10) { step ->
+                    val next = Offset(
+                        hero.x + (strand - 3) * 7f * density + sin(p * 12f + step * 0.8f + strand) * 9f * density,
+                        hero.y + (24f + step * 10f) * density
+                    )
+                    drawLine(GiftPalette[(strand + 2) % GiftPalette.size].copy(alpha = 0.42f), last, next, 1.4f * density)
+                    last = next
+                }
+            }
+        }
+
+        GiftSceneEffect.AURORA_PAWS -> {
+            drawPathTrail(profile, p, 20, GiftCyan, 11f)
+            repeat(11) { index ->
+                val q = (p - index * 0.06f).coerceAtLeast(0f)
+                val point = heroPoint(profile, q, true) + Offset(0f, 54f * density)
+                val alpha = (1f - index / 11f) * 0.58f
+                drawCircle(GiftMint.copy(alpha = alpha), 4f * density, point)
+                drawCircle(GiftMint.copy(alpha = alpha), 2f * density, point + Offset(-5f, -5f) * density)
+                drawCircle(GiftMint.copy(alpha = alpha), 2f * density, point + Offset(5f, -5f) * density)
+            }
+        }
+
+        GiftSceneEffect.COSMIC_WAKE -> {
+            drawPathTrail(profile, p, 24, GiftCyan, 16f)
+            repeat(8) { index ->
+                val q = (p - index * 0.055f).coerceAtLeast(0f)
+                val point = heroPoint(profile, q, true)
+                drawArc(
+                    GiftPurple.copy(alpha = (1f - index / 8f) * 0.48f),
+                    170f,
+                    170f,
+                    false,
+                    point - Offset(24f, 14f) * density,
+                    Size(48f * density, 28f * density),
+                    style = Stroke(1.4f * density)
+                )
+            }
+        }
+
+        GiftSceneEffect.BLOOM_FIELD -> repeat(15) { index ->
+            val x = size.width * (0.04f + index / 15f * 0.94f)
+            val bloom = ((p * 1.7f + index * 0.09f) % 1f)
+            val y = size.height * (0.78f - (index % 4) * 0.05f)
+            val radius = (3f + bloom * 9f) * density
+            drawLine(GiftMint.copy(alpha = 0.48f), Offset(x, size.height * 0.91f), Offset(x, y), 1.3f * density)
+            repeat(5) { petal ->
+                val angle = petal * PI * 2 / 5
+                drawCircle(
+                    GiftPalette[(index + petal) % GiftPalette.size].copy(alpha = 0.64f),
+                    radius * 0.42f,
+                    Offset(x, y) + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * radius
+                )
+            }
+        }
+
+        GiftSceneEffect.CRYSTAL_PETALS -> repeat(20) { index ->
+            val angle = index * PI * 2 / 20 + p * PI * 0.8
+            val distance = size.minDimension * (0.10f + (index % 5) * 0.055f + p * 0.06f)
+            val point = hero + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
+            val axis = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+            drawLine(GiftPalette[index % GiftPalette.size].copy(alpha = 0.68f), point - axis * 8f * density, point + axis * 8f * density, 3f * density)
+        }
+
+        GiftSceneEffect.ENGINE_TRAIL -> {
+            drawPathTrail(profile, p, 26, GiftPurple, 18f)
+            repeat(4) { flame ->
+                val direction = Offset(-0.70f, 0.70f)
+                val start = hero + direction * (46f + flame * 6f) * density
+                val end = start + direction * (38f + flame * 16f) * density
+                drawLine(GiftPalette[(flame + 1) % GiftPalette.size].copy(alpha = 0.80f), start, end, (7f - flame) * density)
+            }
+        }
+
+        GiftSceneEffect.FOREST_RUNES -> {
+            drawPathTrail(profile, p, 24, GiftMint, 10f)
+            repeat(10) { index ->
+                val x = size.width * (0.06f + index * 0.10f)
+                val glow = 0.22f + 0.38f * abs(sin(p * PI * 4 + index).toFloat())
+                drawLine(GiftMint.copy(alpha = glow), Offset(x, size.height * 0.76f), Offset(x, size.height * 0.90f), 2f * density)
+                drawCircle(GiftGold.copy(alpha = glow), 5f * density, Offset(x, size.height * 0.74f))
+            }
+        }
+
+        GiftSceneEffect.AURORA_FLAMES -> {
+            drawPathTrail(profile, p, 26, GiftPink, 14f)
+            repeat(18) { index ->
+                val angle = index * PI * 2 / 18 + phase
+                val distance = size.minDimension * (0.08f + (index % 5) * 0.035f)
+                val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                val start = hero + direction * distance
+                val end = start + direction * (18f + index % 4 * 8f) * density
+                drawLine(GiftPalette[index % GiftPalette.size].copy(alpha = 0.68f), start, end, (2f + index % 3) * density)
+            }
+        }
+
+        GiftSceneEffect.STELLAR_RAIL -> {
+            val railY = size.height * 0.67f
+            drawLine(GiftCyan.copy(alpha = 0.72f), Offset(0f, railY - 10f * density), Offset(size.width, railY - 10f * density), 2.4f * density)
+            drawLine(GiftPurple.copy(alpha = 0.72f), Offset(0f, railY + 12f * density), Offset(size.width, railY + 12f * density), 2.4f * density)
+            repeat(18) { index ->
+                val x = ((index / 18f + p * 1.8f) % 1f) * size.width
+                drawLine(GiftGold.copy(alpha = 0.50f), Offset(x, railY - 16f * density), Offset(x, railY + 18f * density), 2f * density)
+            }
+            repeat(10) { index ->
+                val q = (p - index * 0.025f).coerceAtLeast(0f)
+                val point = heroPoint(profile, q, true) + Offset(-70f * density, -54f * density)
+                drawCircle(Color.White.copy(alpha = (1f - index / 10f) * 0.32f), (8f + index * 1.6f) * density, point - Offset(index * 5f, index * 7f) * density)
+            }
+        }
+
+        GiftSceneEffect.CELESTIAL_ARC -> {
+            drawPathTrail(profile, p, 30, GiftCyan, 18f)
+            repeat(4) { ring ->
+                val radius = size.minDimension * (0.15f + ring * 0.11f)
+                drawArc(
+                    GiftPalette[(ring + 1) % GiftPalette.size].copy(alpha = 0.42f),
+                    -160f + p * 220f,
+                    120f + ring * 18f,
+                    false,
+                    center - Offset(radius, radius),
+                    Size(radius * 2, radius * 2),
+                    style = Stroke((1.5f + ring * 0.4f) * density)
+                )
+            }
+        }
+
+        GiftSceneEffect.CLOUD_ISLAND -> {
+            repeat(9) { index ->
+                val x = center.x + (index - 4) * 28f * density
+                val y = hero.y + (84f + abs(index - 4) * 4f) * density
+                drawCircle(Color.White.copy(alpha = 0.13f + (index % 3) * 0.04f), (32f + index % 3 * 9f) * density, Offset(x, y))
+            }
+            repeat(16) { index ->
+                val x = size.width * ((index * 0.173f + p * 0.09f) % 1f)
+                val y = size.height * (0.88f - ((p * 0.6f + index * 0.071f) % 1f) * 0.76f)
+                drawCircle(GiftGold.copy(alpha = 0.42f), (2f + index % 3) * density, Offset(x, y))
+            }
+        }
+
+        GiftSceneEffect.PLANET_RINGS -> repeat(5) { ring ->
+            val radiusX = size.minDimension * (0.17f + ring * 0.075f)
+            val radiusY = radiusX * (0.34f + ring * 0.025f)
+            rotate(-24f + ring * 13f + p * 18f, center) {
+                drawOval(
+                    GiftPalette[ring % GiftPalette.size].copy(alpha = 0.47f),
+                    center - Offset(radiusX, radiusY),
+                    Size(radiusX * 2, radiusY * 2),
+                    style = Stroke((1.5f + ring * 0.35f) * density)
+                )
+            }
+        }
+
+        GiftSceneEffect.LIGHT_CURTAINS -> {
+            repeat(12) { index ->
+                val x = size.width * (index + 0.5f) / 12f
+                val wave = 0.5f + 0.5f * sin(p * PI * 4 + index * 0.7f).toFloat()
+                drawLine(
+                    GiftPalette[index % GiftPalette.size].copy(alpha = 0.12f + wave * 0.24f),
+                    Offset(x, 0f),
+                    Offset(x + sin(index + p * 8f) * 32f * density, size.height),
+                    (8f + wave * 12f) * density
+                )
+            }
+            repeat(5) { note ->
+                val x = size.width * (0.18f + note * 0.16f)
+                val y = size.height * (0.72f - ((p + note * 0.14f) % 1f) * 0.55f)
+                drawCircle(GiftGold.copy(alpha = 0.72f), 7f * density, Offset(x, y))
+                drawLine(GiftGold.copy(alpha = 0.72f), Offset(x + 7f * density, y), Offset(x + 7f * density, y - 28f * density), 3f * density)
+            }
+        }
+
+        GiftSceneEffect.PALACE_BEAMS -> {
+            repeat(9) { index ->
+                val x = size.width * (index + 0.5f) / 9f
+                val target = hero + Offset((index - 4) * 13f * density, -55f * density)
+                drawLine(GiftPalette[index % GiftPalette.size].copy(alpha = 0.24f), Offset(x, size.height), target, (3f + index % 3 * 2f) * density)
+            }
+            repeat(4) { level ->
+                val y = size.height * (0.76f - level * 0.07f)
+                drawLine(GiftGold.copy(alpha = 0.38f), Offset(size.width * (0.20f + level * 0.04f), y), Offset(size.width * (0.80f - level * 0.04f), y), 2f * density)
+            }
+        }
+
+        GiftSceneEffect.CLOCKWORK_RINGS -> {
+            repeat(5) { ring ->
+                val radius = size.minDimension * (0.15f + ring * 0.085f)
+                drawCircle(GiftPalette[ring % GiftPalette.size].copy(alpha = 0.42f), radius, center, style = Stroke((1.5f + ring * 0.4f) * density))
+                repeat(12) { tick ->
+                    val angle = tick * PI * 2 / 12 + p * (if (ring % 2 == 0) 1 else -1) * PI
+                    val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                    val inner = center + direction * (radius - 8f * density)
+                    val outer = center + direction * (radius + 6f * density)
+                    drawLine(GiftGold.copy(alpha = 0.52f), inner, outer, 1.5f * density)
+                }
+            }
+        }
+
+        GiftSceneEffect.GALAXY_LIFT -> {
+            drawRect(
+                brush = Brush.verticalGradient(listOf(Color.Transparent, GiftCyan.copy(alpha = 0.23f), Color.Transparent)),
+                topLeft = Offset(center.x - size.width * 0.18f, 0f),
+                size = Size(size.width * 0.36f, size.height)
+            )
+            repeat(32) { index ->
+                val q = ((p * 1.7f + index * 0.047f) % 1f)
+                val angle = q * PI * 5 + index * 0.31f
+                val radius = size.minDimension * (0.04f + q * 0.34f)
+                val point = center + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * radius +
+                    Offset(0f, size.height * (0.36f - q * 0.72f))
+                drawSpark(point, (2.4f + index % 4) * density, GiftPalette[index % GiftPalette.size], 0.40f + q * 0.45f)
+            }
+        }
+
+        GiftSceneEffect.GENESIS_WAVE -> {
+            repeat(7) { ring ->
+                val wave = ((p * 1.25f + ring * 0.13f) % 1f)
+                drawCircle(
+                    GiftPalette[(ring + profile.ordinal) % GiftPalette.size].copy(alpha = (1f - wave) * 0.62f),
+                    size.minDimension * (0.05f + wave * 0.72f),
+                    center,
+                    style = Stroke((1.4f + ring * 0.45f) * density)
+                )
+            }
+            repeat(28) { index ->
+                val angle = index * PI * 2 / 28 + p * PI * 1.5f
+                val inner = size.minDimension * (0.08f + p * 0.06f)
+                val outer = size.minDimension * (0.32f + p * 0.52f + index % 4 * 0.025f)
+                val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                drawLine(
+                    GiftPalette[index % GiftPalette.size].copy(alpha = 0.54f),
+                    center + direction * inner,
+                    center + direction * outer,
+                    (1.2f + index % 4 * 0.5f) * density
+                )
+            }
+        }
+    }
+
+    // Campo ambiental determinista. La semilla depende de la escena; no usa
+    // Random por frame y evita parpadeos o resultados distintos por dispositivo.
+    repeat(spec.particleCount) { index ->
+        val angle = index * PI * 2 / spec.particleCount + p * PI * (0.45f + spec.layerCount * 0.08f) + phase
+        val radialWave = 0.78f + 0.22f * sin(p * PI * 4 + index * 1.7f).toFloat()
+        val distance = size.minDimension * (0.10f + (index % 7) * 0.032f + p * 0.10f) * radialWave
+        val point = center + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
+        val radius = (1.4f + index % 4 * 0.85f + spec.layerCount * 0.22f) * density
+        drawCircle(
+            GiftPalette[(index + profile.ordinal) % GiftPalette.size].copy(alpha = 0.30f + (index % 3) * 0.12f),
+            radius,
+            point
+        )
+    }
 }
 
-internal fun giftMotionTransform(
+private fun DrawScope.drawPathTrail(
     profile: GiftMotionProfile,
     progress: Float,
-    animationsEnabled: Boolean = true
-): GiftMotionTransform {
-    if (!animationsEnabled) return GiftMotionTransform(1f, 0f, 0f, 0f)
-    val p = progress.coerceIn(0f, 1f)
-    val entry = (p / 0.24f).coerceIn(0f, 1f)
-    val pulse = sin(p * PI * 4).toFloat()
-    return when (profile) {
-        GiftMotionProfile.SEED -> GiftMotionTransform(0.42f + entry * 0.58f + abs(pulse) * 0.05f, pulse * 2f, 0f, 0f)
-        GiftMotionProfile.DROP -> GiftMotionTransform(0.74f + entry * 0.26f, pulse * 3f, 0f, -72f * (1f - entry))
-        GiftMotionProfile.SPARK -> GiftMotionTransform(0.35f + entry * 0.65f + abs(pulse) * 0.08f, p * 80f, 0f, 0f)
-        GiftMotionProfile.BUTTERFLY -> GiftMotionTransform(0.68f + entry * 0.32f, pulse * 12f, pulse * 18f, -abs(pulse) * 10f)
-        GiftMotionProfile.FLOWER -> GiftMotionTransform(0.40f + entry * 0.60f, p * 38f, 0f, 0f)
-        GiftMotionProfile.MOON -> GiftMotionTransform(0.67f + entry * 0.33f, p * 120f, cos(p * PI * 2).toFloat() * 16f, sin(p * PI * 2).toFloat() * 9f)
-        GiftMotionProfile.HUMMINGBIRD -> GiftMotionTransform(0.66f + entry * 0.34f, pulse * 8f, -62f * (1f - entry), pulse * 10f)
-        GiftMotionProfile.JELLYFISH -> GiftMotionTransform(0.70f + entry * 0.30f, pulse * 3f, pulse * 8f, 45f * (1f - entry) - abs(pulse) * 8f)
-        GiftMotionProfile.FOX -> GiftMotionTransform(0.68f + entry * 0.32f, -10f + entry * 10f, 42f * (1f - entry), -abs(sin(p * PI).toFloat()) * 18f)
-        GiftMotionProfile.WHALE -> GiftMotionTransform(0.68f + entry * 0.32f, pulse * 3f, -54f * (1f - entry) + pulse * 8f, sin(p * PI).toFloat() * -14f)
-        GiftMotionProfile.GARDEN -> GiftMotionTransform(0.44f + entry * 0.56f, pulse * 2f, 0f, 58f * (1f - entry))
-        GiftMotionProfile.ORCHID -> GiftMotionTransform(0.34f + entry * 0.66f, pulse * 4f, 0f, -abs(pulse) * 5f)
-        GiftMotionProfile.SHIP -> GiftMotionTransform(0.66f + entry * 0.34f, -24f + entry * 24f, -74f * (1f - entry), 54f * (1f - entry))
-        GiftMotionProfile.GUARDIAN -> GiftMotionTransform(0.62f + entry * 0.38f, pulse * 2f, 0f, 42f * (1f - entry))
-        GiftMotionProfile.PHOENIX -> GiftMotionTransform(0.58f + entry * 0.42f, pulse * 7f, pulse * 12f, 70f * (1f - entry))
-        GiftMotionProfile.TRAIN -> GiftMotionTransform(0.67f + entry * 0.33f, pulse * 2f, -88f * (1f - entry), 0f)
-        GiftMotionProfile.DRAGON -> GiftMotionTransform(0.58f + entry * 0.42f, 22f * (1f - entry) + pulse * 5f, 62f * (1f - entry), -38f * (1f - entry))
-        GiftMotionProfile.ISLAND -> GiftMotionTransform(0.58f + entry * 0.42f, pulse * 2f, 0f, 62f * (1f - entry) + pulse * 5f)
-        GiftMotionProfile.WORLD -> GiftMotionTransform(0.54f + entry * 0.46f, p * 72f, 0f, 0f)
-        GiftMotionProfile.OPERA -> GiftMotionTransform(0.56f + entry * 0.44f, pulse * 6f, pulse * 12f, -abs(pulse) * 8f)
-        GiftMotionProfile.PALACE -> GiftMotionTransform(0.64f + entry * 0.36f, 0f, 0f, 58f * (1f - entry))
-        GiftMotionProfile.KINGDOM -> GiftMotionTransform(0.46f + entry * 0.54f, p * 18f, 0f, 36f * (1f - entry))
-        GiftMotionProfile.ASCENT -> GiftMotionTransform(0.44f + entry * 0.56f, pulse * 4f, 0f, 88f * (1f - entry))
-        GiftMotionProfile.GENESIS -> GiftMotionTransform(0.22f + entry * 0.78f + abs(pulse) * 0.06f, p * 140f, 0f, 0f)
+    samples: Int,
+    color: Color,
+    widthDp: Float
+) {
+    var previous: Offset? = null
+    repeat(samples) { index ->
+        val q = (progress - (samples - 1 - index) * 0.025f).coerceAtLeast(0f)
+        val point = heroPoint(profile, q, true)
+        previous?.let {
+            drawLine(
+                color.copy(alpha = 0.10f + index / samples.toFloat() * 0.48f),
+                it,
+                point,
+                (1f + index / samples.toFloat() * widthDp) * density
+            )
+        }
+        previous = point
     }
 }
 
-internal fun giftAnimationDurationMs(priceDiamonds: Int): Int {
-    val price = priceDiamonds.coerceAtLeast(0)
-    return when (giftAnimationTier(price)) {
-        0 -> (700 + price / 100f * 500).toInt().coerceIn(700, 1_200)
-        1 -> (1_200 + (price - 100) / 800f * 1_200).toInt().coerceIn(1_200, 2_400)
-        else -> (2_600 + (price - 900) / 4_100f * 2_200).toInt().coerceIn(2_600, 4_800)
-    }
+private fun DrawScope.heroPoint(
+    profile: GiftMotionProfile,
+    progress: Float,
+    animationsEnabled: Boolean
+): Offset {
+    val transform = giftMotionTransform(profile, progress, animationsEnabled)
+    return center + Offset(
+        transform.translationX * size.width * 0.5f,
+        transform.translationY * size.height * 0.5f
+    )
 }
 
-internal fun giftAnimationTier(priceDiamonds: Int): Int = when {
-    priceDiamonds < 100 -> 0
-    priceDiamonds < 900 -> 1
-    else -> 2
+private fun DrawScope.drawSpark(point: Offset, radius: Float, color: Color, alpha: Float) {
+    val safeAlpha = alpha.coerceIn(0f, 1f)
+    drawCircle(color.copy(alpha = safeAlpha * 0.75f), radius * 0.42f, point)
+    drawLine(color.copy(alpha = safeAlpha), point - Offset(radius, 0f), point + Offset(radius, 0f), radius * 0.22f)
+    drawLine(color.copy(alpha = safeAlpha), point - Offset(0f, radius), point + Offset(0f, radius), radius * 0.22f)
 }

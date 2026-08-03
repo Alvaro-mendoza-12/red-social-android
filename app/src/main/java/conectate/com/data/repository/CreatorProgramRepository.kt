@@ -1,6 +1,7 @@
 package conectate.com.data.repository
 
 import conectate.com.data.model.CreatorEarningSummary
+import conectate.com.data.model.CreatorEarningActivity
 import conectate.com.data.model.CreatorPayoutAccount
 import conectate.com.data.model.CreatorProgramApplication
 import conectate.com.data.model.CreatorProgramDashboard
@@ -17,6 +18,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import java.math.BigDecimal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -64,10 +66,13 @@ class CreatorProgramRepository @Inject constructor(
             val userId = authService.getCurrentUserId() ?: throw IllegalStateException("No user logged in")
             val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
 
+            val earnings = fetchEarnings(token, userId)
             CreatorProgramDashboard(
                 application = fetchApplication(token, userId),
                 payoutAccount = fetchPayoutAccount(token, userId),
-                earnings = fetchEarningsSummary(token, userId)
+                earnings = earnings.summary,
+                activity = earnings.activity,
+                nextPayoutAt = earnings.nextPayoutAt
             )
         }
     }
@@ -112,16 +117,10 @@ class CreatorProgramRepository @Inject constructor(
                     header(HttpHeaders.Prefer, "return=representation")
                     parameter("user_id", "eq.$userId")
                     setBody(buildJsonObject {
-                        put("status", nextStatus)
                         put("niche", niche.cleanNullable())
                         put("portfolio_url", portfolioUrl.cleanNullable())
                         put("payout_country", payoutCountry.cleanNullable())
                         put("audience_size", safeAudience)
-                        if (nextStatus == "pending") {
-                            put("reviewed_by", JsonNull)
-                            put("reviewed_at", JsonNull)
-                            put("rejection_reason", JsonNull)
-                        }
                     })
                 }
                 if (!response.status.isSuccess()) {
@@ -151,6 +150,7 @@ class CreatorProgramRepository @Inject constructor(
             val cleanProvider = provider.lowercase().trim().takeIf { it in setOf("stripe", "paypal", "bank", "manual") }
                 ?: "manual"
             val cleanCurrency = currency.uppercase().trim().take(3).ifBlank { "USD" }
+            val safeExternalAccountId = externalAccountId.safeProviderReference()
             val existing = fetchPayoutAccount(token, userId)
 
             if (existing == null) {
@@ -162,7 +162,7 @@ class CreatorProgramRepository @Inject constructor(
                         PayoutAccountRequest(
                             userId = userId,
                             provider = cleanProvider,
-                            externalAccountId = externalAccountId.cleanNullable(),
+                            externalAccountId = safeExternalAccountId,
                             country = country.cleanNullable(),
                             currency = cleanCurrency
                         )
@@ -180,7 +180,7 @@ class CreatorProgramRepository @Inject constructor(
                     parameter("user_id", "eq.$userId")
                     setBody(buildJsonObject {
                         put("provider", cleanProvider)
-                        put("external_account_id", externalAccountId.cleanNullable())
+                        put("external_account_id", safeExternalAccountId)
                         put("country", country.cleanNullable())
                         put("currency", cleanCurrency)
                         put("status", "pending")
@@ -192,7 +192,7 @@ class CreatorProgramRepository @Inject constructor(
                 decodeObjects(response.bodyAsText()).firstOrNull()?.toPayoutAccount()
                     ?: existing.copy(
                         provider = cleanProvider,
-                        externalAccountId = externalAccountId.cleanNullable(),
+                        externalAccountId = safeExternalAccountId,
                         country = country.cleanNullable(),
                         currency = cleanCurrency,
                         status = "pending"
@@ -223,30 +223,70 @@ class CreatorProgramRepository @Inject constructor(
         return decodeObjects(response.bodyAsText()).firstOrNull()?.toPayoutAccount()
     }
 
-    private suspend fun fetchEarningsSummary(token: String, userId: String): CreatorEarningSummary {
+    private data class EarningsSnapshot(
+        val summary: CreatorEarningSummary = CreatorEarningSummary(),
+        val activity: List<CreatorEarningActivity> = emptyList(),
+        val nextPayoutAt: String? = null
+    )
+
+    private suspend fun fetchEarnings(token: String, userId: String): EarningsSnapshot {
         val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/creator_earnings") {
             authHeaders(token)
             parameter("creator_id", "eq.$userId")
-            parameter("select", "status,net_amount_credits")
+            parameter("select", "*")
+            parameter("order", "created_at.desc")
+            parameter("limit", "100")
         }
-        if (!response.status.isSuccess()) return CreatorEarningSummary()
+        if (!response.status.isSuccess()) return EarningsSnapshot()
 
-        var pending = 0.0
-        var available = 0.0
-        var paid = 0.0
-        decodeObjects(response.bodyAsText()).forEach { row ->
-            val amount = row.double("net_amount_credits")
-            when (row.string("status")) {
+        var pending = BigDecimal.ZERO
+        var available = BigDecimal.ZERO
+        var held = BigDecimal.ZERO
+        var reserved = BigDecimal.ZERO
+        var paid = BigDecimal.ZERO
+        var refunded = BigDecimal.ZERO
+        val activity = decodeObjects(response.bodyAsText()).mapNotNull { row ->
+            val id = row.string("id").orEmpty()
+            if (id.isBlank()) return@mapNotNull null
+            val amount = row.bigDecimalAny("net_amount_credits", "net_amount", "amount_credits")
+            when (row.string("status")?.lowercase()) {
                 "pending" -> pending += amount
                 "available" -> available += amount
+                "held", "in_hold", "under_review" -> held += amount
+                "reserved" -> reserved += amount
                 "paid" -> paid += amount
+                "refunded", "reversed" -> refunded += amount
             }
+            CreatorEarningActivity(
+                id = id,
+                sourceType = row.string("source_type") ?: "virtual_gift",
+                status = row.string("status") ?: "pending",
+                grossCredits = row.bigDecimalAny("gross_amount_credits", "gross_amount", "amount_credits"),
+                platformFeeCredits = row.bigDecimalAny("platform_fee_credits", "platform_fee"),
+                taxWithheldCredits = row.bigDecimalAny("tax_withheld_credits", "tax_withheld"),
+                creatorShareCredits = row.bigDecimalAny("creator_share_credits", "creator_share"),
+                netCredits = amount,
+                amountCoins = row.int("amount_diamonds"),
+                createdAt = row.string("created_at"),
+                availableAt = row.string("available_at"),
+                paidAt = row.string("paid_at")
+            )
         }
-        return CreatorEarningSummary(
-            pendingCredits = pending,
-            availableCredits = available,
-            paidCredits = paid,
-            totalCredits = pending + available + paid
+        return EarningsSnapshot(
+            summary = CreatorEarningSummary(
+                pendingCredits = pending,
+                availableCredits = available,
+                heldCredits = held,
+                reservedCredits = reserved,
+                paidCredits = paid,
+                refundedCredits = refunded,
+                totalCredits = pending + available + held + reserved + paid - refunded
+            ),
+            activity = activity,
+            nextPayoutAt = activity.asSequence()
+                .filter { it.status.lowercase() in setOf("pending", "held", "reserved") }
+                .mapNotNull { it.availableAt }
+                .minOrNull()
         )
     }
 
@@ -297,9 +337,26 @@ class CreatorProgramRepository @Inject constructor(
 
     private fun JsonObject.int(key: String): Int = this[key]?.jsonPrimitive?.intOrNull ?: 0
 
-    private fun JsonObject.double(key: String): Double {
-        return this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
+    private fun JsonObject.bigDecimal(key: String): BigDecimal {
+        return this[key]?.jsonPrimitive?.contentOrNull?.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    }
+
+    private fun JsonObject.bigDecimalAny(vararg keys: String): BigDecimal {
+        val present = keys.firstOrNull { containsKey(it) } ?: return BigDecimal.ZERO
+        return bigDecimal(present)
     }
 
     private fun String?.cleanNullable(): String? = this?.trim()?.takeIf { it.isNotBlank() }
+
+    private fun String?.safeProviderReference(): String? {
+        val clean = cleanNullable() ?: return null
+        val digitsOnly = clean.filter(Char::isDigit)
+        require(!(digitsOnly.length in 12..19 && clean.all { it.isDigit() || it == ' ' || it == '-' })) {
+            "Usa únicamente el identificador tokenizado del proveedor; no ingreses PAN ni número de tarjeta."
+        }
+        require(!(digitsOnly.length in 3..4 && clean.all(Char::isDigit))) {
+            "No ingreses códigos CVV."
+        }
+        return clean
+    }
 }

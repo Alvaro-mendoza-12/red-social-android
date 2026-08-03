@@ -284,6 +284,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.CreatorEarnings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.wallet.CreatorEarningsScreen(navController = navController)
+        }
+    }
+
     composable(Screen.Novvin.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.messages.NovvinChatScreen(

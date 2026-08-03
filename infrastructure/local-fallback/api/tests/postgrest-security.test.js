@@ -60,6 +60,89 @@ function identityRow() {
 }
 
 async function run() {
+  const ledgerIdentity = {
+    ids: new Set([
+      identityRow().local_user_id,
+      identityRow().public_user_id,
+    ]),
+    localUserId: identityRow().local_user_id,
+    preferredUserId: identityRow().public_user_id,
+    values: [identityRow().local_user_id, identityRow().public_user_id],
+  }
+  const serverManagedTables = [
+    'billing_purchases',
+    'creator_earnings',
+    'gift_transactions',
+    'user_subscriptions',
+    'wallet_transactions',
+    'wallets',
+  ]
+  const noLedgerQueryPool = {
+    async query() {
+      assert.fail('A rejected generic ledger mutation must not query the database')
+    },
+  }
+  for (const tableName of serverManagedTables) {
+    assert.equal(_test.SERVER_MUTATION_ONLY_TABLES.has(tableName), true)
+    await assert.rejects(
+      _test.prepareInsertRow(noLedgerQueryPool, tableName, ledgerIdentity, {
+        user_id: identityRow().public_user_id,
+        balance_diamonds: 999_999,
+      }),
+      (error) => error?.status === 403 && error?.message === 'SERVER_MANAGED_RESOURCE',
+      `${tableName} must reject generic inserts`,
+    )
+    assert.equal(
+      await _test.authorizeMutation(
+        noLedgerQueryPool,
+        tableName,
+        ledgerIdentity,
+        { user_id: identityRow().public_user_id },
+        { balance_diamonds: 999_999, status: 'paid' },
+        'patch',
+      ),
+      false,
+      `${tableName} must reject generic patches`,
+    )
+    assert.equal(
+      await _test.authorizeMutation(
+        noLedgerQueryPool,
+        tableName,
+        ledgerIdentity,
+        { user_id: identityRow().public_user_id },
+        {},
+        'delete',
+      ),
+      false,
+      `${tableName} must reject generic deletes`,
+    )
+  }
+
+  const previousLiveGiftsFlag = process.env.LIVE_GIFTS_ENABLED
+  delete process.env.LIVE_GIFTS_ENABLED
+  try {
+    let identityQueries = 0
+    await assert.rejects(
+      _test.sendVirtualGiftRpc({
+        async query(sql) {
+          identityQueries += 1
+          assert.match(String(sql), /FROM fallback_users/)
+          return { rows: [identityRow()] }
+        },
+      }, { sub: identityRow().local_user_id }, {
+        gift_id: '7a100001-0000-4000-8000-000000000001',
+        receiver_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      }),
+      (error) => error?.status === 503 && error?.message === 'LIVE_GIFTS_DISABLED',
+      'gift RPC must fail closed before any ledger/catalog query when the kill switch is off',
+    )
+    assert.equal(identityQueries, 1)
+    assert.equal(_test.liveGiftTransactionsEnabled(), false)
+  } finally {
+    if (previousLiveGiftsFlag === undefined) delete process.env.LIVE_GIFTS_ENABLED
+    else process.env.LIVE_GIFTS_ENABLED = previousLiveGiftsFlag
+  }
+
   assert.notEqual(
     _test.rowId({ chat_id: 'chat-a', folder_id: 'folder-a', user_id: 'user-a' }, 'chat_folder_chats'),
     _test.rowId({ chat_id: 'chat-b', folder_id: 'folder-a', user_id: 'user-a' }, 'chat_folder_chats'),

@@ -160,6 +160,9 @@ class WebRTCManager(
     private var localVideoSource: VideoSource? = null
     private var videoCapturer: VideoCapturer? = null
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
+    @Volatile
+    private var selectedCameraFilter: LiveCameraFilter = LiveCameraFilter.NONE
+    private var cameraFilterProcessor: LiveCameraFilterProcessor? = null
     private var outgoingVideoEnabled: Boolean = true
     
     private val _localVideoTrackFlow = MutableStateFlow<VideoTrack?>(null)
@@ -1883,6 +1886,13 @@ class WebRTCManager(
         }
     }
 
+    fun setCameraFilter(filter: LiveCameraFilter) {
+        selectedCameraFilter = filter
+        executor.execute {
+            cameraFilterProcessor?.select(filter)
+        }
+    }
+
 
     fun startVideo(
         isScreen: Boolean,
@@ -1900,10 +1910,12 @@ class WebRTCManager(
             val previousHelper = surfaceTextureHelper
             val previousSource = localVideoSource
             val previousTrack = _localVideoTrackFlow.value
+            val previousCameraFilterProcessor = cameraFilterProcessor
             var candidateCapturer: VideoCapturer? = null
             var candidateHelper: SurfaceTextureHelper? = null
             var candidateSource: VideoSource? = null
             var candidateTrack: VideoTrack? = null
+            var candidateCameraFilterProcessor: LiveCameraFilterProcessor? = null
             var committed = false
             fun complete(success: Boolean) {
                 if (!completionSent) {
@@ -1982,6 +1994,10 @@ class WebRTCManager(
                 }
                 val source = f.createVideoSource(isScreen)
                 candidateSource = source
+                if (!isScreen) {
+                    candidateCameraFilterProcessor = LiveCameraFilterProcessor(selectedCameraFilter)
+                        .also(source::setVideoProcessor)
+                }
                 val helper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.eglBaseContext)
                 candidateHelper = helper
 
@@ -2035,6 +2051,7 @@ class WebRTCManager(
                 videoCapturer = capturer
                 surfaceTextureHelper = helper
                 localVideoSource = source
+                cameraFilterProcessor = candidateCameraFilterProcessor
                 _localVideoTrackFlow.value = track
                 updateLocalVideoSenders(activeOutgoingVideoTrack())
                 committed = true
@@ -2060,6 +2077,7 @@ class WebRTCManager(
                         videoCapturer = previousCapturer
                         surfaceTextureHelper = previousHelper
                         localVideoSource = previousSource
+                        cameraFilterProcessor = previousCameraFilterProcessor
                         _localVideoTrackFlow.value = previousTrack
                         runCatching { updateLocalVideoSenders(activeOutgoingVideoTrack()) }
                     }
@@ -2122,6 +2140,7 @@ class WebRTCManager(
         videoCapturer = null
         surfaceTextureHelper = null
         localVideoSource = null
+        cameraFilterProcessor = null
         _localVideoTrackFlow.value = null
         updateLocalVideoSenders(null)
         releaseReplacedVideoPipelineAfterRendererDetach(

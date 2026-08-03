@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.BillingCapabilities
+import conectate.com.data.model.CreatorProgramDashboard
+import conectate.com.data.repository.CreatorProgramRepository
 import conectate.com.data.repository.WalletRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
+import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,14 +20,19 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class WalletViewModel @Inject constructor(
-    private val walletRepository: WalletRepository
+    private val walletRepository: WalletRepository,
+    private val creatorProgramRepository: CreatorProgramRepository
 ) : ViewModel() {
     val coinBalance = walletRepository.coinBalance
     val availableGifts = walletRepository.availableGifts
     val transactions = walletRepository.transactions
+    val transactionsHasMore = walletRepository.transactionsHasMore
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
+    private val _walletLastUpdatedAt = MutableStateFlow<String?>(null)
+    val walletLastUpdatedAt: StateFlow<String?> = _walletLastUpdatedAt.asStateFlow()
 
     private val _sendingGiftId = MutableStateFlow<String?>(null)
     val sendingGiftId: StateFlow<String?> = _sendingGiftId.asStateFlow()
@@ -44,8 +52,21 @@ class WalletViewModel @Inject constructor(
     private val _billingVerifying = MutableStateFlow(false)
     val billingVerifying: StateFlow<Boolean> = _billingVerifying.asStateFlow()
 
+    private val _creatorDashboard = MutableStateFlow(CreatorProgramDashboard())
+    val creatorDashboard: StateFlow<CreatorProgramDashboard> = _creatorDashboard.asStateFlow()
+
+    private val _earningsLoading = MutableStateFlow(false)
+    val earningsLoading: StateFlow<Boolean> = _earningsLoading.asStateFlow()
+
+    private val _earningsError = MutableStateFlow<String?>(null)
+    val earningsError: StateFlow<String?> = _earningsError.asStateFlow()
+
+    private val _historyLoadingMore = MutableStateFlow(false)
+    val historyLoadingMore: StateFlow<Boolean> = _historyLoadingMore.asStateFlow()
+
     init {
         refresh()
+        refreshEarnings()
     }
 
     fun refresh() {
@@ -54,6 +75,7 @@ class WalletViewModel @Inject constructor(
             _loading.value = true
             try {
                 walletRepository.fetchBalance()
+                _walletLastUpdatedAt.value = Instant.now().toString()
                 walletRepository.fetchAvailableGifts()
                 walletRepository.fetchTransactionHistory()
                 walletRepository.fetchBillingCapabilities()
@@ -149,6 +171,30 @@ class WalletViewModel @Inject constructor(
 
     fun consumeReceipt() {
         _lastReceipt.value = null
+    }
+
+    fun refreshEarnings() {
+        if (_earningsLoading.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _earningsLoading.value = true
+            _earningsError.value = null
+            creatorProgramRepository.loadDashboard()
+                .onSuccess { _creatorDashboard.value = it }
+                .onFailure { failure ->
+                    _earningsError.value = failure.message
+                        ?: "No se pudo actualizar el estado de ganancias."
+                }
+            _earningsLoading.value = false
+        }
+    }
+
+    fun loadMoreTransactions() {
+        if (_historyLoadingMore.value || !transactionsHasMore.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _historyLoadingMore.value = true
+            walletRepository.fetchTransactionHistory(reset = false)
+            _historyLoadingMore.value = false
+        }
     }
 
     fun currentAccountId(): String = walletRepository.currentAccountId().orEmpty()

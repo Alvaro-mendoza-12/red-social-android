@@ -52,6 +52,7 @@ data class CoinProduct(
 data class GiftSafetyLimits(
     val maxCoinsPerGift: Int = 5_000,
     val maxCoinsPerDay: Int = 25_000,
+    val maxCoinsPerWeek: Int = 0,
     val maxGiftsPerMinute: Int = 20,
     val highValueConfirmationCoins: Int = 900
 )
@@ -76,5 +77,7 @@ data class WalletTransaction(
     val amountDiamonds: Int,
     val balanceAfterDiamonds: Int,
     val description: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val status: String = "confirmed",
+    val providerReference: String? = null
 )

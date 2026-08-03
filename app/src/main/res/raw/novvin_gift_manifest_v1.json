@@ -3,6 +3,10 @@
   "format": "webp-lossless-rgba",
   "width": 768,
   "height": 768,
+  "experienceVersion": 2,
+  "motionEngine": "compose-scene-v2",
+  "motionPolicy": {"maxProtagonists":1,"maxQueued":2,"reducedMotionFallbackMs":300,"celebrationMaxMs":5000},
+  "soundPolicy": {"engine":"procedural-pcm-v1","thirdPartyAssets":false,"controlPreference":"chat_sounds_enabled","maxLinearGain":0.17},
   "assets": [
     {"giftId":"7a100001-0000-4000-8000-000000000001","visualKey":"starlight-seed","resource":"gift_starlight_seed","file":"gift_starlight_seed.webp","tier":"micro","durationMs":725,"version":1,"sha256":"811db958f2d570e293e8c0fe8a4199b5f2a7998faf8b3d2892ffe96c26ed6316"},
     {"giftId":"7a100002-0000-4000-8000-000000000002","visualKey":"aurora-drop","resource":"gift_aurora_drop","file":"gift_aurora_drop.webp","tier":"micro","durationMs":750,"version":1,"sha256":"ffdcae098dd214066f1fb6e2d179a91ce385a9421198c1e14f82580648ec9244"},
@@ -21,12 +25,12 @@
     {"giftId":"7a100015-0000-4000-8000-000000000015","visualKey":"aurora-phoenix","resource":"gift_aurora_phoenix","file":"gift_aurora_phoenix.webp","tier":"featured","durationMs":1950,"version":1,"sha256":"2d02391aecf92fbeab0a3f333faf73cc2665796dfe4354426ef6b694d6e18fea"},
     {"giftId":"7a100016-0000-4000-8000-000000000016","visualKey":"star-train","resource":"gift_star_train","file":"gift_star_train.webp","tier":"featured","durationMs":2175,"version":1,"sha256":"077c10bb03c0be38a5a8b28e62f34c348261c8c10ba5a0a7dbf5e20f00a3a88b"},
     {"giftId":"7a100017-0000-4000-8000-000000000017","visualKey":"celestial-dragon","resource":"gift_celestial_dragon","file":"gift_celestial_dragon.webp","tier":"celebration","durationMs":2600,"version":1,"sha256":"9cb281420bde2f07c0f98d456fd5e9be218f33a1ce32997f915c0780b6bb2713"},
-    {"giftId":"7a100018-0000-4000-8000-000000000018","visualKey":"floating-island","resource":"gift_floating_island","file":"gift_floating_island.webp","tier":"celebration","durationMs":2707,"version":1,"sha256":"454b224dc6da672f2d804a37cb30ab8ce4b756a0b155bf172397998ab3dfb787"},
-    {"giftId":"7a100019-0000-4000-8000-000000000019","visualKey":"celestial-world","resource":"gift_celestial_world","file":"gift_celestial_world.webp","tier":"celebration","durationMs":2868,"version":1,"sha256":"7dae552c76a6b7f80c54a1a5f6811736b781ab56eaa95cca74f615c8c6f87599"},
-    {"giftId":"7a100020-0000-4000-8000-000000000020","visualKey":"light-opera","resource":"gift_light_opera","file":"gift_light_opera.webp","tier":"celebration","durationMs":3082,"version":1,"sha256":"698b71ee11c44e5f6d2ff323bff23ead7b62ebd2ba00c65ecadc1ef811fd6f05"},
-    {"giftId":"7a100021-0000-4000-8000-000000000021","visualKey":"aurora-palace","resource":"gift_aurora_palace","file":"gift_aurora_palace.webp","tier":"celebration","durationMs":3297,"version":1,"sha256":"0b79f0b7f95243675071d4543bb538aa904e86375e5f2b38fe9714a8afa7e708"},
-    {"giftId":"7a100022-0000-4000-8000-000000000022","visualKey":"time-kingdom","resource":"gift_time_kingdom","file":"gift_time_kingdom.webp","tier":"celebration","durationMs":3619,"version":1,"sha256":"991ceeedcfa7d89d695c0786b7322e486c9f508bac2adda628d00d8a50f39326"},
-    {"giftId":"7a100023-0000-4000-8000-000000000023","visualKey":"galactic-ascent","resource":"gift_galactic_ascent","file":"gift_galactic_ascent.webp","tier":"celebration","durationMs":4048,"version":1,"sha256":"01a928d012053fd540722163dd820f895b48a8e18b197bc829f0f2239d42d22b"},
-    {"giftId":"7a100024-0000-4000-8000-000000000024","visualKey":"aurora-genesis","resource":"gift_aurora_genesis","file":"gift_aurora_genesis.webp","tier":"celebration","durationMs":4800,"version":1,"sha256":"7c3b8f7b187d4c5d716fd28469c1c1a42a8c781f204ecf471874d900272e3a63"}
+    {"giftId":"7a100018-0000-4000-8000-000000000018","visualKey":"floating-island","resource":"gift_floating_island","file":"gift_floating_island.webp","tier":"celebration","durationMs":2717,"version":1,"sha256":"454b224dc6da672f2d804a37cb30ab8ce4b756a0b155bf172397998ab3dfb787"},
+    {"giftId":"7a100019-0000-4000-8000-000000000019","visualKey":"celestial-world","resource":"gift_celestial_world","file":"gift_celestial_world.webp","tier":"celebration","durationMs":2892,"version":1,"sha256":"7dae552c76a6b7f80c54a1a5f6811736b781ab56eaa95cca74f615c8c6f87599"},
+    {"giftId":"7a100020-0000-4000-8000-000000000020","visualKey":"light-opera","resource":"gift_light_opera","file":"gift_light_opera.webp","tier":"celebration","durationMs":3126,"version":1,"sha256":"698b71ee11c44e5f6d2ff323bff23ead7b62ebd2ba00c65ecadc1ef811fd6f05"},
+    {"giftId":"7a100021-0000-4000-8000-000000000021","visualKey":"aurora-palace","resource":"gift_aurora_palace","file":"gift_aurora_palace.webp","tier":"celebration","durationMs":3360,"version":1,"sha256":"0b79f0b7f95243675071d4543bb538aa904e86375e5f2b38fe9714a8afa7e708"},
+    {"giftId":"7a100022-0000-4000-8000-000000000022","visualKey":"time-kingdom","resource":"gift_time_kingdom","file":"gift_time_kingdom.webp","tier":"celebration","durationMs":3712,"version":1,"sha256":"991ceeedcfa7d89d695c0786b7322e486c9f508bac2adda628d00d8a50f39326"},
+    {"giftId":"7a100023-0000-4000-8000-000000000023","visualKey":"galactic-ascent","resource":"gift_galactic_ascent","file":"gift_galactic_ascent.webp","tier":"celebration","durationMs":4180,"version":1,"sha256":"01a928d012053fd540722163dd820f895b48a8e18b197bc829f0f2239d42d22b"},
+    {"giftId":"7a100024-0000-4000-8000-000000000024","visualKey":"aurora-genesis","resource":"gift_aurora_genesis","file":"gift_aurora_genesis.webp","tier":"celebration","durationMs":5000,"version":1,"sha256":"7c3b8f7b187d4c5d716fd28469c1c1a42a8c781f204ecf471874d900272e3a63"}
   ]
 }

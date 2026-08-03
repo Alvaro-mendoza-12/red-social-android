@@ -75,6 +75,7 @@ import conectate.com.data.model.LiveSource
 import conectate.com.data.repository.LiveRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -109,6 +110,9 @@ class LiveSetupViewModel @Inject constructor(
 
     private val _quality = MutableStateFlow(LiveQuality.P720)
     val quality: StateFlow<LiveQuality> = _quality.asStateFlow()
+
+    private val _cameraFilter = MutableStateFlow(liveRepository.cameraFilter.value)
+    val cameraFilter: StateFlow<LiveCameraFilter> = _cameraFilter.asStateFlow()
 
     private val _avatarUrl = MutableStateFlow<String?>(null)
     val avatarUrl: StateFlow<String?> = _avatarUrl.asStateFlow()
@@ -164,6 +168,11 @@ class LiveSetupViewModel @Inject constructor(
         _quality.value = value
     }
 
+    fun setCameraFilter(value: LiveCameraFilter) {
+        _cameraFilter.value = value
+        liveRepository.setCameraFilter(value)
+    }
+
     fun refreshNetworkState() {
         _networkAvailable.value = hasUsableNetwork(context)
     }
@@ -201,6 +210,7 @@ class LiveSetupViewModel @Inject constructor(
                 )
                 result.onSuccess { stream ->
                     liveRepository.setQuality(_quality.value)
+                    liveRepository.setCameraFilter(_cameraFilter.value)
                     liveRepository.toggleMic(_micEnabled.value)
                     onStarted(stream.id)
                 }.onFailure { throwable ->
@@ -239,6 +249,7 @@ fun LiveSetupScreen(
     val source by viewModel.source.collectAsStateWithLifecycle()
     val micEnabled by viewModel.micEnabled.collectAsStateWithLifecycle()
     val quality by viewModel.quality.collectAsStateWithLifecycle()
+    val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
     val avatarUrl by viewModel.avatarUrl.collectAsStateWithLifecycle()
     val displayName by viewModel.displayName.collectAsStateWithLifecycle()
     val networkAvailable by viewModel.networkAvailable.collectAsStateWithLifecycle()
@@ -446,6 +457,29 @@ fun LiveSetupScreen(
                         onCheckedChange = viewModel::setMicEnabled,
                         enabled = !isStarting
                     )
+
+                    if (source == LiveSource.CAMERA) {
+                        Text(
+                            "Estilo de cámara",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(LiveCameraFilter.values().toList()) { option ->
+                                FilterChip(
+                                    selected = cameraFilter == option,
+                                    onClick = { viewModel.setCameraFilter(option) },
+                                    label = { Text(option.displayName()) },
+                                    enabled = !isStarting
+                                )
+                            }
+                        }
+                        Text(
+                            "El estilo se aplica al mismo video enviado. En equipos lentos se omite temporalmente para conservar audio y estabilidad.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -513,9 +547,9 @@ fun LiveSetupScreen(
                     Divider()
                     SetupCapabilityRow(
                         title = "Filtros de cámara",
-                        detail = "Deben procesar el mismo video enviado y degradarse con seguridad según el equipo.",
-                        available = false,
-                        badge = "Pipeline pendiente"
+                        detail = "Se procesan antes de publicar y se degradan con seguridad según el rendimiento del equipo.",
+                        available = true,
+                        badge = "Disponible"
                     )
                 }
             }
@@ -543,7 +577,7 @@ fun LiveSetupScreen(
 
             item {
                 Text(
-                    text = "Audiencia actual: público. Las opciones para seguidores, invitados y batallas no se simulan: se activarán sólo cuando el servidor pueda hacer cumplir esos permisos.",
+                    text = "Audiencia actual: público. Invitados y batallas requieren un SFU y autoridad de puntuación en servidor; permanecen bloqueados hasta que esa infraestructura pueda hacer cumplir los permisos.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -551,6 +585,15 @@ fun LiveSetupScreen(
             }
         }
     }
+}
+
+private fun LiveCameraFilter.displayName(): String = when (this) {
+    LiveCameraFilter.NONE -> "Natural"
+    LiveCameraFilter.WARM -> "Cálido"
+    LiveCameraFilter.COOL -> "Frío"
+    LiveCameraFilter.VIVID -> "Vívido"
+    LiveCameraFilter.SOFT -> "Suave"
+    LiveCameraFilter.MONO -> "Mono"
 }
 
 @Composable

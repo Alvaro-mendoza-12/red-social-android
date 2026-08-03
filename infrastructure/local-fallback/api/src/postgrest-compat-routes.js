@@ -205,6 +205,18 @@ const ADMIN_WRITE_TABLES = new Set([
   'virtual_gifts',
 ])
 
+// Ledger, balances and provider purchase state are never writable through the
+// generic PostgREST compatibility surface. They are mutated only by the
+// authenticated, transactional RPCs below.
+const SERVER_MUTATION_ONLY_TABLES = new Set([
+  'billing_purchases',
+  'creator_earnings',
+  'gift_transactions',
+  'user_subscriptions',
+  'wallet_transactions',
+  'wallets',
+])
+
 const PRIVATE_OWNER_FIELDS = new Map([
   ['ad_impressions', ['user_id']],
   ['app_telemetry_events', ['user_id']],
@@ -1284,6 +1296,9 @@ async function requireAdminWrite(pool, identity, tableName) {
 
 async function prepareInsertRow(pool, tableName, identity, source) {
   let row = compactRow(source)
+  if (SERVER_MUTATION_ONLY_TABLES.has(tableName)) {
+    throw httpError('SERVER_MANAGED_RESOURCE', 403)
+  }
   if (!['sticker_packs', 'sticker_pack_items'].includes(tableName)) {
     await requireAdminWrite(pool, identity, tableName)
   }
@@ -1484,6 +1499,37 @@ async function prepareInsertRow(pool, tableName, identity, source) {
     }, 'reporter_id', identity)
   }
 
+  if (tableName === 'creator_program_applications') {
+    return {
+      user_id: identity.preferredUserId,
+      status: 'pending',
+      niche: String(row.niche || '').trim().slice(0, 120) || null,
+      portfolio_url: String(row.portfolio_url || '').trim().slice(0, 2000) || null,
+      payout_country: String(row.payout_country || '').trim().toUpperCase().slice(0, 2) || null,
+      audience_size: Math.max(0, Math.min(1_000_000_000, Math.trunc(Number(row.audience_size || 0) || 0))),
+      reviewed_by: null,
+      reviewed_at: null,
+      rejection_reason: null,
+    }
+  }
+
+  if (tableName === 'creator_payout_accounts') {
+    const provider = String(row.provider || 'manual').trim().toLowerCase()
+    const currency = String(row.currency || 'USD').trim().toUpperCase()
+    const externalAccountId = String(row.external_account_id || '').trim().slice(0, 255) || null
+    if (!isSafePayoutProviderReference(externalAccountId)) {
+      throw httpError('PAYOUT_REFERENCE_UNSAFE', 400)
+    }
+    return {
+      user_id: identity.preferredUserId,
+      provider: ['stripe', 'paypal', 'bank', 'manual'].includes(provider) ? provider : 'manual',
+      external_account_id: externalAccountId,
+      country: String(row.country || '').trim().toUpperCase().slice(0, 2) || null,
+      currency: /^[A-Z]{3}$/.test(currency) ? currency : 'USD',
+      status: 'pending',
+    }
+  }
+
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
   if (actorField) return forceActorField(row, actorField, identity)
 
@@ -1504,7 +1550,18 @@ function patchOnlyContains(patch, allowedFields) {
   return Object.keys(patch || {}).every((field) => allowedFields.has(field))
 }
 
+function isSafePayoutProviderReference(value) {
+  const clean = String(value || '').trim()
+  if (!clean) return true
+  if (clean.length > 255) return false
+  const digitsOnly = clean.replace(/\D/g, '')
+  const cardLike = digitsOnly.length >= 12 && digitsOnly.length <= 19 && /^[\d\s-]+$/.test(clean)
+  const cvvLike = digitsOnly.length >= 3 && digitsOnly.length <= 4 && /^\d+$/.test(clean)
+  return !cardLike && !cvvLike
+}
+
 async function authorizeMutation(pool, tableName, identity, row, patch, action) {
+  if (SERVER_MUTATION_ONLY_TABLES.has(tableName)) return false
   if (tableName === 'sticker_packs') {
     return (await canManageStickerPack(pool, identity, row.id)) &&
       (action === 'delete' || patchOnlyContains(patch, new Set([
@@ -1589,6 +1646,33 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
   }
   if (tableName === 'message_poll_votes') {
     return identityOwnsRow(identity, row, ['user_id']) && canAccessPoll(pool, identity, row.poll_id)
+  }
+  if (tableName === 'creator_program_applications') {
+    if (!identityOwnsRow(identity, row, ['user_id', 'creator_id'])) return false
+    if (action === 'delete' || normalizeIdentityValue(row.status) !== 'pending') return false
+    if (!patchOnlyContains(patch, new Set([
+      'niche', 'portfolio_url', 'payout_country', 'audience_size', 'updated_at',
+    ]))) return false
+    if (patch.niche != null && String(patch.niche).length > 120) return false
+    if (patch.portfolio_url != null && String(patch.portfolio_url).length > 2000) return false
+    if (patch.payout_country != null && !/^[A-Za-z]{2}$/.test(String(patch.payout_country).trim())) return false
+    if (patch.audience_size != null) {
+      const audience = Number(patch.audience_size)
+      if (!Number.isInteger(audience) || audience < 0 || audience > 1_000_000_000) return false
+    }
+    return true
+  }
+  if (tableName === 'creator_payout_accounts') {
+    if (!identityOwnsRow(identity, row, ['user_id', 'creator_id'])) return false
+    if (action === 'delete') return false
+    if (!patchOnlyContains(patch, new Set([
+      'provider', 'external_account_id', 'country', 'currency', 'status', 'updated_at',
+    ]))) return false
+    if (Object.prototype.hasOwnProperty.call(patch || {}, 'status') && patch.status !== 'pending') return false
+    if (patch.provider != null && !['stripe', 'paypal', 'bank', 'manual'].includes(String(patch.provider).trim().toLowerCase())) return false
+    if (patch.country != null && !/^[A-Za-z]{2}$/.test(String(patch.country).trim())) return false
+    if (patch.currency != null && !/^[A-Za-z]{3}$/.test(String(patch.currency).trim())) return false
+    return isSafePayoutProviderReference(patch.external_account_id)
   }
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
   if (actorField) return identityOwnsRow(identity, row, [actorField])
@@ -2953,6 +3037,13 @@ async function walletForIdentity(pool, identity) {
 }
 
 async function lockWalletForIdentity(client, identity) {
+  // A row-level lock cannot protect the first wallet creation. Serialize all
+  // balance mutations by canonical user so concurrent purchases/gifts cannot
+  // both create or read an unlocked zero-row wallet.
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`wallet:${identity.preferredUserId}`],
+  )
   const existing = await client.query(
     `SELECT row
      FROM fallback_compat_rows
@@ -3005,6 +3096,12 @@ function googlePlayConfiguration() {
     serviceAccount?.private_key,
   )
   return { enabled: ready, packageName, packages, serviceAccount }
+}
+
+function liveGiftTransactionsEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.LIVE_GIFTS_ENABLED || '').trim().toLowerCase(),
+  )
 }
 
 async function googlePlayAccessToken(serviceAccount) {
@@ -3187,6 +3284,7 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
 async function sendVirtualGiftRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  if (!liveGiftTransactionsEnabled()) throw httpError('LIVE_GIFTS_DISABLED', 503)
   const suppliedSender = normalizeIdentityValue(messageBodyValue(body, 'sender_id', ''))
   if (suppliedSender && !identityOwnsValue(identity, suppliedSender)) throw httpError('ACTOR_ID_MISMATCH')
   const receiverId = normalizeIdentityValue(messageBodyValue(body, 'receiver_id', ''))
@@ -4894,12 +4992,17 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 module.exports = {
   _test: {
     DEFAULT_VIRTUAL_GIFTS,
+    SERVER_MUTATION_ONLY_TABLES,
+    authorizeMutation,
     canUseReportEvidence,
+    liveGiftTransactionsEnabled,
     liveGiftLimitsConfiguration,
     parsePollOptions,
+    prepareInsertRow,
     purgeImportedIdentityRows,
     readSpecificRows,
     rowId,
+    sendVirtualGiftRpc,
   },
   ensurePostgrestCompatTables,
   registerPostgrestCompatRoutes,

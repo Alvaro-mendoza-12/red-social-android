@@ -3,7 +3,6 @@ package conectate.com.presentation.wallet
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,22 +45,29 @@ fun GooglePlayRechargeDialog(
     val verifying by viewModel.billingVerifying.collectAsStateWithLifecycle()
     val message by viewModel.billingMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val activity = remember(context) { context.findActivity() }
+    val activity = remember(context) { context.findActivityForBilling() }
     var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogResolved by remember(capabilities.products) { mutableStateOf(false) }
 
     val controller = remember(capabilities.enabled, capabilities.products, accountId) {
         if (!capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
             context = context,
             accountId = accountId,
             productIds = capabilities.products.map { it.productId }.toSet(),
-            onProducts = { playProducts = it },
+            onProducts = {
+                playProducts = it
+                catalogResolved = true
+            },
             onPurchased = viewModel::verifyGooglePlayPurchase,
             onPending = {
                 viewModel.showBillingMessage(
                     "Pago pendiente. No se acreditarán monedas hasta que Google Play confirme el cobro."
                 )
             },
-            onError = viewModel::showBillingMessage
+            onError = {
+                catalogResolved = true
+                viewModel.showBillingMessage(it)
+            }
         )
     }
 
@@ -85,33 +91,29 @@ fun GooglePlayRechargeDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when {
-                    !capabilities.enabled -> {
+                    !capabilities.enabled || accountId.isBlank() -> {
                         Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(14.dp)
                         ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("DEMO · pagos desactivados", fontWeight = FontWeight.Black)
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Compras no disponibles", fontWeight = FontWeight.Black)
                                 Text(
-                                    "Estos paquetes sólo muestran la distribución prevista. No tienen precio ni pueden generar un cobro."
+                                    if (accountId.isBlank()) {
+                                        "Inicia sesión para consultar los paquetes disponibles para tu cuenta."
+                                    } else {
+                                        "Esta instalación todavía no tiene habilitadas las compras de monedas. No se iniciará ningún cobro."
+                                    }
                                 )
                             }
                         }
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(DEMO_COIN_PACKAGES) { coins ->
-                                DemoCoinPackageCard(coins)
-                            }
-                        }
                         Text(
-                            "Para activar compras deben existir los productos en Play Console y la verificación transaccional del servidor.",
+                            "Se habilitarán únicamente cuando Google Play publique el catálogo localizado y el servidor pueda verificar cada compra.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    playProducts.isEmpty() -> {
+                    playProducts.isEmpty() && !catalogResolved -> {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Center,
@@ -124,7 +126,7 @@ fun GooglePlayRechargeDialog(
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    else -> {
+                    playProducts.isNotEmpty() -> {
                         Text(
                             "El precio mostrado es el precio localizado que entrega Google Play.",
                             style = MaterialTheme.typography.bodySmall
@@ -133,7 +135,7 @@ fun GooglePlayRechargeDialog(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(capabilities.products, key = { it.productId }) { coinProduct ->
+                            items(capabilities.products.sortedBy { it.coins }, key = { it.productId }) { coinProduct ->
                                 val playProduct = playProducts.firstOrNull { it.productId == coinProduct.productId }
                                 if (playProduct != null) {
                                     OutlinedButton(
@@ -169,6 +171,19 @@ fun GooglePlayRechargeDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    else -> {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("Catálogo no disponible", fontWeight = FontWeight.Black)
+                                Text(
+                                    "Google Play no devolvió productos publicados para esta cuenta o país. No se iniciará ningún cobro."
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -189,29 +204,8 @@ fun GooglePlayRechargeDialog(
     }
 }
 
-private val DEMO_COIN_PACKAGES = listOf(70, 140, 350, 700, 1_400, 3_500, 7_000, 14_000)
-
-@Composable
-private fun DemoCoinPackageCard(coins: Int) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("$coins monedas", fontWeight = FontWeight.Bold)
-            Text("Sin precio · DEMO", style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
+internal tailrec fun Context.findActivityForBilling(): Activity? = when (this) {
     is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
+    is ContextWrapper -> baseContext.findActivityForBilling()
     else -> null
 }

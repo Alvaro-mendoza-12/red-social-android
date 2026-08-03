@@ -1,5 +1,7 @@
 package conectate.com.presentation.wallet
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,51 +19,101 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import conectate.com.data.model.WalletTransaction
+import conectate.com.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoinsAndPaymentsScreen(
     navController: NavController,
+    mainNavController: NavController = navController,
     viewModel: WalletViewModel = hiltViewModel()
 ) {
     val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
     val capabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
+    val transactionsHasMore by viewModel.transactionsHasMore.collectAsStateWithLifecycle()
+    val historyLoadingMore by viewModel.historyLoadingMore.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val lastUpdatedAt by viewModel.walletLastUpdatedAt.collectAsStateWithLifecycle()
+    val verifying by viewModel.billingVerifying.collectAsStateWithLifecycle()
+    val billingMessage by viewModel.billingMessage.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivityForBilling() }
+    val accountId = viewModel.currentAccountId()
     var showRecharge by remember { mutableStateOf(false) }
-    val displayedCoinAmounts = capabilities.products.map { it.coins }.ifEmpty {
-        listOf(70, 140, 350, 700, 1_400, 3_500, 7_000, 14_000)
-    }.distinct().sorted()
+    var showLimits by remember { mutableStateOf(false) }
+    var selectedReceipt by remember { mutableStateOf<WalletTransaction?>(null) }
+    var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogLoading by remember(capabilities.enabled) { mutableStateOf(capabilities.enabled) }
+    val spending = remember(transactions) { calculateWalletSpend(transactions) }
+
+    val billingController = remember(capabilities.enabled, capabilities.products, accountId) {
+        if (!capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
+            context = context,
+            accountId = accountId,
+            productIds = capabilities.products.map { it.productId }.toSet(),
+            onProducts = {
+                playProducts = it
+                catalogLoading = false
+            },
+            onPurchased = viewModel::verifyGooglePlayPurchase,
+            onPending = {
+                viewModel.showBillingMessage(
+                    "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
+                )
+            },
+            onError = {
+                catalogLoading = false
+                viewModel.showBillingMessage(it)
+            }
+        )
+    }
+
+    DisposableEffect(billingController) {
+        billingController?.start()
+        onDispose { billingController?.close() }
+    }
 
     Scaffold(
         topBar = {
@@ -84,66 +136,191 @@ fun CoinsAndPaymentsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
+                WalletBalanceCard(
+                    balance = balance,
+                    lastUpdatedAt = lastUpdatedAt,
+                    rechargeEnabled = capabilities.enabled && playProducts.isNotEmpty() && !verifying,
+                    onRecharge = { showRecharge = true }
+                )
+            }
+
+            item {
+                SectionTitle("Paquetes", "El precio final y la moneda los entrega Google Play")
+            }
+
+            when {
+                loading && lastUpdatedAt == null -> item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(40.dp))
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                        Spacer(Modifier.size(10.dp))
+                        Text("Actualizando disponibilidad…")
+                    }
+                }
+                !capabilities.enabled -> item {
+                    UnavailablePurchasesCard()
+                }
+                catalogLoading -> item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                        Spacer(Modifier.size(10.dp))
+                        Text("Consultando precios localizados…")
+                    }
+                }
+                playProducts.isEmpty() -> item {
+                    UnavailablePurchasesCard(
+                        title = "Catálogo no disponible",
+                        body = "Google Play no devolvió productos publicados para esta cuenta o país. No se iniciará ningún cobro."
+                    )
+                }
+                else -> items(
+                    capabilities.products.sortedBy { it.coins },
+                    key = { "package-${it.productId}" }
+                ) { coinProduct ->
+                    val playProduct = playProducts.firstOrNull { it.productId == coinProduct.productId }
+                    CoinPackageCard(
+                        coins = coinProduct.coins,
+                        price = playProduct?.formattedPrice,
+                        enabled = playProduct != null && !verifying,
+                        onClick = {
+                            val host = activity
+                            if (host == null) {
+                                viewModel.showBillingMessage("No se pudo abrir Google Play en esta pantalla.")
+                            } else {
+                                billingController?.launch(host, coinProduct.productId)
+                            }
+                        }
+                    )
+                }
+            }
+
+            item {
+                SpendingProtectionCard(
+                    spentToday = spending.spentTodayCoins,
+                    spentWeek = spending.spentWeekCoins,
+                    dailyLimit = capabilities.giftLimits.maxCoinsPerDay,
+                    weeklyLimit = capabilities.giftLimits.maxCoinsPerWeek,
+                    onOpen = { showLimits = true }
+                )
+            }
+
+            item {
+                Card(
+                    onClick = { navController.navigate(Screen.CreatorEarnings.route) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Savings, contentDescription = null, modifier = Modifier.size(32.dp))
                         Spacer(Modifier.size(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Saldo disponible", style = MaterialTheme.typography.labelLarge)
-                            Text("$balance monedas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                            Text("Ganancias del creador", fontWeight = FontWeight.Black)
+                            Text(
+                                "Disponible, retenciones, actividad y cuenta de retiro",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null)
                     }
                 }
             }
 
             item {
-                Button(
-                    onClick = { showRecharge = true },
-                    enabled = !loading,
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) {
-                    Text("Recargar y elegir monto")
-                }
+                SectionTitle("Historial y recibos", "Compras, regalos, ajustes y reembolsos")
             }
 
-            item {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Paquetes disponibles", fontWeight = FontWeight.Bold)
-                        if (!capabilities.enabled) {
-                            Text(
-                                "DEMO · sin precio ni cobro. La compra se habilita al conectar Play Console y la verificación del servidor.",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        displayedCoinAmounts.forEach { coins ->
-                            Text(
-                                if (capabilities.enabled) {
-                                    "$coins monedas · precio localizado en Google Play"
-                                } else {
-                                    "$coins monedas · demostración"
-                                }
-                            )
-                        }
+            if (transactions.isEmpty()) {
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
                         Text(
-                            "El cobro sólo se acredita después de la confirmación de Google Play.",
-                            style = MaterialTheme.typography.bodySmall
+                            if (loading) "Actualizando movimientos…" else "Todavía no hay movimientos para mostrar.",
+                            modifier = Modifier.fillMaxWidth().padding(18.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+            } else {
+                items(transactions, key = { it.id }) { transaction ->
+                    Card(onClick = { selectedReceipt = transaction }, shape = RoundedCornerShape(16.dp)) {
+                        ListItem(
+                            leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+                            headlineContent = {
+                                Text(
+                                    transaction.description ?: transaction.type.toReadableTransactionType(),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            supportingContent = {
+                                Text(buildString {
+                                    append("Saldo posterior: ${formatCoins(transaction.balanceAfterDiamonds)}")
+                                    transaction.createdAt?.take(16)?.replace('T', ' ')?.let { append(" · $it") }
+                                    append(" · ${transaction.status.toReadableTransactionStatus()}")
+                                })
+                            },
+                            trailingContent = {
+                                Text(
+                                    text = if (transaction.amountDiamonds > 0) {
+                                        "+${formatCoins(transaction.amountDiamonds)}"
+                                    } else {
+                                        "−${formatCoins(-transaction.amountDiamonds)}"
+                                    },
+                                    color = if (transaction.amountDiamonds >= 0) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (transactionsHasMore) {
+                item {
+                    OutlinedButton(
+                        onClick = viewModel::loadMoreTransactions,
+                        enabled = !historyLoadingMore,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (historyLoadingMore) {
+                            CircularProgressIndicator(Modifier.size(18.dp))
+                            Spacer(Modifier.size(8.dp))
+                        }
+                        Text("Cargar más movimientos")
+                    }
+                }
+            }
+
+            if (transactions.isNotEmpty()) {
+                item {
+                    OutlinedButton(
+                        onClick = { exportWalletHistory(context, transactions) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Exportar historial")
+                    }
+                }
+            }
+
+            item {
+                Divider()
             }
 
             item {
@@ -153,65 +330,229 @@ fun CoinsAndPaymentsScreen(
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Gestionar métodos en Google Play")
+                    Text("Administrar métodos en Google Play")
                 }
             }
+
             item {
                 OutlinedButton(
                     onClick = { uriHandler.openUri("https://support.google.com/googleplay/answer/2479637") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Ayuda con compras y reembolsos")
+                    Icon(Icons.Default.HelpOutline, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Ayuda con una compra o reembolso")
                 }
             }
 
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.History, contentDescription = null)
+                OutlinedButton(
+                    onClick = { mainNavController.navigate(Screen.Novvin.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.HelpOutline, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Historial de monedas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Contactar soporte Novvin")
                 }
             }
 
-            if (transactions.isEmpty()) {
-                item {
-                    Text(
-                        if (loading) "Actualizando movimientos…" else "Todavía no hay movimientos para mostrar.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                }
-            } else {
-                items(transactions, key = { it.id }) { transaction ->
-                    ListItem(
-                        headlineContent = {
-                            Text(transaction.description ?: transaction.type.toReadableTransactionType(), fontWeight = FontWeight.SemiBold)
-                        },
-                        supportingContent = {
-                            Text(buildString {
-                                append("Saldo: ${transaction.balanceAfterDiamonds}")
-                                transaction.createdAt?.take(16)?.replace('T', ' ')?.let { append(" · $it") }
-                            })
-                        },
-                        trailingContent = {
-                            Text(
-                                text = if (transaction.amountDiamonds > 0) "+${transaction.amountDiamonds}" else transaction.amountDiamonds.toString(),
-                                color = if (transaction.amountDiamonds >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.Black
-                            )
-                        }
-                    )
-                }
+            item {
+                Text(
+                    "Adjunta sólo la referencia del proveedor al pedir ayuda. Novvin no solicita ni almacena el número completo de tarjeta, PAN ni CVV; los métodos y el cobro son gestionados por Google Play.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 
     if (showRecharge) {
         GooglePlayRechargeDialog(
-            accountId = viewModel.currentAccountId(),
+            accountId = accountId,
             onDismiss = { showRecharge = false },
             viewModel = viewModel
         )
+    }
+
+    if (showLimits) {
+        AlertDialog(
+            onDismissRequest = { showLimits = false },
+            icon = { Icon(Icons.Default.Shield, contentDescription = null) },
+            title = { Text("Control de gasto") },
+            text = {
+                val weeklyCopy = if (capabilities.giftLimits.maxCoinsPerWeek > 0) {
+                    "El límite semanal vigente es ${formatCoins(capabilities.giftLimits.maxCoinsPerWeek)} monedas. "
+                } else {
+                    "El servidor todavía no publicó un límite semanal personal. "
+                }
+                Text(
+                    "Tu límite diario vigente es ${formatCoins(capabilities.giftLimits.maxCoinsPerDay)} monedas. " +
+                        weeklyCopy +
+                        "El servidor valida el límite, la frecuencia y el saldo dentro de la misma transacción. " +
+                        "La configuración personal de aumentos sólo se habilitará con el servicio de riesgo; nunca se simula en el dispositivo."
+                )
+            },
+            confirmButton = { TextButton(onClick = { showLimits = false }) { Text("Entendido") } }
+        )
+    }
+
+    selectedReceipt?.let { transaction ->
+        AlertDialog(
+            onDismissRequest = { selectedReceipt = null },
+            icon = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+            title = { Text("Detalle del movimiento") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(transaction.description ?: transaction.type.toReadableTransactionType(), fontWeight = FontWeight.Bold)
+                    Text("Referencia: ${transaction.id}")
+                    Text("Importe: ${transaction.amountDiamonds} monedas")
+                    Text("Saldo posterior: ${transaction.balanceAfterDiamonds} monedas")
+                    Text("Estado: ${transaction.status.toReadableTransactionStatus()}")
+                    transaction.providerReference?.let { Text("Referencia del proveedor: ${maskPayoutReference(it)}") }
+                    transaction.createdAt?.let { Text("Fecha: ${it.replace('T', ' ').take(19)}") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { selectedReceipt = null }) { Text("Cerrar") } }
+        )
+    }
+
+    billingMessage?.takeUnless { showRecharge }?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearBillingMessage,
+            title = { Text("Google Play") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = viewModel::clearBillingMessage) { Text("Entendido") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun WalletBalanceCard(
+    balance: Int,
+    lastUpdatedAt: String?,
+    rechargeEnabled: Boolean,
+    onRecharge: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(38.dp))
+                Spacer(Modifier.size(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Saldo disponible", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        formatCoins(balance),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text("monedas · no retirables", style = MaterialTheme.typography.bodySmall)
+                    lastUpdatedAt?.let {
+                        Text(
+                            "Actualizado ${it.replace('T', ' ').take(16)} UTC",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+            Button(
+                onClick = onRecharge,
+                enabled = rechargeEnabled,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Recargar") }
+            Text(
+                "Las monedas sirven para funciones y regalos dentro de Novvin. No representan dinero ni ganancias retirables.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun UnavailablePurchasesCard(
+    title: String = "Compras no disponibles",
+    body: String = "Esta instalación todavía no está conectada al catálogo publicado y a la verificación de Google Play. No se muestran precios ni se inicia ningún cobro."
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, fontWeight = FontWeight.Black)
+            Text(body, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun CoinPackageCard(coins: Int, price: String?, enabled: Boolean, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(62.dp),
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(horizontalAlignment = Alignment.Start) {
+                Text("${formatCoins(coins)} monedas", fontWeight = FontWeight.Black)
+                Text("Producto consumible", style = MaterialTheme.typography.labelSmall)
+            }
+            Text(price ?: "No disponible", fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+private fun SpendingProtectionCard(
+    spentToday: Int,
+    spentWeek: Int,
+    dailyLimit: Int,
+    weeklyLimit: Int,
+    onOpen: () -> Unit
+) {
+    val safeLimit = dailyLimit.coerceAtLeast(1)
+    val progress = (spentToday.toFloat() / safeLimit.toFloat()).coerceIn(0f, 1f)
+    Card(shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Shield, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("Control de gasto", fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                TextButton(onClick = onOpen) { Text("Ver límites") }
+            }
+            Text("Hoy: ${formatCoins(spentToday)} de ${formatCoins(safeLimit)} monedas")
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            Text(
+                if (weeklyLimit > 0) {
+                    "Últimos 7 días: ${formatCoins(spentWeek)} de ${formatCoins(weeklyLimit)} monedas"
+                } else {
+                    "Últimos 7 días: ${formatCoins(spentWeek)} monedas · límite semanal no configurado"
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "El servidor aplica el límite antes del débito; un rechazo no descuenta saldo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -220,4 +561,36 @@ private fun String.toReadableTransactionType(): String = when (lowercase()) {
     "google_play_coin_purchase", "deposit" -> "Recarga de monedas"
     "refund" -> "Reembolso"
     else -> "Movimiento de monedas"
+}
+
+private fun String.toReadableTransactionStatus(): String = when (lowercase()) {
+    "confirmed", "committed", "credited", "completed" -> "Confirmado"
+    "pending" -> "Pendiente"
+    "refunded" -> "Reembolsado"
+    "reversed" -> "Revertido"
+    "failed" -> "Fallido"
+    else -> "Procesando"
+}
+
+private fun exportWalletHistory(context: Context, transactions: List<WalletTransaction>) {
+    val text = buildString {
+        appendLine("Historial de monedas Novvin")
+        transactions.forEach { transaction ->
+            append(transaction.createdAt?.take(19)?.replace('T', ' ') ?: "Sin fecha")
+            append(" · ")
+            append(transaction.description ?: transaction.type.toReadableTransactionType())
+            append(" · ")
+            append(transaction.amountDiamonds)
+            append(" monedas · ")
+            append(transaction.status.toReadableTransactionStatus())
+            append(" · ref. ")
+            appendLine(transaction.id)
+        }
+    }
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Historial de monedas Novvin")
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, "Exportar historial"))
 }

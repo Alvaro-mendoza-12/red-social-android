@@ -27,6 +27,10 @@ class AppSettingsPreferences @Inject constructor(
         private const val KEY_BOTTOM_NAV_LAYOUT = "bottom_navigation_layout"
         private const val KEY_BOTTOM_NAV_ORDER = "bottom_navigation_order"
         val DEFAULT_BOTTOM_NAV_ORDER = listOf("Mensajes", "Videos", "Social", "Perfil")
+
+        fun isReduceMotionEnabled(context: Context): Boolean = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_REDUCE_MOTION, false)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

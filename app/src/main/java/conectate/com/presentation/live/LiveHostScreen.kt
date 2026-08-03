@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package conectate.com.presentation.live
 
 import android.Manifest
@@ -17,10 +19,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
+import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import org.webrtc.RendererCommon
@@ -55,7 +64,8 @@ import org.webrtc.RendererCommon
 private data class HostLiveSettingsDraft(
     val source: LiveSource,
     val micEnabled: Boolean,
-    val videoEnabled: Boolean
+    val videoEnabled: Boolean,
+    val cameraFilter: LiveCameraFilter
 )
 
 private sealed interface HostPermissionAction {
@@ -93,6 +103,7 @@ fun LiveHostScreen(
     val isPaused by viewModel.isPaused.collectAsStateWithLifecycle()
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
+    val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
     val hostPreparation by viewModel.hostPreparation.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
@@ -145,6 +156,7 @@ fun LiveHostScreen(
                         projectionIntent = projectionIntent
                     )
                 ) {
+                    viewModel.setCameraFilter(settingsDraft.cameraFilter)
                     showSettingsDialog = false
                 }
             }
@@ -188,6 +200,7 @@ fun LiveHostScreen(
                 videoEnabled = draft.videoEnabled
             )
         ) {
+            viewModel.setCameraFilter(draft.cameraFilter)
             showSettingsDialog = false
         }
     }
@@ -411,12 +424,13 @@ fun LiveHostScreen(
     }
 
     if (showSettingsDialog) {
-        var draft by remember(showSettingsDialog, currentSource, micEnabled, isVideoEnabled) {
+        var draft by remember(showSettingsDialog, currentSource, micEnabled, isVideoEnabled, cameraFilter) {
             mutableStateOf(
                 HostLiveSettingsDraft(
                     source = currentSource,
                     micEnabled = micEnabled,
-                    videoEnabled = isVideoEnabled
+                    videoEnabled = isVideoEnabled,
+                    cameraFilter = cameraFilter
                 )
             )
         }
@@ -425,7 +439,12 @@ fun LiveHostScreen(
             onDismissRequest = { showSettingsDialog = false },
             title = { Text("Configuración del live") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
                     Text("Fuente de video", fontWeight = FontWeight.Bold)
                     LiveSettingsOption(
                         selected = draft.source == LiveSource.CAMERA,
@@ -447,37 +466,26 @@ fun LiveHostScreen(
                         checked = draft.micEnabled,
                         onCheckedChange = { draft = draft.copy(micEnabled = it) }
                     )
+                    if (draft.source == LiveSource.CAMERA && draft.videoEnabled) {
+                        Text("Estilo de cámara", fontWeight = FontWeight.Bold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(LiveCameraFilter.values().toList()) { option ->
+                                FilterChip(
+                                    selected = draft.cameraFilter == option,
+                                    onClick = { draft = draft.copy(cameraFilter = option) },
+                                    label = { Text(option.hostLabel()) }
+                                )
+                            }
+                        }
+                        Text(
+                            "El estilo se aplica a la señal publicada y puede pausarse automáticamente si el equipo necesita proteger la transmisión.",
+                            color = Color.Gray
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val needsProjection =
-                        draft.source == LiveSource.SCREEN &&
-                            draft.videoEnabled &&
-                            (
-                                currentSource != LiveSource.SCREEN ||
-                                    !viewModel.canReuseScreenShareIntent()
-                                )
-
-                    if (needsProjection) {
-                        pendingSettingsDraft = draft
-                        runCatching {
-                            screenShareLauncher.launch(projectionManager.createScreenCaptureIntent())
-                        }.onFailure {
-                            pendingSettingsDraft = null
-                            AppFeedbackBus.showError("No se pudo solicitar la captura de pantalla.")
-                        }
-                    } else {
-                        if (viewModel.applyHostConfiguration(
-                                source = draft.source,
-                                micEnabled = draft.micEnabled,
-                                videoEnabled = draft.videoEnabled
-                            )
-                        ) {
-                            showSettingsDialog = false
-                        }
-                    }
-                }) {
+                TextButton(onClick = { applySettingsDraft(draft) }) {
                     Text("Aplicar")
                 }
             },
@@ -651,6 +659,15 @@ fun LiveHostScreen(
             )
         }
     )
+}
+
+private fun LiveCameraFilter.hostLabel(): String = when (this) {
+    LiveCameraFilter.NONE -> "Natural"
+    LiveCameraFilter.WARM -> "Cálido"
+    LiveCameraFilter.COOL -> "Frío"
+    LiveCameraFilter.VIVID -> "Vívido"
+    LiveCameraFilter.SOFT -> "Suave"
+    LiveCameraFilter.MONO -> "Mono"
 }
 
 @Composable

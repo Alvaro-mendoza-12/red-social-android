@@ -1,5 +1,7 @@
 package conectate.com.data.model
 
+import java.math.BigDecimal
+
 data class CreatorProgramApplication(
     val id: String,
     val userId: String,
@@ -25,14 +27,34 @@ data class CreatorPayoutAccount(
 )
 
 data class CreatorEarningSummary(
-    val pendingCredits: Double = 0.0,
-    val availableCredits: Double = 0.0,
-    val paidCredits: Double = 0.0,
-    val totalCredits: Double = 0.0
+    val pendingCredits: BigDecimal = BigDecimal.ZERO,
+    val availableCredits: BigDecimal = BigDecimal.ZERO,
+    val heldCredits: BigDecimal = BigDecimal.ZERO,
+    val reservedCredits: BigDecimal = BigDecimal.ZERO,
+    val paidCredits: BigDecimal = BigDecimal.ZERO,
+    val refundedCredits: BigDecimal = BigDecimal.ZERO,
+    val totalCredits: BigDecimal = BigDecimal.ZERO
+)
+
+data class CreatorEarningActivity(
+    val id: String,
+    val sourceType: String,
+    val status: String,
+    val grossCredits: BigDecimal = BigDecimal.ZERO,
+    val platformFeeCredits: BigDecimal = BigDecimal.ZERO,
+    val taxWithheldCredits: BigDecimal = BigDecimal.ZERO,
+    val creatorShareCredits: BigDecimal = BigDecimal.ZERO,
+    val netCredits: BigDecimal = BigDecimal.ZERO,
+    val amountCoins: Int = 0,
+    val createdAt: String? = null,
+    val availableAt: String? = null,
+    val paidAt: String? = null
 )
 
 data class CreatorProgramDashboard(
     val application: CreatorProgramApplication? = null,
     val payoutAccount: CreatorPayoutAccount? = null,
-    val earnings: CreatorEarningSummary = CreatorEarningSummary()
+    val earnings: CreatorEarningSummary = CreatorEarningSummary(),
+    val activity: List<CreatorEarningActivity> = emptyList(),
+    val nextPayoutAt: String? = null
 )

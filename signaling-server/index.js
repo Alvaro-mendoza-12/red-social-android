@@ -1989,9 +1989,12 @@ liveIo.on('connection', (socket) => {
                 body: { p_transaction_id: transactionId }
             });
             const receipt = Array.isArray(payload) ? payload[0] : payload;
+            const session = lives.get(liveId);
+            if (!session?.host?.userId) return;
             if (!receipt || String(receipt.live_stream_id || '').trim() !== liveId) return;
             if (receipt.is_public === false) return;
-            const session = lives.get(liveId);
+            if (String(receipt.receiver_id || '').trim() !== String(session.host.userId).trim()) return;
+            if (Math.max(0, Number(receipt.amount_diamonds || 0)) <= 0) return;
             if (!session || session.announcedGiftTransactionIds?.has(transactionId)) return;
             session.announcedGiftTransactionIds ||= new Set();
             session.announcedGiftTransactionIds.add(transactionId);

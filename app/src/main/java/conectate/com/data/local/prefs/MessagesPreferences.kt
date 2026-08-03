@@ -23,6 +23,15 @@ class MessagesPreferences @Inject constructor(
         private const val KEY_READ_RECEIPTS = "read_receipts_enabled"
         private const val KEY_CHAT_ACCENT = "chat_accent"
         private const val KEY_CHAT_BACKGROUND = "chat_background"
+
+        /**
+         * Lectura síncrona para reproductores de interfaz que no viven dentro
+         * de un ViewModel. El interruptor "Sonidos de chat" actúa como control
+         * global de sonidos sociales, incluidas las celebraciones de regalos.
+         */
+        fun areSocialSoundsEnabled(context: Context): Boolean = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_CHAT_SOUNDS, true)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

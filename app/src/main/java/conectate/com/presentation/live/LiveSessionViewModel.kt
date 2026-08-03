@@ -9,6 +9,7 @@ import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.GiftReceipt
+import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -51,6 +52,7 @@ class LiveSessionViewModel @Inject constructor(
     val isVideoEnabled = liveRepository.isVideoEnabled
     val isMediaTransitioning = liveRepository.isMediaTransitioning
     val currentSource = liveRepository.currentSource
+    val cameraFilter = liveRepository.cameraFilter
     val eglBaseContext = liveRepository.eglBaseContext
     val localVideoTrack = liveRepository.localVideoTrack
     val remoteVideoTracks = liveRepository.remoteVideoTracks
@@ -208,6 +210,10 @@ class LiveSessionViewModel @Inject constructor(
 
     fun startCamera(): Boolean {
         return liveRepository.startCamera()
+    }
+
+    fun setCameraFilter(filter: LiveCameraFilter) {
+        liveRepository.setCameraFilter(filter)
     }
 
     fun startScreenShare(intent: Intent): Boolean {

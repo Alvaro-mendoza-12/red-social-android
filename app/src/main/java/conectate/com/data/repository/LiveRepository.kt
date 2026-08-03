@@ -29,6 +29,7 @@ import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
+import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.data.webrtc.WebRTCManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
@@ -211,6 +212,9 @@ class LiveRepository @Inject constructor(
 
     private val _currentSource = MutableStateFlow(LiveSource.CAMERA)
     val currentSource: StateFlow<LiveSource> = _currentSource.asStateFlow()
+
+    private val _cameraFilter = MutableStateFlow(LiveCameraFilter.NONE)
+    val cameraFilter: StateFlow<LiveCameraFilter> = _cameraFilter.asStateFlow()
 
     private val _isMediaTransitioning = MutableStateFlow(false)
     val isMediaTransitioning: StateFlow<Boolean> = _isMediaTransitioning.asStateFlow()
@@ -762,6 +766,11 @@ class LiveRepository @Inject constructor(
 
     fun setQuality(value: LiveQuality) {
         _quality.value = value
+    }
+
+    fun setCameraFilter(filter: LiveCameraFilter) {
+        _cameraFilter.value = filter
+        webRTCManager?.setCameraFilter(filter)
     }
 
     fun startCamera(micEnabledOverride: Boolean? = null): Boolean {
@@ -2225,6 +2234,7 @@ class LiveRepository @Inject constructor(
                     accessTokenProvider = { authService.getAccessToken() }
                 ).also { created ->
                     created.setCurrentUser(userId, "")
+                    created.setCameraFilter(_cameraFilter.value)
                     created.refreshManagedIceServers()
                     _isMediaReady.value = true
                     _eglBaseContext.value = created.getEglBaseContext()
@@ -2247,6 +2257,7 @@ class LiveRepository @Inject constructor(
             } else {
                 manager.hardResetAwait()
                 manager.setCurrentUser(userId, "")
+                manager.setCameraFilter(_cameraFilter.value)
                 manager.refreshManagedIceServers()
                 _isMediaReady.value = true
                 _eglBaseContext.value = manager.getEglBaseContext()

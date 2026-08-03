@@ -60,6 +60,9 @@ class WalletRepository @Inject constructor(
     private val _transactions = MutableStateFlow<List<WalletTransaction>>(emptyList())
     val transactions: StateFlow<List<WalletTransaction>> = _transactions.asStateFlow()
 
+    private val _transactionsHasMore = MutableStateFlow(false)
+    val transactionsHasMore: StateFlow<Boolean> = _transactionsHasMore.asStateFlow()
+
     suspend fun fetchBalance() = withContext(Dispatchers.IO) {
         runCatching {
             if (!supabaseConfig.isConfigured) {
@@ -115,28 +118,35 @@ class WalletRepository @Inject constructor(
         }
     }
 
-    suspend fun fetchTransactionHistory() = withContext(Dispatchers.IO) {
+    suspend fun fetchTransactionHistory(reset: Boolean = true) = withContext(Dispatchers.IO) {
         runCatching {
             if (!supabaseConfig.isConfigured) {
                 _transactions.value = emptyList()
+                _transactionsHasMore.value = false
                 return@runCatching
             }
             val userId = authService.getCurrentUserId()?.trim().orEmpty()
             if (userId.isBlank()) {
                 _transactions.value = emptyList()
+                _transactionsHasMore.value = false
                 return@runCatching
             }
+            val pageSize = 50
+            val offset = if (reset) 0 else _transactions.value.size
             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
                 restHeaders(authService.getAccessToken())
                 parameter("user_id", "eq.$userId")
                 parameter("select", "*")
                 parameter("order", "created_at.desc")
-                parameter("limit", "50")
+                parameter("limit", (pageSize + 1).toString())
+                parameter("offset", offset.toString())
             }
             if (!response.status.isSuccess()) {
                 throw IllegalStateException("No se pudo cargar el historial: ${response.status}")
             }
-            _transactions.value = decodeObjects(response.bodyAsText()).mapNotNull { value ->
+            val decoded = decodeObjects(response.bodyAsText())
+            _transactionsHasMore.value = decoded.size > pageSize
+            val page = decoded.take(pageSize).mapNotNull { value ->
                 val id = value.string("id").orEmpty()
                 if (id.isBlank()) return@mapNotNull null
                 val direction = value.string("direction").orEmpty()
@@ -148,12 +158,21 @@ class WalletRepository @Inject constructor(
                     balanceAfterDiamonds = value.int("balance_after").takeIf { value.containsKey("balance_after") }
                         ?: value.int("balance_after_diamonds"),
                     description = value.string("description"),
-                    createdAt = value.string("created_at")
+                    createdAt = value.string("created_at"),
+                    status = value.string("status") ?: "confirmed",
+                    providerReference = value.string("provider_reference")
+                        ?: value.string("provider_order_id")
                 )
+            }
+            _transactions.value = if (reset) {
+                page
+            } else {
+                (_transactions.value + page).distinctBy { it.id }
             }
         }.onFailure { error ->
             Log.w(TAG, "Unable to fetch wallet transaction history", error)
-            _transactions.value = emptyList()
+            if (reset) _transactions.value = emptyList()
+            _transactionsHasMore.value = false
         }
     }
 
@@ -274,6 +293,7 @@ class WalletRepository @Inject constructor(
                     GiftSafetyLimits(
                         maxCoinsPerGift = limits.int("max_coins_per_gift").takeIf { it > 0 } ?: 5_000,
                         maxCoinsPerDay = limits.int("max_coins_per_day").takeIf { it > 0 } ?: 25_000,
+                        maxCoinsPerWeek = limits.int("max_coins_per_week").coerceAtLeast(0),
                         maxGiftsPerMinute = limits.int("max_gifts_per_minute").takeIf { it > 0 } ?: 20,
                         highValueConfirmationCoins = limits.int("high_value_confirmation_coins")
                             .takeIf { it > 0 } ?: 900
