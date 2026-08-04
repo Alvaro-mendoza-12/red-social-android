@@ -234,6 +234,7 @@ class SocialViewModel @Inject constructor(
                 if (authService.ensureValidAccessToken().isSuccess) {
                     loadPosts()
                     loadCurrentUser()
+                    loadRecommendedPeople()
                     refreshLives()
                     return@launch
                 }
