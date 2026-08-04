@@ -2445,7 +2445,16 @@ class UserRepository @Inject constructor(
 
     suspend fun getUsersByFollowerThreshold(threshold: Int): Result<List<User>> {
         return try {
-            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            val accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.loadProfileRanking(
+                    accessToken = accessToken,
+                    metric = "followers",
+                    limit = 100
+                ).map { users ->
+                    users.filter { (it.followers_count ?: 0) >= threshold }
+                }
+            }
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $accessToken")
@@ -2610,6 +2619,21 @@ class UserRepository @Inject constructor(
                 ?: return Result.failure(Exception("No token"))
             var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user"))
+
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.loadFollowUsers(
+                    accessToken = accessToken,
+                    profileId = currentUserId,
+                    tab = "following"
+                ).map { following ->
+                    val targetSet = cleanTargetIds.toSet()
+                    following
+                        .asSequence()
+                        .map { it.id.trim().lowercase() }
+                        .filter { it in targetSet }
+                        .toSet()
+                }
+            }
 
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/follows"

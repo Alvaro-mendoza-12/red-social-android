@@ -2090,6 +2090,30 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    /**
+     * Returns public profiles ranked by the signal used by the recommendations rail.
+     * The local backend exposes the same profile shape as profile search, so keeping
+     * this mapping here makes recommendations work when Supabase is not the active
+     * data source.
+     */
+    suspend fun loadProfileRanking(
+        accessToken: String,
+        metric: String = "followers",
+        limit: Int = 50
+    ): Result<List<User>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanMetric = metric.trim().lowercase()
+            .takeIf { it in setOf("followers", "following", "posts") }
+            ?: "followers"
+        val cleanLimit = limit.coerceIn(1, 250)
+        return requestJson<LocalFallbackProfilesResponse>(
+            "$baseUrl/v1/data/profiles/ranking?metric=${urlEncode(cleanMetric)}&limit=$cleanLimit",
+            accessToken
+        ).map { response ->
+            response.items.map(::mapProfileUser)
+        }
+    }
+
     suspend fun loadFollowUsers(
         accessToken: String,
         profileId: String,

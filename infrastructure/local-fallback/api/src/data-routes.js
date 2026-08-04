@@ -1841,7 +1841,10 @@ function feedPostVisible(row, {
   if (!isMine && visibility !== 'public' && visibility !== '' && visibility !== 'followers') return false
   if (requestedUserId) return true
   if (mode === 'following') return isMine || isFollowing
-  if (mode === 'discover') return isMine || !isFollowing
+  // Discover is the public, mixed feed: followed and unfollowed creators are
+  // both eligible. Privacy checks above still exclude private/followers-only
+  // posts from viewers who cannot access them.
+  if (mode === 'discover') return true
   return true
 }
 

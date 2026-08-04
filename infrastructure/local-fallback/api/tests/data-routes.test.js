@@ -299,8 +299,8 @@ assert.strictEqual(
       mode: 'discover',
     },
   ),
-  false,
-  'Discover must not duplicate creators already present in Following',
+  true,
+  'Discover must include public posts from creators the viewer follows',
 )
 assert.strictEqual(
   feedPostVisible(
