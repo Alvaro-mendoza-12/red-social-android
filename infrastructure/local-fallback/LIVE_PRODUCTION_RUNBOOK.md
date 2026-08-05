@@ -76,6 +76,12 @@ El servicio `api` monta ese directorio como `/run/novvin-secrets` en modo solo
 lectura. La aplicación lee el archivo mediante
 `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE`; el JSON no se imprime ni se registra.
 
+Puedes validar el archivo y el catálogo sin activar cobros:
+
+```bash
+docker compose exec -T api node scripts/verify-billing-config.js
+```
+
 Antes de encender la bandera:
 
 1. En Play Console crear los ocho productos consumibles con exactamente esos

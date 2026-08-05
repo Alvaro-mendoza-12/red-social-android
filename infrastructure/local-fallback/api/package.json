@@ -25,6 +25,7 @@
     "test:live-collaboration": "node tests/live-collaboration-routes.test.js",
     "test:live-points": "node tests/live-points-routes.test.js",
     "verify:live-production": "node scripts/verify-live-production-config.js",
+    "verify:billing-config": "node scripts/verify-billing-config.js",
     "test:gift-limits": "node tests/gift-limits.test.js",
     "test:coin-purchases": "node tests/coin-purchase-ledger.test.js && node tests/coin-purchase-flow.test.js",
     "test:security": "node tests/request-security.test.js && node tests/account-status.test.js && node tests/postgrest-security.test.js",
