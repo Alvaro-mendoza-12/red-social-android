@@ -24,6 +24,7 @@ const userId = 'user-coin-flow-1'
 const accountHash = crypto.createHash('sha256').update(userId).digest('hex')
 
 process.env.LIVE_COIN_PURCHASES_ENABLED = 'true'
+process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED = 'true'
 process.env.GOOGLE_PLAY_PACKAGE_NAME = 'conectate.com'
 process.env.GOOGLE_PLAY_COIN_PACKAGES_JSON = JSON.stringify(packages)
 process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = JSON.stringify({
@@ -110,6 +111,20 @@ global.fetch = async (url) => {
     if (purchaseMode.consumeError) throw new Error('consume test failure')
     return { ok: true, json: async () => ({}) }
   }
+  if (target.includes('/purchases/voidedpurchases')) {
+    return {
+      ok: true,
+      json: async () => ({
+        voidedPurchases: [{
+          purchaseToken: 'purchase-token-valid',
+          orderId: 'order-valid',
+          voidedTimeMillis: String(Date.now()),
+          voidedReason: 1,
+          voidedSource: 0,
+        }],
+      }),
+    }
+  }
   if (purchaseMode.googleError) {
     return { ok: false, json: async () => ({ error: {} }) }
   }
@@ -192,15 +207,61 @@ async function run() {
     'GOOGLE_PLAY_PURCHASE_NOT_FOUND',
   )
 
-  const wallet = [...pool.state.compat.values()]
+  const currentWallet = () => [...pool.state.compat.values()]
     .map(entry => entry.row)
     .find(row => row.user_id === userId && row.balance_diamonds != null)
+  const wallet = currentWallet()
   assert.equal(wallet.balance_diamonds, 70)
   const purchases = [...pool.state.compat.values()]
     .filter(entry => entry.table_name === 'billing_purchases')
   assert.equal(purchases.length, 1)
   assert.equal(purchases[0].row.coins, 70)
-  console.log('coin purchase flow tests passed: valid, duplicate, pending, cancelled, unknown, google error')
+
+  const reconciliation = await _test.reconcileGooglePlayVoidedPurchases(pool, {
+    startTime: Date.now() - 60_000,
+    endTime: Date.now(),
+  })
+  assert.equal(reconciliation.fetched, 1)
+  assert.equal(reconciliation.reversed, 1)
+  assert.equal(currentWallet().balance_diamonds, 0)
+  assert.equal(currentWallet().balance_debt_diamonds, 0)
+  const repeatedRefund = await _test.processGooglePlayVoidedPurchase(pool, {
+    purchaseToken: 'purchase-token-valid',
+    orderId: 'order-valid',
+    voidedTimeMillis: String(Date.now()),
+  })
+  assert.equal(repeatedRefund.reversed, false)
+  assert.equal(repeatedRefund.idempotent_replay, true)
+  assert.equal(currentWallet().balance_diamonds, 0)
+  await expectCode(
+    () => verify('novvin_coins_70', 'purchase-token-valid'),
+    'GOOGLE_PLAY_PURCHASE_REFUNDED',
+  )
+
+  purchaseMode = { state: 0, token: 'debt' }
+  const debtPurchase = await verify('novvin_coins_70', 'purchase-token-debt')
+  assert.equal(debtPurchase.balance_diamonds, 70)
+  currentWallet().balance_diamonds = 10
+  const debtRefund = await _test.processGooglePlayVoidedPurchase(pool, {
+    purchaseToken: 'purchase-token-debt',
+    orderId: 'order-debt',
+    voidedTimeMillis: String(Date.now()),
+  })
+  assert.equal(debtRefund.removed_coins, 10)
+  assert.equal(debtRefund.debt_created, 60)
+  assert.equal(currentWallet().balance_diamonds, 0)
+  assert.equal(currentWallet().balance_debt_diamonds, 60)
+
+  purchaseMode = { state: 0, token: 'debt-repayment' }
+  const debtRepayment = await verify('novvin_coins_70', 'purchase-token-debt-repayment')
+  assert.equal(debtRepayment.balance_diamonds, 10)
+  assert.equal(currentWallet().balance_debt_diamonds, 0)
+
+  const refundTransactions = [...pool.state.compat.values()]
+    .filter(entry => entry.table_name === 'wallet_transactions')
+    .filter(entry => entry.row.transaction_type === 'google_play_refund')
+  assert.equal(refundTransactions.length, 2)
+  console.log('coin purchase flow tests passed: valid, duplicate, pending, cancelled, unknown, google error, refund, refund replay, refund debt')
 }
 
 run().catch(error => {

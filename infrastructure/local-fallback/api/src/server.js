@@ -11,7 +11,11 @@ const {
   processDueCommunityEventReminders,
   registerDataRoutes,
 } = require('./data-routes')
-const { ensurePostgrestCompatTables, registerPostgrestCompatRoutes } = require('./postgrest-compat-routes')
+const {
+  ensurePostgrestCompatTables,
+  reconcileGooglePlayVoidedPurchases,
+  registerPostgrestCompatRoutes,
+} = require('./postgrest-compat-routes')
 const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
@@ -2382,9 +2386,12 @@ app.use((error, _req, res, _next) => {
   })
   const status = Number(error?.status || error?.statusCode || 500)
   const safeStatus = status >= 400 && status <= 599 ? status : 500
-  const publicCode = safeStatus < 500
+  const explicitlySafeCode = error?.expose === true && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(error?.code || ''))
+    ? String(error.code)
+    : null
+  const publicCode = explicitlySafeCode || (safeStatus < 500
     ? String(error?.message || 'REQUEST_REJECTED').replace(/[^A-Z0-9_]/gi, '_').slice(0, 80)
-    : 'INTERNAL_ERROR'
+    : 'INTERNAL_ERROR')
   res.status(safeStatus).json({ error: publicCode, requestId: _req.requestId })
 })
 
@@ -2398,6 +2405,8 @@ let scheduledMessageTimer
 let notificationDigestTimer
 let communityEventReminderTimer
 let birthdayNotificationTimer
+let googlePlayRefundTimer
+let googlePlayRefundRunning = false
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
@@ -2448,6 +2457,37 @@ ensureAuthMetadataColumns()
     runBirthdayNotifications()
     birthdayNotificationTimer = setInterval(runBirthdayNotifications, 15 * 60_000)
     birthdayNotificationTimer.unref?.()
+    const refundReconciliationEnabled = /^(1|true|yes|on)$/i.test(
+      String(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '').trim(),
+    )
+    const refundIntervalMinutes = Math.max(5, Math.min(
+      Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 15) || 15),
+      24 * 60,
+    ))
+    const runGooglePlayRefundReconciliation = () => {
+      if (!refundReconciliationEnabled || googlePlayRefundRunning) return
+      googlePlayRefundRunning = true
+      void reconcileGooglePlayVoidedPurchases(pool)
+        .then((result) => {
+          console.log('[google-play-refunds] reconciliation complete', {
+            fetched: result.fetched,
+            reversed: result.reversed,
+            unmatched: result.unmatched,
+          })
+        })
+        .catch((error) => {
+          console.error('[google-play-refunds] reconciliation failed', {
+            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
+          })
+        })
+        .finally(() => { googlePlayRefundRunning = false })
+    }
+    runGooglePlayRefundReconciliation()
+    googlePlayRefundTimer = setInterval(
+      runGooglePlayRefundReconciliation,
+      refundIntervalMinutes * 60_000,
+    )
+    googlePlayRefundTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -2460,6 +2500,7 @@ async function shutdown(signal) {
   if (notificationDigestTimer) clearInterval(notificationDigestTimer)
   if (communityEventReminderTimer) clearInterval(communityEventReminderTimer)
   if (birthdayNotificationTimer) clearInterval(birthdayNotificationTimer)
+  if (googlePlayRefundTimer) clearInterval(googlePlayRefundTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

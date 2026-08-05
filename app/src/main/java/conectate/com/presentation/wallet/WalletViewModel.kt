@@ -117,16 +117,26 @@ class WalletViewModel @Inject constructor(
             }.onFailure { failure ->
                 val rawMessage = failure.message.orEmpty()
                 _error.value = when {
-                    rawMessage.contains("INSUFFICIENT", ignoreCase = true) ->
+                    rawMessage.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ->
                         "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
+                    rawMessage.contains("GIFTS_DISABLED", ignoreCase = true) ->
+                        "Los regalos están temporalmente desactivados. No se descontaron monedas."
+                    rawMessage.contains("LIVE_NOT_ACTIVE", ignoreCase = true) ->
+                        "Este directo ya terminó o no está activo. No se descontaron monedas."
+                    rawMessage.contains("LIVE_RECEIVER_MISMATCH", ignoreCase = true) ->
+                        "El regalo no corresponde al creador de este directo."
+                    rawMessage.contains("SELF_GIFT_NOT_ALLOWED", ignoreCase = true) ->
+                        "No puedes enviarte regalos a ti mismo."
                     rawMessage.contains("GIFT_VALUE_LIMIT", ignoreCase = true) ->
                         "Este regalo supera el límite configurado para la cuenta."
                     rawMessage.contains("GIFT_DAILY_LIMIT", ignoreCase = true) ->
                         "Alcanzaste el límite diario de regalos. No se descontaron monedas."
-                    rawMessage.contains("GIFT_RATE_LIMIT", ignoreCase = true) ->
+                    rawMessage.contains("RATE_LIMITED", ignoreCase = true) ->
                         "Estás enviando regalos demasiado rápido. Espera un momento y vuelve a intentarlo."
                     rawMessage.contains("GIFT_NOT_FOUND", ignoreCase = true) ->
                         "El catálogo cambió. Actualízalo y vuelve a seleccionar el regalo."
+                    rawMessage.contains("DATABASE_ERROR", ignoreCase = true) ->
+                        "No se pudo confirmar el regalo. No se descontaron monedas; vuelve a intentarlo."
                     else -> failure.message ?: "No se pudo enviar el regalo. No se descontaron monedas."
                 }
             }

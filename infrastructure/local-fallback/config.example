@@ -60,6 +60,7 @@ ADMIN_EMAILS=
 # Monedas para regalos en Android. Mantener desactivado hasta configurar los
 # productos consumibles en Play Console y la cuenta de servicio Android Publisher.
 LIVE_COIN_PURCHASES_ENABLED=false
+LIVE_GIFTS_ENABLED=false
 GOOGLE_PLAY_PACKAGE_NAME=conectate.com
 GOOGLE_PLAY_COIN_PACKAGES_JSON={"novvin_coins_70":70,"novvin_coins_140":140,"novvin_coins_350":350,"novvin_coins_700":700,"novvin_coins_1400":1400,"novvin_coins_3500":3500,"novvin_coins_7000":7000,"novvin_coins_14000":14000}
 LIVE_GIFT_MAX_COINS_PER_GIFT=5000
@@ -72,6 +73,9 @@ GOOGLE_PLAY_SERVICE_ACCOUNT_DIR=./secrets
 GOOGLE_PLAY_SERVICE_ACCOUNT_FILE=/run/novvin-secrets/google-play-service-account.json
 # Compatibilidad heredada: no rellenar si se usa GOOGLE_PLAY_SERVICE_ACCOUNT_FILE.
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=
+GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED=false
+GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES=15
+GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS=72
 
 # LiveKit SFU para invitados, batallas y salas colaborativas.
 # Mantener apagado hasta verificar el backend. Estas claves viven solo en el

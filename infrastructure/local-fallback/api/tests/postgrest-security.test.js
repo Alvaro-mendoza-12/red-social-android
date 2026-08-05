@@ -133,7 +133,7 @@ async function run() {
         gift_id: '7a100001-0000-4000-8000-000000000001',
         receiver_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       }),
-      (error) => error?.status === 503 && error?.message === 'LIVE_GIFTS_DISABLED',
+      (error) => error?.status === 503 && error?.message === 'GIFTS_DISABLED',
       'gift RPC must fail closed before any ledger/catalog query when the kill switch is off',
     )
     assert.equal(identityQueries, 1)

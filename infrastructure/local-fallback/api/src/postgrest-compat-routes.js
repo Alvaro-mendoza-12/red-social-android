@@ -354,6 +354,10 @@ function compactRow(row) {
 function httpError(code, status = 403) {
   const error = new Error(code)
   error.status = status
+  if (/^[A-Z][A-Z0-9_]{1,79}$/.test(String(code || ''))) {
+    error.code = code
+    error.expose = true
+  }
   return error
 }
 
@@ -445,6 +449,40 @@ async function ensurePostgrestCompatTables(pool) {
       AND row ? 'purchase_token_hash'
   `)
   await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_billing_voided_token_hash
+    ON fallback_compat_rows ((row->>'purchase_token_hash'))
+    WHERE table_name = 'billing_voided_purchase_events'
+      AND row ? 'purchase_token_hash'
+  `)
+  // A gift request UUID is the receipt ID.  These database guards make the
+  // gift, creator earning and wallet debit one-to-one even if a client retries
+  // or two API workers process the request concurrently.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_gift_idempotency_key
+    ON fallback_compat_rows ((lower(row->>'idempotency_key')))
+    WHERE table_name = 'gift_transactions'
+      AND row ? 'idempotency_key'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_gift_earning_id
+    ON fallback_compat_rows ((lower(row->>'earning_id')))
+    WHERE table_name = 'gift_transactions'
+      AND row ? 'earning_id'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_creator_earning_gift_transaction
+    ON fallback_compat_rows ((lower(row->>'gift_transaction_id')))
+    WHERE table_name = 'creator_earnings'
+      AND row ? 'gift_transaction_id'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_wallet_virtual_gift_reference
+    ON fallback_compat_rows ((lower(row->>'reference_id')))
+    WHERE table_name = 'wallet_transactions'
+      AND row->>'transaction_type' = 'virtual_gift'
+      AND row ? 'reference_id'
+  `)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_view_once_consumptions (
       scope_type TEXT NOT NULL CHECK (scope_type IN ('chat', 'group', 'community')),
       message_id UUID NOT NULL,
@@ -521,6 +559,18 @@ async function readSpecificRows(pool, tableName, auth) {
         LIMIT $1
       `, [MAX_READ_ROWS])
       return rows.map(mapUserRow)
+    }
+    case 'live_streams': {
+      const { rows } = await pool.query(`
+        SELECT id::text, host_user_id, host_name, host_avatar_url, title, source,
+               hashtags, viewer_count, peak_viewer_count, total_comments,
+               total_reactions, is_active, started_at, ended_at, created_at,
+               updated_at
+        FROM fallback_live_streams
+        ORDER BY created_at DESC
+        LIMIT $1
+      `, [MAX_READ_ROWS])
+      return rows
     }
     case 'posts': {
       const { rows } = await pool.query(`
@@ -3031,6 +3081,7 @@ function normalizeWallet(row, identity) {
     id: identity.preferredUserId,
     user_id: identity.preferredUserId,
     balance_diamonds: Math.max(0, Math.trunc(Number(row?.balance_diamonds || 0) || 0)),
+    balance_debt_diamonds: Math.max(0, Math.trunc(Number(row?.balance_debt_diamonds || 0) || 0)),
     balance_credits: Math.max(0, Number(row?.balance_credits || 0) || 0),
     total_spent: Math.max(0, Number(row?.total_spent || 0) || 0),
     created_at: row?.created_at || nowIso(),
@@ -3189,6 +3240,185 @@ async function billingCapabilitiesRpc(pool, auth) {
   }
 }
 
+function googlePlayRefundReconciliationConfiguration() {
+  const enabled = /^(1|true|yes|on)$/i.test(
+    String(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '').trim(),
+  )
+  const intervalMinutes = Math.max(5, Math.min(
+    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 15) || 15),
+    24 * 60,
+  ))
+  const lookbackHours = Math.max(1, Math.min(
+    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS || 72) || 72),
+    30 * 24,
+  ))
+  return { enabled, intervalMinutes, lookbackHours }
+}
+
+async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
+  const purchaseToken = String(voidedPurchase?.purchaseToken || '').trim()
+  if (!purchaseToken || purchaseToken.length > 4096) return { status: 'invalid', reversed: false }
+  const tokenHash = crypto.createHash('sha256').update(purchaseToken).digest('hex')
+  const orderId = String(voidedPurchase?.orderId || '').trim()
+  const orderIdHash = orderId ? crypto.createHash('sha256').update(orderId).digest('hex') : null
+  const client = await pool.connect()
+  let inTransaction = false
+  try {
+    await client.query('BEGIN')
+    inTransaction = true
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`refund:${tokenHash}`])
+    const purchases = await importedAndCompatRows(client, 'billing_purchases')
+    const purchase = purchases.find((row) => row.purchase_token_hash === tokenHash)
+    if (!purchase) {
+      await storeCompatRow(client, 'billing_voided_purchase_events', {
+        id: `voided:${tokenHash}`,
+        purchase_token_hash: tokenHash,
+        order_id_hash: orderIdHash,
+        status: 'unmatched',
+        voided_at: voidedPurchase?.voidedTimeMillis
+          ? new Date(Number(voidedPurchase.voidedTimeMillis)).toISOString()
+          : nowIso(),
+      })
+      await client.query('COMMIT')
+      inTransaction = false
+      return { status: 'unmatched', reversed: false }
+    }
+    if (orderId && purchase.order_id && String(purchase.order_id) !== orderId) {
+      await client.query('ROLLBACK')
+      inTransaction = false
+      return { status: 'order_mismatch', reversed: false }
+    }
+    if (['refunded', 'reversed'].includes(normalizeIdentityValue(purchase.status))) {
+      await client.query('COMMIT')
+      inTransaction = false
+      return { status: 'refunded', reversed: false, idempotent_replay: true }
+    }
+    if (normalizeIdentityValue(purchase.status) !== 'credited') {
+      await client.query('ROLLBACK')
+      inTransaction = false
+      return { status: 'not_credited', reversed: false }
+    }
+
+    const userId = normalizeIdentityValue(purchase.user_id)
+    const identity = {
+      ids: new Set([userId]),
+      values: [userId],
+      preferredUserId: userId,
+      localUserId: userId,
+    }
+    const wallet = await lockWalletForIdentity(client, identity)
+    const coins = Math.max(0, Math.trunc(Number(purchase.coins || 0) || 0))
+    if (!userId || coins <= 0) throw new Error('INVALID_CREDITED_PURCHASE_LEDGER')
+    const removedCoins = Math.min(wallet.balance_diamonds, coins)
+    const debtCreated = coins - removedCoins
+    const newBalance = wallet.balance_diamonds - removedCoins
+    const newDebt = wallet.balance_debt_diamonds + debtCreated
+    const reversedAt = nowIso()
+
+    await storeCompatRow(client, 'wallets', {
+      ...wallet,
+      balance_diamonds: newBalance,
+      balance_debt_diamonds: newDebt,
+    })
+    await storeCompatRow(client, 'billing_purchases', {
+      ...purchase,
+      status: 'refunded',
+      reversed_at: reversedAt,
+      voided_at: voidedPurchase?.voidedTimeMillis
+        ? new Date(Number(voidedPurchase.voidedTimeMillis)).toISOString()
+        : reversedAt,
+      voided_reason: Number.isFinite(Number(voidedPurchase?.voidedReason))
+        ? Math.trunc(Number(voidedPurchase.voidedReason))
+        : null,
+      voided_source: Number.isFinite(Number(voidedPurchase?.voidedSource))
+        ? Math.trunc(Number(voidedPurchase.voidedSource))
+        : null,
+      coins_removed: removedCoins,
+      coin_debt_created: debtCreated,
+    })
+    await storeCompatRow(client, 'wallet_transactions', {
+      id: `refund:${purchase.id}`,
+      user_id: userId,
+      direction: 'debit',
+      transaction_type: 'google_play_refund',
+      amount_diamonds: coins,
+      applied_amount_diamonds: removedCoins,
+      balance_after: newBalance,
+      balance_debt_after: newDebt,
+      reference_id: purchase.id,
+      status: 'refunded',
+    })
+    await storeCompatRow(client, 'billing_voided_purchase_events', {
+      id: `voided:${tokenHash}`,
+      purchase_token_hash: tokenHash,
+      order_id_hash: orderIdHash,
+      purchase_id: purchase.id,
+      status: 'processed',
+      voided_at: voidedPurchase?.voidedTimeMillis
+        ? new Date(Number(voidedPurchase.voidedTimeMillis)).toISOString()
+        : reversedAt,
+    })
+    await client.query('COMMIT')
+    inTransaction = false
+    return {
+      status: 'refunded',
+      reversed: true,
+      coins,
+      removed_coins: removedCoins,
+      debt_created: debtCreated,
+      balance_diamonds: newBalance,
+    }
+  } catch (error) {
+    if (inTransaction) await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function reconcileGooglePlayVoidedPurchases(pool, options = {}) {
+  const config = googlePlayConfiguration()
+  const reconciliation = googlePlayRefundReconciliationConfiguration()
+  if (!config.enabled || !reconciliation.enabled) {
+    return { enabled: false, fetched: 0, reversed: 0, unmatched: 0 }
+  }
+  const endTime = Math.min(Number(options.endTime || Date.now()), Date.now())
+  const startTime = Math.max(
+    endTime - reconciliation.lookbackHours * 60 * 60 * 1000,
+    Number(options.startTime || 0),
+  )
+  const accessToken = await googlePlayAccessToken(config.serviceAccount)
+  let pageToken = ''
+  let fetched = 0
+  let reversed = 0
+  let unmatched = 0
+  do {
+    const url = new URL(
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(config.packageName)}/purchases/voidedpurchases`,
+    )
+    url.searchParams.set('startTime', String(Math.trunc(startTime)))
+    url.searchParams.set('endTime', String(Math.trunc(endTime)))
+    url.searchParams.set('type', '0')
+    url.searchParams.set('includeQuantityBasedPartialRefund', 'false')
+    url.searchParams.set('maxResults', '1000')
+    if (pageToken) url.searchParams.set('token', pageToken)
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw httpError('GOOGLE_PLAY_VOIDED_PURCHASES_FAILED', 502)
+    const events = Array.isArray(payload.voidedPurchases) ? payload.voidedPurchases : []
+    fetched += events.length
+    for (const event of events) {
+      const result = await processGooglePlayVoidedPurchase(pool, event)
+      if (result.reversed) reversed += 1
+      if (result.status === 'unmatched') unmatched += 1
+    }
+    pageToken = String(payload?.tokenPagination?.nextPageToken || '').trim()
+  } while (pageToken)
+  return { enabled: true, fetched, reversed, unmatched, startTime, endTime }
+}
+
 async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -3207,6 +3437,9 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
   }
   if (existingPurchase && String(existingPurchase.product_id || '').trim() !== productId) {
     throw httpError('GOOGLE_PLAY_PRODUCT_MISMATCH', 409)
+  }
+  if (existingPurchase && ['refunded', 'reversed'].includes(normalizeIdentityValue(existingPurchase.status))) {
+    throw httpError('GOOGLE_PLAY_PURCHASE_REFUNDED', 409)
   }
 
   const accessToken = await googlePlayAccessToken(config.serviceAccount)
@@ -3255,8 +3488,13 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
       if (String(duplicate.product_id || '').trim() !== productId) throw httpError('GOOGLE_PLAY_PRODUCT_MISMATCH', 409)
       balance = wallet.balance_diamonds
     } else {
-      balance = wallet.balance_diamonds + coins
-      await storeCompatRow(client, 'wallets', { ...wallet, balance_diamonds: balance })
+      const debtRepaid = Math.min(wallet.balance_debt_diamonds, coins)
+      balance = wallet.balance_diamonds + coins - debtRepaid
+      await storeCompatRow(client, 'wallets', {
+        ...wallet,
+        balance_diamonds: balance,
+        balance_debt_diamonds: wallet.balance_debt_diamonds - debtRepaid,
+      })
       await storeCompatRow(client, 'billing_purchases', {
         id: crypto.randomUUID(),
         user_id: identity.preferredUserId,
@@ -3264,6 +3502,7 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
         purchase_token_hash: tokenHash,
         order_id: purchase.orderId || null,
         coins,
+        debt_repaid: debtRepaid,
         status: 'credited',
         consumed: false,
         purchased_at: purchase.purchaseTimeMillis ? new Date(Number(purchase.purchaseTimeMillis)).toISOString() : nowIso(),
@@ -3275,6 +3514,7 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
         transaction_type: 'google_play_coin_purchase',
         amount_diamonds: coins,
         balance_after: balance,
+        balance_debt_after: wallet.balance_debt_diamonds - debtRepaid,
         reference_id: tokenHash,
       })
     }
@@ -3306,7 +3546,7 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
 async function sendVirtualGiftRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  if (!liveGiftTransactionsEnabled()) throw httpError('LIVE_GIFTS_DISABLED', 503)
+  if (!liveGiftTransactionsEnabled()) throw httpError('GIFTS_DISABLED', 503)
   const suppliedSender = normalizeIdentityValue(messageBodyValue(body, 'sender_id', ''))
   if (suppliedSender && !identityOwnsValue(identity, suppliedSender)) throw httpError('ACTOR_ID_MISMATCH')
   const receiverId = normalizeIdentityValue(messageBodyValue(body, 'receiver_id', ''))
@@ -3316,7 +3556,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   const isPublic = messageBodyValue(body, 'is_public', true) !== false
   if (!receiverId || !giftId) throw httpError('GIFT_RECEIVER_AND_ID_REQUIRED', 400)
   if (!idempotencyKey) throw httpError('GIFT_IDEMPOTENCY_KEY_REQUIRED', 400)
-  if (identityOwnsValue(identity, receiverId)) throw httpError('SELF_GIFT_FORBIDDEN', 400)
+  if (identityOwnsValue(identity, receiverId)) throw httpError('SELF_GIFT_NOT_ALLOWED', 409)
   if (!DEFAULT_VIRTUAL_GIFT_IDS.has(giftId)) throw httpError('GIFT_NOT_FOUND', 404)
 
   const priorTransaction = (await importedAndCompatRows(pool, 'gift_transactions'))
@@ -3362,12 +3602,13 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   if (liveStreamId) {
     const live = (await readTableRows(pool, 'live_streams', {}, auth))
       .find((row) => normalizeIdentityValue(row.id) === liveStreamId)
-    if (!live || normalizeIdentityValue(live.host_user_id || live.user_id) !== receiverId) {
-      throw httpError('LIVE_STREAM_RECEIVER_MISMATCH', 409)
+    if (!live) throw httpError('LIVE_NOT_ACTIVE', 409)
+    if (normalizeIdentityValue(live.host_user_id || live.user_id) !== receiverId) {
+      throw httpError('LIVE_RECEIVER_MISMATCH', 409)
     }
     const rawActive = live.is_active ?? live.isActive
     if (!(rawActive === true || rawActive === 1 || String(rawActive).toLowerCase() === 'true')) {
-      throw httpError('LIVE_STREAM_NOT_ACTIVE', 409)
+      throw httpError('LIVE_NOT_ACTIVE', 409)
     }
   }
 
@@ -3409,7 +3650,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       return Number.isFinite(createdAt) && createdAt >= now - 60_000
     }).length
     if (giftsLastMinute >= giftLimits.max_gifts_per_minute) {
-      throw httpError('GIFT_RATE_LIMIT_EXCEEDED', 429)
+      throw httpError('RATE_LIMITED', 429)
     }
     const spentLastDay = senderTransactions.reduce((total, row) => {
       const createdAt = Date.parse(String(row.created_at || ''))
@@ -3419,7 +3660,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     if (spentLastDay + costDiamonds > giftLimits.max_coins_per_day) {
       throw httpError('GIFT_DAILY_LIMIT_EXCEEDED', 409)
     }
-    if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_DIAMONDS', 409)
+    if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_BALANCE', 409)
     newBalance = wallet.balance_diamonds - costDiamonds
     await storeCompatRow(client, 'wallets', {
       ...wallet,
@@ -3432,6 +3673,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       sender_id: identity.preferredUserId,
       source_type: 'virtual_gift',
       source_id: giftId,
+      gift_transaction_id: idempotencyKey,
       live_stream_id: liveStreamId,
       amount_credits: Math.max(0, Number(gift.price_credits || 0) || 0),
       amount_diamonds: costDiamonds,
@@ -3483,7 +3725,16 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     }
   } catch (error) {
     if (inTransaction) await client.query('ROLLBACK').catch(() => {})
-    throw error
+    if (error?.expose === true) throw error
+    console.error('[gift] database transaction failed', {
+      code: String(error?.code || 'UNKNOWN').slice(0, 40),
+      table: String(error?.table || '').slice(0, 80) || undefined,
+      constraint: String(error?.constraint || '').slice(0, 120) || undefined,
+      routine: String(error?.routine || '').slice(0, 120) || undefined,
+    })
+    const databaseError = httpError('DATABASE_ERROR', 503)
+    databaseError.cause = error
+    throw databaseError
   } finally {
     client.release()
   }
@@ -5028,7 +5279,11 @@ module.exports = {
     googlePlayConfiguration,
     googlePlayServiceAccountRaw,
     verifyGooglePlayPurchaseRpc,
+    googlePlayRefundReconciliationConfiguration,
+    processGooglePlayVoidedPurchase,
+    reconcileGooglePlayVoidedPurchases,
   },
   ensurePostgrestCompatTables,
+  reconcileGooglePlayVoidedPurchases,
   registerPostgrestCompatRoutes,
 }
