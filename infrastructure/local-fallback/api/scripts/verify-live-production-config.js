@@ -1,4 +1,5 @@
 const assert = require('assert')
+const fs = require('fs')
 const jwt = require('jsonwebtoken')
 const {
   issueLiveSfuToken,
@@ -44,7 +45,15 @@ const packageCount = (() => {
     return 0
   }
 })()
-const serviceAccountJson = String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '').trim()
+const serviceAccountFile = String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE || '').trim()
+let serviceAccountJson = String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '').trim()
+if (serviceAccountFile) {
+  try {
+    serviceAccountJson = fs.readFileSync(serviceAccountFile, 'utf8').trim()
+  } catch (_) {
+    serviceAccountJson = ''
+  }
+}
 let serviceAccountReady = false
 if (serviceAccountJson) {
   try {

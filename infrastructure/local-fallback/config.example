@@ -66,7 +66,11 @@ LIVE_GIFT_MAX_COINS_PER_GIFT=5000
 LIVE_GIFT_MAX_COINS_PER_DAY=25000
 LIVE_GIFT_MAX_GIFTS_PER_MINUTE=20
 LIVE_GIFT_HIGH_VALUE_CONFIRMATION_COINS=900
-# JSON completo de la cuenta de servicio, inyectado como secreto; nunca se incluye en la app.
+# Directorio de secretos en el host; el JSON nunca se incluye en la app ni en Git.
+GOOGLE_PLAY_SERVICE_ACCOUNT_DIR=./secrets
+# Ruta dentro del contenedor api; se monta como solo lectura.
+GOOGLE_PLAY_SERVICE_ACCOUNT_FILE=/run/novvin-secrets/google-play-service-account.json
+# Compatibilidad heredada: no rellenar si se usa GOOGLE_PLAY_SERVICE_ACCOUNT_FILE.
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=
 
 # LiveKit SFU para invitados, batallas y salas colaborativas.

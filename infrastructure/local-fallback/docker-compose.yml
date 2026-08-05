@@ -42,9 +42,11 @@ services:
       AI_CHAT_REQUEST_TIMEOUT_MS: ${AI_CHAT_REQUEST_TIMEOUT_MS:-3000}
       TRANSLATION_INTERNAL_URL: http://host.docker.internal:5000
       FIREBASE_SERVICE_ACCOUNT_FILE: /run/secrets/firebase-service-account.json
+      GOOGLE_PLAY_SERVICE_ACCOUNT_FILE: ${GOOGLE_PLAY_SERVICE_ACCOUNT_FILE:-/run/novvin-secrets/google-play-service-account.json}
     volumes:
       - ./imports:/imports:ro
       - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - ${GOOGLE_PLAY_SERVICE_ACCOUNT_DIR:-./secrets}:/run/novvin-secrets:ro
       - ./.conectate-release:/run/novvin-release:ro
       - conectate-fallback-storage:/data/storage
     extra_hosts:

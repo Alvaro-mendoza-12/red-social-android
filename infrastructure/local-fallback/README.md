@@ -48,6 +48,19 @@ scp -P 2222 -r infrastructure/local-fallback/* alvaro@127.0.0.1:~/conectate-loca
 scp -P 2222 -r signaling-server alvaro@127.0.0.1:~/signaling-server
 ```
 
+La cuenta de servicio de Google Play no se copia con ese comando. Transfiérela
+por separado a una ruta temporal y muévela al directorio privado ignorado por
+Git:
+
+```powershell
+scp -P 2222 "C:\ruta\nueva-red-social-c9d04-6b94a68481fe.json" `
+  alvaro@127.0.0.1:/tmp/novvin-play-billing.json
+ssh -p 2222 alvaro@127.0.0.1 "umask 077; install -d -m 700 ~/conectate-local-fallback/secrets; install -m 600 /tmp/novvin-play-billing.json ~/conectate-local-fallback/secrets/google-play-service-account.json; rm -f /tmp/novvin-play-billing.json"
+```
+
+El contenedor `api` sólo recibe ese archivo como montaje de lectura. No se
+guarda en `.env`, Kotlin, APK, logs ni commits.
+
 Si solo quieres actualizar rapido el backend despues de un cambio:
 
 ```powershell

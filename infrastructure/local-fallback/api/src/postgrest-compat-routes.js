@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const fs = require('fs')
 const jwt = require('jsonwebtoken')
 const {
   publishChatMessageEvent,
@@ -433,6 +434,15 @@ async function ensurePostgrestCompatTables(pool) {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_compat_rows_updated
     ON fallback_compat_rows(table_name, updated_at DESC)
+  `)
+  // Provider purchase tokens are one-time credentials.  The JSON fallback
+  // store still needs a database-level uniqueness guard in addition to the
+  // advisory transaction lock used by the credit path.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_billing_purchase_token_hash
+    ON fallback_compat_rows ((row->>'purchase_token_hash'))
+    WHERE table_name = 'billing_purchases'
+      AND row ? 'purchase_token_hash'
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_view_once_consumptions (
@@ -3060,6 +3070,18 @@ async function lockWalletForIdentity(client, identity) {
   return wallet
 }
 
+function googlePlayServiceAccountRaw() {
+  const filePath = String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE || '').trim()
+  if (filePath) {
+    try {
+      return fs.readFileSync(filePath, 'utf8').trim()
+    } catch (_) {
+      return ''
+    }
+  }
+  return String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '').trim()
+}
+
 function googlePlayConfiguration() {
   const enabled = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.LIVE_COIN_PURCHASES_ENABLED || '').trim().toLowerCase(),
@@ -3067,7 +3089,7 @@ function googlePlayConfiguration() {
   let serviceAccount = null
   let packages = {}
   try {
-    serviceAccount = JSON.parse(String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || '').trim())
+    serviceAccount = JSON.parse(googlePlayServiceAccountRaw())
     if (serviceAccount?.private_key) {
       serviceAccount.private_key = String(serviceAccount.private_key).replace(/\\n/g, '\n')
     }
@@ -5003,6 +5025,9 @@ module.exports = {
     readSpecificRows,
     rowId,
     sendVirtualGiftRpc,
+    googlePlayConfiguration,
+    googlePlayServiceAccountRaw,
+    verifyGooglePlayPurchaseRpc,
   },
   ensurePostgrestCompatTables,
   registerPostgrestCompatRoutes,
