@@ -5,6 +5,7 @@ const {
   issueLiveSfuToken,
   liveSfuConfiguration,
 } = require('../src/live-routes')
+const fs = require('fs')
 
 async function testCollaborationSchema() {
   const statements = []
@@ -65,10 +66,17 @@ async function testSfuConfigurationDefaultsDisabled() {
   assert.strictEqual(configuration.url, '')
 }
 
+async function testIdentityMembershipUsesSetApi() {
+  const source = fs.readFileSync(require.resolve('../src/live-routes'), 'utf8')
+  assert.doesNotMatch(source, /identity\.ids\.includes\(/)
+  assert.match(source, /identity\.ids\.has\(/)
+}
+
 Promise.resolve()
   .then(testCollaborationSchema)
   .then(testSfuTokenIsScopedAndShortLived)
   .then(testSfuConfigurationDefaultsDisabled)
+  .then(testIdentityMembershipUsesSetApi)
   .then(() => console.log('live collaboration route tests passed'))
   .catch((error) => {
     console.error(error)

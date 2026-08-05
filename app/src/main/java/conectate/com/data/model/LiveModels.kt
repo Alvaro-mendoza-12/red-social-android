@@ -6,7 +6,8 @@ import java.util.UUID
 
 enum class LiveSource {
     CAMERA,
-    SCREEN
+    SCREEN,
+    AUDIO
 }
 
 enum class LiveRole {

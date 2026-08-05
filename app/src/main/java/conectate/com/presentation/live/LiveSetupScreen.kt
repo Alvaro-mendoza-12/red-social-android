@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.ScreenShare
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
@@ -433,6 +434,15 @@ fun LiveSetupScreen(
                                     enabled = !isStarting,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                LiveSourceChoice(
+                                    selected = source == LiveSource.AUDIO,
+                                    title = "Solo voz",
+                                    subtitle = "Foto de perfil y audio",
+                                    icon = Icons.Default.Mic,
+                                    onClick = { viewModel.setSource(LiveSource.AUDIO) },
+                                    enabled = !isStarting,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -451,6 +461,15 @@ fun LiveSetupScreen(
                                     subtitle = "Permiso por sesión",
                                     icon = Icons.Default.ScreenShare,
                                     onClick = { viewModel.setSource(LiveSource.SCREEN) },
+                                    enabled = !isStarting,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                LiveSourceChoice(
+                                    selected = source == LiveSource.AUDIO,
+                                    title = "Solo voz",
+                                    subtitle = "Perfil + audio",
+                                    icon = Icons.Default.Mic,
+                                    onClick = { viewModel.setSource(LiveSource.AUDIO) },
                                     enabled = !isStarting,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -699,13 +718,19 @@ private fun LivePreviewCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "$category · ${if (source == LiveSource.CAMERA) "Cámara" else "Pantalla"}",
+                    text = "$category · ${source.setupLabel()}",
                     color = Color.White.copy(alpha = 0.84f),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
         }
     }
+}
+
+private fun LiveSource.setupLabel(): String = when (this) {
+    LiveSource.CAMERA -> "Cámara"
+    LiveSource.SCREEN -> "Pantalla"
+    LiveSource.AUDIO -> "Solo voz"
 }
 
 @Composable

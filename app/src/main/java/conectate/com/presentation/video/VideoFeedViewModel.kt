@@ -49,6 +49,8 @@ class VideoFeedViewModel @Inject constructor(
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
     private val _socialHighlights = MutableStateFlow<List<Post>>(emptyList())
     val socialHighlights: StateFlow<List<Post>> = _socialHighlights.asStateFlow()
+    private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
+    val recommendedPeople: StateFlow<List<conectate.com.data.model.User>> = _recommendedPeople.asStateFlow()
     val activeStreams = liveRepository.activeStreams
     val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
     val offlineVideos = offlineVideoRepository.videos
@@ -134,7 +136,32 @@ class VideoFeedViewModel @Inject constructor(
         offlineVideoRepository.refreshForCurrentAccount()
         loadForYouVideos()
         loadSocialHighlights()
+        loadRecommendedPeople()
         loadFollowedUsers()
+    }
+
+    private fun loadRecommendedPeople() {
+        viewModelScope.launch {
+            val currentId = currentUserId?.trim()?.lowercase().orEmpty()
+            if (currentId.isBlank()) return@launch
+            userRepository.getUsersByFollowerThreshold(0).onSuccess { users ->
+                val followed = userRepository.getFollowedUserIds(users.map { it.id }).getOrDefault(emptySet())
+                _recommendedPeople.value = users
+                    .filter { it.id.isNotBlank() && it.id.trim().lowercase() != currentId }
+                    .filterNot { it.isSuspendedNow || followed.contains(it.id.trim().lowercase()) }
+                    .distinctBy { it.id.trim().lowercase() }
+                    .take(12)
+            }
+        }
+    }
+
+    fun followRecommendedUser(user: conectate.com.data.model.User) {
+        _recommendedPeople.value = _recommendedPeople.value.filterNot { it.id == user.id }
+        viewModelScope.launch {
+            userRepository.followUser(user.id).onFailure {
+                _recommendedPeople.value = (_recommendedPeople.value + user).distinctBy { it.id }.take(12)
+            }
+        }
     }
 
     private fun loadSocialHighlights() {

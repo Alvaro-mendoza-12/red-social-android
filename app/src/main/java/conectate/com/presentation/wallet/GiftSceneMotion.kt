@@ -81,6 +81,75 @@ internal data class GiftMotionTransform(
     val translationY: Float
 )
 
+/** Movimiento secundario del arte: respiración, aleteo o zancada sobre su trayectoria principal. */
+internal data class GiftArticulationTransform(
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
+    val rotation: Float = 0f,
+    val translationY: Float = 0f
+)
+
+internal fun giftArticulationTransform(
+    profile: GiftMotionProfile,
+    progress: Float,
+    animationsEnabled: Boolean = true
+): GiftArticulationTransform {
+    if (!animationsEnabled) return GiftArticulationTransform()
+    val p = progress.coerceIn(0f, 1f)
+    val flutter = sin(p * PI * 28).toFloat()
+    val stride = abs(sin(p * PI * 18).toFloat())
+    val breathe = sin(p * PI * 6).toFloat()
+    return when (profile) {
+        GiftMotionProfile.BUTTERFLY,
+        GiftMotionProfile.HUMMINGBIRD -> GiftArticulationTransform(
+            scaleX = 0.90f + abs(flutter) * 0.12f,
+            scaleY = 1.04f - abs(flutter) * 0.08f,
+            rotation = flutter * 2.8f,
+            translationY = -abs(flutter) * 0.025f
+        )
+        GiftMotionProfile.PHOENIX,
+        GiftMotionProfile.DRAGON -> GiftArticulationTransform(
+            scaleX = 0.94f + abs(flutter) * 0.10f,
+            scaleY = 1.02f - abs(flutter) * 0.05f,
+            rotation = flutter * 3.8f,
+            translationY = -abs(flutter) * 0.035f
+        )
+        GiftMotionProfile.FOX,
+        GiftMotionProfile.GUARDIAN -> GiftArticulationTransform(
+            scaleX = 1.02f + stride * 0.035f,
+            scaleY = 1.02f - stride * 0.055f,
+            rotation = sin(p * PI * 18).toFloat() * 1.8f,
+            translationY = -stride * 0.055f
+        )
+        GiftMotionProfile.TRAIN -> GiftArticulationTransform(
+            scaleX = 1f + stride * 0.015f,
+            scaleY = 1f - stride * 0.025f,
+            rotation = sin(p * PI * 24).toFloat() * 0.7f,
+            translationY = -stride * 0.020f
+        )
+        GiftMotionProfile.JELLYFISH,
+        GiftMotionProfile.WHALE,
+        GiftMotionProfile.ISLAND -> GiftArticulationTransform(
+            scaleX = 1f + breathe * 0.025f,
+            scaleY = 1f - breathe * 0.035f,
+            rotation = breathe * 1.2f,
+            translationY = breathe * 0.020f
+        )
+        GiftMotionProfile.WORLD,
+        GiftMotionProfile.KINGDOM,
+        GiftMotionProfile.GENESIS -> GiftArticulationTransform(
+            scaleX = 1f + abs(breathe) * 0.045f,
+            scaleY = 1f + abs(breathe) * 0.045f,
+            rotation = breathe * 1.4f
+        )
+        else -> GiftArticulationTransform(
+            scaleX = 1f + breathe * 0.018f,
+            scaleY = 1f + breathe * 0.018f,
+            rotation = breathe * 0.8f
+        )
+    }
+}
+
 internal fun giftMotionProfile(visualKey: String): GiftMotionProfile = when (visualKey) {
     "aurora-drop" -> GiftMotionProfile.DROP
     "prism-spark" -> GiftMotionProfile.SPARK

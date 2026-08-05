@@ -14,6 +14,8 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.ActiveLiveSession
 import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveCollaborationCapabilities
+import conectate.com.data.model.LiveGuestInvitation
+import conectate.com.data.model.LiveBattle
 import conectate.com.data.model.LiveQuality
 import conectate.com.data.model.LiveReaction
 import conectate.com.data.model.LiveModerationState
@@ -200,6 +202,15 @@ class LiveRepository @Inject constructor(
 
     private val _liveViewers = MutableStateFlow<List<LiveViewerParticipant>>(emptyList())
     val liveViewers: StateFlow<List<LiveViewerParticipant>> = _liveViewers.asStateFlow()
+
+    private val _collaborationCapabilities = MutableStateFlow(LiveCollaborationCapabilities())
+    val collaborationCapabilities: StateFlow<LiveCollaborationCapabilities> = _collaborationCapabilities.asStateFlow()
+
+    private val _guestInvitations = MutableStateFlow<List<LiveGuestInvitation>>(emptyList())
+    val guestInvitations: StateFlow<List<LiveGuestInvitation>> = _guestInvitations.asStateFlow()
+
+    private val _activeBattle = MutableStateFlow<LiveBattle?>(null)
+    val activeBattle: StateFlow<LiveBattle?> = _activeBattle.asStateFlow()
 
     private val _moderationState = MutableStateFlow(LiveModerationState())
     val moderationState: StateFlow<LiveModerationState> = _moderationState.asStateFlow()
@@ -521,8 +532,73 @@ class LiveRepository @Inject constructor(
             }
             val token = localAccessToken()
             if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
-            localFallbackApiClient.loadLiveCollaborationCapabilities(token)
+            localFallbackApiClient.loadLiveCollaborationCapabilities(token).onSuccess {
+                _collaborationCapabilities.value = it
+            }
         }
+
+    suspend fun refreshGuestInvitations(liveId: String): Result<List<LiveGuestInvitation>> =
+        withContext(Dispatchers.IO) {
+            if (!usesUbuntuPersistence()) return@withContext Result.success(emptyList())
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.loadLiveGuestInvitations(token, normalizedId).onSuccess {
+                _guestInvitations.value = it
+            }
+        }
+
+    suspend fun inviteLiveGuest(liveId: String, inviteeUserId: String): Result<LiveGuestInvitation> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.inviteLiveGuest(token, normalizedId, inviteeUserId).onSuccess { invitation ->
+                _guestInvitations.update { current -> listOf(invitation) + current.filterNot { it.id == invitation.id } }
+            }
+        }
+
+    suspend fun respondToGuestInvitation(
+        liveId: String,
+        invitationId: String,
+        accept: Boolean
+    ): Result<LiveGuestInvitation> = withContext(Dispatchers.IO) {
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        val normalizedId = normalizeLiveSessionId(liveId)
+            ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+        localFallbackApiClient.respondToLiveGuestInvitation(
+            token,
+            normalizedId,
+            invitationId,
+            if (accept) "accepted" else "rejected"
+        ).onSuccess { invitation ->
+            _guestInvitations.update { current -> current.map { if (it.id == invitation.id) invitation else it } }
+        }
+    }
+
+    suspend fun startBattle(liveId: String, opponentUserId: String): Result<LiveBattle> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.startLiveBattle(token, normalizedId, opponentUserId).onSuccess {
+                _activeBattle.value = it
+            }
+        }
+
+    suspend fun endBattle(liveId: String): Result<LiveBattle> = withContext(Dispatchers.IO) {
+        val battle = _activeBattle.value
+            ?: return@withContext Result.failure(Exception("No hay una batalla activa"))
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        localFallbackApiClient.endLiveBattle(token, liveId, battle.id).onSuccess {
+            _activeBattle.value = null
+        }
+    }
 
     val liveKitState: StateFlow<LiveKitRoomBridge.State>
         get() = liveKitRoomBridge.state
@@ -678,7 +754,7 @@ class LiveRepository @Inject constructor(
 
             _currentSource.value = stream.source.toLiveSource()
             _isPaused.value = false
-            _isVideoEnabled.value = true
+            _isVideoEnabled.value = _currentSource.value != LiveSource.AUDIO
             screenCaptureActive = false
             validateHostCapturePermissions()?.let { message ->
                 return@withContext Result.failure(SecurityException(message))
@@ -769,8 +845,8 @@ class LiveRepository @Inject constructor(
 
             _isMicEnabled.value = false
             _isPaused.value = false
-            _isVideoEnabled.value = true
             _currentSource.value = stream.source.toLiveSource()
+            _isVideoEnabled.value = _currentSource.value != LiveSource.AUDIO
             screenCaptureActive = false
             stopAdaptiveQualityMonitor()
             var profile = userRepository.getUserById(currentUserId).getOrNull()
@@ -1154,12 +1230,13 @@ class LiveRepository @Inject constructor(
         }
         val previousSource = _currentSource.value
         val manager = webRTCManager ?: return false
+        val effectiveVideoEnabled = videoEnabled && source != LiveSource.AUDIO
 
         if (micEnabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
             _runtimeErrors.tryEmit("Concede permiso al micrófono para activarlo en el live.")
             return false
         }
-        if (videoEnabled && source == LiveSource.CAMERA && !hasPermission(android.Manifest.permission.CAMERA)) {
+        if (effectiveVideoEnabled && source == LiveSource.CAMERA && !hasPermission(android.Manifest.permission.CAMERA)) {
             _runtimeErrors.tryEmit("Concede permiso a la cámara para transmitir video.")
             return false
         }
@@ -1169,7 +1246,7 @@ class LiveRepository @Inject constructor(
                 manager.hasLocalVideoTrack() &&
                 (source != LiveSource.SCREEN || screenCaptureActive)
         if (
-            videoEnabled &&
+            effectiveVideoEnabled &&
             source == LiveSource.SCREEN &&
             !canReuseCurrentTrack &&
             projectionIntent == null
@@ -1178,7 +1255,7 @@ class LiveRepository @Inject constructor(
             return false
         }
 
-        if (!videoEnabled) {
+        if (!effectiveVideoEnabled) {
             return beginVideoStop(source, micEnabledOverride = micEnabled)
         }
 
@@ -1215,6 +1292,7 @@ class LiveRepository @Inject constructor(
                 intent = checkNotNull(projectionIntent),
                 micEnabledOverride = micEnabled
             )
+            LiveSource.AUDIO -> beginVideoStop(LiveSource.AUDIO, micEnabledOverride = micEnabled)
         }
     }
 
@@ -2577,6 +2655,10 @@ class LiveRepository @Inject constructor(
             .onFailure { error ->
                 android.util.Log.e("LiveRepository", "Unable to reset live media cleanly", error)
             }
+        runCatching { liveKitRoomBridge.disconnectAwait() }
+            .onFailure { error ->
+                android.util.Log.w("LiveRepository", "Unable to close collaboration audio cleanly", error)
+            }
 
         _comments.value = emptyList()
         _reactions.value = emptyList()
@@ -2584,6 +2666,9 @@ class LiveRepository @Inject constructor(
         _giftEvents.value = emptyList()
         _viewerCount.value = 0
         _liveViewers.value = emptyList()
+        _guestInvitations.value = emptyList()
+        _activeBattle.value = null
+        _collaborationCapabilities.value = LiveCollaborationCapabilities()
         _moderationState.value = LiveModerationState()
         _isMicEnabled.value = true
         _isMediaReady.value = false
@@ -2794,6 +2879,7 @@ class LiveRepository @Inject constructor(
                     else -> false
                 }
             }
+            LiveSource.AUDIO -> true
         }
     }
 
@@ -3023,7 +3109,11 @@ class LiveRepository @Inject constructor(
     }
 
     private fun String.toLiveSource(): LiveSource {
-        return if (trim().equals("screen", ignoreCase = true)) LiveSource.SCREEN else LiveSource.CAMERA
+        return when {
+            trim().equals("screen", ignoreCase = true) -> LiveSource.SCREEN
+            trim().equals("audio", ignoreCase = true) -> LiveSource.AUDIO
+            else -> LiveSource.CAMERA
+        }
     }
 }
 

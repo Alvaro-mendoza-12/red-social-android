@@ -1,11 +1,18 @@
 package conectate.com.presentation.live
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -58,6 +66,8 @@ fun LiveViewerScreen(
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
+    val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
+    val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val hostTrack = remoteTracks.values.firstOrNull()
@@ -68,7 +78,23 @@ fun LiveViewerScreen(
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
     var showGiftSheet by remember(liveId) { mutableStateOf(false) }
     var showRechargeDialog by remember(liveId) { mutableStateOf(false) }
+    var invitationAwaitingPermission by remember(liveId) { mutableStateOf<String?>(null) }
     val exitGate = remember(liveId) { LiveViewerExitGate() }
+    val currentUserId = viewModel.getCurrentUserId().orEmpty()
+    val pendingInvitation = guestInvitations.firstOrNull {
+        it.status == "pending" && it.inviteeUserId.equals(currentUserId, ignoreCase = true)
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val invitationId = invitationAwaitingPermission
+        invitationAwaitingPermission = null
+        if (granted && invitationId != null) {
+            viewModel.respondToGuestInvitation(liveId, invitationId, accept = true)
+        } else if (!granted) {
+            AppFeedbackBus.showError("El micrófono es necesario para participar como invitado.")
+        }
+    }
 
     fun leaveViewer() {
         manualLeaveRequested = true
@@ -104,6 +130,31 @@ fun LiveViewerScreen(
             android.util.Log.e("LiveViewerScreen", "Error joining live", e)
             AppFeedbackBus.showError("Error al unirse al live: ${e.message}")
             navController.popBackStack()
+        }
+    }
+
+    LaunchedEffect(session?.stream?.id) {
+        val sessionId = session?.stream?.id ?: return@LaunchedEffect
+        viewModel.startCollaborationPolling(sessionId)
+    }
+
+    LaunchedEffect(
+        session?.stream?.id,
+        collaborationCapabilities.guestsBattlesEnabled,
+        collaborationCapabilities.sfuAvailable
+    ) {
+        val sessionId = session?.stream?.id ?: return@LaunchedEffect
+        if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
+            viewModel.connectLiveKit(
+                liveId = sessionId,
+                role = "viewer",
+                publishAudio = false,
+                publishCamera = false
+            ).onFailure {
+                // El directo principal continúa por el transporte existente;
+                // únicamente se pierde el audio opcional de los invitados.
+                AppFeedbackBus.showError("No se pudo conectar el audio de los invitados.")
+            }
         }
     }
 
@@ -175,8 +226,32 @@ fun LiveViewerScreen(
         )
     }
 
+    if (pendingInvitation != null && collaborationCapabilities.guestsBattlesEnabled) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Invitación al live") },
+            text = { Text("El creador te invita a participar por voz. Puedes aceptar o rechazar.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = true)
+                    } else {
+                        invitationAwaitingPermission = pendingInvitation.id
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }) { Text("Aceptar") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = false)
+                }) { Text("Rechazar") }
+            }
+        )
+    }
+
     val stateOverlayText = when {
         isPaused -> "LIVE EN PAUSA"
+        currentSource == conectate.com.data.model.LiveSource.AUDIO -> "DIRECTO SOLO VOZ"
         !isVideoEnabled && currentSource == conectate.com.data.model.LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
         !isVideoEnabled -> "CÁMARA DESACTIVADA"
         else -> null
@@ -201,10 +276,10 @@ fun LiveViewerScreen(
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
-        placeholderText = if (currentSource == conectate.com.data.model.LiveSource.SCREEN) {
-            "Esperando pantalla del creador…"
-        } else {
-            "Conectando directo…"
+        placeholderText = when (currentSource) {
+            conectate.com.data.model.LiveSource.SCREEN -> "Esperando pantalla del creador…"
+            conectate.com.data.model.LiveSource.AUDIO -> "Escuchando al creador…"
+            conectate.com.data.model.LiveSource.CAMERA -> "Conectando directo…"
         },
         leadingTopBarAction = {
             IconButton(onClick = ::leaveViewer) {

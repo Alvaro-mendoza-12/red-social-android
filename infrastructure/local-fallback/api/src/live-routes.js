@@ -114,7 +114,9 @@ function containsBlockedWord(content, blockedWords) {
 }
 
 function sourceOf(value) {
-  return normalizeId(value) === 'screen' ? 'screen' : 'camera'
+  const source = normalizeId(value)
+  if (source === 'screen' || source === 'audio') return source
+  return 'camera'
 }
 
 function intBetween(value, min, max, fallback = min) {
@@ -139,7 +141,7 @@ async function ensureLiveTables(pool) {
       host_name TEXT NOT NULL DEFAULT 'Usuario',
       host_avatar_url TEXT,
       title TEXT NOT NULL DEFAULT '',
-      source TEXT NOT NULL DEFAULT 'camera' CHECK (source IN ('camera', 'screen')),
+      source TEXT NOT NULL DEFAULT 'camera' CHECK (source IN ('camera', 'screen', 'audio')),
       hashtags JSONB NOT NULL DEFAULT '[]'::jsonb,
       viewer_count INT NOT NULL DEFAULT 0,
       peak_viewer_count INT NOT NULL DEFAULT 0,
@@ -258,6 +260,15 @@ async function ensureLiveTables(pool) {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_live_chapters_timeline
     ON fallback_live_chapters(live_id, offset_ms ASC, created_at ASC)
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    DROP CONSTRAINT IF EXISTS fallback_live_streams_source_check
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_live_streams
+    ADD CONSTRAINT fallback_live_streams_source_check
+    CHECK (source IN ('camera', 'screen', 'audio'))
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_live_guest_invitations (
@@ -660,7 +671,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
       const inviteeUserId = cleanText(req.body?.inviteeUserId || req.body?.invitee_user_id, 160).toLowerCase()
       const requestNonce = cleanText(req.body?.requestNonce || req.body?.request_nonce, 128) || crypto.randomUUID()
-      if (!inviteeUserId || identity.ids.includes(inviteeUserId)) {
+      if (!inviteeUserId || identity.ids.has(inviteeUserId)) {
         return res.status(400).json({ error: 'LIVE_INVITATION_TARGET_INVALID' })
       }
       const { rows } = await pool.query(
@@ -737,7 +748,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       }
       const existing = await invitationById(pool, liveId, invitationId)
       if (!existing) return res.status(404).json({ error: 'LIVE_INVITATION_NOT_FOUND' })
-      if (!identity.ids.includes(normalizeId(existing.invitee_user_id))) {
+      if (!identity.ids.has(normalizeId(existing.invitee_user_id))) {
         return res.status(403).json({ error: 'LIVE_INVITEE_REQUIRED' })
       }
       if (existing.status !== 'pending' || new Date(existing.expires_at).getTime() <= Date.now()) {
@@ -788,7 +799,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const identity = userIdentity(user)
       if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
       const opponentUserId = cleanText(req.body?.opponentUserId || req.body?.opponent_user_id, 160).toLowerCase()
-      if (!opponentUserId || identity.ids.includes(opponentUserId)) {
+      if (!opponentUserId || identity.ids.has(opponentUserId)) {
         return res.status(400).json({ error: 'LIVE_BATTLE_OPPONENT_INVALID' })
       }
       const invitation = await invitationForUser(pool, liveId, opponentUserId)

@@ -40,6 +40,23 @@ class LiveSetupPolicyTest {
     }
 
     @Test
+    fun `audio only setup does not request video and explains profile fallback`() {
+        val result = evaluateLiveSetup(
+            title = "Conversación solo voz",
+            category = "Charlando",
+            source = LiveSource.AUDIO,
+            micEnabled = true,
+            quality = LiveQuality.P480,
+            networkAvailable = true
+        )
+
+        assertTrue(result.canStart)
+        assertTrue(result.checks.first { it.label == "Fuente" }.detail.contains("foto de perfil"))
+        assertEquals(LiveSource.AUDIO, liveSourceFromWire("audio"))
+        assertFalse(requiredHostRuntimePermissions(LiveSource.AUDIO, true, false).contains(android.Manifest.permission.CAMERA))
+    }
+
+    @Test
     fun `category is included once and hashtag count is bounded`() {
         val parsed = parseLiveHashtags(
             raw = "#gaming gaming uno dos tres cuatro cinco seis siete ocho nueve diez once",

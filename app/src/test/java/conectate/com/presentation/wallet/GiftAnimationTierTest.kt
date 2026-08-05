@@ -93,6 +93,22 @@ class GiftAnimationTierTest {
     }
 
     @Test
+    fun creatureArtworkHasArticulatedMotionIndependentFromItsPath() {
+        val birdA = giftArticulationTransform(GiftMotionProfile.HUMMINGBIRD, 0.10f)
+        val birdB = giftArticulationTransform(GiftMotionProfile.HUMMINGBIRD, 0.125f)
+        val guardian = giftArticulationTransform(GiftMotionProfile.GUARDIAN, 0.125f)
+        val staticBird = giftArticulationTransform(
+            GiftMotionProfile.HUMMINGBIRD,
+            progress = 0.125f,
+            animationsEnabled = false
+        )
+
+        assertTrue(birdA.scaleX != birdB.scaleX || birdA.rotation != birdB.rotation)
+        assertTrue(guardian.translationY < 0f)
+        assertEquals(GiftArticulationTransform(), staticBird)
+    }
+
+    @Test
     fun premiumCelebrationsUseMoreLayersAndFullScreen() {
         val micro = giftSceneSpec(GiftMotionProfile.SEED)
         val premium = giftSceneSpec(GiftMotionProfile.GENESIS)

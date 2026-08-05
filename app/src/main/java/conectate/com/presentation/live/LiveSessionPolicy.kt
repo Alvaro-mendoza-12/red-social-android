@@ -30,9 +30,8 @@ internal fun requiredHostRuntimePermissions(
     }
 }
 
-internal fun liveSourceFromWire(value: String): LiveSource =
-    if (value.trim().equals("screen", ignoreCase = true)) {
-        LiveSource.SCREEN
-    } else {
-        LiveSource.CAMERA
-    }
+internal fun liveSourceFromWire(value: String): LiveSource = when {
+    value.trim().equals("screen", ignoreCase = true) -> LiveSource.SCREEN
+    value.trim().equals("audio", ignoreCase = true) -> LiveSource.AUDIO
+    else -> LiveSource.CAMERA
+}

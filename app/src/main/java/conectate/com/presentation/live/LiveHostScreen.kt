@@ -110,6 +110,9 @@ fun LiveHostScreen(
     val hostPreparation by viewModel.hostPreparation.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
+    val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
+    val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
+    val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
@@ -118,6 +121,7 @@ fun LiveHostScreen(
     var endingLive by remember(liveId) { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showModerationDialog by remember { mutableStateOf(false) }
+    var showCollaborationDialog by remember { mutableStateOf(false) }
     var showMomentDialog by remember { mutableStateOf(false) }
     var momentTitle by remember { mutableStateOf("") }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
@@ -348,6 +352,13 @@ fun LiveHostScreen(
                     }
                 }
             }
+            LiveSource.AUDIO -> {
+                autoStarted = viewModel.applyHostConfiguration(
+                    source = LiveSource.AUDIO,
+                    micEnabled = micEnabled,
+                    videoEnabled = false
+                )
+            }
         }
     }
 
@@ -358,6 +369,23 @@ fun LiveHostScreen(
             navController.popBackStack()
         }
         viewModel.clearError()
+    }
+
+    LaunchedEffect(session?.stream?.id) {
+        val sessionId = session?.stream?.id ?: return@LaunchedEffect
+        viewModel.startCollaborationPolling(sessionId)
+    }
+
+    LaunchedEffect(session?.stream?.id, collaborationCapabilities.sfuAvailable) {
+        val sessionId = session?.stream?.id ?: return@LaunchedEffect
+        if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
+            viewModel.connectLiveKit(
+                liveId = sessionId,
+                role = "host",
+                publishAudio = false,
+                publishCamera = false
+            )
+        }
     }
 
     LaunchedEffect(endingLive) {
@@ -458,10 +486,18 @@ fun LiveHostScreen(
                         title = "Compartir pantalla",
                         onSelect = { draft = draft.copy(source = LiveSource.SCREEN) }
                     )
+                    LiveSettingsOption(
+                        selected = draft.source == LiveSource.AUDIO,
+                        title = "Solo voz (foto de perfil)",
+                        onSelect = {
+                            draft = draft.copy(source = LiveSource.AUDIO, videoEnabled = false)
+                        }
+                    )
                     LiveSettingsToggle(
                         title = "Video activo",
                         checked = draft.videoEnabled,
-                        onCheckedChange = { draft = draft.copy(videoEnabled = it) }
+                        onCheckedChange = { draft = draft.copy(videoEnabled = it) },
+                        enabled = draft.source != LiveSource.AUDIO
                     )
                     LiveSettingsToggle(
                         title = "Micrófono activo",
@@ -519,6 +555,68 @@ fun LiveHostScreen(
         )
     }
 
+    if (showCollaborationDialog) {
+        AlertDialog(
+            onDismissRequest = { showCollaborationDialog = false },
+            title = { Text("Invitados y batallas") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    when {
+                        !collaborationCapabilities.guestsBattlesEnabled ->
+                            Text("Las invitaciones están desactivadas temporalmente.")
+                        !collaborationCapabilities.sfuAvailable ->
+                            Text("El transporte de invitados no está disponible en este momento.")
+                        liveViewers.none { it.userId.isNotBlank() } ->
+                            Text("Cuando entren espectadores podrás invitarlos a participar por voz.")
+                        else -> liveViewers
+                            .filter { it.userId.isNotBlank() }
+                            .distinctBy { it.userId.lowercase() }
+                            .forEach { viewer ->
+                                val invitation = guestInvitations.firstOrNull {
+                                    it.inviteeUserId.equals(viewer.userId, ignoreCase = true)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(viewer.name.ifBlank { "Usuario" }, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            when (invitation?.status) {
+                                                "pending" -> "Invitación pendiente"
+                                                "accepted" -> "Invitado aceptado"
+                                                "rejected" -> "Invitación rechazada"
+                                                else -> "Espectador"
+                                            },
+                                            color = Color.Gray
+                                        )
+                                    }
+                                    when {
+                                        activeBattle != null && activeBattle?.rightUserId.equals(viewer.userId, true) ->
+                                            TextButton(onClick = { viewModel.endBattle(liveId) }) { Text("Finalizar") }
+                                        invitation?.status == "accepted" ->
+                                            TextButton(onClick = { viewModel.startBattle(liveId, viewer.userId) }) { Text("Batalla") }
+                                        invitation?.status == "pending" -> Text("Enviada")
+                                        else -> TextButton(onClick = { viewModel.inviteGuest(liveId, viewer.userId) }) { Text("Invitar") }
+                                    }
+                                }
+                            }
+                    }
+                    activeBattle?.let { battle ->
+                        Text("Marcador: ${battle.leftScore} – ${battle.rightScore}", fontWeight = FontWeight.Black)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCollaborationDialog = false }) { Text("Cerrar") }
+            }
+        )
+    }
+
     if (showMomentDialog) {
         AlertDialog(
             onDismissRequest = { showMomentDialog = false },
@@ -556,6 +654,7 @@ fun LiveHostScreen(
 
     val stateOverlayText = when {
         !isMediaReady -> "Preparando transmisión…"
+        currentSource == LiveSource.AUDIO -> "DIRECTO SOLO VOZ"
         !isVideoEnabled && currentSource == LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
         !isVideoEnabled -> "CÁMARA DESACTIVADA"
         !isPaused && localVideoTrack == null -> "Conectando video…"
@@ -588,12 +687,16 @@ fun LiveHostScreen(
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
+        placeholderText = if (currentSource == LiveSource.AUDIO) {
+            "Directo solo voz"
+        } else {
+            "Preparando video…"
+        },
         topStatusBannerText = if (isPaused) {
             "Live pausado. Los espectadores no ven tu transmisión."
         } else {
             null
         },
-        placeholderText = if (currentSource == LiveSource.SCREEN) "Preparando pantalla…" else "Preparando cámara…",
         leadingTopBarAction = {
             IconButton(onClick = { navController.popBackStack() }) {
                 Icon(
@@ -648,6 +751,10 @@ fun LiveHostScreen(
             LiveActionChip(
                 text = "Moderación",
                 onClick = { showModerationDialog = true }
+            )
+            LiveActionChip(
+                text = "Invitados y batallas",
+                onClick = { showCollaborationDialog = true }
             )
             LiveActionChip(
                 text = "Marcar momento",
@@ -705,7 +812,8 @@ private fun LiveSettingsOption(
 private fun LiveSettingsToggle(
     title: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -713,7 +821,7 @@ private fun LiveSettingsToggle(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(title)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 private fun missingPermissions(context: android.content.Context, permissions: Collection<String>): List<String> {

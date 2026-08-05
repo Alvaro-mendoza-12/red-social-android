@@ -48,6 +48,7 @@ internal fun evaluateLiveSetup(
     val sourceDetail = when (source) {
         LiveSource.CAMERA -> "La cámara se solicitará al entrar al estudio."
         LiveSource.SCREEN -> "Android pedirá permiso para compartir en cada sesión."
+        LiveSource.AUDIO -> "Solo se publicará tu voz; se mostrará tu foto de perfil."
     }
     val qualityDetail = when (quality) {
         LiveQuality.P480 -> "Ahorra datos y tolera redes inestables."

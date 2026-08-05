@@ -70,10 +70,12 @@ function createPool({ balance = 100, liveActive = true, failOnTable = null } = {
     updated_at: new Date().toISOString(),
   }]
   const now = new Date().toISOString()
-  compat.set(`virtual_gifts:${gift.id}`, {
-    table_name: 'virtual_gifts', row_id: gift.id,
-    row: { ...gift, is_active: true }, created_at: now, updated_at: now,
-  })
+  for (const catalogGift of _test.DEFAULT_VIRTUAL_GIFTS) {
+    compat.set(`virtual_gifts:${catalogGift.id}`, {
+      table_name: 'virtual_gifts', row_id: catalogGift.id,
+      row: { ...catalogGift, is_active: true }, created_at: now, updated_at: now,
+    })
+  }
   compat.set(`wallets:${senderId}`, {
     table_name: 'wallets', row_id: senderId,
     row: { id: senderId, user_id: senderId, balance_diamonds: balance, balance_credits: 0, total_spent: 0 },
@@ -214,6 +216,23 @@ async function expectCode(action, code) {
 }
 
 async function run() {
+  for (const catalogGift of _test.DEFAULT_VIRTUAL_GIFTS) {
+    const price = Math.max(0, Math.trunc(Number(catalogGift.price_diamonds || 0)))
+    const catalogPool = createPool({ balance: price })
+    const receipt = await _test.sendVirtualGiftRpc(
+      catalogPool,
+      { sub: senderId },
+      request({ p_gift_id: catalogGift.id }),
+    )
+    assert.equal(receipt.gift_id, catalogGift.id)
+    assert.equal(receipt.sender_balance_diamonds, 0)
+    assert.equal(balance(catalogPool), 0)
+    assert.equal(rows(catalogPool, 'gift_transactions').length, 1)
+    assert.equal(rows(catalogPool, 'gift_transactions')[0].amount_diamonds, price)
+    assert.equal(rows(catalogPool, 'creator_earnings').length, 1)
+    assert.equal(rows(catalogPool, 'creator_earnings')[0].amount_diamonds, price)
+  }
+
   const validPool = createPool()
   const validRequest = request()
   const valid = await _test.sendVirtualGiftRpc(validPool, { sub: senderId }, validRequest)
@@ -272,7 +291,7 @@ async function run() {
     assert.equal(rows(failedPool, 'wallet_transactions').filter(row => row.transaction_type === 'virtual_gift').length, 0)
   }
 
-  console.log('gift transaction flow tests passed: valid, insufficient, missing, ended, self, duplicate, concurrent, earning failure, database failure')
+  console.log(`gift transaction flow tests passed: ${_test.DEFAULT_VIRTUAL_GIFTS.length} catalog gifts, valid, insufficient, missing, ended, self, duplicate, concurrent, earning failure, database failure`)
 }
 
 run().catch(error => {

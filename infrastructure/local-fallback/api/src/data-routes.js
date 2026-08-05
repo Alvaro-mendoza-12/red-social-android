@@ -1841,7 +1841,9 @@ function feedPostVisible(row, {
   if (!isMine && visibility !== 'public' && visibility !== '' && visibility !== 'followers') return false
   if (requestedUserId) return true
   if (mode === 'following') return isMine || isFollowing
-  if (mode === 'discover') return isMine || !isFollowing
+  // Descubrir es el feed público completo y clasificado: también puede incluir
+  // creadores seguidos. "Seguidos" sigue siendo el filtro exclusivo separado.
+  if (mode === 'discover') return true
   return true
 }
 

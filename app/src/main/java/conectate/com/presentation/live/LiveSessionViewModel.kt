@@ -15,6 +15,8 @@ import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +48,9 @@ class LiveSessionViewModel @Inject constructor(
     val giftEvents = liveRepository.giftEvents
     val viewerCount = liveRepository.viewerCount
     val liveViewers = liveRepository.liveViewers
+    val collaborationCapabilities = liveRepository.collaborationCapabilities
+    val guestInvitations = liveRepository.guestInvitations
+    val activeBattle = liveRepository.activeBattle
     val moderationState = liveRepository.moderationState
     val isMicEnabled = liveRepository.isMicEnabled
     val isMediaReady = liveRepository.isMediaReady
@@ -70,6 +75,8 @@ class LiveSessionViewModel @Inject constructor(
     val hostPreparation: StateFlow<LiveHostPreparationState> = _hostPreparation.asStateFlow()
 
     private val _connectionRequest = MutableStateFlow<LiveConnectionRequest?>(null)
+    private var collaborationPollingJob: Job? = null
+    private var collaborationPollingLiveId: String? = null
 
     init {
         viewModelScope.launch {
@@ -80,6 +87,60 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
+
+    fun startCollaborationPolling(liveId: String) {
+        val normalizedId = normalizeLiveSessionId(liveId) ?: return
+        if (collaborationPollingJob?.isActive == true && collaborationPollingLiveId == normalizedId) return
+        collaborationPollingJob?.cancel()
+        collaborationPollingLiveId = normalizedId
+        collaborationPollingJob = viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.getLiveCollaborationCapabilities()
+            while (true) {
+                liveRepository.refreshGuestInvitations(normalizedId)
+                delay(4_000L)
+            }
+        }
+    }
+
+    fun inviteGuest(liveId: String, userId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.inviteLiveGuest(liveId, userId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la invitación.") }
+        }
+    }
+
+    fun respondToGuestInvitation(liveId: String, invitationId: String, accept: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.respondToGuestInvitation(liveId, invitationId, accept)
+                .onSuccess {
+                    if (accept) {
+                        liveRepository.connectLiveKit(
+                            liveId = liveId,
+                            role = "guest",
+                            publishAudio = true,
+                            publishCamera = false
+                        ).onFailure { error ->
+                            _uiError.value = error.toUserFacingMessage("La invitación se aceptó, pero no se pudo abrir el audio del invitado.")
+                        }
+                    }
+                }
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo responder la invitación.") }
+        }
+    }
+
+    fun startBattle(liveId: String, opponentUserId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.startBattle(liveId, opponentUserId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo iniciar la batalla.") }
+        }
+    }
+
+    fun endBattle(liveId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.endBattle(liveId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo finalizar la batalla.") }
+        }
+    }
 
     fun prepareHost(liveId: String) {
         val normalizedId = normalizeLiveSessionId(liveId)
@@ -113,7 +174,7 @@ class LiveSessionViewModel @Inject constructor(
                     liveId = normalizedId,
                     source = liveSourceFromWire(stream.source),
                     micEnabled = liveRepository.isMicEnabled.value,
-                    videoEnabled = liveRepository.isVideoEnabled.value
+                    videoEnabled = liveSourceFromWire(stream.source) != conectate.com.data.model.LiveSource.AUDIO
                 )
             )
         }
@@ -244,10 +305,20 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun leaveLive() {
+        stopCollaborationPolling()
         liveRepository.endLiveAsync()
     }
 
-    suspend fun leaveLiveAndAwait(): Result<Unit> = liveRepository.endLive()
+    suspend fun leaveLiveAndAwait(): Result<Unit> {
+        stopCollaborationPolling()
+        return liveRepository.endLive()
+    }
+
+    private fun stopCollaborationPolling() {
+        collaborationPollingJob?.cancel()
+        collaborationPollingJob = null
+        collaborationPollingLiveId = null
+    }
 
     fun sendComment(text: String) {
         viewModelScope.launch(Dispatchers.IO) {

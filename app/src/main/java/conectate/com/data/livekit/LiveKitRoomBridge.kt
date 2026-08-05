@@ -83,6 +83,10 @@ class LiveKitRoomBridge @Inject constructor(
         scope.launch { mutex.withLock { disconnectLocked() } }
     }
 
+    suspend fun disconnectAwait() = mutex.withLock {
+        disconnectLocked()
+    }
+
     private fun disconnectLocked() {
         eventsJob?.cancel()
         eventsJob = null
