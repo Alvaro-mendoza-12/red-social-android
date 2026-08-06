@@ -25,10 +25,31 @@ internal data class GiftSpriteSheetSpec(
     val columns: Int = 4,
     val rows: Int = 2,
     val frameCount: Int = 8,
-    val cycles: Float
+    val cycles: Float,
+    val firstRow: Int = 0
 )
 
 internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when (visualKey) {
+    "starlight-seed" -> groupedSprite(R.drawable.gift_anim_group_1_sheet, row = 0, cycles = 1.25f)
+    "aurora-drop" -> groupedSprite(R.drawable.gift_anim_group_1_sheet, row = 1, cycles = 2.5f)
+    "prism-spark" -> groupedSprite(R.drawable.gift_anim_group_1_sheet, row = 2, cycles = 2.25f)
+    "luminous-butterfly" -> groupedSprite(R.drawable.gift_anim_group_1_sheet, row = 3, cycles = 3.5f)
+    "comet-flower" -> groupedSprite(R.drawable.gift_anim_group_2_sheet, row = 0, cycles = 1.4f)
+    "crystal-moon" -> groupedSprite(R.drawable.gift_anim_group_2_sheet, row = 1, cycles = 2f)
+    "nebula-jellyfish" -> groupedSprite(R.drawable.gift_anim_group_2_sheet, row = 2, cycles = 2.6f)
+    "boreal-fox" -> groupedSprite(R.drawable.gift_anim_group_2_sheet, row = 3, cycles = 1.5f)
+    "star-garden" -> groupedSprite(R.drawable.gift_anim_group_3_sheet, row = 0, cycles = 1.25f)
+    "crystal-orchid" -> groupedSprite(R.drawable.gift_anim_group_3_sheet, row = 1, cycles = 1.35f)
+    "prism-ship" -> groupedSprite(R.drawable.gift_anim_group_3_sheet, row = 2, cycles = 2f)
+    "aurora-phoenix" -> groupedSprite(R.drawable.gift_anim_group_3_sheet, row = 3, cycles = 2.75f)
+    "star-train" -> groupedSprite(R.drawable.gift_anim_group_4_sheet, row = 0, cycles = 2.5f)
+    "floating-island" -> groupedSprite(R.drawable.gift_anim_group_4_sheet, row = 1, cycles = 1.5f)
+    "celestial-world" -> groupedSprite(R.drawable.gift_anim_group_4_sheet, row = 2, cycles = 1.8f)
+    "light-opera" -> groupedSprite(R.drawable.gift_anim_group_4_sheet, row = 3, cycles = 1.25f)
+    "aurora-palace" -> groupedSprite(R.drawable.gift_anim_group_5_sheet, row = 0, cycles = 1.1f)
+    "time-kingdom" -> groupedSprite(R.drawable.gift_anim_group_5_sheet, row = 1, cycles = 1.35f)
+    "galactic-ascent" -> groupedSprite(R.drawable.gift_anim_group_5_sheet, row = 2, cycles = 1.05f)
+    "aurora-genesis" -> groupedSprite(R.drawable.gift_anim_group_5_sheet, row = 3, cycles = 1.05f)
     "solar-hummingbird" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_solar_hummingbird_sheet,
         cycles = 5.5f
@@ -47,6 +68,18 @@ internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when
     )
     else -> null
 }
+
+private fun groupedSprite(
+    @DrawableRes drawableRes: Int,
+    row: Int,
+    cycles: Float
+) = GiftSpriteSheetSpec(
+    drawableRes = drawableRes,
+    rows = 4,
+    frameCount = 4,
+    cycles = cycles,
+    firstRow = row
+)
 
 internal fun giftSpriteFrame(
     progress: Float,
@@ -83,7 +116,7 @@ internal fun GiftAnimatedArtwork(
         spriteSheet.height / spec.rows.coerceAtLeast(1)
     }
     val sourceColumn = frame % spec.columns
-    val sourceRow = frame / spec.columns
+    val sourceRow = spec.firstRow + (frame / spec.columns)
 
     Canvas(modifier = modifier) {
         drawImage(

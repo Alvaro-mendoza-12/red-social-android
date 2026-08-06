@@ -3,17 +3,14 @@ package conectate.com.presentation.wallet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import conectate.com.data.model.NOVVIN_GIFT_VISUAL_KEYS
 
 class GiftAnimatedArtworkTest {
 
     @Test
-    fun `principal character gifts use pose sprite sheets`() {
-        listOf(
-            "solar-hummingbird",
-            "forest-guardian",
-            "cosmic-whale",
-            "celestial-dragon"
-        ).forEach { key -> assertNotNull(key, giftSpriteSheetSpec(key)) }
+    fun `all canonical gifts use pose sprite sheets`() {
+        assertEquals(24, NOVVIN_GIFT_VISUAL_KEYS.size)
+        NOVVIN_GIFT_VISUAL_KEYS.forEach { key -> assertNotNull(key, giftSpriteSheetSpec(key)) }
     }
 
     @Test
