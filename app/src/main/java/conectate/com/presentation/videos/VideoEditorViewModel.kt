@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.media.MediaCodecInfo
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.util.Log
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,6 +14,7 @@ import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.audio.SpeedProvider
@@ -58,6 +60,8 @@ import java.nio.ByteBuffer
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private const val MIN_SPLIT_FRAGMENT_MS = 500L
 
 @HiltViewModel
 class VideoEditorViewModel @Inject constructor() : ViewModel() {
@@ -105,6 +109,13 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             exoPlayer = ExoPlayer.Builder(context).build().apply {
                 playWhenReady = false
                 repeatMode = Player.REPEAT_MODE_OFF
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e("VideoEditorPreview", "Preview decoder error code=${error.errorCode}", error)
+                        _editorHint.value = "No se pudo previsualizar este fragmento. El proyecto sigue guardado."
+                        pause()
+                    }
+                })
             }
         }
         return exoPlayer!!
@@ -232,14 +243,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         }
     }
 
-    private fun syncTimelineWithPlayer() {
-        val player = exoPlayer ?: return
+    private fun syncTimelineWithPlayer(): Boolean {
+        val player = exoPlayer ?: return true
         val videoClips = previewVideoClips()
-        if (videoClips.isEmpty()) return
+        if (videoClips.isEmpty()) return true
 
         val currentTimelinePosition = _currentTimeMs.value
         val wasPlaying = player.isPlaying
 
+        return runCatching {
         player.setMediaItems(
             videoClips.map { clip ->
                 MediaItem.fromUri(clip.uri!!).buildUpon()
@@ -261,6 +273,12 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         seekPlayerToTimelineTime(currentTimelinePosition)
         syncSelectedClipPreview()
         if (wasPlaying) player.play()
+            true
+        }.getOrElse { error ->
+            Log.e("VideoEditorPreview", "Unable to rebuild preview timeline", error)
+            _editorHint.value = "No se pudo actualizar la vista previa. Intenta dividir en otro punto."
+            false
+        }
     }
 
     private fun previewVideoClips(): List<EditorClip> {
@@ -349,7 +367,12 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         )
         if (updated != current) {
             _timeline.value = updated
-            syncTimelineWithPlayer()
+            if (!syncTimelineWithPlayer()) {
+                _timeline.value = current
+                syncTimelineWithPlayer()
+            }
+        } else {
+            _editorHint.value = "Divide al menos a 0.5 s de cada borde del fragmento."
         }
     }
 
@@ -1082,7 +1105,10 @@ internal fun EditorTimeline.splitClipAt(
             if (index < 0) return@map track
             val clip = track.clips[index]
             val relativeTimeMs = atTimeMs - clip.startMs
-            if (relativeTimeMs <= 0L || relativeTimeMs >= clip.durationMs) return@map track
+            if (
+                relativeTimeMs < MIN_SPLIT_FRAGMENT_MS ||
+                clip.durationMs - relativeTimeMs < MIN_SPLIT_FRAGMENT_MS
+            ) return@map track
             val first = clip.copy(durationMs = relativeTimeMs)
             val second = clip.copy(
                 id = newClipId,

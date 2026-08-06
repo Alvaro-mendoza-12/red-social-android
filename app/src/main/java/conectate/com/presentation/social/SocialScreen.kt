@@ -125,6 +125,8 @@ private fun socialReactionEmoji(type: String): String = when (type.uppercase()) 
     else -> "👍"
 }
 
+private val SOCIAL_REACTION_ORDER = listOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE")
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SocialScreen(
@@ -351,8 +353,11 @@ fun SocialScreen(
     }
 
     reactionPost?.let { selectedPost ->
-        LaunchedEffect(selectedPost.id) {
-            viewModel.loadPostReactions(selectedPost.id)
+        var selectedReactionType by remember(selectedPost.id) { mutableStateOf<String?>(null) }
+        val reactionTotal = selectedPost.reactionCounts.values.sum().takeIf { it > 0 }
+            ?: selectedPost.likeCount
+        LaunchedEffect(selectedPost.id, selectedReactionType) {
+            viewModel.loadPostReactions(selectedPost.id, selectedReactionType)
         }
         ModalBottomSheet(
             onDismissRequest = {
@@ -368,11 +373,36 @@ fun SocialScreen(
                     .padding(bottom = 16.dp)
             ) {
                 Text(
-                    text = "${selectedPost.reactionCounts.values.sum().takeIf { it > 0 } ?: selectedPost.likeCount} reacciones",
+                    text = "$reactionTotal reacciones",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedReactionType == null,
+                            onClick = { selectedReactionType = null },
+                            label = { Text("Todas $reactionTotal") }
+                        )
+                    }
+                    SOCIAL_REACTION_ORDER.forEach { type ->
+                        val count = selectedPost.reactionCounts[type] ?: 0
+                        if (count > 0) {
+                            item(key = type) {
+                                FilterChip(
+                                    selected = selectedReactionType == type,
+                                    onClick = { selectedReactionType = type },
+                                    label = { Text("${socialReactionEmoji(type)} $count") }
+                                )
+                            }
+                        }
+                    }
+                }
                 when {
                     reactionsLoading -> Box(
                         Modifier.fillMaxWidth().padding(32.dp),

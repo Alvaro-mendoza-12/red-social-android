@@ -181,7 +181,12 @@ fun GiftAnimationStage(
         else -> 1f
     }
     val transform = giftMotionTransform(profile, value, animationsEnabled)
-    val articulation = giftArticulationTransform(profile, value, animationsEnabled)
+    val hasPoseAnimation = giftSpriteSheetSpec(gift.visualKey()) != null
+    val articulation = if (hasPoseAnimation) {
+        GiftArticulationTransform()
+    } else {
+        giftArticulationTransform(profile, value, animationsEnabled)
+    }
     val baseArtSize = when (tier) {
         0 -> 112.dp
         1 -> 158.dp
@@ -239,9 +244,11 @@ fun GiftAnimationStage(
                     radius = size.minDimension * 0.54f
                 )
             }
-            GiftArtwork(
-                gift,
-                Modifier
+            GiftAnimatedArtwork(
+                gift = gift,
+                progress = value,
+                animationsEnabled = animationsEnabled,
+                modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         scaleX = articulation.scaleX

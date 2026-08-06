@@ -119,6 +119,18 @@ class VideoEditorTimelineTest {
     }
 
     @Test
+    fun splitClipAt_rejectsFragmentsTooCloseToEitherEdge() {
+        val original = EditorClip(id = 2L, startMs = 0L, durationMs = 4_000L)
+        val timeline = EditorTimeline(
+            tracks = listOf(EditorTrack(id = 1L, type = TrackType.VIDEO, clips = listOf(original)))
+        )
+
+        assertSame(timeline, timeline.splitClipAt(2L, 499L, 3L))
+        assertSame(timeline, timeline.splitClipAt(2L, 3_501L, 3L))
+        assertEquals(2, timeline.splitClipAt(2L, 500L, 3L).tracks.single().clips.size)
+    }
+
+    @Test
     fun duplicateClipAfter_insertsCopyAndReflowsFollowingVideoClips() {
         val first = EditorClip(id = 1L, startMs = 0L, durationMs = 4_000L)
         val following = EditorClip(id = 2L, startMs = 4_000L, durationMs = 2_000L)
