@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.graphics.Color
@@ -214,6 +215,7 @@ fun VideoFeedScreen(
     val forYouVideos by viewModel.forYouVideos.collectAsState()
     val followingVideos by viewModel.followingVideos.collectAsState()
     val socialHighlights by viewModel.socialHighlights.collectAsState()
+    val recommendedPeople by viewModel.recommendedPeople.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val showLiveRecommendations by viewModel.showLiveRecommendations.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
@@ -289,13 +291,15 @@ fun VideoFeedScreen(
         isSearchMode,
         selectedTab,
         showLiveRecommendations,
-        socialHighlights
+        socialHighlights,
+        recommendedPeople
     ) {
         mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
             includeLives = showLiveRecommendations && !isSearchMode && selectedTab == 0,
-            socialPosts = if (!isSearchMode && selectedTab == 0) socialHighlights else emptyList()
+            socialPosts = if (!isSearchMode && selectedTab == 0) socialHighlights else emptyList(),
+            recommendedPeople = if (!isSearchMode && selectedTab == 0) recommendedPeople else emptyList()
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
@@ -951,6 +955,13 @@ fun VideoFeedScreen(
                                 onPostClick = { post ->
                                     navController.navigate(Screen.PostDetail.createRoute(post.id))
                                 }
+                            )
+                        }
+                        is VideoFeedPeopleEntry -> {
+                            VideoPeopleRecommendationPage(
+                                users = entry.users,
+                                onOpenProfile = onNavigateToProfile,
+                                onFollow = viewModel::followRecommendedUser
                             )
                         }
                         null -> Unit
@@ -1745,22 +1756,31 @@ private data class VideoFeedSocialEntry(
     override val stableKey: String = "social:${posts.joinToString(",") { it.id }}"
 }
 
+private data class VideoFeedPeopleEntry(
+    val users: List<conectate.com.data.model.User>
+) : VideoFeedEntry {
+    override val stableKey: String = "people:${users.joinToString(",") { it.id }}"
+}
+
 private fun mixedVideoFeed(
     videos: List<Video>,
     streams: List<conectate.com.data.model.LiveStream>,
     includeLives: Boolean,
-    socialPosts: List<Post> = emptyList()
+    socialPosts: List<Post> = emptyList(),
+    recommendedPeople: List<conectate.com.data.model.User> = emptyList()
 ): List<VideoFeedEntry> {
     if (videos.isEmpty()) {
         val liveEntries = if (includeLives) streams.take(6).map(::VideoFeedLiveEntry) else emptyList()
         val socialEntry = socialPosts.takeIf { it.isNotEmpty() }?.let(::VideoFeedSocialEntry)
-        return liveEntries + listOfNotNull(socialEntry)
+        val peopleEntry = recommendedPeople.takeIf { it.isNotEmpty() }?.let(::VideoFeedPeopleEntry)
+        return liveEntries + listOfNotNull(socialEntry, peopleEntry)
     }
 
     val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 10) + 2)
     var nextLiveAfter = 12
     var liveIndex = 0
     var socialInserted = false
+    var peopleInserted = false
     videos.forEachIndexed { index, video ->
         result += VideoFeedVideoEntry(video)
         val videoCount = index + 1
@@ -1777,6 +1797,16 @@ private fun mixedVideoFeed(
             result += VideoFeedSocialEntry(socialPosts.take(8))
             socialInserted = true
         }
+        if (!peopleInserted && recommendedPeople.isNotEmpty() && videoCount == 15) {
+            result += VideoFeedPeopleEntry(recommendedPeople.take(10))
+            peopleInserted = true
+        }
+    }
+    if (!peopleInserted && recommendedPeople.isNotEmpty()) {
+        result += VideoFeedPeopleEntry(recommendedPeople.take(10))
+    }
+    if (!socialInserted && socialPosts.isNotEmpty()) {
+        result += VideoFeedSocialEntry(socialPosts.take(8))
     }
     return result
 }
@@ -1883,6 +1913,93 @@ private fun SocialHighlightsPage(
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoPeopleRecommendationPage(
+    users: List<conectate.com.data.model.User>,
+    onOpenProfile: (String) -> Unit,
+    onFollow: (conectate.com.data.model.User) -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0B1220)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Text(
+                    "Personas que quizá conozcas",
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Perfiles sugeridos según tu actividad",
+                    color = Color.White.copy(alpha = 0.72f)
+                )
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                lazyItems(users, key = { it.id }) { user ->
+                    Card(
+                        onClick = { onOpenProfile(user.id) },
+                        modifier = Modifier.width(176.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF17243A)),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.size(82.dp).clip(CircleShape).background(Color(0xFF283B5A)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val avatar = UbuntuMedia.resolveUrl(user.safeProfileImage)
+                                if (!avatar.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = avatar,
+                                        contentDescription = "Foto de ${user.displayName}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        user.displayName.take(1).uppercase(),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                            Text(
+                                user.displayName,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${user.followers_count ?: 0} seguidores",
+                                color = Color.White.copy(alpha = 0.68f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Button(onClick = { onFollow(user) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Seguir")
+                            }
+                        }
+                    }
+                }
             }
         }
     }

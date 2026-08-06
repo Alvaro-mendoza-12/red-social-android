@@ -125,6 +125,8 @@ private fun socialReactionEmoji(type: String): String = when (type.uppercase()) 
     else -> "👍"
 }
 
+private val SOCIAL_REACTION_ORDER = listOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE")
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SocialScreen(
@@ -140,6 +142,7 @@ fun SocialScreen(
 ) {
     val posts by viewModel.posts.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
+    val recommendedVideos by viewModel.recommendedVideos.collectAsState()
     val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
@@ -350,8 +353,11 @@ fun SocialScreen(
     }
 
     reactionPost?.let { selectedPost ->
-        LaunchedEffect(selectedPost.id) {
-            viewModel.loadPostReactions(selectedPost.id)
+        var selectedReactionType by remember(selectedPost.id) { mutableStateOf<String?>(null) }
+        val reactionTotal = selectedPost.reactionCounts.values.sum().takeIf { it > 0 }
+            ?: selectedPost.likeCount
+        LaunchedEffect(selectedPost.id, selectedReactionType) {
+            viewModel.loadPostReactions(selectedPost.id, selectedReactionType)
         }
         ModalBottomSheet(
             onDismissRequest = {
@@ -367,11 +373,36 @@ fun SocialScreen(
                     .padding(bottom = 16.dp)
             ) {
                 Text(
-                    text = "${selectedPost.reactionCounts.values.sum().takeIf { it > 0 } ?: selectedPost.likeCount} reacciones",
+                    text = "$reactionTotal reacciones",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedReactionType == null,
+                            onClick = { selectedReactionType = null },
+                            label = { Text("Todas $reactionTotal") }
+                        )
+                    }
+                    SOCIAL_REACTION_ORDER.forEach { type ->
+                        val count = selectedPost.reactionCounts[type] ?: 0
+                        if (count > 0) {
+                            item(key = type) {
+                                FilterChip(
+                                    selected = selectedReactionType == type,
+                                    onClick = { selectedReactionType = type },
+                                    label = { Text("${socialReactionEmoji(type)} $count") }
+                                )
+                            }
+                        }
+                    }
+                }
                 when {
                     reactionsLoading -> Box(
                         Modifier.fillMaxWidth().padding(32.dp),
@@ -1587,7 +1618,13 @@ fun SocialScreen(
                 ) { pageIndex ->
                     when (pageIndex) {
                         0 -> {
-                            if (posts.isEmpty() && activeStreams.isEmpty() && !isRefreshing) {
+                            if (
+                                posts.isEmpty() &&
+                                activeStreams.isEmpty() &&
+                                recommendedPeople.isEmpty() &&
+                                recommendedVideos.isEmpty() &&
+                                !isRefreshing
+                            ) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     SocialFeedModeSelector(
                                         selected = feedMode,
@@ -1678,8 +1715,12 @@ fun SocialScreen(
                                             )
                                         }
                                     }
-                                    if (recommendedPeople.isNotEmpty() && feedMode == SocialFeedMode.DISCOVER) {
-                                        item(key = "recommended-people") {
+                                    if (
+                                        feedMode == SocialFeedMode.DISCOVER &&
+                                        posts.isEmpty() &&
+                                        recommendedPeople.isNotEmpty()
+                                    ) {
+                                        item(key = "recommended-people-empty-feed") {
                                             RecommendedPeopleRail(
                                                 users = recommendedPeople,
                                                 onOpenProfile = { userId ->
@@ -1691,8 +1732,23 @@ fun SocialScreen(
                                             )
                                         }
                                     }
-                                    items(posts, key = { it.id }) { post ->
-                                        PostCard(
+                                    if (
+                                        feedMode == SocialFeedMode.DISCOVER &&
+                                        posts.isEmpty() &&
+                                        recommendedVideos.isNotEmpty()
+                                    ) {
+                                        item(key = "recommended-videos-empty-feed") {
+                                            RecommendedVideosRail(
+                                                videos = recommendedVideos,
+                                                onOpenVideo = { videoId ->
+                                                    navController.navigate(Screen.VideoPlayer.createRoute(videoId))
+                                                }
+                                            )
+                                        }
+                                    }
+                                    posts.forEachIndexed { index, post ->
+                                        item(key = "post:${post.id}") {
+                                            PostCard(
                                             post = post,
                                             onLikeClick = { viewModel.toggleLike(post) },
                                             onReactionSelect = { reaction -> viewModel.setReaction(post, reaction) },
@@ -1727,6 +1783,38 @@ fun SocialScreen(
                                                 navController.navigate(Screen.PostDetail.createRoute(originalPostId))
                                             }
                                         )
+                                        }
+                                        if (
+                                            feedMode == SocialFeedMode.DISCOVER &&
+                                            recommendedPeople.isNotEmpty() &&
+                                            index == minOf(4, posts.lastIndex)
+                                        ) {
+                                            item(key = "recommended-people") {
+                                                RecommendedPeopleRail(
+                                                    users = recommendedPeople,
+                                                    onOpenProfile = { userId ->
+                                                        if (userId != viewModel.currentUserId) {
+                                                            navController.navigate(Screen.UserProfile.createRoute(userId))
+                                                        }
+                                                    },
+                                                    onFollow = viewModel::followRecommendedUser
+                                                )
+                                            }
+                                        }
+                                        if (
+                                            feedMode == SocialFeedMode.DISCOVER &&
+                                            recommendedVideos.isNotEmpty() &&
+                                            index == minOf(9, posts.lastIndex)
+                                        ) {
+                                            item(key = "recommended-videos") {
+                                                RecommendedVideosRail(
+                                                    videos = recommendedVideos,
+                                                    onOpenVideo = { videoId ->
+                                                        navController.navigate(Screen.VideoPlayer.createRoute(videoId))
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1976,6 +2064,90 @@ private fun RecommendedPeopleRail(
                                 Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Seguir", maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecommendedVideosRail(
+    videos: List<conectate.com.data.model.Video>,
+    onOpenVideo: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 14.dp)) {
+                Text("Videos recomendados", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(
+                    "Desliza para descubrir más videos",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(videos, key = { it.id }) { video ->
+                    Card(
+                        onClick = { onOpenVideo(video.id) },
+                        modifier = Modifier.width(172.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(208.dp)
+                                    .background(Color(0xFF121212)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val thumbnail = UbuntuMedia.resolveUrl(video.thumbnailUrl)
+                                if (!thumbnail.isNullOrBlank()) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(thumbnail),
+                                        contentDescription = video.title.ifBlank { "Video recomendado" },
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                                Surface(
+                                    color = Color.Black.copy(alpha = 0.55f),
+                                    shape = CircleShape
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Reproducir",
+                                        tint = Color.White,
+                                        modifier = Modifier.padding(9.dp).size(28.dp)
+                                    )
+                                }
+                            }
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    video.title.ifBlank { video.description.ifBlank { "Video de ${video.userName.ifBlank { "Novvin" }}" } },
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "${video.views} reproducciones",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }

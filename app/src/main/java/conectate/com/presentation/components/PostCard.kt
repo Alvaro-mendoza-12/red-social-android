@@ -699,11 +699,14 @@ private fun reactionLabel(type: String): String = when (type.uppercase()) {
 }
 
 private fun reactionPreview(counts: Map<String, Int>, total: Int): String {
-    val emojis = POST_REACTION_ORDER
+    val breakdown = POST_REACTION_ORDER
         .filter { (counts[it] ?: 0) > 0 }
         .sortedByDescending { counts[it] ?: 0 }
-        .take(3)
-        .joinToString(separator = "") { reactionEmoji(it) }
-        .ifBlank { "👍" }
-    return "$emojis $total"
+        .take(4)
+        .joinToString(separator = "  ") { type ->
+            "${reactionEmoji(type)} ${counts[type]}"
+        }
+        .ifBlank { "👍 $total" }
+    val shownTotal = counts.values.filter { it > 0 }.sum()
+    return if (shownTotal == total) breakdown else "$breakdown · $total"
 }

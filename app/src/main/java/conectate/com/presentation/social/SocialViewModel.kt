@@ -10,6 +10,7 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PostMutationEvent
+import conectate.com.data.repository.VideoRepository
 import conectate.com.data.local.prefs.FeedPreferences
 import conectate.com.data.local.prefs.SocialFeedMode
 import conectate.com.data.localfallback.SavedLibraryResponse
@@ -18,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,6 +27,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SocialViewModel @Inject constructor(
     private val postRepository: PostRepository,
+    private val videoRepository: VideoRepository,
     private val feedRankingEngine: FeedRankingEngine,
     private val feedSignalTracker: FeedSignalTracker,
     private val feedPreferences: FeedPreferences,
@@ -90,6 +93,8 @@ class SocialViewModel @Inject constructor(
     val friends: StateFlow<List<conectate.com.data.model.User>> = _friends.asStateFlow()
     private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val recommendedPeople: StateFlow<List<conectate.com.data.model.User>> = _recommendedPeople.asStateFlow()
+    private val _recommendedVideos = MutableStateFlow<List<conectate.com.data.model.Video>>(emptyList())
+    val recommendedVideos: StateFlow<List<conectate.com.data.model.Video>> = _recommendedVideos.asStateFlow()
     private val _reactionUsers = MutableStateFlow<List<PostReactionUser>>(emptyList())
     val reactionUsers: StateFlow<List<PostReactionUser>> = _reactionUsers.asStateFlow()
     private val _reactionsLoading = MutableStateFlow(false)
@@ -121,6 +126,19 @@ class SocialViewModel @Inject constructor(
         loadCurrentUser()
         loadFriends()
         loadRecommendedPeople()
+        loadRecommendedVideos()
+    }
+
+    private fun loadRecommendedVideos() {
+        viewModelScope.launch {
+            runCatching { videoRepository.getVideos(offset = 0, limit = 12, random = true).first() }
+                .onSuccess { videos ->
+                    _recommendedVideos.value = videos
+                        .filter { it.isPublic && it.id.isNotBlank() && it.videoUrl.isNotBlank() }
+                        .distinctBy { it.id }
+                        .take(10)
+                }
+        }
     }
 
     private fun loadRecommendedPeople() {
