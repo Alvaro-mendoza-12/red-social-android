@@ -204,6 +204,7 @@ fun VideoFeedScreen(
     navController: NavController,
     viewModel: VideoFeedViewModel = hiltViewModel(),
     connectivityViewModel: ConnectivityViewModel = hiltViewModel(),
+    initialVideoId: String? = null,
     onNavigateToUpload: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
@@ -214,6 +215,7 @@ fun VideoFeedScreen(
 ) {
     val forYouVideos by viewModel.forYouVideos.collectAsState()
     val followingVideos by viewModel.followingVideos.collectAsState()
+    val profileVideos by viewModel.profileVideos.collectAsState()
     val socialHighlights by viewModel.socialHighlights.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
@@ -248,6 +250,7 @@ fun VideoFeedScreen(
     val isSearching by viewModel.isSearching.collectAsState()
     
     val currentUserId = viewModel.currentUserId
+    val isProfileFeed = viewModel.isProfileFeed
 
     val navScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -274,14 +277,18 @@ fun VideoFeedScreen(
     var showPlaybackOptions by remember { mutableStateOf(false) }
     var showCreateMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isConnected) {
-        if (isConnected && forYouVideos.isEmpty() && followingVideos.isEmpty()) {
+    LaunchedEffect(isConnected, isProfileFeed) {
+        if (!isProfileFeed && isConnected && forYouVideos.isEmpty() && followingVideos.isEmpty()) {
             viewModel.recoverFeedAfterAppUpdate()
         }
     }
 
-    val currentVideos = if (isSearchMode) searchResults 
-                         else (if (selectedTab == 0) forYouVideos else followingVideos)
+    val currentVideos = when {
+        isProfileFeed -> profileVideos
+        isSearchMode -> searchResults
+        selectedTab == 0 -> forYouVideos
+        else -> followingVideos
+    }
     val downloadedVideoIds = remember(offlineVideos) {
         offlineVideos.map { it.video.id.trim().lowercase() }.toSet()
     }
@@ -297,12 +304,31 @@ fun VideoFeedScreen(
         mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
-            includeLives = showLiveRecommendations && !isSearchMode && selectedTab == 0,
-            socialPosts = if (!isSearchMode && selectedTab == 0) socialHighlights else emptyList(),
-            recommendedPeople = if (!isSearchMode && selectedTab == 0) recommendedPeople else emptyList()
+            includeLives = !isProfileFeed && showLiveRecommendations && !isSearchMode && selectedTab == 0,
+            socialPosts = if (!isProfileFeed && !isSearchMode && selectedTab == 0) socialHighlights else emptyList(),
+            recommendedPeople = if (!isProfileFeed && !isSearchMode && selectedTab == 0) recommendedPeople else emptyList()
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
+    var initialVideoPositionApplied by rememberSaveable(initialVideoId) { mutableStateOf(false) }
+
+    LaunchedEffect(initialVideoId, isProfileFeed) {
+        if (!isProfileFeed) {
+            initialVideoId?.takeIf { it.isNotBlank() }?.let(viewModel::ensureVideoInFeed)
+        }
+    }
+
+    LaunchedEffect(initialVideoId, feedEntries, initialVideoPositionApplied) {
+        if (initialVideoPositionApplied) return@LaunchedEffect
+        val targetId = initialVideoId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val targetPage = feedEntries.indexOfFirst { entry ->
+            entry is VideoFeedVideoEntry && entry.video.id == targetId
+        }
+        if (targetPage >= 0) {
+            pagerState.scrollToPage(targetPage)
+            initialVideoPositionApplied = true
+        }
+    }
 
     fun setSidePanelIndex(index: Int) {
         sidePanelIndex = index.coerceIn(0, sidePanels.lastIndex)
@@ -536,7 +562,7 @@ fun VideoFeedScreen(
         if (
             settledVideoId != null &&
             settledVideoIndex >= 0 &&
-            settledVideoIndex >= currentVideos.size - 3
+            !isProfileFeed && settledVideoIndex >= currentVideos.size - 3
         ) {
             viewModel.loadMoreVideos()
         }
@@ -836,7 +862,8 @@ fun VideoFeedScreen(
                  ) {
                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
                           Text(
-                              text = if (isSearchMode) "No se encontraron videos para \"$searchQuery\""
+                              text = if (isProfileFeed) "Este perfil todavía no tiene videos publicados"
+                                     else if (isSearchMode) "No se encontraron videos para \"$searchQuery\""
                                      else if (selectedTab == 0) "Sé el primero en subir un video" 
                                      else "Sigue personas para ver su contenido",
                               color = Color.White,
@@ -971,7 +998,30 @@ fun VideoFeedScreen(
             }
             
             // Top Overlay (Search / Amigos / Recomendado)
-            if (!isSearchMode) {
+            if (isProfileFeed) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .align(Alignment.TopCenter),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Volver al perfil",
+                            tint = Color.White
+                        )
+                    }
+                    Text(
+                        text = "Videos del perfil",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            } else if (!isSearchMode) {
                 // NORMAL MODE: Tabs and Search Icon
                 Box(
                     modifier = Modifier

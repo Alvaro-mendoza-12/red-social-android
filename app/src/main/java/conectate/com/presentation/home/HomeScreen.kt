@@ -267,6 +267,61 @@ fun HomeScreen(
                 )
             }
 
+            composable(
+                route = Screen.VideoDiscovery.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.video.VideoFeedScreen(
+                    navController = navController,
+                    initialVideoId = backStackEntry.arguments?.getString("videoId"),
+                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToProfile = { userId ->
+                        mainNavController.navigate(Screen.UserProfile.createRoute(userId))
+                    },
+                    onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToLiveSetup = {
+                        mainNavController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveDiscovery = {
+                        mainNavController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveViewer = { streamId ->
+                        mainNavController.navigate(Screen.LiveViewer.createRoute(streamId))
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.ProfileVideoFeed.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("profileId") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.video.VideoFeedScreen(
+                    navController = navController,
+                    initialVideoId = backStackEntry.arguments?.getString("videoId"),
+                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToProfile = { userId ->
+                        mainNavController.navigate(Screen.UserProfile.createRoute(userId))
+                    },
+                    onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToLiveSetup = {
+                        mainNavController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveDiscovery = {
+                        mainNavController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+                    },
+                    onNavigateToLiveViewer = { streamId ->
+                        mainNavController.navigate(Screen.LiveViewer.createRoute(streamId))
+                    }
+                )
+            }
+
             composable(Screen.CreatorEarnings.route) {
                 conectate.com.presentation.wallet.CreatorEarningsScreen(navController = navController)
             }

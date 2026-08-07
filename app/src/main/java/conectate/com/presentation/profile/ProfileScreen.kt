@@ -857,7 +857,14 @@ fun ProfileScreen(
                                                     VideoThumbnail(
                                                         video = video,
                                                         videoRepository = viewModel.videoRepository,
-                                                        onClick = { (mainNavController ?: navController).navigate(Screen.VideoPlayer.createRoute(video.id)) }
+                                                        onClick = {
+                                                            (mainNavController ?: navController).navigate(
+                                                                Screen.ProfileVideoFeed.createRoute(
+                                                                    profileId = user.id,
+                                                                    videoId = video.id
+                                                                )
+                                                            )
+                                                        }
                                                     )
                                                 }
                                             }

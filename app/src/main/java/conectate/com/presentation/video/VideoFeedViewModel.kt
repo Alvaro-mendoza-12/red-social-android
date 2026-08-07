@@ -1,6 +1,7 @@
 package conectate.com.presentation.video
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Post
 import conectate.com.data.model.Video
@@ -38,7 +39,8 @@ class VideoFeedViewModel @Inject constructor(
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
     private val offlineVideoRepository: conectate.com.data.repository.OfflineVideoRepository,
-    appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences
+    appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     
     // Two separate lists to avoid reloading when switching tabs
@@ -47,6 +49,12 @@ class VideoFeedViewModel @Inject constructor(
 
     private val _followingVideos = MutableStateFlow<List<Video>>(emptyList())
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
+    private val profileFeedOwnerId: String? = savedStateHandle.get<String>("profileId")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    val isProfileFeed: Boolean = profileFeedOwnerId != null
+    private val _profileVideos = MutableStateFlow<List<Video>>(emptyList())
+    val profileVideos: StateFlow<List<Video>> = _profileVideos.asStateFlow()
     private val _socialHighlights = MutableStateFlow<List<Post>>(emptyList())
     val socialHighlights: StateFlow<List<Post>> = _socialHighlights.asStateFlow()
     private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
@@ -87,6 +95,21 @@ class VideoFeedViewModel @Inject constructor(
     private val likedDebounceJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private val recommendationSessionSeed = java.util.UUID.randomUUID().hashCode()
+    private val focusedVideoIds = mutableSetOf<String>()
+
+    fun ensureVideoInFeed(videoId: String) {
+        val cleanId = videoId.trim()
+        if (cleanId.isBlank() || _forYouVideos.value.any { it.id == cleanId }) return
+        if (!focusedVideoIds.add(cleanId)) return
+        viewModelScope.launch {
+            videoRepository.getVideoById(cleanId)
+                .onSuccess { video ->
+                    _forYouVideos.value = (listOf(video) + _forYouVideos.value)
+                        .distinctBy { it.id }
+                }
+                .onFailure { focusedVideoIds.remove(cleanId) }
+        }
+    }
 
     // Comments State
     private val _commentsSheetOpen = MutableStateFlow(false)
@@ -134,10 +157,31 @@ class VideoFeedViewModel @Inject constructor(
     init {
         voiceMessageManager.setScope(viewModelScope)
         offlineVideoRepository.refreshForCurrentAccount()
-        loadForYouVideos()
-        loadSocialHighlights()
-        loadRecommendedPeople()
-        loadFollowedUsers()
+        if (isProfileFeed) {
+            loadProfileVideos(checkNotNull(profileFeedOwnerId))
+        } else {
+            loadForYouVideos()
+            loadSocialHighlights()
+            loadRecommendedPeople()
+            loadFollowedUsers()
+        }
+    }
+
+    private fun loadProfileVideos(profileId: String) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                videoRepository.getUserVideos(profileId).collect { videos ->
+                    _profileVideos.value = videos
+                    _isLoading.value = false
+                    loadFollowedUsers()
+                }
+            } catch (error: Exception) {
+                android.util.Log.e("VideoFeedVM", "No se pudo cargar el feed del perfil", error)
+                _profileVideos.value = emptyList()
+                _isLoading.value = false
+            }
+        }
     }
 
     private fun loadRecommendedPeople() {
@@ -184,7 +228,7 @@ class VideoFeedViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Get unique user IDs from current videos
-                val allVideos = _forYouVideos.value + _followingVideos.value
+                val allVideos = _forYouVideos.value + _followingVideos.value + _profileVideos.value
                 val userIds = allVideos.map { it.userId }.distinct()
                 
                 // Check follow status for each user
@@ -212,7 +256,11 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun refreshFeed() {
-        if (_selectedTab.value == 0) loadForYouVideos() else loadFollowingVideos()
+        when {
+            isProfileFeed -> loadProfileVideos(checkNotNull(profileFeedOwnerId))
+            _selectedTab.value == 0 -> loadForYouVideos()
+            else -> loadFollowingVideos()
+        }
     }
 
     fun recoverFeedAfterAppUpdate() {
@@ -339,6 +387,7 @@ class VideoFeedViewModel @Inject constructor(
                         _forYouVideos.value = incrementViewInList(_forYouVideos.value, cleanVideoId)
                         _followingVideos.value = incrementViewInList(_followingVideos.value, cleanVideoId)
                         _searchResults.value = incrementViewInList(_searchResults.value, cleanVideoId)
+                        _profileVideos.value = incrementViewInList(_profileVideos.value, cleanVideoId)
                         reloadVideo(cleanVideoId)
                     }
                 }
@@ -358,6 +407,7 @@ class VideoFeedViewModel @Inject constructor(
         val snapshotForYou = _forYouVideos.value
         val snapshotFollowing = _followingVideos.value
         val snapshotSearch = _searchResults.value
+        val snapshotProfile = _profileVideos.value
 
         val current = findVideoById(videoId) ?: video
         val newLikedState = !current.likedByMe
@@ -365,6 +415,7 @@ class VideoFeedViewModel @Inject constructor(
         _forYouVideos.value = applyLikeState(_forYouVideos.value, videoId, newLikedState)
         _followingVideos.value = applyLikeState(_followingVideos.value, videoId, newLikedState)
         _searchResults.value = applyLikeState(_searchResults.value, videoId, newLikedState)
+        _profileVideos.value = applyLikeState(_profileVideos.value, videoId, newLikedState)
 
         likedDebounceJobs[videoId]?.cancel()
         val scheduledJob = viewModelScope.launch {
@@ -381,7 +432,7 @@ class VideoFeedViewModel @Inject constructor(
                     "VideoFeedVM",
                     "Like sync failed for $videoId: ${result.exceptionOrNull()?.message}"
                 )
-                restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch)
+                restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch, snapshotProfile)
             }
         }
 
@@ -401,6 +452,7 @@ class VideoFeedViewModel @Inject constructor(
         val snapshotForYou = _forYouVideos.value
         val snapshotFollowing = _followingVideos.value
         val snapshotSearch = _searchResults.value
+        val snapshotProfile = _profileVideos.value
 
         val current = findVideoById(videoId) ?: video
         val newSharedState = !current.sharedByMe
@@ -409,18 +461,19 @@ class VideoFeedViewModel @Inject constructor(
         _forYouVideos.value = applyShareState(_forYouVideos.value, videoId, newSharedState)
         _followingVideos.value = applyShareState(_followingVideos.value, videoId, newSharedState)
         _searchResults.value = applyShareState(_searchResults.value, videoId, newSharedState)
+        _profileVideos.value = applyShareState(_profileVideos.value, videoId, newSharedState)
 
         viewModelScope.launch {
             try {
                 val countResult = videoRepository.incrementShareCount(videoId, delta)
                 if (countResult.isFailure) {
-                    restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch)
+                    restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch, snapshotProfile)
                 } else {
                     reloadVideo(videoId)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Share toggle failed", e)
-                restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch)
+                restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch, snapshotProfile)
             } finally {
                 shareRequestsInFlight.remove(videoId)
             }
@@ -430,17 +483,20 @@ class VideoFeedViewModel @Inject constructor(
     private fun restoreVideoListsSnapshot(
         forYou: List<Video>,
         following: List<Video>,
-        search: List<Video>
+        search: List<Video>,
+        profile: List<Video>
     ) {
         _forYouVideos.value = forYou
         _followingVideos.value = following
         _searchResults.value = search
+        _profileVideos.value = profile
     }
 
     private fun findVideoById(videoId: String): Video? {
         return _forYouVideos.value.firstOrNull { it.id == videoId }
             ?: _followingVideos.value.firstOrNull { it.id == videoId }
             ?: _searchResults.value.firstOrNull { it.id == videoId }
+            ?: _profileVideos.value.firstOrNull { it.id == videoId }
     }
 
     private fun applyLikeState(list: List<Video>, videoId: String, liked: Boolean): List<Video> {
@@ -711,6 +767,7 @@ class VideoFeedViewModel @Inject constructor(
         _forYouVideos.value = updateFavorite(_forYouVideos.value)
         _followingVideos.value = updateFavorite(_followingVideos.value)
         _searchResults.value = updateFavorite(_searchResults.value)
+        _profileVideos.value = updateFavorite(_profileVideos.value)
 
         viewModelScope.launch {
             videoRepository.setVideoFavorite(video.id, !wasFavorite)
@@ -728,6 +785,7 @@ class VideoFeedViewModel @Inject constructor(
                     _forYouVideos.value = _forYouVideos.value.filterNot { it.id == video.id }
                     _followingVideos.value = _followingVideos.value.filterNot { it.id == video.id }
                     _searchResults.value = _searchResults.value.filterNot { it.id == video.id }
+                    _profileVideos.value = _profileVideos.value.filterNot { it.id == video.id }
                 }
                 .onFailure { android.util.Log.e("VideoFeedVM", "Video delete failed", it) }
         }
@@ -755,6 +813,7 @@ class VideoFeedViewModel @Inject constructor(
                 _forYouVideos.value = updateList(_forYouVideos.value)
                 _followingVideos.value = updateList(_followingVideos.value)
                 _searchResults.value = updateList(_searchResults.value)
+                _profileVideos.value = updateList(_profileVideos.value)
             }.onFailure {
                 android.util.Log.e("VideoFeedVM", "Failed to reload video after comment update")
             }
@@ -784,6 +843,7 @@ class VideoFeedViewModel @Inject constructor(
         _forYouVideos.value = updateCount(_forYouVideos.value)
         _followingVideos.value = updateCount(_followingVideos.value)
         _searchResults.value = updateCount(_searchResults.value)
+        _profileVideos.value = updateCount(_profileVideos.value)
     }
 
     private fun mergeComment(
