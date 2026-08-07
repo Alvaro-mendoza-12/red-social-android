@@ -144,7 +144,11 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         route = Screen.ProfileVideoFeed.route,
         arguments = listOf(
             navArgument("profileId") { type = NavType.StringType },
-            navArgument("videoId") { type = NavType.StringType }
+            navArgument("videoId") { type = NavType.StringType },
+            navArgument("initialIndex") {
+                type = NavType.IntType
+                defaultValue = 0
+            }
         )
     ) { backStackEntry ->
         val videoId = backStackEntry.arguments?.getString("videoId")

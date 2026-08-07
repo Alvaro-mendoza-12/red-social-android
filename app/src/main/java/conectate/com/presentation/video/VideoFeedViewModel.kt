@@ -52,6 +52,7 @@ class VideoFeedViewModel @Inject constructor(
     private val profileFeedOwnerId: String? = savedStateHandle.get<String>("profileId")
         ?.trim()
         ?.takeIf { it.isNotBlank() }
+    private val profileInitialIndex = (savedStateHandle.get<Int>("initialIndex") ?: 0).coerceAtLeast(0)
     val isProfileFeed: Boolean = profileFeedOwnerId != null
     private val _profileVideos = MutableStateFlow<List<Video>>(emptyList())
     val profileVideos: StateFlow<List<Video>> = _profileVideos.asStateFlow()
@@ -92,6 +93,13 @@ class VideoFeedViewModel @Inject constructor(
     private var currentPage = 0
     private val pageSize = 20
     private var isLastPage = false
+    private val profilePageSize = ProfileVideoFeedPaging.DefaultPageSize
+    private var profileFirstOffset = 0
+    private var profileNextOffset = 0
+    private var isProfileLastPage = false
+    private var profilePageRequestInFlight = false
+    private val _profilePrependCount = MutableStateFlow(0)
+    val profilePrependCount: StateFlow<Int> = _profilePrependCount.asStateFlow()
     private val likedDebounceJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private val recommendationSessionSeed = java.util.UUID.randomUUID().hashCode()
@@ -167,21 +175,82 @@ class VideoFeedViewModel @Inject constructor(
         }
     }
 
-    private fun loadProfileVideos(profileId: String) {
+    private fun loadProfileVideos(profileId: String, reset: Boolean = true) {
+        if (profilePageRequestInFlight || (!reset && isProfileLastPage)) return
+        val requestedOffset = if (reset) {
+            ProfileVideoFeedPaging.initialPage(profileInitialIndex, profilePageSize).offset
+        } else profileNextOffset
+        profilePageRequestInFlight = true
         viewModelScope.launch {
             try {
-                _isLoading.value = true
-                videoRepository.getUserVideos(profileId).collect { videos ->
-                    _profileVideos.value = videos
-                    _isLoading.value = false
+                if (reset) _isLoading.value = true
+                videoRepository.getUserVideosPage(
+                    userId = profileId,
+                    offset = requestedOffset,
+                    limit = profilePageSize
+                ).onSuccess { page ->
+                    _profileVideos.value = if (reset) {
+                        page
+                    } else {
+                        (_profileVideos.value + page).distinctBy { it.id }
+                    }
+                    if (reset) {
+                        profileFirstOffset = requestedOffset
+                        _profilePrependCount.value = 0
+                    }
+                    profileNextOffset = requestedOffset + page.size
+                    isProfileLastPage = page.size < profilePageSize
                     loadFollowedUsers()
+                }.onFailure { error ->
+                    android.util.Log.e("VideoFeedVM", "No se pudo cargar el feed del perfil", error)
                 }
             } catch (error: Exception) {
                 android.util.Log.e("VideoFeedVM", "No se pudo cargar el feed del perfil", error)
-                _profileVideos.value = emptyList()
-                _isLoading.value = false
+            } finally {
+                profilePageRequestInFlight = false
+                if (reset) _isLoading.value = false
             }
         }
+    }
+
+    fun loadMoreProfileVideos() {
+        val profileId = profileFeedOwnerId ?: return
+        loadProfileVideos(profileId, reset = false)
+    }
+
+    fun loadPreviousProfileVideos() {
+        val profileId = profileFeedOwnerId ?: return
+        if (profilePageRequestInFlight || profileFirstOffset <= 0) return
+
+        val request = ProfileVideoFeedPaging.previousPage(profileFirstOffset, profilePageSize) ?: return
+
+        profilePageRequestInFlight = true
+        viewModelScope.launch {
+            try {
+                videoRepository.getUserVideosPage(
+                    userId = profileId,
+                    offset = request.offset,
+                    limit = request.limit
+                ).onSuccess { page ->
+                    val existingIds = _profileVideos.value.asSequence().map { it.id }.toHashSet()
+                    val newVideos = page.filterNot { it.id in existingIds }
+                    if (newVideos.isNotEmpty()) {
+                        _profileVideos.value = newVideos + _profileVideos.value
+                        _profilePrependCount.value = newVideos.size
+                    }
+                    profileFirstOffset = request.offset
+                    loadFollowedUsers()
+                }.onFailure { error ->
+                    android.util.Log.e("VideoFeedVM", "No se pudo cargar la página anterior del perfil", error)
+                }
+            } finally {
+                profilePageRequestInFlight = false
+            }
+        }
+    }
+
+    fun consumeProfilePrepend() {
+        _profilePrependCount.value = 0
     }
 
     private fun loadRecommendedPeople() {
