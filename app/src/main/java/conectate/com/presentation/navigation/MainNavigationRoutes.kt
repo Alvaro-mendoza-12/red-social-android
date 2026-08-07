@@ -73,6 +73,29 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    // Social usa el NavController raíz; el destino del video recomendado debe
+    // existir en este mismo grafo para que el clic nunca cierre la aplicación.
+    composable(
+        route = Screen.VideoDiscovery.route,
+        arguments = listOf(navArgument("videoId") { type = NavType.StringType })
+    ) { backStackEntry ->
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.video.VideoFeedScreen(
+                navController = navController,
+                initialVideoId = backStackEntry.arguments?.getString("videoId"),
+                onNavigateToUpload = { navController.navigate(Screen.VideoUpload.route) },
+                onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.UserProfile.createRoute(userId))
+                },
+                onNavigateToChat = { route -> navController.navigate(route) },
+                onNavigateToLiveSetup = {},
+                onNavigateToLiveDiscovery = {},
+                onNavigateToLiveViewer = {}
+            )
+        }
+    }
+
     composable(Screen.Proximity.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.proximity.ProximityScreen(navController = navController)
@@ -113,6 +136,31 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             conectate.com.presentation.live.LiveViewerScreen(
                 navController = navController,
                 liveId = streamId
+            )
+        }
+    }
+
+    composable(
+        route = Screen.ProfileVideoFeed.route,
+        arguments = listOf(
+            navArgument("profileId") { type = NavType.StringType },
+            navArgument("videoId") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val videoId = backStackEntry.arguments?.getString("videoId")
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.video.VideoFeedScreen(
+                navController = navController,
+                initialVideoId = videoId,
+                onNavigateToUpload = { navController.navigate(Screen.VideoUpload.route) },
+                onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.UserProfile.createRoute(userId))
+                },
+                onNavigateToChat = { route -> navController.navigate(route) },
+                onNavigateToLiveSetup = {},
+                onNavigateToLiveDiscovery = {},
+                onNavigateToLiveViewer = {}
             )
         }
     }

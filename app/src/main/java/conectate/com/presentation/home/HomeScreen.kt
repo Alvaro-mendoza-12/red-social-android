@@ -334,6 +334,49 @@ fun HomeScreen(
                 )
             }
 
+            composable(
+                route = Screen.VideoDiscovery.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.video.VideoFeedScreen(
+                    navController = navController,
+                    initialVideoId = backStackEntry.arguments?.getString("videoId"),
+                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToProfile = { userId ->
+                        mainNavController.navigate(Screen.UserProfile.createRoute(userId))
+                    },
+                    onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToLiveSetup = {},
+                    onNavigateToLiveDiscovery = {},
+                    onNavigateToLiveViewer = {}
+                )
+            }
+
+            composable(
+                route = Screen.ProfileVideoFeed.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("profileId") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.video.VideoFeedScreen(
+                    navController = navController,
+                    initialVideoId = backStackEntry.arguments?.getString("videoId"),
+                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToProfile = { userId ->
+                        mainNavController.navigate(Screen.UserProfile.createRoute(userId))
+                    },
+                    onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToLiveSetup = {},
+                    onNavigateToLiveDiscovery = {},
+                    onNavigateToLiveViewer = {}
+                )
+            }
+
             // ✅ FIX: Add PostDetail route to HomeScreen NavHost to ensure SocialScreen can navigate to it
             composable(
                 route = Screen.PostDetail.route,

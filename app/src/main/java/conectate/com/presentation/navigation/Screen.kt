@@ -37,6 +37,17 @@ sealed class Screen(val route: String) {
     }
     
     object Videos : Screen("videos")
+    object VideoDiscovery : Screen("video_discovery/{videoId}") {
+        fun createRoute(videoId: String) = "video_discovery/${android.net.Uri.encode(videoId)}"
+    }
+    /**
+     * Feed vertical limitado a los videos publicados por un perfil. Se pasan
+     * únicamente IDs a Navigation; el contenido se carga desde el repositorio.
+     */
+    object ProfileVideoFeed : Screen("profile_video_feed/{profileId}/{videoId}") {
+        fun createRoute(profileId: String, videoId: String): String =
+            "profile_video_feed/${android.net.Uri.encode(profileId)}/${android.net.Uri.encode(videoId)}"
+    }
     object VideoPlayer : Screen("video_player/{videoId}?focusCommentId={focusCommentId}") {
         fun createRoute(videoId: String, focusCommentId: String? = null): String {
             val base = "video_player/$videoId"
