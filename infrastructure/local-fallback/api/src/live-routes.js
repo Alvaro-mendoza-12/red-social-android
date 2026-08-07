@@ -1,6 +1,13 @@
 const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const { publishRealtimeEvent } = require('./realtime-publish')
+const {
+  didLiveStart,
+  enqueueLiveStartedFollowerNotifications,
+  ensureLiveFollowerNotificationTables,
+  liveFollowerNotificationsEnabled,
+  processPendingLiveFollowerNotifications,
+} = require('./live-follower-notifications')
 
 const LIVE_GUESTS_BATTLES_FLAG = 'LIVE_GUESTS_BATTLES_ENABLED'
 const LIVE_SFU_FLAG = 'LIVE_SFU_ENABLED'
@@ -123,6 +130,17 @@ function intBetween(value, min, max, fallback = min) {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(max, Math.max(min, parsed))
+}
+
+function booleanValue(value, fallback = false) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  }
+  return fallback
 }
 
 function profileValue(profile, keys, fallback = '') {
@@ -360,6 +378,7 @@ async function ensureLiveTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_live_battle_events_timeline
     ON fallback_live_battle_events(battle_id, occurred_at ASC)
   `)
+  await ensureLiveFollowerNotificationTables(pool)
 }
 
 async function resolvedProfile(pool, user) {
@@ -386,7 +405,7 @@ function ownsStream(stream, identity) {
   return identity.ids.has(normalizeId(stream?.host_user_id))
 }
 
-async function streamById(pool, liveId) {
+async function streamById(pool, liveId, { forUpdate = false } = {}) {
   const { rows } = await pool.query(
     `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
             viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
@@ -396,7 +415,7 @@ async function streamById(pool, liveId) {
             started_at, ended_at, created_at, updated_at
      FROM fallback_live_streams
      WHERE id = $1::uuid
-     LIMIT 1`,
+     LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [liveId],
   )
   return rows[0] || null
@@ -1069,17 +1088,33 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
   })
 
   app.patch('/v1/data/live/:liveId/state', authRequired, async (req, res, next) => {
+    let client = null
+    let releaseClient = false
+    let transactionOpen = false
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const liveId = validUuid(req.params.liveId)
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
-      const existing = await streamById(pool, liveId)
-      if (!existing) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
-      if (!ownsStream(existing, userIdentity(user))) return res.status(403).json({ error: 'LIVE_FORBIDDEN' })
+      const identity = userIdentity(user)
+      client = typeof pool.connect === 'function' ? await pool.connect() : pool
+      releaseClient = client !== pool && typeof client.release === 'function'
+      await client.query('BEGIN')
+      transactionOpen = true
+      const existing = await streamById(client, liveId, { forUpdate: true })
+      if (!existing) {
+        await client.query('ROLLBACK')
+        transactionOpen = false
+        return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      }
+      if (!ownsStream(existing, identity)) {
+        await client.query('ROLLBACK')
+        transactionOpen = false
+        return res.status(403).json({ error: 'LIVE_FORBIDDEN' })
+      }
 
       const hasActive = req.body?.isActive !== undefined || req.body?.is_active !== undefined
-      const isActive = Boolean(req.body?.isActive ?? req.body?.is_active)
+      const isActive = booleanValue(req.body?.isActive ?? req.body?.is_active, existing.is_active)
       const source = req.body?.source !== undefined ? sourceOf(req.body.source) : existing.source
       const viewerCount = intBetween(req.body?.viewerCount ?? req.body?.viewer_count, 0, 1_000_000, existing.viewer_count)
       const peakViewerCount = intBetween(
@@ -1100,7 +1135,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         100_000_000,
         existing.total_reactions,
       )
-      const { rows } = await pool.query(
+      const transitionedToLive = didLiveStart(existing.is_active, hasActive, isActive)
+      const { rows } = await client.query(
         `UPDATE fallback_live_streams
          SET is_active = CASE WHEN $2 THEN $3 ELSE is_active END,
              viewer_count = $4,
@@ -1118,9 +1154,31 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
                    started_at, ended_at, created_at, updated_at`,
         [liveId, hasActive, isActive, hasActive && !isActive ? 0 : viewerCount, peakViewerCount, totalComments, totalReactions, source],
       )
-      res.json({ stream: rows[0] })
+      const stream = rows[0]
+      if (transitionedToLive && liveFollowerNotificationsEnabled()) {
+        await enqueueLiveStartedFollowerNotifications(client, {
+          liveId,
+          hostUserId: stream.host_user_id,
+          hostIdentityIds: identity.values,
+          hostName: stream.host_name,
+          hostAvatarUrl: stream.host_avatar_url,
+        })
+      }
+      await client.query('COMMIT')
+      transactionOpen = false
+      res.json({ stream })
+      if (transitionedToLive && liveFollowerNotificationsEnabled()) {
+        void processPendingLiveFollowerNotifications(pool).catch((error) => {
+          console.error('[live-followers] notification dispatch failed', {
+            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
+          })
+        })
+      }
     } catch (error) {
+      if (transactionOpen && client) await client.query('ROLLBACK').catch(() => {})
       next(error)
+    } finally {
+      if (releaseClient) client.release()
     }
   })
 

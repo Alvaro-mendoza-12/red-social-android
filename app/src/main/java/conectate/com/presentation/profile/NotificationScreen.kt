@@ -410,6 +410,7 @@ private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = whe
     "birthday" -> Icons.Default.Cake to Color(0xFFEC4899)
     "new_video", "share_video", "new_moment", "view_moment" ->
         Icons.Default.PlayCircle to Color(0xFF8B5CF6)
+    "live_started", "new_live" -> Icons.Default.PlayCircle to Color(0xFFE53935)
     else -> Icons.Default.NotificationsActive to Color(0xFF64748B)
 }
 
@@ -493,6 +494,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "friend_request" -> " te envió una solicitud de amistad"
         "friend_request_accepted" -> " aceptó tu solicitud de amistad"
         "birthday" -> " cumple años hoy. ¡Deséale un feliz cumpleaños!"
+        "live_started", "new_live" -> " inició un directo"
         "group_member_added" -> {
             val groupName = n.content?.trim().orEmpty()
             if (groupName.isNotBlank()) " te agregó al grupo $groupName" else " te agregó a un grupo"
@@ -586,6 +588,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
     val communityId = extractNotificationExtra(n, "community_id")
     val extraVideoId = extractNotificationExtra(n, "video_id")
     val extraPostId = extractNotificationExtra(n, "post_id")
+    val extraLiveId = extractNotificationExtra(n, "live_id")
     val resolvedVideoId = extraVideoId ?: n.targetId
     val resolvedPostId = extraPostId ?: n.targetId
 
@@ -651,6 +654,14 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
         }
         "view_moment", "new_moment" -> {
             n.targetId?.let { navController.navigate(Screen.MomentViewer.createRoute(it)) }
+        }
+        "live_started", "new_live" -> {
+            val liveId = extraLiveId ?: n.targetId
+            if (!liveId.isNullOrBlank()) {
+                navController.navigate(Screen.LiveViewer.createRoute(liveId)) { launchSingleTop = true }
+            } else {
+                navController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
+            }
         }
         "voice_access_request" -> {
             if (n.actorId.isNotBlank()) {

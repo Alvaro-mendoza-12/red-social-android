@@ -10,6 +10,7 @@ import conectate.com.presentation.messages.incomingShareUris
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.util.resolveStoredAccountForTarget
 import conectate.com.util.storedAccountDisplayLabel
+import conectate.com.util.TrustedNavigationIntents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -54,6 +55,17 @@ object IntentRouter {
     ): Boolean {
         val type = incomingIntent.getStringExtra("type")?.trim()?.lowercase().orEmpty()
         if (type.isBlank()) return false
+
+        // Push payloads are converted into an app-owned PendingIntent before reaching
+        // this router. Do not let another app forge an internal notification action.
+        if (
+            TrustedNavigationIntents.requiresTrust(type) &&
+                !TrustedNavigationIntents.isTrusted(navController.context.applicationContext, incomingIntent)
+        ) {
+            android.util.Log.w("IntentRouter", "Rejected untrusted notification intent type=$type")
+            clearIntent()
+            return true
+        }
 
         when (type) {
             "new_message" -> {
@@ -269,6 +281,36 @@ object IntentRouter {
                     clearIntent()
                     return true
                 }
+            }
+
+            "live_started" -> {
+                // The host role is intentionally never accepted from a remote notification.
+                // Opening the viewer validates the live and the user's access again server-side.
+                val destination = resolveLiveStartedRoute(
+                    incomingIntent.getStringExtra("live_id")
+                        ?: incomingIntent.getStringExtra("target_id")
+                ) ?: Screen.LiveDiscovery.route
+                navigateNotificationDestination(
+                    incomingIntent,
+                    navController,
+                    authRepository,
+                    destination,
+                    launchSingleTop = true
+                )
+                clearIntent()
+                return true
+            }
+
+            "live_discovery" -> {
+                navigateNotificationDestination(
+                    incomingIntent,
+                    navController,
+                    authRepository,
+                    Screen.LiveDiscovery.route,
+                    launchSingleTop = true
+                )
+                clearIntent()
+                return true
             }
 
             "challenge_invite" -> {
@@ -509,4 +551,10 @@ internal fun resolveLiveReturnRoute(liveId: String?, role: String?): String? {
         "viewer" -> Screen.LiveViewer.createRoute(normalizedLiveId)
         else -> null
     }
+}
+
+internal fun resolveLiveStartedRoute(liveId: String?): String? {
+    val normalizedLiveId = liveId?.trim().orEmpty()
+    if (normalizedLiveId.isBlank()) return null
+    return Screen.LiveViewer.createRoute(normalizedLiveId)
 }

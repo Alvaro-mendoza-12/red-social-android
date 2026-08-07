@@ -42,6 +42,7 @@ object TrustedNavigationIntents {
         "call_return",
         "call_cancel",
         "live_return",
+        "live_started",
         "call_invite"
     )
 
@@ -138,6 +139,11 @@ object TrustedNavigationIntents {
             "call_return" -> (listOf(normalizedType, extra("call_id")) + accountSubject).joinToString("|")
             "voice_return" -> (listOf(normalizedType, extra("room_id")) + accountSubject).joinToString("|")
             "live_return" -> (listOf(normalizedType, extra("live_id"), extra("live_role")) + accountSubject).joinToString("|")
+            "live_started" -> (listOf(
+                normalizedType,
+                extra("live_id").ifBlank { extra("target_id") },
+                extra("host_id")
+            ) + accountSubject).joinToString("|")
 
             else -> (listOf(
                 normalizedType,

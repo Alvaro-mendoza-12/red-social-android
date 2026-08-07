@@ -92,6 +92,7 @@ class NotificationViewModel @Inject constructor(
                             "reply_post" -> "Respondió a tu comentario"
                             "mention_post", "mention" -> "Te mencionó en un comentario"
                             "voice_invite" -> "Te invitó a una sala de voz"
+                            "live_started", "new_live" -> "Inició un directo"
                             "challenge_invite" -> "Te desafió a un reto"
                             "like_video" -> "Le gusta tu video"
                             "comment_video" -> "Comentó tu video"

@@ -34,6 +34,7 @@ const {
   processDueScheduledMessageJobs,
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
+const { processPendingLiveFollowerNotifications } = require('./live-follower-notifications')
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
@@ -2406,6 +2407,7 @@ let notificationDigestTimer
 let communityEventReminderTimer
 let birthdayNotificationTimer
 let googlePlayRefundTimer
+let liveFollowerNotificationTimer
 let googlePlayRefundRunning = false
 
 ensureAuthMetadataColumns()
@@ -2437,6 +2439,16 @@ ensureAuthMetadataColumns()
     runNotificationDigests()
     notificationDigestTimer = setInterval(runNotificationDigests, 60_000)
     notificationDigestTimer.unref?.()
+    const runLiveFollowerNotifications = () => {
+      void processPendingLiveFollowerNotifications(pool).catch((error) => {
+        console.error('[live-followers] notification worker failed', {
+          code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
+        })
+      })
+    }
+    runLiveFollowerNotifications()
+    liveFollowerNotificationTimer = setInterval(runLiveFollowerNotifications, 30_000)
+    liveFollowerNotificationTimer.unref?.()
     const runCommunityEventReminders = () => {
       void processDueCommunityEventReminders(pool).catch((error) => {
         console.error('[community-event-reminders] worker failed', {
@@ -2501,6 +2513,7 @@ async function shutdown(signal) {
   if (communityEventReminderTimer) clearInterval(communityEventReminderTimer)
   if (birthdayNotificationTimer) clearInterval(birthdayNotificationTimer)
   if (googlePlayRefundTimer) clearInterval(googlePlayRefundTimer)
+  if (liveFollowerNotificationTimer) clearInterval(liveFollowerNotificationTimer)
   if (!server) {
     await pool.end()
     process.exit(0)

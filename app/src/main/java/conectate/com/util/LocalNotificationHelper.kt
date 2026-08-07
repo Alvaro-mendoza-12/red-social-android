@@ -42,6 +42,12 @@ class LocalNotificationHelper(private val context: Context) {
         val communityId = getExtraDataValue(extraData, "community_id")
         val explicitPostId = getExtraDataValue(extraData, "post_id")
         val explicitVideoId = getExtraDataValue(extraData, "video_id")
+        val explicitLiveId = getExtraDataValue(extraData, "live_id")
+        val resolvedLiveId = explicitLiveId ?: when {
+            normalizedType == "live_started" && targetId.isNotBlank() -> targetId.trim()
+            else -> null
+        }
+        val isLiveStarted = normalizedType == "live_started" && !resolvedLiveId.isNullOrBlank()
 
         val postLikeTypes = setOf("like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post")
         val videoLikeTypes = setOf("like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video")
@@ -65,22 +71,30 @@ class LocalNotificationHelper(private val context: Context) {
             "challenge_invite", "voice_invite", "voice_access_request"
         )
         
-        val channelId = if (normalizedType in socialTypes) {
-            context.getString(R.string.social_notification_channel_id)
-        } else {
-            context.getString(R.string.system_notification_channel_id)
+        val channelId = when {
+            isLiveStarted -> context.getString(R.string.live_notification_channel_id)
+            normalizedType in socialTypes -> context.getString(R.string.social_notification_channel_id)
+            else -> context.getString(R.string.system_notification_channel_id)
         }
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val channelName = if (normalizedType in socialTypes) "Interacciones Sociales" else "Sistema"
-        val channelDesc = if (normalizedType in socialTypes) "Likes, Comentarios y Seguidores" else "Alertas del sistema"
+        val channelName = when {
+            isLiveStarted -> context.getString(R.string.live_notification_channel_name)
+            normalizedType in socialTypes -> "Interacciones Sociales"
+            else -> "Sistema"
+        }
+        val channelDesc = when {
+            isLiveStarted -> context.getString(R.string.live_notification_channel_description)
+            normalizedType in socialTypes -> "Likes, Comentarios y Seguidores"
+            else -> "Alertas del sistema"
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
                 channelName,
-                NotificationManager.IMPORTANCE_HIGH
+                if (isLiveStarted) NotificationManager.IMPORTANCE_DEFAULT else NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = channelDesc
                 enableVibration(true)
@@ -120,12 +134,19 @@ class LocalNotificationHelper(private val context: Context) {
                     putExtra("chat_id", targetId)
                     putExtra("target_type", normalizedTargetType ?: "chat")
                 }
+                "live_started" -> {
+                    resolvedLiveId?.let {
+                        putExtra("live_id", it)
+                        putExtra("target_id", it)
+                    }
+                    senderId?.trim()?.takeIf { it.isNotBlank() }?.let { putExtra("host_id", it) }
+                }
             }
-        }
+        }.also { TrustedNavigationIntents.markTrusted(context, it) }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            System.currentTimeMillis().toInt(),
+            if (isLiveStarted) ("live_started:$resolvedLiveId").hashCode() else System.currentTimeMillis().toInt(),
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -139,10 +160,32 @@ class LocalNotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(if (normalizedType in socialTypes) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_SYSTEM)
+            .setPriority(if (isLiveStarted) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
+            .setCategory(if (isLiveStarted || normalizedType in socialTypes) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_SYSTEM)
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        if (isLiveStarted) {
+            notificationBuilder
+                .setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setGroup(LIVE_NOTIFICATION_GROUP)
+                .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+        }
+
+        if (isLiveStarted) {
+            val liveNotificationId = ("live_started:$resolvedLiveId").hashCode()
+            notificationManager.notify(
+                "$LIVE_NOTIFICATION_TAG:$resolvedLiveId",
+                liveNotificationId,
+                notificationBuilder.build()
+            )
+            notificationManager.notify(
+                LIVE_NOTIFICATION_SUMMARY_TAG,
+                LIVE_NOTIFICATION_SUMMARY_ID,
+                buildLiveSummaryNotification(channelId)
+            )
+        } else {
+            notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        }
     }
 
     fun clearChatNotifications(chatId: String?) {
@@ -158,5 +201,36 @@ class LocalNotificationHelper(private val context: Context) {
             ?.contentOrNull
             ?.trim()
             ?.ifBlank { null }
+    }
+
+    private fun buildLiveSummaryNotification(channelId: String) = NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setContentTitle(context.getString(R.string.live_notification_summary_title))
+        .setContentText(context.getString(R.string.live_notification_summary_body))
+        .setAutoCancel(true)
+        .setOnlyAlertOnce(true)
+        .setContentIntent(
+            PendingIntent.getActivity(
+                context,
+                LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE,
+                Intent(context, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    putExtra("type", "live_discovery")
+                },
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        )
+        .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+        .setGroup(LIVE_NOTIFICATION_GROUP)
+        .setGroupSummary(true)
+        .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+        .build()
+
+    private companion object {
+        const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
+        const val LIVE_NOTIFICATION_TAG = "live_started"
+        const val LIVE_NOTIFICATION_SUMMARY_TAG = "live_started_summary"
+        const val LIVE_NOTIFICATION_SUMMARY_ID = 9_401
+        const val LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE = 9_402
     }
 }

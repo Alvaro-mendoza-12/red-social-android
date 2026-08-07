@@ -20,6 +20,11 @@
     <string name="social_notification_channel_id" translatable="false">social_channel_v2</string>
     <string name="call_notification_channel_id" translatable="false">incoming_call_channel_v3</string>
     <string name="system_notification_channel_id" translatable="false">system_channel_v2</string>
+    <string name="live_notification_channel_id" translatable="false">live_starts_channel_v1</string>
+    <string name="live_notification_channel_name">Directos</string>
+    <string name="live_notification_channel_description">Avisos cuando una persona que sigues inicia un directo</string>
+    <string name="live_notification_summary_title">Directos de personas que sigues</string>
+    <string name="live_notification_summary_body">Tienes directos nuevos para ver</string>
     <string name="live_overlay_title">Chat en vivo</string>
     <string name="live_overlay_title_default">Live activo</string>
     <string name="live_overlay_subtitle">Chat flotante en vivo</string>

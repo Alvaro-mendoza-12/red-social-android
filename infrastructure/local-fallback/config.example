@@ -83,6 +83,9 @@ GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS=72
 LIVE_GUESTS_BATTLES_ENABLED=false
 LIVE_SFU_ENABLED=false
 LIVE_MAX_GUESTS=4
+# Avisos a seguidores al iniciar un directo. Activar solo tras validar FCM y
+# las preferencias de notificación en pruebas cerradas.
+LIVE_FOLLOWER_NOTIFICATIONS_ENABLED=false
 LIVEKIT_URL=
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=

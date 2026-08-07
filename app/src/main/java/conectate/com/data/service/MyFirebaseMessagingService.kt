@@ -9,6 +9,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.media.RingtoneManager
 import android.media.AudioAttributes
 import android.os.Build
@@ -307,6 +308,38 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 if (callId.isNotBlank() && action.isNotBlank()) {
                     callRepository.handleExternalCallResponse(callId, action, senderId.orEmpty())
                 }
+                return
+            }
+
+            if (type.trim().equals("live_started", ignoreCase = true)) {
+                if (!appSettingsPreferences.liveNotificationsEnabled.value) {
+                    android.util.Log.d(TAG, "Live notifications disabled by user preference.")
+                    return
+                }
+
+                val liveId = (
+                    data["live_id"] ?: data["liveId"] ?: data["target_id"] ?: data["targetId"]
+                ).orEmpty().trim()
+                val liveTitle = data["title"]?.trim().takeUnless { it.isNullOrBlank() }
+                    ?: "$senderName inició un directo"
+                val liveBody = data["body"]?.trim().takeUnless { it.isNullOrBlank() }
+                    ?: data["message"]?.trim().takeUnless { it.isNullOrBlank() }
+                    ?: "Está en vivo ahora."
+
+                if (liveId.isBlank()) {
+                    // A malformed event must never create a privileged navigation intent.
+                    sendSystemNotification(liveTitle, liveBody)
+                    return
+                }
+
+                sendLiveStartedNotification(
+                    title = liveTitle,
+                    body = liveBody,
+                    liveId = liveId,
+                    hostId = data["host_id"] ?: data["hostId"] ?: senderId,
+                    notificationAccountTarget = effectiveAccountTarget,
+                    accountLabel = targetAccountLabel
+                )
                 return
             }
 
@@ -673,6 +706,113 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         notificationManager.notify(conversationId.hashCode(), notification)
     }
 
+    private fun sendLiveStartedNotification(
+        title: String,
+        body: String,
+        liveId: String,
+        hostId: String?,
+        notificationAccountTarget: NotificationAccountTarget?,
+        accountLabel: String?
+    ) {
+        val normalizedLiveId = liveId.trim()
+        if (normalizedLiveId.isBlank()) {
+            sendSystemNotification(title, body)
+            return
+        }
+
+        val channelId = getString(R.string.live_notification_channel_id)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureLiveNotificationChannel(notificationManager, channelId)
+
+        val openLiveIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            data = Uri.Builder()
+                .scheme("novvin")
+                .authority("notification")
+                .appendPath("live")
+                .appendPath(normalizedLiveId)
+                .build()
+            putExtra("type", "live_started")
+            putExtra("live_id", normalizedLiveId)
+            putExtra("target_id", normalizedLiveId)
+            hostId?.trim()?.takeIf { it.isNotBlank() }?.let { putExtra("host_id", it) }
+        }.putNotificationAccountTarget(
+            notificationAccountTarget,
+            accountLabel
+        ).also { conectate.com.util.TrustedNavigationIntents.markTrusted(this, it) }
+
+        val notificationId = ("live_started:$normalizedLiveId").hashCode()
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            notificationId,
+            openLiveIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val childNotification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSubText(accountLabel?.let { "Cuenta: $it" } ?: getString(R.string.app_name))
+            .setColor(ContextCompat.getColor(this, R.color.red_primary))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(contentIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setGroup(LIVE_NOTIFICATION_GROUP)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+            .build()
+
+        val discoveryIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra("type", "live_discovery")
+        }
+        val discoveryPendingIntent = PendingIntent.getActivity(
+            this,
+            LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE,
+            discoveryIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val summaryNotification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.live_notification_summary_title))
+            .setContentText(getString(R.string.live_notification_summary_body))
+            .setStyle(NotificationCompat.InboxStyle().setSummaryText(getString(R.string.app_name)))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(discoveryPendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setGroup(LIVE_NOTIFICATION_GROUP)
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+            .build()
+
+        // A repeated FCM delivery for the same live updates this exact notification
+        // instead of stacking another visual alert on the device.
+        notificationManager.notify("$LIVE_NOTIFICATION_TAG:$normalizedLiveId", notificationId, childNotification)
+        notificationManager.notify(LIVE_NOTIFICATION_SUMMARY_TAG, LIVE_NOTIFICATION_SUMMARY_ID, summaryNotification)
+    }
+
+    private fun ensureLiveNotificationChannel(
+        notificationManager: NotificationManager,
+        channelId: String
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            channelId,
+            getString(R.string.live_notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = getString(R.string.live_notification_channel_description)
+            setShowBadge(true)
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
     @OptIn(ExperimentalFoundationApi::class)
     private fun sendSystemNotification(title: String, body: String) {
         var channelId = getString(R.string.system_notification_channel_id)
@@ -892,6 +1032,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         private const val CALL_GUARD_CANCELLED_PREFIX = "cancelled_call_"
         private const val CALL_GUARD_CANCEL_WINDOW_MS = 120_000L
         private const val CALL_INVITE_MAX_AGE_MS = 60_000L
+        private const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
+        private const val LIVE_NOTIFICATION_TAG = "live_started"
+        private const val LIVE_NOTIFICATION_SUMMARY_TAG = "live_started_summary"
+        private const val LIVE_NOTIFICATION_SUMMARY_ID = 9_401
+        private const val LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE = 9_402
     }
 }
 

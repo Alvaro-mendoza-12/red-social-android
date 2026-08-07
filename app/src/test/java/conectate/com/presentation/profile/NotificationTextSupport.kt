@@ -14,6 +14,7 @@ fun buildNotificationPlainText(notification: Notification): String {
                 "$actor canceló la llamada"
             }
         }
+        "live_started", "new_live" -> "$actor inició un directo"
         else -> notification.content?.trim().orEmpty().ifBlank { "$actor interactuó contigo" }
     }
 }

@@ -34,4 +34,16 @@ class NotificationTextSupportTest {
 
         assertEquals("Alvaro finalizó la llamada", buildNotificationPlainText(notification))
     }
+
+    @Test
+    fun liveStarted_usesHumanFriendlyText() {
+        val notification = Notification(
+            recipientId = "receiver",
+            actorId = "actor",
+            type = "live_started",
+            actorName = "Alvaro"
+        )
+
+        assertEquals("Alvaro inició un directo", buildNotificationPlainText(notification))
+    }
 }
