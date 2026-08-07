@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -847,12 +848,12 @@ fun ProfileScreen(
                                 } else {
                                     // We use a simulated grid for simplicity within LazyColumn
                                     val rows = userVideos.chunked(3)
-                                    items(rows) { rowVideos ->
+                                    itemsIndexed(rows) { rowIndex, rowVideos ->
                                         Row(
                                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            rowVideos.forEach { video ->
+                                            rowVideos.forEachIndexed { columnIndex, video ->
                                                 Box(modifier = Modifier.weight(1f)) {
                                                     VideoThumbnail(
                                                         video = video,
@@ -861,7 +862,8 @@ fun ProfileScreen(
                                                             (mainNavController ?: navController).navigate(
                                                                 Screen.ProfileVideoFeed.createRoute(
                                                                     profileId = user.id,
-                                                                    videoId = video.id
+                                                                    videoId = video.id,
+                                                                    initialIndex = rowIndex * 3 + columnIndex
                                                                 )
                                                             )
                                                         }

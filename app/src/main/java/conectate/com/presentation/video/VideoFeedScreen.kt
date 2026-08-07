@@ -251,6 +251,7 @@ fun VideoFeedScreen(
     
     val currentUserId = viewModel.currentUserId
     val isProfileFeed = viewModel.isProfileFeed
+    val profilePrependCount by viewModel.profilePrependCount.collectAsState()
 
     val navScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -328,6 +329,14 @@ fun VideoFeedScreen(
             pagerState.scrollToPage(targetPage)
             initialVideoPositionApplied = true
         }
+    }
+
+    LaunchedEffect(profilePrependCount, feedEntries.size) {
+        if (profilePrependCount <= 0 || feedEntries.isEmpty()) return@LaunchedEffect
+        pagerState.scrollToPage(
+            (pagerState.currentPage + profilePrependCount).coerceAtMost(feedEntries.lastIndex)
+        )
+        viewModel.consumeProfilePrepend()
     }
 
     fun setSidePanelIndex(index: Int) {
@@ -558,13 +567,18 @@ fun VideoFeedScreen(
         }
     }
 
-    LaunchedEffect(settledVideoId, currentVideos.size) {
-        if (
-            settledVideoId != null &&
-            settledVideoIndex >= 0 &&
-            !isProfileFeed && settledVideoIndex >= currentVideos.size - 3
-        ) {
-            viewModel.loadMoreVideos()
+    LaunchedEffect(settledVideoId, currentVideos.size, isProfileFeed) {
+        if (settledVideoId == null || settledVideoIndex < 0) return@LaunchedEffect
+
+        if (isProfileFeed) {
+            if (settledVideoIndex >= currentVideos.size - 3) {
+                viewModel.loadMoreProfileVideos()
+            }
+            if (settledVideoIndex <= 2) {
+                viewModel.loadPreviousProfileVideos()
+            }
+        } else if (settledVideoIndex >= currentVideos.size - 3) {
+                viewModel.loadMoreVideos()
         }
     }
 

@@ -298,7 +298,11 @@ fun HomeScreen(
                 route = Screen.ProfileVideoFeed.route,
                 arguments = listOf(
                     androidx.navigation.navArgument("profileId") { type = androidx.navigation.NavType.StringType },
-                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType }
+                    androidx.navigation.navArgument("videoId") { type = androidx.navigation.NavType.StringType },
+                    androidx.navigation.navArgument("initialIndex") {
+                        type = androidx.navigation.NavType.IntType
+                        defaultValue = 0
+                    }
                 )
             ) { backStackEntry ->
                 conectate.com.presentation.video.VideoFeedScreen(

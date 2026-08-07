@@ -3043,6 +3043,74 @@ class VideoRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Loads a bounded page of videos owned by one profile. The profile feed uses
+     * this instead of fetching an unbounded catalog so paging remains predictable
+     * on accounts with a large video history.
+     */
+    suspend fun getUserVideosPage(
+        userId: String,
+        offset: Int,
+        limit: Int
+    ): Result<List<Video>> = withContext(Dispatchers.IO) {
+        val cleanUserId = userId.trim().lowercase()
+        if (cleanUserId.isBlank()) {
+            return@withContext Result.success(emptyList())
+        }
+
+        val safeOffset = offset.coerceAtLeast(0)
+        val safeLimit = limit.coerceIn(1, 100)
+
+        try {
+            val accessToken = authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(
+                    IllegalStateException("Debes iniciar sesión para cargar los videos del perfil")
+                )
+            val rawVideos = if (shouldUseUbuntuBackend()) {
+                localFallbackApiClient.loadVideos(
+                    accessToken = accessToken,
+                    limit = safeLimit,
+                    offset = safeOffset,
+                    userId = cleanUserId
+                ).getOrThrow()
+            } else {
+                val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/videos") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $accessToken")
+                    parameter("select", "*")
+                    parameter("user_id", "eq.$cleanUserId")
+                    if (currentUserId != cleanUserId) {
+                        parameter("is_public", "eq.true")
+                    }
+                    parameter("order", "created_at.desc")
+                    parameter("limit", safeLimit)
+                    parameter("offset", safeOffset)
+                }
+
+                if (!response.status.isSuccess()) {
+                    throw IllegalStateException("No se pudo cargar la página de videos del perfil")
+                }
+                response.body<List<Video>>()
+            }
+
+            val videos = rawVideos.map { it.normalizedStorageUrls() }
+            videos.forEach { video ->
+                updateLocalVideoStats(
+                    video.id,
+                    video.views,
+                    video.likeCount,
+                    video.commentCount,
+                    video.shareCount
+                )
+            }
+            Result.success(videos.map { mergeWithLocalVideoStats(it) })
+        } catch (error: Exception) {
+            android.util.Log.e("VideoRepository", "No se pudo cargar una página del perfil", error)
+            Result.failure(error)
+        }
+    }
+
     fun getSharedVideos(userId: String): Flow<List<Video>> = flow {
         var cleanUserId = userId.trim().lowercase()
         if (cleanUserId.isBlank()) {
