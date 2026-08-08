@@ -74,6 +74,14 @@ fun SettingsCategoryScreen(
     viewModel: SettingsCategoryViewModel = hiltViewModel(),
 ) {
     val normalized = category.trim().lowercase()
+    if (normalized == "algorithm") {
+        conectate.com.presentation.algorithm.AlgorithmSettingsScreen(navController = navController)
+        return
+    }
+    if (normalized == "socialization") {
+        conectate.com.presentation.socialization.SocializationSettingsScreen(navController = navController)
+        return
+    }
     val title = when (normalized) {
         "messages" -> "Mensajes y llamadas"
         "videos" -> "Videos y multimedia"
@@ -172,6 +180,20 @@ fun SettingsCategoryScreen(
                     }
                 }
                 "social" -> {
+                    item {
+                        SettingsDestination(
+                            Icons.Default.Person,
+                            "Socializar",
+                            "Decide voluntariamente qué experiencias sociales públicas quieres descubrir.",
+                        ) { mainNavController.navigate(Screen.SettingsCategory.createRoute("socialization")) }
+                    }
+                    item {
+                        SettingsDestination(
+                            Icons.Default.Palette,
+                            "Mi algoritmo",
+                            "Elige temas, creadores, mezcla del feed y datos que autorizas usar.",
+                        ) { mainNavController.navigate(Screen.SettingsCategory.createRoute("algorithm")) }
+                    }
                     item {
                         SettingToggleCard(
                             "Directos en Social",

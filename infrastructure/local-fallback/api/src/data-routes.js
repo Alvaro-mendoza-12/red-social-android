@@ -6,6 +6,14 @@ const {
   registerNotificationDigestRoutes,
   shouldDeferNotificationPush,
 } = require('./notification-digest-routes')
+const {
+  ensureAlgorithmTables,
+  registerAlgorithmRoutes,
+} = require('./algorithm-routes')
+const {
+  ensureSocializationTables,
+  registerSocializationRoutes,
+} = require('./socialization-routes')
 
 const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
 
@@ -5121,6 +5129,8 @@ async function ensureLocalDataTables(pool) {
   await ensureLivePointsTables(pool)
   await ensureProximityTables(pool)
   await ensureNotificationDigestTables(pool)
+  await ensureAlgorithmTables(pool)
+  await ensureSocializationTables(pool)
 }
 
 function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser }) {
@@ -5154,6 +5164,18 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerNotificationDigestRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerAlgorithmRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerSocializationRoutes(app, {
     pool,
     authRequired,
     getCurrentUser,

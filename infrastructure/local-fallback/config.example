@@ -90,6 +90,36 @@ LIVEKIT_URL=
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
 
+# Mi algoritmo: controles explícitos y perfiles de recomendación. Todas las
+# capacidades nacen cerradas; activar por fases (desarrollador, testers,
+# cerrada) sólo después de verificar las migraciones y las pruebas de
+# privacidad. Nunca se usan mensajes privados, ubicación precisa, edad ni
+# género para recomendaciones.
+USER_ALGORITHM_ENABLED=false
+USER_ALGORITHM_CLASSIFICATION_ENABLED=false
+USER_ALGORITHM_PREFERENCES_ENABLED=false
+USER_ALGORITHM_FEED_MIX_ENABLED=false
+USER_ALGORITHM_DATA_PERMISSIONS_ENABLED=false
+ALGORITHM_EXPLANATIONS_ENABLED=false
+# Secreto sólo de backend para cursores de recomendaciones. Configúralo fuera
+# del repositorio antes de habilitar USER_ALGORITHM_ENABLED; no reutilizar ni
+# registrar este valor en Android.
+ALGORITHM_RECOMMENDATION_CURSOR_SECRET=
+SOCIAL_DISCOVERY_ENABLED=false
+SOCIAL_ROOMS_ENABLED=false
+
+# Socializar: base de consentimiento explícito. Estas banderas son separadas
+# del algoritmo y nacen apagadas; activar una no crea coincidencias, salas ni
+# chat aleatorio. No usar mensajes privados, ubicación precisa ni atributos
+# sensibles como señal de descubrimiento.
+SOCIALIZATION_ENABLED=false
+SOCIALIZATION_CARDS_ENABLED=false
+SOCIALIZATION_DISCOVERY_ENABLED=false
+SOCIALIZATION_CONNECTION_REQUESTS_ENABLED=false
+SOCIALIZATION_COMMUNITY_DISCOVERY_ENABLED=false
+SOCIALIZATION_ICEBREAKERS_ENABLED=false
+SOCIALIZATION_ROOMS_ENABLED=false
+
 # IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
 # 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion
 # y hace el primer entrenamiento casi 10 veces mas costoso que 512.
