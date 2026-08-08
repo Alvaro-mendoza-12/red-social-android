@@ -40,6 +40,8 @@ const REQUIRED_TABLES = Object.freeze({
     'fallback_deleted_identities',
     'fallback_user_blocks',
     'fallback_follows',
+    'fallback_algorithm_content_classifications',
+    'fallback_algorithm_content_topics',
   ]),
   video: Object.freeze([
     'fallback_videos',
@@ -50,6 +52,8 @@ const REQUIRED_TABLES = Object.freeze({
     'fallback_deleted_identities',
     'fallback_user_blocks',
     'fallback_follows',
+    'fallback_algorithm_content_classifications',
+    'fallback_algorithm_content_topics',
   ]),
 })
 
@@ -84,6 +88,12 @@ const SOCIAL_CANDIDATE_SQL = `
     post.created_at,
     post.updated_at,
     profile.updated_at AS profile_updated_at,
+    classification.language_code,
+    classification.format_key,
+    classification.audio_key,
+    classification.community_id,
+    classification.updated_at AS classification_updated_at,
+    classification_topics.entries AS classification_topics,
     EXISTS (
       SELECT 1
       FROM fallback_follows follow_edge
@@ -107,6 +117,22 @@ const SOCIAL_CANDIDATE_SQL = `
     LIMIT 1
   ) account ON TRUE
   LEFT JOIN fallback_profile_overrides profile ON profile.user_id = account.id
+  JOIN fallback_algorithm_content_classifications classification
+    ON classification.content_kind = 'post'
+   AND lower(classification.content_id) = lower(post.id::text)
+   AND classification.safety_state = 'allowed'
+  JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'topic_key', classified_topic.topic_key,
+        'subtopic_key', classified_topic.subtopic_key,
+        'confidence', classified_topic.confidence
+      )
+      ORDER BY classified_topic.confidence DESC, classified_topic.topic_key, classified_topic.subtopic_key
+    ) AS entries
+    FROM fallback_algorithm_content_topics classified_topic
+    WHERE classified_topic.classification_id = classification.id
+  ) classification_topics ON classification_topics.entries IS NOT NULL
   WHERE lower(COALESCE(NULLIF(post.visibility, ''), 'public')) = 'public'
     AND lower(COALESCE(
       NULLIF(profile.profile->>'profile_visibility', ''),
@@ -187,13 +213,15 @@ const VIDEO_CANDIDATE_SQL = `
     video.like_count,
     video.comment_count,
     video.share_count,
-    CASE
-      WHEN jsonb_typeof(video.tags) = 'array' THEN video.tags
-      ELSE '[]'::jsonb
-    END AS tags,
     video.created_at,
     video.updated_at,
     profile.updated_at AS profile_updated_at,
+    classification.language_code,
+    classification.format_key,
+    classification.audio_key,
+    classification.community_id,
+    classification.updated_at AS classification_updated_at,
+    classification_topics.entries AS classification_topics,
     EXISTS (
       SELECT 1
       FROM fallback_follows follow_edge
@@ -217,6 +245,22 @@ const VIDEO_CANDIDATE_SQL = `
     LIMIT 1
   ) account ON TRUE
   LEFT JOIN fallback_profile_overrides profile ON profile.user_id = account.id
+  JOIN fallback_algorithm_content_classifications classification
+    ON classification.content_kind = 'video'
+   AND lower(classification.content_id) = lower(video.id::text)
+   AND classification.safety_state = 'allowed'
+  JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'topic_key', classified_topic.topic_key,
+        'subtopic_key', classified_topic.subtopic_key,
+        'confidence', classified_topic.confidence
+      )
+      ORDER BY classified_topic.confidence DESC, classified_topic.topic_key, classified_topic.subtopic_key
+    ) AS entries
+    FROM fallback_algorithm_content_topics classified_topic
+    WHERE classified_topic.classification_id = classification.id
+  ) classification_topics ON classification_topics.entries IS NOT NULL
   WHERE video.is_public = TRUE
     AND NOT EXISTS (
       SELECT 1
@@ -400,12 +444,43 @@ function safeMediaUrls(value) {
   return result
 }
 
-function safeTags(value) {
-  return Array.from(new Set(
-    asArray(value)
-      .map((entry) => cleanPublicText(entry, 64).toLowerCase())
-      .filter(Boolean),
-  )).slice(0, MAX_TAGS)
+function safeClassificationKey(value, maxLength = 80) {
+  const normalized = cleanPublicText(value, maxLength).toLowerCase()
+  return /^[a-z0-9][a-z0-9:_-]*$/.test(normalized) ? normalized : null
+}
+
+/**
+ * Only classifications written by a trusted server process can reach the
+ * ranking inputs.  In particular, never use creator-provided video tags,
+ * post text, or media type as an inferred topic.
+ */
+function classificationMetadata(row) {
+  const topics = []
+  const subtopics = []
+  const seenTopics = new Set()
+  const seenSubtopics = new Set()
+  for (const entry of asArray(row?.classification_topics)) {
+    if (!entry || typeof entry !== 'object') continue
+    const topic = safeClassificationKey(entry.topic_key ?? entry.topicKey)
+    const subtopic = safeClassificationKey(entry.subtopic_key ?? entry.subtopicKey)
+    if (topic && !seenTopics.has(topic)) {
+      seenTopics.add(topic)
+      topics.push(topic)
+    }
+    if (subtopic && !seenSubtopics.has(subtopic)) {
+      seenSubtopics.add(subtopic)
+      subtopics.push(subtopic)
+    }
+    if (topics.length >= MAX_TAGS && subtopics.length >= MAX_TAGS) break
+  }
+  return {
+    topics: topics.slice(0, MAX_TAGS),
+    subtopics: subtopics.slice(0, MAX_TAGS),
+    formatKey: safeClassificationKey(row?.format_key ?? row?.formatKey),
+    audioKey: safeClassificationKey(row?.audio_key ?? row?.audioKey),
+    languageCode: safeClassificationKey(row?.language_code ?? row?.languageCode),
+    communityId: safeClassificationKey(row?.community_id ?? row?.communityId),
+  }
 }
 
 function safeTimestamp(value) {
@@ -448,7 +523,8 @@ function socialCandidate(row, now) {
   const id = normalizeId(row?.id)
   const aliases = creatorAliases(row)
   const creatorId = normalizeId(row?.public_creator_id) || aliases[0]
-  if (!id || !creatorId || aliases.length === 0) return null
+  const classification = classificationMetadata(row)
+  if (!id || !creatorId || aliases.length === 0 || classification.topics.length === 0) return null
   const mediaUrls = safeMediaUrls(row.media_urls)
   const mediaUrl = safePublicUrl(row.media_url) || mediaUrls[0]?.url || null
   const mediaType = cleanPublicText(row.media_type, 48).toLowerCase()
@@ -474,14 +550,19 @@ function socialCandidate(row, now) {
       updated_at: updatedAt,
     },
     contentKey: `post:${id}`,
-    formats: ['post', ...(mediaType ? [mediaType] : [])],
+    topics: classification.topics,
+    subtopics: classification.subtopics,
+    formats: ['post', ...(classification.formatKey ? [classification.formatKey] : [])],
+    audioKeys: classification.audioKey ? [classification.audioKey] : [],
+    languages: classification.languageCode ? [classification.languageCode] : [],
+    communityKeys: classification.communityId ? [classification.communityId] : [],
     isFollowedCreator: row.is_followed_creator === true,
     feedSignals: {
       following: row.is_followed_creator === true ? 1 : 0,
       new_content: freshnessSignal(updatedAt || createdAt, now),
     },
     explorationScore: 0.1,
-    snapshotUpdatedAt: updatedAt,
+    snapshotUpdatedAt: safeTimestamp(row.classification_updated_at) || updatedAt,
     snapshotProfileUpdatedAt: safeTimestamp(row.profile_updated_at),
   }
 }
@@ -490,10 +571,11 @@ function videoCandidate(row, now) {
   const id = normalizeId(row?.id)
   const aliases = creatorAliases(row)
   const creatorId = normalizeId(row?.public_creator_id) || aliases[0]
-  if (!id || !creatorId || aliases.length === 0) return null
+  const classification = classificationMetadata(row)
+  if (!id || !creatorId || aliases.length === 0 || classification.topics.length === 0) return null
   const createdAt = safeTimestamp(row.created_at)
   const updatedAt = safeTimestamp(row.updated_at) || createdAt
-  const tags = safeTags(row.tags)
+  const tags = classification.topics
   return {
     id,
     surface: 'video',
@@ -522,14 +604,18 @@ function videoCandidate(row, now) {
     },
     contentKey: `video:${id}`,
     topics: tags,
-    formats: ['video'],
+    subtopics: classification.subtopics,
+    formats: ['video', ...(classification.formatKey ? [classification.formatKey] : [])],
+    audioKeys: classification.audioKey ? [classification.audioKey] : [],
+    languages: classification.languageCode ? [classification.languageCode] : [],
+    communityKeys: classification.communityId ? [classification.communityId] : [],
     isFollowedCreator: row.is_followed_creator === true,
     feedSignals: {
       following: row.is_followed_creator === true ? 1 : 0,
       new_content: freshnessSignal(updatedAt || createdAt, now),
     },
     explorationScore: 0.1,
-    snapshotUpdatedAt: updatedAt,
+    snapshotUpdatedAt: safeTimestamp(row.classification_updated_at) || updatedAt,
     snapshotProfileUpdatedAt: safeTimestamp(row.profile_updated_at),
   }
 }
@@ -543,6 +629,12 @@ function snapshotId(surface, candidates, unavailable = false) {
       id: candidate.id,
       creatorId: candidate.creatorId,
       following: candidate.isFollowedCreator,
+      topics: candidate.topics,
+      subtopics: candidate.subtopics,
+      formats: candidate.formats,
+      audioKeys: candidate.audioKeys,
+      languages: candidate.languages,
+      communityKeys: candidate.communityKeys,
       updatedAt: candidate.snapshotUpdatedAt,
       profileUpdatedAt: candidate.snapshotProfileUpdatedAt,
       item: candidate.item,

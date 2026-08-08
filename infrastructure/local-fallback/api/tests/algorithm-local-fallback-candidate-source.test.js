@@ -41,6 +41,15 @@ function socialRow(overrides = {}) {
     created_at: '2026-08-06T12:00:00.000Z',
     updated_at: '2026-08-07T10:00:00.000Z',
     profile_updated_at: '2026-08-07T09:00:00.000Z',
+    classification_updated_at: '2026-08-07T11:00:00.000Z',
+    language_code: 'es',
+    format_key: 'photo-post',
+    audio_key: null,
+    community_id: 'aves-peru',
+    classification_topics: [
+      { topic_key: 'aves', subtopic_key: 'colibri', confidence: 0.98 },
+      { topic_key: 'naturaleza', subtopic_key: '', confidence: 0.87 },
+    ],
     is_followed_creator: true,
     ...overrides,
   }
@@ -65,10 +74,18 @@ function videoRow(overrides = {}) {
     like_count: 5,
     comment_count: 2,
     share_count: 1,
-    tags: ['Aves', 'Naturaleza'],
     created_at: '2026-08-06T12:00:00.000Z',
     updated_at: '2026-08-07T10:00:00.000Z',
     profile_updated_at: '2026-08-07T09:00:00.000Z',
+    classification_updated_at: '2026-08-07T11:00:00.000Z',
+    language_code: 'es',
+    format_key: 'short-video',
+    audio_key: 'instrumental',
+    community_id: 'aves-peru',
+    classification_topics: [
+      { topic_key: 'aves', subtopic_key: 'colibri', confidence: 0.98 },
+      { topic_key: 'naturaleza', subtopic_key: '', confidence: 0.87 },
+    ],
     is_followed_creator: false,
     ...overrides,
   }
@@ -103,6 +120,9 @@ function fakePool({ socialRows = [], videoRows = [], blockRows = [], missingTabl
 async function testSelectorsUseOnlyTheApprovedLocalFallbackBoundary() {
   const selectors = `${SOCIAL_CANDIDATE_SQL}\n${VIDEO_CANDIDATE_SQL}`
   assert.match(selectors, /fallback_profile_moderation/)
+  assert.match(selectors, /fallback_algorithm_content_classifications/)
+  assert.match(selectors, /fallback_algorithm_content_topics/)
+  assert.match(selectors, /classification\.safety_state = 'allowed'/)
   assert.match(selectors, /fallback_deleted_identities/)
   assert.match(selectors, /fallback_video_deletions/)
   assert.match(selectors, /suspension_end_date/)
@@ -112,6 +132,7 @@ async function testSelectorsUseOnlyTheApprovedLocalFallbackBoundary() {
   assert.match(BLOCK_EDGE_SQL, /lower\(blocker_id\).*ANY\(\$1/s)
   assert.match(BLOCK_EDGE_SQL, /lower\(blocker_id\).*ANY\(\$2/s)
   assert.doesNotMatch(selectors, /\b(fallback_messages|fallback_proximity|fallback_random_chat|latitude|longitude|gender|birth_date|email|phone)\b/i)
+  assert.doesNotMatch(selectors, /\bvideo\.tags\b/i)
   assert.doesNotMatch(BLOCK_EDGE_SQL, /\b(fallback_messages|fallback_proximity|fallback_random_chat)\b/i)
 }
 
@@ -140,11 +161,19 @@ async function testSocialAndVideoCandidatesArePublicAndNarrow() {
   ])
   assert.equal(social.candidates[0].item.visibility, 'public')
   assert.equal(social.candidates[0].item.user_id, 'creator-public')
+  assert.deepEqual(social.candidates[0].topics, ['aves', 'naturaleza'])
+  assert.deepEqual(social.candidates[0].subtopics, ['colibri'])
+  assert.deepEqual(social.candidates[0].formats, ['post', 'photo-post'])
+  assert.deepEqual(social.candidates[0].languages, ['es'])
+  assert.deepEqual(social.candidates[0].communityKeys, ['aves-peru'])
 
   const video = await source.loadRawCandidates({ owner: owner(), surface: 'video', maxCandidates: 50, now: NOW })
   assert.equal(video.candidates.length, 1)
   assert.equal(video.candidates[0].surface, 'video')
   assert.deepEqual(video.candidates[0].topics, ['aves', 'naturaleza'])
+  assert.deepEqual(video.candidates[0].subtopics, ['colibri'])
+  assert.deepEqual(video.candidates[0].formats, ['video', 'short-video'])
+  assert.deepEqual(video.candidates[0].audioKeys, ['instrumental'])
   assert.equal(video.candidates[0].item.video_url, 'https://cdn.example.test/videos/video-1.mp4')
   assert.equal(video.candidates[0].item.is_public, true)
   assert.deepEqual(Object.keys(video.candidates[0].item).sort(), [
@@ -199,7 +228,7 @@ async function testBlockEdgesAreBidirectionalAndWorkWithCandidateProvider() {
 async function testMissingSafetyTablesAndDatabaseFailuresFailClosed() {
   const missingPool = fakePool({
     socialRows: [socialRow()],
-    missingTables: ['fallback_profile_moderation'],
+    missingTables: ['fallback_algorithm_content_classifications'],
   })
   const missingSource = createAlgorithmLocalFallbackCandidateSource({ pool: missingPool, now: () => NOW })
   const missing = await missingSource.loadRawCandidates({ owner: owner(), surface: 'social', now: NOW })
@@ -221,6 +250,20 @@ async function testMissingSafetyTablesAndDatabaseFailuresFailClosed() {
   )
 }
 
+async function testRowsWithoutTrustedTopicsAreNotCandidates() {
+  const pool = fakePool({
+    socialRows: [socialRow({ classification_topics: [] })],
+    videoRows: [videoRow({
+      classification_topics: [{ topic_key: 'not valid spaces', subtopic_key: '', confidence: 0.9 }],
+    })],
+  })
+  const source = createAlgorithmLocalFallbackCandidateSource({ pool, now: () => NOW })
+  const social = await source.loadRawCandidates({ owner: owner(), surface: 'social', now: NOW })
+  const video = await source.loadRawCandidates({ owner: owner(), surface: 'video', now: NOW })
+  assert.deepEqual(social.candidates, [])
+  assert.deepEqual(video.candidates, [])
+}
+
 function testSourceStaysIsolatedFromLegacyRouteImplementations() {
   const source = fs.readFileSync(path.join(__dirname, '../src/algorithm-local-fallback-candidate-source.js'), 'utf8')
   assert.doesNotMatch(source, /require\(['"]\.\/(?:data-routes|proximity-routes|socialization-routes)['"]\)/)
@@ -233,6 +276,7 @@ Promise.resolve()
   .then(testSourceScrubsUnsafeDisplayAndSignedMediaUrls)
   .then(testBlockEdgesAreBidirectionalAndWorkWithCandidateProvider)
   .then(testMissingSafetyTablesAndDatabaseFailuresFailClosed)
+  .then(testRowsWithoutTrustedTopicsAreNotCandidates)
   .then(testSourceStaysIsolatedFromLegacyRouteImplementations)
   .then(() => console.log('algorithm local fallback candidate source tests passed'))
   .catch((error) => {
