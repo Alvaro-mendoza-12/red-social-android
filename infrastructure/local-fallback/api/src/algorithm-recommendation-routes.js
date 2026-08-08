@@ -321,6 +321,11 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
     try {
       const flags = algorithmFeatureFlags()
       if (!flags?.core) return fail(res, 404, 'USER_ALGORITHM_DISABLED')
+      // A first page can be followed by a second one at any time. Refuse the
+      // request before reading candidates when a server-only cursor key is not
+      // configured, instead of returning a partial feed whose continuation
+      // cannot be safely bound to the authenticated profile.
+      if (!cursorKey(cursorSecret)) return fail(res, 503, 'RECOMMENDATION_CURSOR_UNAVAILABLE')
 
       const user = await getCurrentUser(pool, req)
       if (!user) return fail(res, 404, 'USER_NOT_FOUND')

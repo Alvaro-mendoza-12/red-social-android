@@ -130,6 +130,21 @@ async function testFailClosedBeforeCandidateLoading() {
   assert.equal(loaded, false)
 }
 
+async function testMissingCursorSecretFailsBeforeCandidateLoading() {
+  let loaded = false
+  const harness = createHarness({
+    cursorSecret: '',
+    loadCandidates: async () => {
+      loaded = true
+      return { snapshotId: 'unexpected', candidates: [] }
+    },
+  })
+  const res = await invoke(harness, { surface: 'video' })
+  assert.equal(res.statusCode, 503)
+  assert.deepEqual(res.body, { error: 'RECOMMENDATION_CURSOR_UNAVAILABLE' })
+  assert.equal(loaded, false)
+}
+
 async function testAuthenticatedOwnedProfileAndAuthoritativeRanking() {
   const harness = createHarness()
   const res = await invoke(harness, { surface: 'video', limit: '1', userId: 'other-user' })
@@ -234,6 +249,7 @@ async function testInvalidSurfaceAndInvalidCandidateBatchFailSafely() {
 
 Promise.resolve()
   .then(testFailClosedBeforeCandidateLoading)
+  .then(testMissingCursorSecretFailsBeforeCandidateLoading)
   .then(testAuthenticatedOwnedProfileAndAuthoritativeRanking)
   .then(testOpaqueCursorBindsOwnerSurfaceProfileRevisionAndSnapshot)
   .then(testExplanationsAreStrictlyGated)

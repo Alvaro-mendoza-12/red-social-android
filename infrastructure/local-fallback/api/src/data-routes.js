@@ -11,6 +11,9 @@ const {
   registerAlgorithmRoutes,
 } = require('./algorithm-routes')
 const {
+  registerAuthoritativeRecommendationRoutes,
+} = require('./algorithm-recommendation-bootstrap')
+const {
   ensureSocializationTables,
   registerSocializationRoutes,
 } = require('./socialization-routes')
@@ -5170,6 +5173,12 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     userIdentity,
   })
   registerAlgorithmRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerAuthoritativeRecommendationRoutes(app, {
     pool,
     authRequired,
     getCurrentUser,
