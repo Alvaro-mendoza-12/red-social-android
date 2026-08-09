@@ -824,18 +824,21 @@ async function upsertTrustedContentClassification(client, input) {
   const normalized = normalizeContentClassification(input)
   if (normalized.error) return normalized
   const value = normalized.value
+  // First move the row to an ineligible state. Candidate queries only accept
+  // `allowed`, so an interrupted topic rewrite can never leave a stale or
+  // partially-classified item visible in recommendations.
   const classificationResult = await client.query(
     `INSERT INTO fallback_algorithm_content_classifications(
        content_kind, content_id, creator_id, language_code, format_key, audio_key,
        community_id, safety_state, classifier_version, classified_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'unknown', $8, NOW(), NOW())
      ON CONFLICT (content_kind, content_id)
      DO UPDATE SET creator_id = EXCLUDED.creator_id,
                    language_code = EXCLUDED.language_code,
                    format_key = EXCLUDED.format_key,
                    audio_key = EXCLUDED.audio_key,
                    community_id = EXCLUDED.community_id,
-                   safety_state = EXCLUDED.safety_state,
+                   safety_state = 'unknown',
                    classifier_version = EXCLUDED.classifier_version,
                    classified_at = NOW(),
                    updated_at = NOW()
@@ -848,24 +851,70 @@ async function upsertTrustedContentClassification(client, input) {
       value.formatKey,
       value.audioKey,
       value.communityId,
-      value.safetyState,
       value.classifierVersion,
     ],
   )
   const classificationId = classificationResult.rows[0]?.id
   if (!classificationId) return { error: 'CLASSIFICATION_WRITE_FAILED' }
-  await client.query(
-    `DELETE FROM fallback_algorithm_content_topics WHERE classification_id = $1::uuid`,
-    [classificationId],
-  )
-  for (const topic of value.topics) {
-    await client.query(
-      `INSERT INTO fallback_algorithm_content_topics(
+  // Rewrite the topic set and publish the final safety state in one statement.
+  // PostgreSQL serializes the row update, preventing concurrent classifications
+  // from interleaving two topic sets.
+  const finalState = await client.query(
+    `WITH locked_classification AS (
+       UPDATE fallback_algorithm_content_classifications
+          SET creator_id = $2,
+              language_code = $3,
+              format_key = $4,
+              audio_key = $5,
+              community_id = $6,
+              classifier_version = $7,
+              safety_state = 'unknown',
+              updated_at = NOW()
+        WHERE id = $1::uuid
+        RETURNING id
+     ), deleted_topics AS (
+       DELETE FROM fallback_algorithm_content_topics
+        WHERE classification_id IN (SELECT id FROM locked_classification)
+        RETURNING classification_id
+     ), inserted_topics AS (
+       INSERT INTO fallback_algorithm_content_topics(
          classification_id, topic_key, subtopic_key, confidence, source
-       ) VALUES ($1::uuid, $2, $3, $4, 'server')`,
-      [classificationId, topic.topicKey, topic.subtopicKey || '', topic.confidence],
-    )
-  }
+       )
+       SELECT classification.id,
+              topic.topic_key,
+              COALESCE(topic.subtopic_key, ''),
+              topic.confidence,
+              'server'
+         FROM locked_classification classification
+         CROSS JOIN LATERAL jsonb_to_recordset($8::jsonb)
+           AS topic(topic_key TEXT, subtopic_key TEXT, confidence NUMERIC)
+        WHERE (SELECT COUNT(*) FROM deleted_topics) >= 0
+       RETURNING classification_id
+     )
+     UPDATE fallback_algorithm_content_classifications
+        SET safety_state = $9,
+            classified_at = NOW(),
+            updated_at = NOW()
+      WHERE id IN (SELECT id FROM locked_classification)
+        AND (SELECT COUNT(*) FROM inserted_topics) >= 0
+      RETURNING id::text`,
+    [
+      classificationId,
+      value.creatorId,
+      value.languageCode,
+      value.formatKey,
+      value.audioKey,
+      value.communityId,
+      value.classifierVersion,
+      JSON.stringify(value.topics.map((topic) => ({
+        topic_key: topic.topicKey,
+        subtopic_key: topic.subtopicKey || '',
+        confidence: topic.confidence,
+      }))),
+      value.safetyState,
+    ],
+  )
+  if (!finalState.rows[0]?.id) return { error: 'CLASSIFICATION_WRITE_FAILED' }
   return { id: classificationId }
 }
 

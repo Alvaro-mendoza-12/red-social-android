@@ -31,7 +31,7 @@ function createMutex() {
   }
 }
 
-function createPool({ balance = 100, liveActive = true, failOnTable = null } = {}) {
+function createPool({ balance = 100, liveActive = true, failOnTable = null, coinSource = 'PURCHASED' } = {}) {
   const compat = new Map()
   const users = [
     {
@@ -81,6 +81,24 @@ function createPool({ balance = 100, liveActive = true, failOnTable = null } = {
     row: { id: senderId, user_id: senderId, balance_diamonds: balance, balance_credits: 0, total_spent: 0 },
     created_at: now, updated_at: now,
   })
+  if (balance > 0) {
+    compat.set(`wallet_coin_lots:test-lot-${coinSource.toLowerCase()}`, {
+      table_name: 'wallet_coin_lots', row_id: `test-lot-${coinSource.toLowerCase()}`,
+      row: {
+        id: `test-lot-${coinSource.toLowerCase()}`,
+        user_id: senderId,
+        source_type: coinSource,
+        source_reference: `test:${coinSource.toLowerCase()}`,
+        original_amount_diamonds: balance,
+        available_amount_diamonds: balance,
+        spent_amount_diamonds: 0,
+        reversed_amount_diamonds: 0,
+        status: 'active',
+        created_at: now,
+      },
+      created_at: now, updated_at: now,
+    })
+  }
 
   const acquireTransaction = createMutex()
   const state = { compat, users, lives }
@@ -130,6 +148,9 @@ function createPool({ balance = 100, liveActive = true, failOnTable = null } = {
       }
       if (text.includes('FROM fallback_live_streams') && text.includes('ORDER BY created_at DESC')) {
         return { rows: structuredClone(lives) }
+      }
+      if (text.includes('FROM fallback_live_battles') && text.includes("status = 'active'")) {
+        return { rows: [] }
       }
       if (text.includes("table_name = 'wallets'") && text.includes('FOR UPDATE')) {
         const requestedUserId = String(params[0] || '').toLowerCase()
@@ -244,8 +265,56 @@ async function run() {
   assert.equal(rows(validPool, 'gift_transactions')[0].amount_diamonds, 5)
   assert.equal(rows(validPool, 'creator_earnings')[0].amount_diamonds, 5)
 
+  const promotionalPool = createPool({ balance: 5, coinSource: 'PROMOTIONAL' })
+  await _test.sendVirtualGiftRpc(promotionalPool, { sub: senderId }, request())
+  assert.equal(rows(promotionalPool, 'gift_transactions')[0].promotional_amount_diamonds, 5)
+  assert.equal(rows(promotionalPool, 'gift_transactions')[0].withdrawable_amount_diamonds, 0)
+  assert.equal(rows(promotionalPool, 'creator_earnings')[0].amount_diamonds, 0)
+  assert.equal(rows(promotionalPool, 'creator_earnings')[0].status, 'non_withdrawable')
+
+  const refundPool = createPool({ balance: 70 })
+  const refundToken = 'gift-refund-token'
+  const refundTokenHash = crypto.createHash('sha256').update(refundToken).digest('hex')
+  const refundPurchaseId = 'purchase-refund-test'
+  const purchasedLotEntry = [...refundPool.state.compat.values()]
+    .find(entry => entry.table_name === 'wallet_coin_lots')
+  purchasedLotEntry.row.source_reference = refundPurchaseId
+  purchasedLotEntry.row.purchase_id = refundPurchaseId
+  const refundStamp = new Date().toISOString()
+  refundPool.state.compat.set(`billing_purchases:${refundPurchaseId}`, {
+    table_name: 'billing_purchases', row_id: refundPurchaseId,
+    row: {
+      id: refundPurchaseId,
+      user_id: senderId,
+      product_id: 'novvin_coins_70',
+      purchase_token_hash: refundTokenHash,
+      coins: 70,
+      credited_coins: 70,
+      debt_repaid: 0,
+      status: 'credited',
+    },
+    created_at: refundStamp, updated_at: refundStamp,
+  })
+  await _test.sendVirtualGiftRpc(refundPool, { sub: senderId }, request())
+  const refundResult = await _test.processGooglePlayVoidedPurchase(refundPool, {
+    purchaseToken: refundToken,
+    voidedTimeMillis: Date.now(),
+    voidedReason: 1,
+    voidedSource: 0,
+  })
+  assert.equal(refundResult.reversed, true)
+  assert.equal(refundResult.reversed_gifts, 1)
+  assert.equal(refundResult.reversed_earnings_diamonds, 5)
+  assert.equal(rows(refundPool, 'gift_transactions')[0].status, 'reversed')
+  assert.equal(rows(refundPool, 'creator_earnings')[0].status, 'reversed')
+  assert.equal(rows(refundPool, 'creator_earnings')[0].amount_diamonds, 0)
+  assert.equal(rows(refundPool, 'economic_reversals').length, 1)
+  assert.equal(balance(refundPool), 0)
+
   const duplicate = await _test.sendVirtualGiftRpc(validPool, { sub: senderId }, validRequest)
   assert.equal(duplicate.idempotent_replay, true)
+  assert.equal(duplicate.earning_id, valid.earning_id)
+  assert.equal(duplicate.earning_id, rows(validPool, 'gift_transactions')[0].earning_id)
   assert.equal(balance(validPool), 95)
   assert.equal(rows(validPool, 'gift_transactions').length, 1)
   assert.equal(rows(validPool, 'creator_earnings').length, 1)
@@ -291,7 +360,7 @@ async function run() {
     assert.equal(rows(failedPool, 'wallet_transactions').filter(row => row.transaction_type === 'virtual_gift').length, 0)
   }
 
-  console.log(`gift transaction flow tests passed: ${_test.DEFAULT_VIRTUAL_GIFTS.length} catalog gifts, valid, insufficient, missing, ended, self, duplicate, concurrent, earning failure, database failure`)
+  console.log(`gift transaction flow tests passed: ${_test.DEFAULT_VIRTUAL_GIFTS.length} catalog gifts, valid, promotional non-withdrawable, refund reverses earning/ranking source, insufficient, missing, ended, self, duplicate, concurrent, earning failure, database failure`)
 }
 
 run().catch(error => {

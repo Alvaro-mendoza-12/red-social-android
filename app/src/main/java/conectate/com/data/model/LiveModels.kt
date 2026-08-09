@@ -42,6 +42,7 @@ data class LiveStream(
     val source: String = "camera",
     @SerialName("viewer_count") val viewerCount: Int = 0,
     @SerialName("total_reactions") val totalReactions: Long = 0,
+    @SerialName("allow_guest_requests") val allowGuestRequests: Boolean = false,
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("started_at") val startedAt: String? = null,

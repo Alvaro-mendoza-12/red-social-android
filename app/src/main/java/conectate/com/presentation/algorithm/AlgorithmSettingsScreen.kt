@@ -228,6 +228,7 @@ private fun AlgorithmContent(
 ) {
     val config = state.config ?: return
     val profile = config.profile
+    var showAdvancedOptions by remember(profile.id) { mutableStateOf(false) }
     val orderedRules = config.preferences.sortedWith(
         compareBy<AlgorithmPreference> { it.score >= 0 }.thenBy { it.subjectLabel ?: it.subjectKey },
     )
@@ -250,26 +251,6 @@ private fun AlgorithmContent(
                 canChangeEnabled = canEditPreferences,
                 onSetEnabled = onSetEnabled,
             )
-        }
-        item {
-            SectionTitle("Perfiles", "Cambia de contexto sin perder tus reglas.")
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.profiles, key = { it.id }) { candidate ->
-                    FilterChip(
-                        selected = candidate.id == profile.id,
-                        onClick = { if (canEditPreferences) onSelectProfile(candidate.id) },
-                        enabled = canEditPreferences,
-                        label = { Text(candidate.name) },
-                    )
-                }
-                item {
-                    AssistChip(
-                        onClick = onCreateProfile,
-                        enabled = canEditPreferences,
-                        label = { Text("+ Crear") },
-                    )
-                }
-            }
         }
         item {
             SectionTitle("Modo de aprendizaje", "Las reglas explícitas siempre ganan.")
@@ -332,30 +313,73 @@ private fun AlgorithmContent(
             }
         }
         item {
-            SectionTitle("Composición del feed", "La mezcla se cumple de forma flexible durante la sesión cuando haya contenido suficiente.")
+            Card(
+                onClick = { showAdvancedOptions = !showAdvancedOptions },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Opciones avanzadas", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Perfiles, mezcla de Videos/Social, señales utilizadas y reglas temporales.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(if (showAdvancedOptions) "Ocultar" else "Abrir", color = MaterialTheme.colorScheme.primary)
+                }
+            }
         }
-        items(config.feedMixes, key = { "mix-${it.surface}" }) { mix ->
-            FeedMixCard(mix, enabled = canEditFeedMix, onEdit = { onEditMix(mix) })
-        }
-        item {
-            DataPermissionsCard(
-                permissions = config.dataPermissions,
-                enabled = canEditDataPermissions,
-                onUpdate = onUpdatePermissions,
-            )
-        }
-        item {
-            SectionTitle("Preferencias temporales", "Caducan automáticamente; no hay que recordar quitarlas.")
-        }
-        if (config.temporaryPreferences.isEmpty()) {
-            item { EmptyCard("No hay instrucciones temporales activas.") }
-        } else {
-            items(config.temporaryPreferences, key = { "temporary-${it.id}" }) { rule ->
-                TemporaryPreferenceCard(
-                    rule,
-                    enabled = canEditPreferences,
-                    onDelete = { onDeleteTemporary(rule) },
+        if (showAdvancedOptions) {
+            item {
+                SectionTitle("Perfiles", "Cambia de contexto sin perder tus reglas.")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.profiles, key = { it.id }) { candidate ->
+                        FilterChip(
+                            selected = candidate.id == profile.id,
+                            onClick = { if (canEditPreferences) onSelectProfile(candidate.id) },
+                            enabled = canEditPreferences,
+                            label = { Text(candidate.name) },
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = onCreateProfile,
+                            enabled = canEditPreferences,
+                            label = { Text("+ Crear") },
+                        )
+                    }
+                }
+            }
+            item {
+                SectionTitle("Composición del feed", "La mezcla se cumple de forma flexible durante la sesión cuando haya contenido suficiente.")
+            }
+            items(config.feedMixes, key = { "mix-${it.surface}" }) { mix ->
+                FeedMixCard(mix, enabled = canEditFeedMix, onEdit = { onEditMix(mix) })
+            }
+            item {
+                DataPermissionsCard(
+                    permissions = config.dataPermissions,
+                    enabled = canEditDataPermissions,
+                    onUpdate = onUpdatePermissions,
                 )
+            }
+            item {
+                SectionTitle("Preferencias temporales", "Caducan automáticamente; no hay que recordar quitarlas.")
+            }
+            if (config.temporaryPreferences.isEmpty()) {
+                item { EmptyCard("No hay instrucciones temporales activas.") }
+            } else {
+                items(config.temporaryPreferences, key = { "temporary-${it.id}" }) { rule ->
+                    TemporaryPreferenceCard(
+                        rule,
+                        enabled = canEditPreferences,
+                        onDelete = { onDeleteTemporary(rule) },
+                    )
+                }
             }
         }
         if (!canEditPreferences || !canEditFeedMix || !canEditDataPermissions) {

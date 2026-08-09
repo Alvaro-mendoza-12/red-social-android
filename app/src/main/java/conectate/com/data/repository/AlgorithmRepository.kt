@@ -17,6 +17,16 @@ import conectate.com.data.model.UpdateAlgorithmDataPermissionsRequest
 import conectate.com.data.model.UpdateAlgorithmFeedMixRequest
 import conectate.com.data.model.UpdateAlgorithmPreferencesRequest
 import conectate.com.data.model.UpdateAlgorithmProfileRequest
+import conectate.com.data.model.Post
+import conectate.com.data.model.Video
+import conectate.com.data.recommendations.AuthoritativeRecommendationDecodeResult
+import conectate.com.data.recommendations.AuthoritativeRecommendationPage
+import conectate.com.data.recommendations.AuthoritativeRecommendationSurface
+import conectate.com.data.recommendations.MappedAuthoritativeRecommendationPage
+import conectate.com.data.recommendations.OpaqueRecommendationCursor
+import conectate.com.data.recommendations.canUseAuthoritativeRecommendations
+import conectate.com.data.recommendations.mapSocialPostsExact
+import conectate.com.data.recommendations.mapVideosExact
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -59,6 +69,26 @@ class AlgorithmRepository @Inject constructor(
     suspend fun loadProfiles(): Result<List<AlgorithmProfile>> = withToken { token ->
         apiClient.profiles(token)
     }
+
+    suspend fun loadSocialRecommendationPage(
+        cursor: OpaqueRecommendationCursor? = null,
+        limit: Int = 60,
+    ): Result<MappedAuthoritativeRecommendationPage<Post>> = loadRecommendationPage(
+        surface = AuthoritativeRecommendationSurface.SOCIAL,
+        cursor = cursor,
+        limit = limit,
+        mapper = AuthoritativeRecommendationPage::mapSocialPostsExact,
+    )
+
+    suspend fun loadVideoRecommendationPage(
+        cursor: OpaqueRecommendationCursor? = null,
+        limit: Int = 20,
+    ): Result<MappedAuthoritativeRecommendationPage<Video>> = loadRecommendationPage(
+        surface = AuthoritativeRecommendationSurface.VIDEO,
+        cursor = cursor,
+        limit = limit,
+        mapper = AuthoritativeRecommendationPage::mapVideosExact,
+    )
 
     fun loadCachedConfig(): AlgorithmConfig? {
         val userId = authService.getCurrentUserId() ?: return null
@@ -178,6 +208,41 @@ class AlgorithmRepository @Inject constructor(
             .flatMapConfig(token) { profileId }
     }
 
+    private suspend fun <T> loadRecommendationPage(
+        surface: AuthoritativeRecommendationSurface,
+        cursor: OpaqueRecommendationCursor?,
+        limit: Int,
+        mapper: (AuthoritativeRecommendationPage) -> Result<MappedAuthoritativeRecommendationPage<T>>,
+    ): Result<MappedAuthoritativeRecommendationPage<T>> = withToken { token ->
+        val capabilities = apiClient.capabilities(token).getOrElse { error ->
+            return@withToken Result.failure(error)
+        }
+        val config = apiClient.config(token).getOrElse { error ->
+            return@withToken Result.failure(error)
+        }
+        cacheConfirmed(config)
+        if (!canUseAuthoritativeRecommendations(capabilities, config)) {
+            return@withToken Result.failure(
+                AuthoritativeRecommendationsUnavailableException("AUTHORITATIVE_RECOMMENDATIONS_DISABLED"),
+            )
+        }
+
+        when (
+            val decoded = apiClient.recommendations(
+                accessToken = token,
+                surface = surface,
+                profileId = config.profile.id,
+                cursor = cursor,
+                limit = limit,
+            ).getOrElse { error -> return@withToken Result.failure(error) }
+        ) {
+            is AuthoritativeRecommendationDecodeResult.Authoritative -> mapper(decoded.page)
+            is AuthoritativeRecommendationDecodeResult.Fallback -> Result.failure(
+                AuthoritativeRecommendationsUnavailableException(decoded.reason.name),
+            )
+        }
+    }
+
     private suspend fun <T> withToken(block: suspend (String) -> Result<T>): Result<T> {
         val token = authService.getAccessTokenAwait()
             ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para administrar Mi algoritmo."))
@@ -223,3 +288,7 @@ class AlgorithmRepository @Inject constructor(
         const val PREFS_NAME = "algorithm_confirmed_cache"
     }
 }
+
+class AuthoritativeRecommendationsUnavailableException(
+    val reasonCode: String,
+) : IllegalStateException(reasonCode)

@@ -23,6 +23,11 @@ import conectate.com.data.model.LiveStream
 import conectate.com.data.model.LiveBattle
 import conectate.com.data.model.LiveCollaborationCapabilities
 import conectate.com.data.model.LiveGuestInvitation
+import conectate.com.data.model.LiveParticipantState
+import conectate.com.data.model.LiveDrawGuessGuessResult
+import conectate.com.data.model.LiveDrawGuessState
+import conectate.com.data.model.LiveDrawPacket
+import conectate.com.data.model.LiveDrawPacketReceipt
 import conectate.com.data.model.LiveSfuSession
 import conectate.com.data.model.ActiveChallenge
 import conectate.com.data.model.Chat
@@ -421,6 +426,7 @@ private data class LocalFallbackLiveCapabilitiesResponse(
     val guestsBattlesEnabled: Boolean = false,
     val sfuAvailable: Boolean = false,
     val channelPointsEnabled: Boolean = false,
+    val drawGuessEnabled: Boolean = false,
     val maxGuests: Int = 0,
     val scoringSources: List<String> = emptyList()
 )
@@ -446,8 +452,37 @@ private data class LocalFallbackLiveInvitationsResponse(
 )
 
 @Serializable
+private data class LocalFallbackLiveParticipantResponse(
+    val participant: LiveParticipantState? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveGuestActionResponse(
+    val removed: Boolean = false,
+    val muted: Boolean = false,
+    val userId: String = "",
+    val mutedTracks: Int = 0
+)
+
+@Serializable
 private data class LocalFallbackLiveBattleResponse(
     val battle: LiveBattle? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveSupportersResponse(
+    val items: List<conectate.com.data.model.LiveSupporter> = emptyList()
+)
+
+@Serializable
+private data class LocalFallbackLiveDrawCurrentResponse(
+    val state: LiveDrawGuessState? = null
+)
+
+@Serializable
+private data class LocalFallbackLiveDrawAdvanceResponse(
+    val advanced: Boolean = false,
+    val state: LiveDrawGuessState = LiveDrawGuessState()
 )
 
 @Serializable
@@ -3087,6 +3122,7 @@ class LocalFallbackApiClient @Inject constructor(
                 guestsBattlesEnabled = response.guestsBattlesEnabled,
                 sfuAvailable = response.sfuAvailable,
                 channelPointsEnabled = response.channelPointsEnabled,
+                drawGuessEnabled = response.drawGuessEnabled,
                 maxGuests = response.maxGuests,
                 scoringSources = response.scoringSources
             )
@@ -3159,6 +3195,33 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun requestToJoinLive(
+        accessToken: String,
+        liveId: String,
+        requestNonce: String = UUID.randomUUID().toString()
+    ): Result<LiveGuestInvitation> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/requests"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("requestNonce", requestNonce.trim()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val invitation = json.decodeFromString<LocalFallbackLiveInvitationResponse>(body).invitation
+                    ?: return Result.failure(Exception("El servidor no devolvió la solicitud."))
+                Result.success(invitation)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun loadLiveGuestInvitations(
         accessToken: String,
         liveId: String
@@ -3198,6 +3261,80 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun updateLiveParticipantState(
+        accessToken: String,
+        liveId: String,
+        state: String
+    ): Result<LiveParticipantState> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/participants/state"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("state", state.trim().lowercase()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val participant = json.decodeFromString<LocalFallbackLiveParticipantResponse>(body).participant
+                    ?: return Result.failure(Exception("El servidor no devolvió el participante."))
+                Result.success(participant)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun removeLiveGuest(
+        accessToken: String,
+        liveId: String,
+        guestUserId: String,
+        reason: String = ""
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/${urlEncode(guestUserId)}/remove"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("reason", reason.trim()) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess() &&
+                json.decodeFromString<LocalFallbackLiveGuestActionResponse>(body).removed
+            ) Result.success(Unit) else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun muteLiveGuest(
+        accessToken: String,
+        liveId: String,
+        guestUserId: String
+    ): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/${urlEncode(guestUserId)}/mute"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("muted", true) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess() &&
+                json.decodeFromString<LocalFallbackLiveGuestActionResponse>(body).muted
+            ) Result.success(Unit) else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun startLiveBattle(
         accessToken: String,
         liveId: String,
@@ -3222,6 +3359,178 @@ class LocalFallbackApiClient @Inject constructor(
             }
         } catch (error: Exception) {
             Result.failure(error)
+        }
+    }
+
+    suspend fun loadActiveLiveBattle(
+        accessToken: String,
+        liveId: String
+    ): Result<LiveBattle?> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveBattleResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles/current",
+            accessToken
+        ).map { it.battle }
+    }
+
+    suspend fun loadLiveSupporters(
+        accessToken: String,
+        liveId: String
+    ): Result<List<conectate.com.data.model.LiveSupporter>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveSupportersResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/supporters",
+            accessToken
+        ).map { it.items }
+    }
+
+    suspend fun loadCurrentLiveDrawGuess(
+        accessToken: String,
+        liveId: String
+    ): Result<LiveDrawGuessState?> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveDrawCurrentResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/current",
+            accessToken
+        ).map { it.state }
+    }
+
+    suspend fun createLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        participantIds: List<String>,
+        totalRounds: Int = 3,
+        roundSeconds: Int = 75,
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): Result<LiveDrawGuessState> = postLiveDrawState(
+        accessToken = accessToken,
+        url = "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess",
+        body = buildJsonObject {
+            put("participantIds", buildJsonArray {
+                participantIds.map(String::trim).filter(String::isNotBlank).distinct().take(7)
+                    .forEach { add(JsonPrimitive(it)) }
+            })
+            put("totalRounds", totalRounds.coerceIn(1, 12))
+            put("roundSeconds", roundSeconds.coerceIn(30, 180))
+            put("maxPlayers", (participantIds.distinct().size + 1).coerceIn(2, 8))
+            put("idempotencyKey", idempotencyKey)
+        }
+    )
+
+    suspend fun acceptLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        gameId: String,
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): Result<LiveDrawGuessState> = postLiveDrawState(
+        accessToken,
+        "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/accept",
+        buildJsonObject { put("idempotencyKey", idempotencyKey) }
+    )
+
+    suspend fun startLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        gameId: String,
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): Result<LiveDrawGuessState> = postLiveDrawState(
+        accessToken,
+        "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/start",
+        buildJsonObject { put("idempotencyKey", idempotencyKey) }
+    )
+
+    suspend fun cancelLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        gameId: String,
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): Result<LiveDrawGuessState> = postLiveDrawState(
+        accessToken,
+        "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/cancel",
+        buildJsonObject { put("idempotencyKey", idempotencyKey) }
+    )
+
+    suspend fun advanceLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        gameId: String
+    ): Result<LiveDrawGuessState> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/advance"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody("{}")
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+            json.decodeFromString<LocalFallbackLiveDrawAdvanceResponse>(body).state
+        }
+    }
+
+    suspend fun sendLiveDrawPacket(
+        accessToken: String,
+        liveId: String,
+        gameId: String,
+        packet: LiveDrawPacket
+    ): Result<LiveDrawPacketReceipt> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/draw"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(packet)
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+            json.decodeFromString<LiveDrawPacketReceipt>(body)
+        }
+    }
+
+    suspend fun submitLiveDrawGuess(
+        accessToken: String,
+        liveId: String,
+        gameId: String,
+        guess: String,
+        idempotencyKey: String = UUID.randomUUID().toString()
+    ): Result<LiveDrawGuessGuessResult> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/guesses"
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    put("guess", guess.trim())
+                    put("idempotencyKey", idempotencyKey)
+                })
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+            json.decodeFromString<LiveDrawGuessGuessResult>(body)
+        }
+    }
+
+    private suspend fun postLiveDrawState(
+        accessToken: String,
+        url: String,
+        body: JsonObject
+    ): Result<LiveDrawGuessState> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(url) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            val responseBody = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(responseBody))
+            json.decodeFromString<LiveDrawGuessState>(responseBody)
         }
     }
 
@@ -3318,19 +3627,21 @@ class LocalFallbackApiClient @Inject constructor(
         viewerCount: Int? = null,
         peakViewerCount: Int? = null,
         totalComments: Int? = null,
-        totalReactions: Int? = null
+        totalReactions: Int? = null,
+        allowGuestRequests: Boolean? = null
     ): Result<LiveStream> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val payload = buildJsonObject {
                 isActive?.let { put("isActive", it) }
-                source?.trim()?.lowercase()?.takeIf { it == "camera" || it == "screen" }?.let {
+                source?.trim()?.lowercase()?.takeIf { it == "camera" || it == "screen" || it == "audio" }?.let {
                     put("source", it)
                 }
                 viewerCount?.let { put("viewerCount", it) }
                 peakViewerCount?.let { put("peakViewerCount", it) }
                 totalComments?.let { put("totalComments", it) }
                 totalReactions?.let { put("totalReactions", it) }
+                allowGuestRequests?.let { put("allowGuestRequests", it) }
             }
             val response = supabaseConfig.httpClient.patch(
                 "$baseUrl/v1/data/live/${urlEncode(liveId)}/state"

@@ -17,6 +17,19 @@ const {
   scheduleMessageJob,
 } = require('./scheduled-message-jobs')
 const { liveGiftLimitsConfiguration } = require('./gift-safety-config')
+const { applyGiftToActiveBattle } = require('./live-battle-scoring')
+const {
+  deleteTrustedContentClassification,
+  ingestTrustedContentClassification,
+} = require('./algorithm-content-ingestion')
+const {
+  COIN_SOURCE_TYPES,
+  allocateCoinLots,
+  netWithdrawableGiftAmount,
+  nonNegativeInteger,
+  normalizeCoinLot,
+  summarizeCoinLots,
+} = require('./economic-provenance')
 
 const MAX_READ_ROWS = Number(process.env.POSTGREST_COMPAT_MAX_READ_ROWS || 10000)
 const RESERVED_QUERY_KEYS = new Set([
@@ -480,6 +493,34 @@ async function ensurePostgrestCompatTables(pool) {
     ON fallback_compat_rows ((lower(row->>'reference_id')))
     WHERE table_name = 'wallet_transactions'
       AND row->>'transaction_type' = 'virtual_gift'
+      AND row ? 'reference_id'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_wallet_coin_lot_source
+    ON fallback_compat_rows (
+      (lower(row->>'user_id')),
+      (upper(row->>'source_type')),
+      (lower(row->>'source_reference'))
+    )
+    WHERE table_name = 'wallet_coin_lots'
+      AND row ? 'user_id'
+      AND row ? 'source_type'
+      AND row ? 'source_reference'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_gift_coin_allocation
+    ON fallback_compat_rows (
+      (lower(row->>'gift_transaction_id')),
+      (lower(row->>'lot_id'))
+    )
+    WHERE table_name = 'gift_coin_allocations'
+      AND row ? 'gift_transaction_id'
+      AND row ? 'lot_id'
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_economic_reversal_reference
+    ON fallback_compat_rows ((lower(row->>'reference_id')))
+    WHERE table_name = 'economic_reversals'
       AND row ? 'reference_id'
   `)
   await pool.query(`
@@ -1817,7 +1858,9 @@ async function handleInsert(pool, tableName, auth, body) {
     if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, base))
     } else if (tableName === 'videos') {
-      rows.push(await insertVideoRow(pool, auth, base))
+      const storedVideo = await insertVideoRow(pool, auth, base)
+      await ingestTrustedContentClassification(pool, 'video', storedVideo)
+      rows.push(storedVideo)
     } else if (tableName === 'friends') {
       rows.push(await insertFriendRow(pool, auth, base))
     } else if (tableName === 'video_likes') {
@@ -1829,7 +1872,11 @@ async function handleInsert(pool, tableName, auth, body) {
       )
       rows.push({ id: `${videoId}:${userId}`, video_id: videoId, user_id: userId })
     } else {
-      rows.push(await storeCompatRow(pool, tableName, base))
+      const storedRow = await storeCompatRow(pool, tableName, base)
+      if (tableName === 'posts') {
+        await ingestTrustedContentClassification(pool, 'post', storedRow)
+      }
+      rows.push(storedRow)
     }
   }
   if (tableName === 'challenge_submissions') {
@@ -1878,7 +1925,11 @@ async function handlePatch(pool, tableName, auth, query, body) {
       ])
       rows.push(next)
     } else {
-      rows.push(await storeCompatRow(pool, tableName, next))
+      const storedRow = await storeCompatRow(pool, tableName, next)
+      if (tableName === 'posts' || tableName === 'videos') {
+        await ingestTrustedContentClassification(pool, tableName === 'posts' ? 'post' : 'video', storedRow)
+      }
+      rows.push(storedRow)
     }
   }
   return rows
@@ -1899,6 +1950,9 @@ async function handleDelete(pool, tableName, auth, query) {
        WHERE table_name = $1 AND row_id = $2`,
       [tableName, id],
     )
+    if (tableName === 'posts' || tableName === 'videos') {
+      await deleteTrustedContentClassification(pool, tableName === 'posts' ? 'post' : 'video', id)
+    }
   }
   return rows
 }
@@ -3121,6 +3175,92 @@ async function lockWalletForIdentity(client, identity) {
   return wallet
 }
 
+async function coinLotsForIdentity(pool, identity) {
+  return (await readCompatRows(pool, 'wallet_coin_lots'))
+    .filter((row) => identityOwnsRow(identity, row, ['user_id']))
+    .map(normalizeCoinLot)
+    .filter(Boolean)
+}
+
+function walletCoinSourceFields(lots) {
+  const summary = summarizeCoinLots(lots)
+  return {
+    balance_purchased_diamonds: summary.PURCHASED,
+    balance_promotional_diamonds: summary.PROMOTIONAL,
+    balance_adjustment_diamonds: summary.ADJUSTMENT,
+  }
+}
+
+async function ensureAttributableCoinLots(client, identity, wallet) {
+  const lots = await coinLotsForIdentity(client, identity)
+  const available = summarizeCoinLots(lots).total
+  if (available > wallet.balance_diamonds) {
+    throw httpError('COIN_LEDGER_INCONSISTENT', 503)
+  }
+  const unattributed = wallet.balance_diamonds - available
+  if (unattributed <= 0) return lots
+  const reference = `legacy-wallet:${identity.preferredUserId}`
+  const existing = lots.find((lot) =>
+    lot.source_type === COIN_SOURCE_TYPES.ADJUSTMENT && lot.source_reference === reference,
+  )
+  const adjusted = normalizeCoinLot({
+    ...(existing || {}),
+    id: existing?.id || `adjustment:${identity.preferredUserId}`,
+    user_id: identity.preferredUserId,
+    source_type: COIN_SOURCE_TYPES.ADJUSTMENT,
+    source_reference: reference,
+    original_amount_diamonds: nonNegativeInteger(existing?.original_amount_diamonds) + unattributed,
+    available_amount_diamonds: nonNegativeInteger(existing?.available_amount_diamonds) + unattributed,
+    spent_amount_diamonds: nonNegativeInteger(existing?.spent_amount_diamonds),
+    reversed_amount_diamonds: nonNegativeInteger(existing?.reversed_amount_diamonds),
+    status: 'active',
+    created_at: existing?.created_at || nowIso(),
+    updated_at: nowIso(),
+  })
+  await storeCompatRow(client, 'wallet_coin_lots', adjusted)
+  return [...lots.filter((lot) => lot.id !== adjusted.id), adjusted]
+}
+
+async function storePurchasedCoinLot(client, identity, purchase, creditedCoins) {
+  const amount = nonNegativeInteger(creditedCoins)
+  if (amount <= 0) return null
+  const sourceReference = String(purchase.id || purchase.purchase_token_hash || '').trim()
+  if (!sourceReference) throw new Error('PURCHASE_SOURCE_REFERENCE_REQUIRED')
+  const existing = (await coinLotsForIdentity(client, identity)).find((lot) =>
+    lot.source_type === COIN_SOURCE_TYPES.PURCHASED && lot.source_reference === sourceReference,
+  )
+  if (existing) return existing
+  return storeCompatRow(client, 'wallet_coin_lots', {
+    id: `purchase:${sourceReference}`,
+    user_id: identity.preferredUserId,
+    source_type: COIN_SOURCE_TYPES.PURCHASED,
+    source_reference: sourceReference,
+    purchase_id: purchase.id || null,
+    product_id: purchase.product_id || null,
+    original_amount_diamonds: amount,
+    available_amount_diamonds: amount,
+    spent_amount_diamonds: 0,
+    reversed_amount_diamonds: 0,
+    status: 'active',
+    created_at: purchase.purchased_at || nowIso(),
+  })
+}
+
+async function storeGiftCoinAllocations(client, giftTransactionId, allocations) {
+  for (const allocation of allocations) {
+    await storeCompatRow(client, 'gift_coin_allocations', {
+      id: `${giftTransactionId}:${allocation.lot_id}`,
+      gift_transaction_id: giftTransactionId,
+      lot_id: allocation.lot_id,
+      source_type: allocation.source_type,
+      source_reference: allocation.source_reference || null,
+      amount_diamonds: allocation.amount_diamonds,
+      reversed_amount_diamonds: 0,
+      created_at: nowIso(),
+    })
+  }
+}
+
 function googlePlayServiceAccountRaw() {
   const filePath = String(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE || '').trim()
   if (filePath) {
@@ -3163,8 +3303,7 @@ function googlePlayConfiguration() {
   const ready = Boolean(
     enabled &&
     packageName &&
-    packageCount >= 6 &&
-    packageCount <= 8 &&
+    packageCount === 8 &&
     serviceAccount?.client_email &&
     serviceAccount?.private_key,
   )
@@ -3255,6 +3394,69 @@ function googlePlayRefundReconciliationConfiguration() {
   return { enabled, intervalMinutes, lookbackHours }
 }
 
+async function reverseGiftAllocationsForPurchase(client, purchaseLot, purchase, reversedAt) {
+  const allocations = (await readCompatRows(client, 'gift_coin_allocations'))
+    .filter((row) => normalizeIdentityValue(row.lot_id) === normalizeIdentityValue(purchaseLot.id))
+  if (allocations.length === 0) return { reversed_gifts: 0, reversed_earnings_diamonds: 0 }
+  const gifts = await importedAndCompatRows(client, 'gift_transactions')
+  const earnings = await importedAndCompatRows(client, 'creator_earnings')
+  let reversedGifts = 0
+  let reversedEarnings = 0
+  for (const allocation of allocations) {
+    const allocated = nonNegativeInteger(allocation.amount_diamonds)
+    const alreadyReversed = nonNegativeInteger(allocation.reversed_amount_diamonds)
+    const amountToReverse = Math.max(0, allocated - alreadyReversed)
+    if (amountToReverse <= 0) continue
+    const giftId = normalizeIdentityValue(allocation.gift_transaction_id)
+    const gift = gifts.find((row) => normalizeIdentityValue(row.id || row.idempotency_key) === giftId)
+    if (!gift) throw new Error('GIFT_ALLOCATION_TRANSACTION_MISSING')
+    const reversedPurchased = nonNegativeInteger(gift.reversed_purchased_amount_diamonds) + amountToReverse
+    const netWithdrawable = netWithdrawableGiftAmount(gift, reversedPurchased)
+    const earning = earnings.find((row) =>
+      normalizeIdentityValue(row.gift_transaction_id) === giftId ||
+      normalizeIdentityValue(row.id) === normalizeIdentityValue(gift.earning_id),
+    )
+    if (!earning) throw new Error('GIFT_ALLOCATION_EARNING_MISSING')
+
+    await storeCompatRow(client, 'gift_coin_allocations', {
+      ...allocation,
+      reversed_amount_diamonds: allocated,
+      reversal_purchase_id: purchase.id,
+      reversed_at: reversedAt,
+      status: 'reversed',
+    })
+    await storeCompatRow(client, 'gift_transactions', {
+      ...gift,
+      reversed_purchased_amount_diamonds: reversedPurchased,
+      withdrawable_amount_diamonds: netWithdrawable,
+      status: netWithdrawable > 0 ? 'committed' : 'reversed',
+      reversed_at: netWithdrawable > 0 ? gift.reversed_at || null : reversedAt,
+      reversal_purchase_id: purchase.id,
+      reversal_reason: 'google_play_voided_purchase',
+    })
+    const earningAmount = nonNegativeInteger(
+      earning.withdrawable_amount_diamonds ?? earning.amount_diamonds,
+    )
+    const earningAfter = Math.max(0, earningAmount - amountToReverse)
+    await storeCompatRow(client, 'creator_earnings', {
+      ...earning,
+      amount_diamonds: earningAfter,
+      withdrawable_amount_diamonds: earningAfter,
+      reversed_amount_diamonds: nonNegativeInteger(earning.reversed_amount_diamonds) + amountToReverse,
+      status: earningAfter > 0 ? 'pending' : 'reversed',
+      reversed_at: earningAfter > 0 ? earning.reversed_at || null : reversedAt,
+      reversal_purchase_id: purchase.id,
+      reversal_reason: 'google_play_voided_purchase',
+    })
+    reversedGifts += 1
+    reversedEarnings += amountToReverse
+  }
+  return {
+    reversed_gifts: reversedGifts,
+    reversed_earnings_diamonds: reversedEarnings,
+  }
+}
+
 async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
   const purchaseToken = String(voidedPurchase?.purchaseToken || '').trim()
   if (!purchaseToken || purchaseToken.length > 4096) return { status: 'invalid', reversed: false }
@@ -3309,16 +3511,44 @@ async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
     const wallet = await lockWalletForIdentity(client, identity)
     const coins = Math.max(0, Math.trunc(Number(purchase.coins || 0) || 0))
     if (!userId || coins <= 0) throw new Error('INVALID_CREDITED_PURCHASE_LEDGER')
-    const removedCoins = Math.min(wallet.balance_diamonds, coins)
-    const debtCreated = coins - removedCoins
+    const creditedCoins = nonNegativeInteger(
+      purchase.credited_coins ?? (coins - nonNegativeInteger(purchase.debt_repaid)),
+    )
+    const lots = await coinLotsForIdentity(client, identity)
+    const purchaseLot = lots.find((lot) =>
+      lot.source_type === COIN_SOURCE_TYPES.PURCHASED &&
+      [purchase.id, purchase.purchase_token_hash].some((reference) =>
+        reference && String(lot.source_reference || '') === String(reference),
+      ),
+    )
+    if (!purchaseLot) throw new Error('PURCHASE_PROVENANCE_MISSING')
+    const removedCoins = Math.min(wallet.balance_diamonds, purchaseLot.available_amount_diamonds)
+    const debtCreated = Math.max(0, creditedCoins - removedCoins)
     const newBalance = wallet.balance_diamonds - removedCoins
     const newDebt = wallet.balance_debt_diamonds + debtCreated
     const reversedAt = nowIso()
+    const reversedGiftState = await reverseGiftAllocationsForPurchase(
+      client,
+      purchaseLot,
+      purchase,
+      reversedAt,
+    )
+    const reversedLot = {
+      ...purchaseLot,
+      available_amount_diamonds: 0,
+      reversed_amount_diamonds: purchaseLot.original_amount_diamonds,
+      status: 'reversed',
+      reversed_at: reversedAt,
+      updated_at: reversedAt,
+    }
+    await storeCompatRow(client, 'wallet_coin_lots', reversedLot)
+    const updatedLots = [...lots.filter((lot) => lot.id !== reversedLot.id), reversedLot]
 
     await storeCompatRow(client, 'wallets', {
       ...wallet,
       balance_diamonds: newBalance,
       balance_debt_diamonds: newDebt,
+      ...walletCoinSourceFields(updatedLots),
     })
     await storeCompatRow(client, 'billing_purchases', {
       ...purchase,
@@ -3335,18 +3565,37 @@ async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
         : null,
       coins_removed: removedCoins,
       coin_debt_created: debtCreated,
+      reversed_gifts: reversedGiftState.reversed_gifts,
+      reversed_earnings_diamonds: reversedGiftState.reversed_earnings_diamonds,
     })
     await storeCompatRow(client, 'wallet_transactions', {
       id: `refund:${purchase.id}`,
       user_id: userId,
       direction: 'debit',
       transaction_type: 'google_play_refund',
-      amount_diamonds: coins,
+      amount_diamonds: creditedCoins,
+      provider_amount_diamonds: coins,
       applied_amount_diamonds: removedCoins,
       balance_after: newBalance,
       balance_debt_after: newDebt,
       reference_id: purchase.id,
       status: 'refunded',
+      coin_source: COIN_SOURCE_TYPES.PURCHASED,
+    })
+    await storeCompatRow(client, 'economic_reversals', {
+      id: `google-play-refund:${purchase.id}`,
+      reference_id: String(purchase.id),
+      purchase_id: purchase.id,
+      user_id: userId,
+      source_type: COIN_SOURCE_TYPES.PURCHASED,
+      reason: 'google_play_voided_purchase',
+      provider_amount_diamonds: coins,
+      credited_amount_diamonds: creditedCoins,
+      wallet_removed_diamonds: removedCoins,
+      debt_created_diamonds: debtCreated,
+      creator_earnings_reversed_diamonds: reversedGiftState.reversed_earnings_diamonds,
+      reversed_gifts: reversedGiftState.reversed_gifts,
+      created_at: reversedAt,
     })
     await storeCompatRow(client, 'billing_voided_purchase_events', {
       id: `voided:${tokenHash}`,
@@ -3367,6 +3616,8 @@ async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
       removed_coins: removedCoins,
       debt_created: debtCreated,
       balance_diamonds: newBalance,
+      reversed_gifts: reversedGiftState.reversed_gifts,
+      reversed_earnings_diamonds: reversedGiftState.reversed_earnings_diamonds,
     }
   } catch (error) {
     if (inTransaction) await client.query('ROLLBACK').catch(() => {})
@@ -3489,30 +3740,42 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
       balance = wallet.balance_diamonds
     } else {
       const debtRepaid = Math.min(wallet.balance_debt_diamonds, coins)
-      balance = wallet.balance_diamonds + coins - debtRepaid
-      await storeCompatRow(client, 'wallets', {
-        ...wallet,
-        balance_diamonds: balance,
-        balance_debt_diamonds: wallet.balance_debt_diamonds - debtRepaid,
-      })
-      await storeCompatRow(client, 'billing_purchases', {
+      const creditedCoins = coins - debtRepaid
+      balance = wallet.balance_diamonds + creditedCoins
+      const purchaseRow = {
         id: crypto.randomUUID(),
         user_id: identity.preferredUserId,
         product_id: productId,
         purchase_token_hash: tokenHash,
         order_id: purchase.orderId || null,
         coins,
+        credited_coins: creditedCoins,
         debt_repaid: debtRepaid,
+        coin_source: COIN_SOURCE_TYPES.PURCHASED,
         status: 'credited',
         consumed: false,
         purchased_at: purchase.purchaseTimeMillis ? new Date(Number(purchase.purchaseTimeMillis)).toISOString() : nowIso(),
+      }
+      const existingLots = await ensureAttributableCoinLots(client, identity, wallet)
+      const purchasedLot = await storePurchasedCoinLot(client, identity, purchaseRow, creditedCoins)
+      const updatedLots = purchasedLot
+        ? [...existingLots.filter((lot) => lot.id !== purchasedLot.id), purchasedLot]
+        : existingLots
+      await storeCompatRow(client, 'wallets', {
+        ...wallet,
+        balance_diamonds: balance,
+        balance_debt_diamonds: wallet.balance_debt_diamonds - debtRepaid,
+        ...walletCoinSourceFields(updatedLots),
       })
+      await storeCompatRow(client, 'billing_purchases', purchaseRow)
       await storeCompatRow(client, 'wallet_transactions', {
         id: crypto.randomUUID(),
         user_id: identity.preferredUserId,
         direction: 'credit',
         transaction_type: 'google_play_coin_purchase',
         amount_diamonds: coins,
+        credited_amount_diamonds: creditedCoins,
+        coin_source: COIN_SOURCE_TYPES.PURCHASED,
         balance_after: balance,
         balance_debt_after: wallet.balance_debt_diamonds - debtRepaid,
         reference_id: tokenHash,
@@ -3618,6 +3881,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   const earningId = crypto.randomUUID()
   let transaction = null
   let replay = false
+  let battleScoreUpdate = null
   try {
     await client.query('BEGIN')
     inTransaction = true
@@ -3661,11 +3925,26 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       throw httpError('GIFT_DAILY_LIMIT_EXCEEDED', 409)
     }
     if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_BALANCE', 409)
+    const attributableLots = await ensureAttributableCoinLots(client, identity, wallet)
+    let allocationPlan
+    try {
+      allocationPlan = allocateCoinLots(attributableLots, costDiamonds)
+    } catch (error) {
+      if (error?.code === 'COIN_LEDGER_INSUFFICIENT') throw httpError('COIN_LEDGER_INCONSISTENT', 503)
+      throw error
+    }
+    for (const lot of allocationPlan.updatedLots) {
+      await storeCompatRow(client, 'wallet_coin_lots', { ...lot, updated_at: nowIso() })
+    }
+    const purchasedAmount = allocationPlan.breakdown.PURCHASED
+    const promotionalAmount = allocationPlan.breakdown.PROMOTIONAL
+    const adjustmentAmount = allocationPlan.breakdown.ADJUSTMENT
     newBalance = wallet.balance_diamonds - costDiamonds
     await storeCompatRow(client, 'wallets', {
       ...wallet,
       balance_diamonds: newBalance,
       total_spent: wallet.total_spent + Math.max(0, Number(gift.price_credits || 0) || 0),
+      ...walletCoinSourceFields(allocationPlan.updatedLots),
     })
     await storeCompatRow(client, 'creator_earnings', {
       id: earningId,
@@ -3676,8 +3955,11 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       gift_transaction_id: idempotencyKey,
       live_stream_id: liveStreamId,
       amount_credits: Math.max(0, Number(gift.price_credits || 0) || 0),
-      amount_diamonds: costDiamonds,
-      status: 'pending',
+      amount_diamonds: purchasedAmount,
+      gift_face_value_diamonds: costDiamonds,
+      withdrawable_amount_diamonds: purchasedAmount,
+      non_withdrawable_amount_diamonds: promotionalAmount + adjustmentAmount,
+      status: purchasedAmount > 0 ? 'pending' : 'non_withdrawable',
     })
     transaction = await storeCompatRow(client, 'gift_transactions', {
       id: idempotencyKey,
@@ -3685,6 +3967,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       earning_id: earningId,
       sender_id: identity.preferredUserId,
       sender_name: identity.displayName,
+      sender_avatar_url: identity.avatarUrl || null,
       receiver_id: receiverId,
       gift_id: giftId,
       gift_name: gift.name || 'Regalo Novvin',
@@ -3692,17 +3975,26 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       gift_animation_url: gift.animation_url || null,
       live_stream_id: liveStreamId,
       amount_diamonds: costDiamonds,
+      purchased_amount_diamonds: purchasedAmount,
+      promotional_amount_diamonds: promotionalAmount,
+      adjustment_amount_diamonds: adjustmentAmount,
+      withdrawable_amount_diamonds: purchasedAmount,
+      reversed_purchased_amount_diamonds: 0,
       sender_balance_after: newBalance,
       status: 'committed',
       is_public: isPublic,
       created_at: nowIso(),
     })
+    await storeGiftCoinAllocations(client, transaction.id, allocationPlan.allocations)
     await storeCompatRow(client, 'wallet_transactions', {
       id: crypto.randomUUID(),
       user_id: identity.preferredUserId,
       direction: 'debit',
       transaction_type: 'virtual_gift',
       amount_diamonds: costDiamonds,
+      purchased_amount_diamonds: purchasedAmount,
+      promotional_amount_diamonds: promotionalAmount,
+      adjustment_amount_diamonds: adjustmentAmount,
       balance_after: newBalance,
       reference_id: transaction.id,
     })
@@ -3711,7 +4003,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       recipient_id: receiverId,
       actor_id: identity.preferredUserId,
       actor_name: identity.displayName,
-      actor_avatar_url: identity.avatarUrl,
+      actor_avatar_url: identity.avatarUrl || null,
       type: 'virtual_gift',
       target_id: liveStreamId || giftId,
       target_type: liveStreamId ? 'live_stream' : 'virtual_gift',
@@ -3719,6 +4011,12 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       body: `${identity.displayName} envio ${gift.name || 'un regalo'}`,
       is_read: false,
       data: { gift_id: giftId, earning_id: earningId, live_stream_id: liveStreamId },
+    })
+    battleScoreUpdate = await applyGiftToActiveBattle(client, {
+      liveId: liveStreamId,
+      giftTransactionId: transaction.id,
+      recipientUserId: receiverId,
+      purchasedCoins: purchasedAmount,
     })
     await client.query('COMMIT')
     inTransaction = false
@@ -3745,10 +4043,20 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     senderId: identity.preferredUserId,
     liveStreamId,
   })
+  if (!replay && battleScoreUpdate && liveStreamId) void publishRealtimeEvent(
+    `live-collaboration:${liveStreamId}`,
+    {
+      event: 'live_collaboration',
+      liveId: liveStreamId,
+      type: 'battle_score_updated',
+      battle: battleScoreUpdate,
+      eventId: `gift:${transaction.id}`,
+    },
+  )
   return {
     ok: true,
     transaction_id: transaction.id,
-    earning_id: earningId,
+    earning_id: transaction.earning_id || earningId,
     sender_balance_diamonds: newBalance,
     gift_id: giftId,
     gift_name: transaction.gift_name,

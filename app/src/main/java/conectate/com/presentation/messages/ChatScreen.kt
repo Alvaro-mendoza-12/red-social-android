@@ -1161,7 +1161,12 @@ fun ChatScreen(
                                         }
                                     },
                                     onPlayAudio = { viewModel.playAudio(it) },
-                                    onResolveUrl = { viewModel.getPlayableUrl(it) },
+                                    onResolveUrl = { path ->
+                                        viewModel.getPlayableUrl(
+                                            path = path,
+                                            allowOfflineMediaCache = !message.content_type.startsWith("view_once_")
+                                        )
+                                    },
                                     onSenderClick = { userId ->
                                         navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                     },
@@ -1590,7 +1595,7 @@ fun ChatScreen(
                             if (isBlocked) return@FloatingActionButton
                             if (editingMessage != null) {
                                 viewModel.confirmEditMessage()
-                            } else if (!isTextEmpty && !isSending) {
+                            } else if (!isTextEmpty) {
                                 viewModel.sendTextMessage()
                             } else {
                                 if (voiceState != VoiceState.IDLE) {
@@ -1614,24 +1619,17 @@ fun ChatScreen(
                         shape = CircleShape,
                         elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                     ) {
-                         if (isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp), 
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
+                         // El estado de cada burbuja muestra su propio reloj/pendiente.
+                         // El compositor nunca queda bloqueado por un envío anterior.
+                         if (editingMessage != null) {
+                             Icon(Icons.Default.Check, "Confirmar edición")
                          } else {
-                             // Icon logic: Check (Confirm Edit) OR Mic/Send
-                             if (editingMessage != null) {
-                                 Icon(Icons.Default.Check, "Confirmar edición")
-                             } else {
-                                 Icon(
-                                    imageVector = if (isTextEmpty) {
-                                        if (voiceState != VoiceState.IDLE) Icons.Default.Stop else Icons.Default.Mic
-                                    } else Icons.Default.Send,
-                                    contentDescription = if (isTextEmpty) "Grabar" else "Enviar"
-                                 )
-                             }
+                             Icon(
+                                imageVector = if (isTextEmpty) {
+                                    if (voiceState != VoiceState.IDLE) Icons.Default.Stop else Icons.Default.Mic
+                                } else Icons.Default.Send,
+                                contentDescription = if (isTextEmpty) "Grabar" else "Enviar"
+                             )
                          }
                      }
                 }
@@ -2064,7 +2062,12 @@ fun ChatScreen(
         FullScreenImageDialog(
             mediaItems = fullScreenMediaItems,
             initialIndex = fullScreenImageInitialIndex,
-            onResolveUrl = { path -> viewModel.getPlayableUrl(path) },
+            onResolveUrl = { path ->
+                viewModel.getPlayableUrl(
+                    path = path,
+                    allowOfflineMediaCache = !isViewingOnceMedia
+                )
+            },
             secureContent = isViewingOnceMedia,
             onDownload = if (isViewingOnceMedia) null else { item ->
                 scope.launch {

@@ -58,6 +58,68 @@ CREATE TABLE IF NOT EXISTS fallback_audit_events (
 CREATE INDEX IF NOT EXISTS idx_fallback_audit_events_created
     ON fallback_audit_events(event_name, created_at DESC);
 
+-- These three tables are shared prerequisites for versioned migrations. They
+-- live in the initial schema so a brand-new PostgreSQL volume can apply all
+-- migrations before the API container starts; runtime ensure-functions remain
+-- idempotent for existing installations.
+CREATE TABLE IF NOT EXISTS fallback_compat_rows (
+    table_name TEXT NOT NULL,
+    row_id TEXT NOT NULL,
+    row JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (table_name, row_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fallback_compat_rows_updated
+    ON fallback_compat_rows(table_name, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS fallback_live_streams (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    host_user_id TEXT NOT NULL,
+    host_name TEXT NOT NULL DEFAULT 'Usuario',
+    host_avatar_url TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'camera' CHECK (source IN ('camera', 'screen', 'audio')),
+    hashtags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    viewer_count INT NOT NULL DEFAULT 0,
+    peak_viewer_count INT NOT NULL DEFAULT 0,
+    total_comments INT NOT NULL DEFAULT 0,
+    total_reactions INT NOT NULL DEFAULT 0,
+    chat_paused BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_guest_requests BOOLEAN NOT NULL DEFAULT FALSE,
+    blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb,
+    replay_url TEXT,
+    replay_thumbnail_url TEXT,
+    replay_duration_ms BIGINT NOT NULL DEFAULT 0,
+    replay_published BOOLEAN NOT NULL DEFAULT FALSE,
+    replay_updated_at TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    started_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fallback_live_streams_active_created
+    ON fallback_live_streams(is_active, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS fallback_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_id TEXT NOT NULL,
+    actor_id TEXT,
+    actor_name TEXT,
+    actor_avatar_url TEXT,
+    type TEXT NOT NULL DEFAULT 'activity',
+    target_id TEXT,
+    target_type TEXT,
+    content TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    extra_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE OR REPLACE FUNCTION touch_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql

@@ -4,6 +4,7 @@ import conectate.com.BuildConfig
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -157,6 +161,39 @@ fun SettingsScreen(
                     subtitle = "Datos, privacidad, tema y accesibilidad",
                     onClick = { navController.navigate(Screen.SettingsCategory.createRoute("profile")) }
                 )
+            }
+
+            SettingsSection(title = "Centro de actividad") {
+                SettingsAreaButton(
+                    icon = Icons.Default.Analytics,
+                    title = "Estadísticas del creador",
+                    subtitle = "Audiencia, retención y rendimiento de videos y directos",
+                    onClick = { navController.navigate(Screen.CreatorAnalytics.route) }
+                )
+                SettingsAreaButton(
+                    icon = Icons.Default.Notifications,
+                    title = "Actividad y menciones",
+                    subtitle = "Reacciones, comentarios, menciones y novedades de tu cuenta",
+                    onClick = { mainNavController.navigate(Screen.Notifications.route) }
+                )
+                if (!currentUserId.isNullOrBlank()) {
+                    SettingsAreaButton(
+                        icon = Icons.Default.Person,
+                        title = "Personas que sigues",
+                        subtitle = "Consulta y administra tu lista de seguidos",
+                        onClick = {
+                            mainNavController.navigate(Screen.FollowList.createRoute(currentUserId.orEmpty(), "following"))
+                        }
+                    )
+                    SettingsAreaButton(
+                        icon = Icons.Default.Groups,
+                        title = "Tus seguidores",
+                        subtitle = "Personas que siguen tu perfil",
+                        onClick = {
+                            mainNavController.navigate(Screen.FollowList.createRoute(currentUserId.orEmpty(), "followers"))
+                        }
+                    )
+                }
             }
 
             Divider()
@@ -466,6 +503,25 @@ fun SettingsScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { navController.navigate(Screen.LanguageSettings.route) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Idioma de la aplicación", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault())
+                                .replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -482,10 +538,19 @@ fun SettingsScreen(
 
             SettingsSection(title = "Privacidad y legales") {
                 Button(
-                    onClick = { mainNavController.navigate(Screen.PrivacyPolicy.route) },
+                    onClick = { navController.navigate(Screen.PrivacyPolicy.route) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Políticas y normas de la comunidad")
+                    Text("Centro de privacidad")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.TermsAndConditions.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Términos y condiciones")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -514,6 +579,15 @@ fun SettingsScreen(
             SettingsSection(title = "Soporte y Ayuda") {
                 var showSupportDialog by remember { mutableStateOf(false) }
                 var dialogStep by remember { mutableStateOf(1) } // 1: Warning, 2: Admin Selection
+
+                FilledTonalButton(
+                    onClick = { navController.navigate(Screen.HelpSettings.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Centro de ayuda")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = { 

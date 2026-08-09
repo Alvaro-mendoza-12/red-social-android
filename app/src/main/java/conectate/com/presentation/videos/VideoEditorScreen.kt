@@ -101,6 +101,11 @@ fun VideoEditorScreen(
     var showStickerPicker by remember { mutableStateOf(false) }
     var activeCategory by remember { mutableStateOf(EditorCategory.EDIT) }
     var showQualityMenu by remember { mutableStateOf(false) }
+    val videoClipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        viewModel.addVideoClips(context, uris)
+    }
 
     DisposableEffect(lifecycleOwner, previewPlayer) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
@@ -514,10 +519,15 @@ fun VideoEditorScreen(
                                     verticalArrangement = Arrangement.SpaceEvenly
                                 ) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
+                                        SubToolItem(Icons.Default.VideoLibrary, "Añadir") {
+                                            videoClipPickerLauncher.launch("video/*")
+                                        }
                                         SubToolItem(Icons.Default.ContentCut, "Dividir") {
                                             selectedClipId?.let { viewModel.splitClip(context, it, currentTimeMs) }
                                         }
@@ -535,10 +545,10 @@ fun VideoEditorScreen(
                                         var trimEnd by remember(clip.id, clip.startOffsetMs, clip.durationMs) {
                                             mutableStateOf((clip.startOffsetMs + clip.durationMs).toFloat())
                                         }
-                                        val sourceEnd = clip.sourceDurationMs
+                                        val sourceDurationMs = clip.sourceDurationMs
                                             .takeIf { it > 0L }
-                                            ?.toFloat()
-                                            ?: (clip.startOffsetMs + clip.durationMs).coerceAtLeast(1L).toFloat()
+                                            ?: (clip.startOffsetMs + clip.durationMs).coerceAtLeast(1L)
+                                        val sourceEnd = sourceDurationMs.toFloat()
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             Text(
                                                 text = "Recorte ${formatEditorTime(trimStart.toLong())} - ${formatEditorTime(trimEnd.toLong())}",
@@ -548,8 +558,13 @@ fun VideoEditorScreen(
                                             RangeSlider(
                                                 value = trimStart..trimEnd,
                                                 onValueChange = { range ->
-                                                    trimStart = range.start
-                                                    trimEnd = range.endInclusive
+                                                    val safe = sanitizeTrimRange(
+                                                        sourceDurationMs = sourceDurationMs,
+                                                        requestedStartMs = range.start.toLong(),
+                                                        requestedEndMs = range.endInclusive.toLong()
+                                                    )
+                                                    trimStart = safe.first.toFloat()
+                                                    trimEnd = safe.last.toFloat()
                                                 },
                                                 onValueChangeFinished = {
                                                     viewModel.updateClipTrim(context, clip.id, trimStart.toLong(), trimEnd.toLong())
@@ -557,6 +572,40 @@ fun VideoEditorScreen(
                                                 valueRange = 0f..sourceEnd.coerceAtLeast(1_000f),
                                                 modifier = Modifier.fillMaxWidth()
                                             )
+                                            val selectedDurationMs = (trimEnd - trimStart)
+                                                .toLong()
+                                                .coerceAtLeast(1_000L)
+                                            val maximumWindowStartMs = (sourceDurationMs - selectedDurationMs)
+                                                .coerceAtLeast(0L)
+                                            if (maximumWindowStartMs > 0L) {
+                                                Text(
+                                                    text = "Mover el fragmento por el video",
+                                                    color = Color.LightGray,
+                                                    fontSize = 10.sp
+                                                )
+                                                Slider(
+                                                    value = trimStart.coerceIn(0f, maximumWindowStartMs.toFloat()),
+                                                    onValueChange = { requestedStart ->
+                                                        val moved = moveTrimRange(
+                                                            sourceDurationMs = sourceDurationMs,
+                                                            selectionDurationMs = selectedDurationMs,
+                                                            requestedStartMs = requestedStart.toLong()
+                                                        )
+                                                        trimStart = moved.first.toFloat()
+                                                        trimEnd = moved.last.toFloat()
+                                                    },
+                                                    onValueChangeFinished = {
+                                                        viewModel.updateClipTrim(
+                                                            context,
+                                                            clip.id,
+                                                            trimStart.toLong(),
+                                                            trimEnd.toLong()
+                                                        )
+                                                    },
+                                                    valueRange = 0f..maximumWindowStartMs.toFloat(),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
                                             Text(
                                                 text = "Velocidad ${String.format(Locale.US, "%.2fx", clip.speed)}",
                                                 color = Color.White,

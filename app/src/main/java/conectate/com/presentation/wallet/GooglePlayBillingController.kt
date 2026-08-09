@@ -25,8 +25,10 @@ class GooglePlayBillingController(
     accountId: String,
     private val productIds: Set<String>,
     private val onProducts: (List<PlayCoinProduct>) -> Unit,
+    private val onCatalogIssues: (List<PlayCatalogIssue>) -> Unit,
     private val onPurchased: (productId: String, purchaseToken: String) -> Unit,
     private val onPending: () -> Unit,
+    private val onCanceled: () -> Unit,
     private val onError: (String) -> Unit
 ) : PurchasesUpdatedListener {
     private val obfuscatedAccountId = MessageDigest.getInstance("SHA-256")
@@ -88,7 +90,7 @@ class GooglePlayBillingController(
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {
         when (result.responseCode) {
             BillingClient.BillingResponseCode.OK -> purchases.orEmpty().forEach(::processPurchase)
-            BillingClient.BillingResponseCode.USER_CANCELED -> Unit
+            BillingClient.BillingResponseCode.USER_CANCELED -> onCanceled()
             else -> onError(result.debugMessage.ifBlank { "Google Play no completó la compra." })
         }
     }
@@ -111,17 +113,34 @@ class GooglePlayBillingController(
         val params = QueryProductDetailsParams.newBuilder().setProductList(products).build()
         billingClient.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                detailsById.clear()
+                onProducts(emptyList())
                 onError(result.debugMessage.ifBlank { "No se pudieron consultar los productos." })
                 return@queryProductDetailsAsync
             }
+            detailsById.clear()
             val displayProducts = queryResult.productDetailsList.mapNotNull { details ->
+                if (details.productId !in productIds) return@mapNotNull null
                 val offer = details.oneTimePurchaseOfferDetailsList?.firstOrNull()
                     ?: details.oneTimePurchaseOfferDetails
                     ?: return@mapNotNull null
+                if (offer.formattedPrice.isBlank()) return@mapNotNull null
                 detailsById[details.productId] = details
                 PlayCoinProduct(details.productId, offer.formattedPrice, details)
             }
+            val resolution = resolvePlayCatalog(
+                expectedProductIds = productIds,
+                fetchedProducts = queryResult.productDetailsList.map { details ->
+                    val offer = details.oneTimePurchaseOfferDetailsList?.firstOrNull()
+                        ?: details.oneTimePurchaseOfferDetails
+                    PlayCatalogProductSnapshot(details.productId, offer?.formattedPrice)
+                },
+                unfetchedProducts = queryResult.unfetchedProductList.map { product ->
+                    PlayUnfetchedProductSnapshot(product.productId, product.statusCode)
+                }
+            )
             onProducts(displayProducts)
+            onCatalogIssues(resolution.issues)
         }
     }
 
@@ -137,11 +156,15 @@ class GooglePlayBillingController(
     }
 
     private fun processPurchase(purchase: Purchase) {
+        val productId = purchase.products.firstOrNull { it in productIds }
+        if (productId == null) {
+            onError("Google Play devolvió un producto que no pertenece al catálogo disponible.")
+            return
+        }
         when (purchase.purchaseState) {
             Purchase.PurchaseState.PENDING -> onPending()
-            Purchase.PurchaseState.PURCHASED -> purchase.products
-                .firstOrNull { it in productIds }
-                ?.let { onPurchased(it, purchase.purchaseToken) }
+            Purchase.PurchaseState.PURCHASED -> onPurchased(productId, purchase.purchaseToken)
+            else -> onError("La compra no fue completada por Google Play.")
         }
     }
 }

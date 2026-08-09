@@ -77,7 +77,7 @@ console.log(JSON.stringify({
     enabledFlag: billingEnabled,
     packageCount,
     serviceAccountReady,
-    ready: billingEnabled && packageCount >= 6 && packageCount <= 8 && serviceAccountReady,
+    ready: billingEnabled && packageCount === 8 && serviceAccountReady,
   },
 }, null, 2))
 

@@ -2446,6 +2446,17 @@ class UserRepository @Inject constructor(
     suspend fun getUsersByFollowerThreshold(threshold: Int): Result<List<User>> {
         return try {
             var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            if (shouldUseUbuntuBackend()) {
+                return localFallbackApiClient.searchProfileUsers(
+                    accessToken = accessToken,
+                    query = "",
+                    limit = 80
+                ).map { users ->
+                    users
+                        .filter { (it.followers_count ?: 0) >= threshold }
+                        .sortedByDescending { it.followers_count ?: 0 }
+                }
+            }
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $accessToken")

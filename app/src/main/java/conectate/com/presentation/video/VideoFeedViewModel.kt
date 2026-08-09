@@ -7,6 +7,8 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.Video
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.repository.AlgorithmRepository
+import conectate.com.data.recommendations.OpaqueRecommendationCursor
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,8 @@ class VideoFeedViewModel @Inject constructor(
     val userRepository: conectate.com.data.repository.UserRepository,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
+    private val socializationRepository: conectate.com.data.repository.SocializationRepository,
+    private val algorithmRepository: AlgorithmRepository,
     private val offlineVideoRepository: conectate.com.data.repository.OfflineVideoRepository,
     appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
     savedStateHandle: SavedStateHandle
@@ -60,6 +64,8 @@ class VideoFeedViewModel @Inject constructor(
     val socialHighlights: StateFlow<List<Post>> = _socialHighlights.asStateFlow()
     private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val recommendedPeople: StateFlow<List<conectate.com.data.model.User>> = _recommendedPeople.asStateFlow()
+    private val _socializationCards = MutableStateFlow<List<conectate.com.data.model.SocializationCard>>(emptyList())
+    val socializationCards: StateFlow<List<conectate.com.data.model.SocializationCard>> = _socializationCards.asStateFlow()
     val activeStreams = liveRepository.activeStreams
     val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
     val offlineVideos = offlineVideoRepository.videos
@@ -93,6 +99,12 @@ class VideoFeedViewModel @Inject constructor(
     private var currentPage = 0
     private val pageSize = 20
     private var isLastPage = false
+    private var forYouJob: Job? = null
+    private var authoritativeFeedActive = false
+    private var authoritativeCursor: OpaqueRecommendationCursor? = null
+    private var authoritativeExplanationsEnabled = false
+    private var authoritativeRankingVersion: String? = null
+    private val authoritativeExplanations = mutableMapOf<String, List<String>>()
     private val profilePageSize = ProfileVideoFeedPaging.DefaultPageSize
     private var profileFirstOffset = 0
     private var profileNextOffset = 0
@@ -171,8 +183,29 @@ class VideoFeedViewModel @Inject constructor(
             loadForYouVideos()
             loadSocialHighlights()
             loadRecommendedPeople()
+            loadSocializationCards()
             loadFollowedUsers()
         }
+    }
+
+    private fun loadSocializationCards() {
+        viewModelScope.launch {
+            socializationRepository.loadCards(surface = "video", placement = "after_12", limit = 4)
+                .onSuccess { response ->
+                    _socializationCards.value = if (
+                        response.enabled && response.safeguards.serverFiltered &&
+                        response.safeguards.consentRequired && !response.safeguards.automaticContact
+                    ) response.items
+                        .filter { it.action.type in setOf("OPEN_PROFILE", "OPEN_COMMUNITY", "OPEN_LIVE") }
+                        .distinctBy { it.id }
+                    else emptyList()
+                }
+                .onFailure { _socializationCards.value = emptyList() }
+        }
+    }
+
+    fun dismissSocializationCard(cardId: String) {
+        _socializationCards.value = _socializationCards.value.filterNot { it.id == cardId }
     }
 
     private fun loadProfileVideos(profileId: String, reset: Boolean = true) {
@@ -189,10 +222,20 @@ class VideoFeedViewModel @Inject constructor(
                     offset = requestedOffset,
                     limit = profilePageSize
                 ).onSuccess { page ->
-                    _profileVideos.value = if (reset) {
-                        page
+                    if (reset) {
+                        _profileVideos.value = page
                     } else {
-                        (_profileVideos.value + page).distinctBy { it.id }
+                        val merged = (_profileVideos.value + page).distinctBy { it.id }
+                        val window = ProfileVideoFeedPaging.boundedWindow(
+                            items = merged,
+                            pageSize = profilePageSize,
+                            dropFromStart = true
+                        )
+                        _profileVideos.value = window.items
+                        if (window.removedFromStart > 0) {
+                            profileFirstOffset += window.removedFromStart
+                            _profilePrependCount.value = -window.removedFromStart
+                        }
                     }
                     if (reset) {
                         profileFirstOffset = requestedOffset
@@ -235,8 +278,17 @@ class VideoFeedViewModel @Inject constructor(
                     val existingIds = _profileVideos.value.asSequence().map { it.id }.toHashSet()
                     val newVideos = page.filterNot { it.id in existingIds }
                     if (newVideos.isNotEmpty()) {
-                        _profileVideos.value = newVideos + _profileVideos.value
+                        val window = ProfileVideoFeedPaging.boundedWindow(
+                            items = newVideos + _profileVideos.value,
+                            pageSize = profilePageSize,
+                            dropFromStart = false
+                        )
+                        _profileVideos.value = window.items
                         _profilePrependCount.value = newVideos.size
+                        if (window.removedFromEnd > 0) {
+                            profileNextOffset = request.offset + window.items.size
+                            isProfileLastPage = false
+                        }
                     }
                     profileFirstOffset = request.offset
                     loadFollowedUsers()
@@ -387,12 +439,31 @@ class VideoFeedViewModel @Inject constructor(
         }
     }
 
-    private fun loadForYouVideos() {
-        viewModelScope.launch {
+    private fun loadForYouVideos(forceLegacy: Boolean = false) {
+        forYouJob?.cancel()
+        forYouJob = viewModelScope.launch {
             try {
                 _isLoading.value = true
                 currentPage = 0
                 isLastPage = false
+                resetAuthoritativeFeedState()
+                if (!forceLegacy) {
+                    val page = algorithmRepository.loadVideoRecommendationPage(cursor = null, limit = pageSize)
+                        .getOrNull()
+                    if (page != null) {
+                        authoritativeFeedActive = true
+                        authoritativeCursor = page.nextCursor
+                        authoritativeExplanationsEnabled = page.explanationsEnabled
+                        authoritativeRankingVersion = page.rankingVersion
+                        authoritativeExplanations.putAll(page.explanationsByCandidateId)
+                        // Assignment preserves the exact server order.
+                        _forYouVideos.value = page.items
+                        isLastPage = !page.hasMore
+                        _isLoading.value = false
+                        loadFollowedUsers()
+                        return@launch
+                    }
+                }
                 videoRepository.getVideos(offset = 0, limit = pageSize, random = true).collect { newVideos ->
                     _forYouVideos.value = mixVideosForSession(newVideos)
                     isLastPage = newVideos.size < pageSize
@@ -407,9 +478,32 @@ class VideoFeedViewModel @Inject constructor(
 
     fun loadMoreVideos() {
         if (_isLoading.value || isLastPage) return
-        
+
         viewModelScope.launch {
             try {
+                _isLoading.value = true
+                if (authoritativeFeedActive) {
+                    val cursor = authoritativeCursor
+                    if (cursor == null) {
+                        isLastPage = true
+                        return@launch
+                    }
+                    val page = algorithmRepository.loadVideoRecommendationPage(cursor = cursor, limit = pageSize)
+                        .getOrElse {
+                            // A legacy page must never be appended to a server
+                            // page. Replace the entire list with one coherent
+                            // legacy feed after an authoritative page failure.
+                            loadForYouVideos(forceLegacy = true)
+                            return@launch
+                        }
+                    authoritativeCursor = page.nextCursor
+                    authoritativeExplanations.putAll(page.explanationsByCandidateId)
+                    // Concatenation preserves page and item order from server.
+                    _forYouVideos.value = _forYouVideos.value + page.items
+                    isLastPage = !page.hasMore
+                    loadFollowedUsers()
+                    return@launch
+                }
                 currentPage++
                 val offset = currentPage * pageSize
                 videoRepository.getVideos(offset = offset, limit = pageSize, random = true).collect { newVideos ->
@@ -422,8 +516,32 @@ class VideoFeedViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Error loading more videos", e)
+            } finally {
+                _isLoading.value = false
             }
         }
+    }
+
+    fun explainVideo(video: Video): List<String> {
+        if (!authoritativeFeedActive) return emptyList()
+        return authoritativeExplanations[video.id]
+            ?: if (authoritativeExplanationsEnabled) {
+                listOf("Mi algoritmo seleccionó este video en el servidor.")
+            } else {
+                listOf(
+                    "Mi algoritmo ordenó este video en el servidor" +
+                        authoritativeRankingVersion?.let { " ($it)" }.orEmpty() +
+                        "; las explicaciones detalladas están desactivadas.",
+                )
+            }
+    }
+
+    private fun resetAuthoritativeFeedState() {
+        authoritativeFeedActive = false
+        authoritativeCursor = null
+        authoritativeExplanationsEnabled = false
+        authoritativeRankingVersion = null
+        authoritativeExplanations.clear()
     }
 
     private fun loadFollowingVideos() {

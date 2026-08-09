@@ -1,6 +1,7 @@
 package conectate.com.presentation.wallet
 
 import android.content.Context
+import android.app.ActivityManager
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -11,9 +12,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -37,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -158,6 +168,7 @@ fun GiftAnimationStage(
     senderLabel: String,
     runKey: Any,
     preview: Boolean,
+    showCaption: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -165,7 +176,10 @@ fun GiftAnimationStage(
     val tier = giftAnimationTier(gift.priceDiamonds)
     val duration = giftAnimationDurationMs(gift.priceDiamonds)
     val profile = giftMotionProfile(gift.visualKey())
-    val spec = giftSceneSpec(profile)
+    val renderQuality = remember(context) { giftRenderQuality(context) }
+    val spec = remember(profile, renderQuality) {
+        giftSceneForQuality(giftSceneSpec(profile), renderQuality)
+    }
     val progress = remember(runKey) { Animatable(if (animationsEnabled) 0f else 0.58f) }
 
     LaunchedEffect(runKey, animationsEnabled) {
@@ -181,18 +195,14 @@ fun GiftAnimationStage(
         else -> 1f
     }
     val transform = giftMotionTransform(profile, value, animationsEnabled)
-    val hasPoseAnimation = giftSpriteSheetSpec(gift.visualKey()) != null
-    val articulation = if (hasPoseAnimation) {
-        GiftArticulationTransform()
-    } else {
-        giftArticulationTransform(profile, value, animationsEnabled)
-    }
+    // Las poses del atlas y la articulación secundaria se complementan. La
+    // versión anterior desactivaba esta articulación para los 24 regalos.
+    val articulation = giftArticulationTransform(profile, value, animationsEnabled)
     val baseArtSize = when (tier) {
         0 -> 112.dp
         1 -> 158.dp
         else -> 198.dp
     }
-    val artSize = (baseArtSize.value * spec.artScale).dp
 
     BoxWithConstraints(
         modifier = modifier
@@ -213,8 +223,35 @@ fun GiftAnimationStage(
         contentAlignment = Alignment.Center
     ) {
         val density = LocalDensity.current
-        val widthPx = with(density) { maxWidth.toPx() }
-        val heightPx = with(density) { maxHeight.toPx() }
+        val layoutDirection = LocalLayoutDirection.current
+        val safeDrawing = WindowInsets.safeDrawing.asPaddingValues()
+        val ime = WindowInsets.ime.asPaddingValues()
+        val viewportInsets = if (preview) {
+            GiftViewportInsetsDp()
+        } else {
+            GiftViewportInsetsDp(
+                startDp = safeDrawing.calculateStartPadding(layoutDirection).value,
+                topDp = safeDrawing.calculateTopPadding().value,
+                endDp = safeDrawing.calculateEndPadding(layoutDirection).value,
+                bottomDp = maxOf(
+                    safeDrawing.calculateBottomPadding().value,
+                    ime.calculateBottomPadding().value
+                )
+            )
+        }
+        val layout = calculateGiftCelebrationLayout(
+            viewportWidthDp = maxWidth.value,
+            viewportHeightDp = maxHeight.value,
+            insets = viewportInsets,
+            baseArtworkSizeDp = baseArtSize.value,
+            artworkScale = spec.artScale,
+            motion = transform,
+            preview = preview,
+            showCaption = showCaption
+        )
+        val artworkTranslationX = with(density) { layout.artworkTranslationXDp.dp.toPx() }
+        val artworkTranslationY = with(density) { layout.artworkTranslationYDp.dp.toPx() }
+        val artworkSizePx = with(density) { layout.artworkSizeDp.dp.toPx() }
 
         Canvas(Modifier.fillMaxSize().alpha(fade)) {
             drawGiftEnvironment(profile, spec, value, animationsEnabled)
@@ -222,67 +259,96 @@ fun GiftAnimationStage(
 
         Box(
             modifier = Modifier
-                .size(artSize)
-                .graphicsLayer {
-                    scaleX = transform.scale
-                    scaleY = transform.scale
-                    rotationZ = transform.rotation
-                    translationX = transform.translationX * widthPx * 0.5f
-                    translationY = transform.translationY * heightPx * 0.5f
-                }
-                .alpha(fade),
+                .fillMaxSize()
+                .padding(
+                    start = viewportInsets.startDp.dp,
+                    top = viewportInsets.topDp.dp,
+                    end = viewportInsets.endDp.dp,
+                    bottom = viewportInsets.bottomDp.dp
+                )
+                .clipToBounds(),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(Modifier.fillMaxSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            GiftPalette[(profile.ordinal + 1) % GiftPalette.size].copy(alpha = 0.38f),
-                            Color.Transparent
+            if (layout.artworkSizeDp > 0f) {
+                Box(
+                    modifier = Modifier
+                        .size(layout.artworkSizeDp.dp)
+                        .graphicsLayer {
+                            scaleX = transform.scale
+                            scaleY = transform.scale
+                            rotationZ = transform.rotation
+                            translationX = artworkTranslationX
+                            translationY = artworkTranslationY
+                        }
+                        .alpha(fade),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(
+                                    GiftPalette[(profile.ordinal + 1) % GiftPalette.size].copy(alpha = 0.38f),
+                                    Color.Transparent
+                                )
+                            ),
+                            radius = size.minDimension * 0.54f
                         )
-                    ),
-                    radius = size.minDimension * 0.54f
-                )
-            }
-            GiftAnimatedArtwork(
-                gift = gift,
-                progress = value,
-                animationsEnabled = animationsEnabled,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = articulation.scaleX
-                        scaleY = articulation.scaleY
-                        rotationZ = articulation.rotation
-                        translationY = articulation.translationY * heightPx
                     }
-            )
-        }
+                    GiftAnimatedArtwork(
+                        gift = gift,
+                        progress = value,
+                        animationsEnabled = animationsEnabled,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = articulation.scaleX
+                                scaleY = articulation.scaleY
+                                rotationZ = articulation.rotation
+                                translationY = articulation.translationY * artworkSizePx
+                            }
+                    )
+                }
+            }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 18.dp)
-                .padding(bottom = if (preview) 12.dp else 104.dp)
-                .alpha(fade)
-                .background(Color.Black.copy(alpha = 0.80f), RoundedCornerShape(22.dp))
-                .padding(horizontal = 20.dp, vertical = 11.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = gift.name,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = senderLabel,
-                color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center
-            )
+            if (showCaption && layout.captionMaxWidthDp > 0f) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .widthIn(max = layout.captionMaxWidthDp.dp)
+                        .padding(horizontal = if (layout.compactTypography) 12.dp else 18.dp)
+                        .padding(bottom = layout.captionBottomPaddingDp.dp)
+                        .alpha(fade)
+                        .background(Color.Black.copy(alpha = 0.80f), RoundedCornerShape(22.dp))
+                        .padding(
+                            horizontal = if (layout.compactTypography) 16.dp else 20.dp,
+                            vertical = if (layout.compactTypography) 8.dp else 11.dp
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = gift.name,
+                        color = Color.White,
+                        style = if (layout.compactTypography) {
+                            MaterialTheme.typography.titleMedium
+                        } else {
+                            MaterialTheme.typography.titleLarge
+                        },
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = senderLabel,
+                        color = Color.White.copy(alpha = 0.92f),
+                        style = if (layout.compactTypography) {
+                            MaterialTheme.typography.bodySmall
+                        } else {
+                            MaterialTheme.typography.bodyMedium
+                        },
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }
@@ -296,6 +362,16 @@ internal fun giftAnimationsEnabled(context: Context): Boolean {
             1f
         ) > 0f
     }.getOrDefault(true)
+}
+
+internal fun giftRenderQuality(context: Context): GiftRenderQuality {
+    val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        ?: return GiftRenderQuality.MEDIUM
+    return when {
+        manager.isLowRamDevice || manager.memoryClass <= 128 -> GiftRenderQuality.LOW
+        manager.memoryClass <= 256 -> GiftRenderQuality.MEDIUM
+        else -> GiftRenderQuality.HIGH
+    }
 }
 
 private fun DrawScope.drawGiftEnvironment(

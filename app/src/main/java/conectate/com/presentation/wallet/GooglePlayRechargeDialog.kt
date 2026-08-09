@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun GooglePlayRechargeDialog(
     accountId: String,
+    minimumCoins: Int = 0,
     onDismiss: () -> Unit,
     viewModel: WalletViewModel = hiltViewModel()
 ) {
@@ -47,6 +48,7 @@ fun GooglePlayRechargeDialog(
     val context = LocalContext.current
     val activity = remember(context) { context.findActivityForBilling() }
     var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
     var catalogResolved by remember(capabilities.products) { mutableStateOf(false) }
 
     val controller = remember(capabilities.enabled, capabilities.products, accountId) {
@@ -58,11 +60,15 @@ fun GooglePlayRechargeDialog(
                 playProducts = it
                 catalogResolved = true
             },
+            onCatalogIssues = { catalogIssues = it },
             onPurchased = viewModel::verifyGooglePlayPurchase,
             onPending = {
                 viewModel.showBillingMessage(
                     "Pago pendiente. No se acreditarán monedas hasta que Google Play confirme el cobro."
                 )
+            },
+            onCanceled = {
+                viewModel.showBillingMessage("Compra cancelada. No se realizó ningún cobro.")
             },
             onError = {
                 catalogResolved = true
@@ -86,6 +92,13 @@ fun GooglePlayRechargeDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
+                if (minimumCoins > 0) {
+                    Text(
+                        "Necesitas al menos $minimumCoins monedas adicionales",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         text = {
@@ -126,7 +139,7 @@ fun GooglePlayRechargeDialog(
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    playProducts.isNotEmpty() -> {
+                    catalogResolved -> {
                         Text(
                             "El precio mostrado es el precio localizado que entrega Google Play.",
                             style = MaterialTheme.typography.bodySmall
@@ -137,30 +150,38 @@ fun GooglePlayRechargeDialog(
                         ) {
                             items(capabilities.products.sortedBy { it.coins }, key = { it.productId }) { coinProduct ->
                                 val playProduct = playProducts.firstOrNull { it.productId == coinProduct.productId }
-                                if (playProduct != null) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            val hostActivity = activity
-                                            if (hostActivity == null) {
-                                                viewModel.showBillingMessage("No se encontró una actividad Android para abrir Google Play.")
-                                            } else {
-                                                controller?.launch(hostActivity, coinProduct.productId)
-                                            }
-                                        },
-                                        enabled = !verifying,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column {
-                                                Text("${coinProduct.coins} monedas", fontWeight = FontWeight.Bold)
-                                                Text("Producto consumible", style = MaterialTheme.typography.labelSmall)
-                                            }
-                                            Text(playProduct.formattedPrice, fontWeight = FontWeight.Black)
+                                val issue = catalogIssues.firstOrNull { it.productId == coinProduct.productId }
+                                val recommendedProductId = capabilities.products
+                                    .filter { it.coins >= minimumCoins.coerceAtLeast(1) }
+                                    .minByOrNull { it.coins }
+                                    ?.productId
+                                val isRecommended = minimumCoins > 0 && coinProduct.productId == recommendedProductId
+                                OutlinedButton(
+                                    onClick = {
+                                        val hostActivity = activity
+                                        if (hostActivity == null) {
+                                            viewModel.showBillingMessage("No se encontró una actividad Android para abrir Google Play.")
+                                        } else {
+                                            controller?.launch(hostActivity, coinProduct.productId)
                                         }
+                                    },
+                                    enabled = playProduct != null && !verifying,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("${coinProduct.coins} monedas", fontWeight = FontWeight.Bold)
+                                            Text(
+                                                issue?.userFacingDescription()
+                                                    ?: if (isRecommended) "Recomendado para completar el regalo" else "Producto consumible",
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                        Text(playProduct?.formattedPrice ?: "No disponible", fontWeight = FontWeight.Black)
                                     }
                                 }
                             }
@@ -170,19 +191,6 @@ fun GooglePlayRechargeDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                    else -> {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("Catálogo no disponible", fontWeight = FontWeight.Black)
-                                Text(
-                                    "Google Play no devolvió productos publicados para esta cuenta o país. No se iniciará ningún cobro."
-                                )
-                            }
-                        }
                     }
                 }
             }

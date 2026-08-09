@@ -21,8 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,11 +40,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 
 @HiltViewModel
 class VideoUploadViewModel @Inject constructor(
     private val videoRepository: VideoRepository
 ) : ViewModel() {
+
+    private var ownedEditorExport: java.io.File? = null
 
     private val _title = MutableStateFlow("")
     val title: StateFlow<String> = _title.asStateFlow()
@@ -93,6 +103,15 @@ class VideoUploadViewModel @Inject constructor(
             fileSizeBytes = info.fileSizeBytes
         )
 
+        val nextOwnedExport = resolveOwnedEditorExportFile(context, uri)
+        val previousOwnedExport = ownedEditorExport
+        val isSameOwnedFile = runCatching {
+            previousOwnedExport?.canonicalFile == nextOwnedExport?.canonicalFile
+        }.getOrDefault(false)
+        if (!isSameOwnedFile) {
+            previousOwnedExport?.let { previous -> runCatching { previous.delete() } }
+        }
+        ownedEditorExport = nextOwnedExport
         _videoUri.value = uri
         _videoDurationMs.value = durationMs
         _requiresEditing.value = decision.requiresEditor
@@ -149,7 +168,7 @@ class VideoUploadViewModel @Inject constructor(
                     fileSizeBytes = fileSizeBytes
                 )
             } finally {
-                retriever.release()
+                runCatching { retriever.release() }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -198,6 +217,7 @@ class VideoUploadViewModel @Inject constructor(
                     onSuccess = {
                         _uploadProgress.value = 1.0f
                         _isUploading.value = false
+                        cleanupOwnedEditorExport()
                         onComplete(true)
                     },
                     onFailure = {
@@ -215,6 +235,7 @@ class VideoUploadViewModel @Inject constructor(
     }
 
     fun resetState() {
+        cleanupOwnedEditorExport()
         _title.value = ""
         _description.value = ""
         _isPublic.value = true
@@ -227,9 +248,20 @@ class VideoUploadViewModel @Inject constructor(
         _uploadProgress.value = 0f
     }
 
+    private fun cleanupOwnedEditorExport() {
+        ownedEditorExport?.let { file -> runCatching { file.delete() } }
+        ownedEditorExport = null
+    }
+
+    override fun onCleared() {
+        if (!_isUploading.value) cleanupOwnedEditorExport()
+        super.onCleared()
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 fun VideoUploadScreen(
     navController: NavController,
@@ -249,6 +281,50 @@ fun VideoUploadScreen(
     var thumbnailToCrop by remember { mutableStateOf<Uri?>(null) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var previewPlaying by remember(videoUri) { mutableStateOf(false) }
+    var previewFailed by remember(videoUri) { mutableStateOf(false) }
+    val previewPlayer = remember(videoUri) {
+        videoUri?.let { uri ->
+            runCatching {
+                ExoPlayer.Builder(context.applicationContext).build().apply {
+                    playWhenReady = false
+                    repeatMode = Player.REPEAT_MODE_OFF
+                    setMediaItem(MediaItem.fromUri(uri))
+                    prepare()
+                }
+            }.getOrNull()
+        }
+    }
+
+    DisposableEffect(previewPlayer, lifecycleOwner) {
+        val player = previewPlayer
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) previewPlaying = false
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                previewPlaying = false
+                previewFailed = true
+                player?.pause()
+            }
+        }
+        player?.addListener(listener)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                player?.pause()
+                previewPlaying = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player?.removeListener(listener)
+            player?.release()
+        }
+    }
+
     LaunchedEffect(uploadError) {
         uploadError?.takeIf { it.isNotBlank() }?.let(AppFeedbackBus::showError)
     }
@@ -350,29 +426,60 @@ fun VideoUploadScreen(
                         .height(200.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Gray.copy(alpha = 0.2f))
-                        .clickable { videoPickerLauncher.launch("video/*") },
+                        .clickable {
+                            if (videoUri == null) videoPickerLauncher.launch("video/*")
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     if (videoUri != null) {
-                        // Display Video Preview using Coil
-                        AsyncImage(
-                            model = videoUri, // Coil can load video frames
-                            contentDescription = "Vista previa del video",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        // Overlay play icon to indicate it's a video
-                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.3f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                             Icon(
-                                imageVector = Icons.Default.PlayCircle,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(48.dp)
+                        if (previewPlayer != null && !previewFailed) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    PlayerView(ctx).apply {
+                                        player = previewPlayer
+                                        useController = false
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
+                                },
+                                update = { playerView ->
+                                    if (playerView.player !== previewPlayer) {
+                                        playerView.player = previewPlayer
+                                    }
+                                    playerView.useController = false
+                                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable {
+                                        if (previewPlayer.isPlaying) {
+                                            previewPlayer.pause()
+                                            previewPlaying = false
+                                        } else {
+                                            if (previewPlayer.playbackState == Player.STATE_ENDED) previewPlayer.seekTo(0)
+                                            previewPlayer.play()
+                                            previewPlaying = true
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!previewPlaying) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircle,
+                                        contentDescription = "Reproducir vista previa",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(56.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            AsyncImage(
+                                model = videoUri,
+                                contentDescription = "Miniatura del video",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
                             )
                         }
                     } else {

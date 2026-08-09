@@ -32,6 +32,14 @@ class MessagesPreferences @Inject constructor(
         fun areSocialSoundsEnabled(context: Context): Boolean = context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_CHAT_SOUNDS, true)
+
+        /**
+         * Synchronous read for repository-level media resolution. The durable offline cache
+         * must respect the same user-facing automatic media setting as the chat UI.
+         */
+        fun isMediaAutoDownloadEnabled(context: Context): Boolean = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_MEDIA_AUTO_DOWNLOAD, true)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

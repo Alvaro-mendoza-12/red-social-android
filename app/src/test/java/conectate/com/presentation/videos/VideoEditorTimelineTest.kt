@@ -1,10 +1,63 @@
 package conectate.com.presentation.videos
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class VideoEditorTimelineTest {
+
+    @Test
+    fun editorInitializationGuard_preservesSameUriProjectAndAcceptsNewUri() {
+        assertFalse(
+            shouldInitializeEditorTimeline(
+                existingInitialUri = "content://videos/original",
+                hasVideoProject = true,
+                requestedUri = "content://videos/original"
+            )
+        )
+        assertTrue(
+            shouldInitializeEditorTimeline(
+                existingInitialUri = "content://videos/original",
+                hasVideoProject = true,
+                requestedUri = "content://videos/new"
+            )
+        )
+        assertTrue(
+            shouldInitializeEditorTimeline(
+                existingInitialUri = null,
+                hasVideoProject = false,
+                requestedUri = "content://videos/original"
+            )
+        )
+    }
+
+    @Test
+    fun editorTemporaryFileGuard_acceptsOnlyDirectChildren() {
+        val directory = File(System.getProperty("java.io.tmpdir"), "novvin-editor-exports")
+
+        assertTrue(isDirectChildOfDirectory(directory, File(directory, "edited.mp4")))
+        assertFalse(isDirectChildOfDirectory(directory, File(File(directory, "nested"), "edited.mp4")))
+        assertFalse(isDirectChildOfDirectory(directory, File(directory.parentFile, "edited.mp4")))
+    }
+
+    @Test
+    fun appendVideoClips_capsProjectAtFortyFiveSeconds() {
+        val existing = EditorClip(id = 1L, durationMs = 30_000L, sourceDurationMs = 30_000L)
+        val candidate = EditorClip(id = 2L, durationMs = 25_000L, sourceDurationMs = 25_000L)
+        val timeline = EditorTimeline(
+            tracks = listOf(EditorTrack(type = TrackType.VIDEO, clips = listOf(existing)))
+        )
+
+        val updated = timeline.appendVideoClipsWithinLimit(listOf(candidate))
+
+        val clips = updated.tracks.first { it.type == TrackType.VIDEO }.clips
+        assertEquals(2, clips.size)
+        assertEquals(15_000L, clips.last().durationMs)
+        assertEquals(45_000L, updated.durationMs())
+    }
 
     @Test
     fun sanitizeTrimRange_preservesRequestedValidRange() {
@@ -116,6 +169,42 @@ class VideoEditorTimelineTest {
         assertEquals(listOf(1_000L, 5_000L), clips.map { it.startOffsetMs })
         assertEquals(listOf(0L, 4_000L), clips.map { it.startMs })
         assertEquals(10_000L, split.durationMs())
+    }
+
+    @Test
+    fun sanitizeTrimRange_capsAnyExportableFragmentAtFortyFiveSeconds() {
+        assertEquals(
+            20_000L..65_000L,
+            sanitizeTrimRange(120_000L, 20_000L, 110_000L)
+        )
+    }
+
+    @Test
+    fun sanitizeTrimRange_respectsRemainingProjectBudget() {
+        assertEquals(
+            5_000L..15_000L,
+            sanitizeTrimRange(
+                sourceDurationMs = 60_000L,
+                requestedStartMs = 5_000L,
+                requestedEndMs = 40_000L,
+                maximumClipDurationMs = 10_000L
+            )
+        )
+    }
+
+    @Test
+    fun moveTrimRange_preservesLengthAndClampsToSource() {
+        assertEquals(30_000L..75_000L, moveTrimRange(93_000L, 45_000L, 30_000L))
+        assertEquals(48_000L..93_000L, moveTrimRange(93_000L, 45_000L, 80_000L))
+    }
+
+    @Test
+    fun losslessTrimConfiguration_acceptsPlainClipAndRejectsEffects() {
+        val plain = EditorClip(id = 8L, durationMs = 45_000L, sourceDurationMs = 93_000L)
+        val filtered = plain.copy(id = 9L, filterType = FilterType.SEPIA)
+
+        assertTrue(plain.isLosslessTrimConfiguration())
+        assertFalse(filtered.isLosslessTrimConfiguration())
     }
 
     @Test

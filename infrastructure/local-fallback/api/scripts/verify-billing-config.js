@@ -8,7 +8,7 @@ const serviceAccountReady = Boolean(
   configuration.serviceAccount?.client_email && configuration.serviceAccount?.private_key,
 )
 const packageCount = Object.keys(configuration.packages || {}).length
-const catalogReady = packageCount >= 6 && packageCount <= 8
+const catalogReady = packageCount === 8
 const billingFlagEnabled = ['1', 'true', 'yes', 'on'].includes(
   String(process.env.LIVE_COIN_PURCHASES_ENABLED || '').trim().toLowerCase(),
 )

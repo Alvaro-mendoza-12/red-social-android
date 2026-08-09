@@ -28,4 +28,8 @@
     <string name="live_overlay_empty">Sin mensajes aún</string>
     <string name="live_overlay_user_fallback">Usuario</string>
     <string name="live_overlay_comment_format">%1$s: %2$s</string>
+    <string name="live_notification_channel_name">Directos</string>
+    <string name="live_notification_channel_description">Avisos cuando una persona que sigues inicia un directo</string>
+    <string name="live_notification_summary_title">Directos de personas que sigues</string>
+    <string name="live_notification_summary_body">Tienes directos nuevos para ver</string>
 </resources>

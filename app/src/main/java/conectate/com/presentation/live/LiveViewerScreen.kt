@@ -13,11 +13,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -26,6 +34,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.navigation.Screen
@@ -68,6 +79,10 @@ fun LiveViewerScreen(
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
     val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
+    val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
+    val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
+    val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val hostTrack = remoteTracks.values.firstOrNull()
@@ -77,22 +92,53 @@ fun LiveViewerScreen(
     var exitRequested by remember(liveId) { mutableStateOf(false) }
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
     var showGiftSheet by remember(liveId) { mutableStateOf(false) }
+    var showViewerToolsSheet by remember(liveId) { mutableStateOf(false) }
     var showRechargeDialog by remember(liveId) { mutableStateOf(false) }
-    var invitationAwaitingPermission by remember(liveId) { mutableStateOf<String?>(null) }
+    var rechargeMinimumCoins by remember(liveId) { mutableIntStateOf(0) }
+    var permissionAction by remember(liveId) { mutableStateOf<String?>(null) }
+    var showJoinRequestDialog by remember(liveId) { mutableStateOf(false) }
+    var showDrawGuessDialog by remember(liveId) { mutableStateOf(false) }
+    var showChannelPointsDialog by remember(liveId) { mutableStateOf(false) }
+    var requestedCamera by remember(liveId) { mutableStateOf(false) }
+    var connectedGuestInvitationId by remember(liveId) { mutableStateOf<String?>(null) }
     val exitGate = remember(liveId) { LiveViewerExitGate() }
     val currentUserId = viewModel.getCurrentUserId().orEmpty()
     val pendingInvitation = guestInvitations.firstOrNull {
-        it.status == "pending" && it.inviteeUserId.equals(currentUserId, ignoreCase = true)
+        it.status == "pending" && it.initiatedBy == "host" &&
+            it.inviteeUserId.equals(currentUserId, ignoreCase = true)
     }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val invitationId = invitationAwaitingPermission
-        invitationAwaitingPermission = null
-        if (granted && invitationId != null) {
-            viewModel.respondToGuestInvitation(liveId, invitationId, accept = true)
-        } else if (!granted) {
-            AppFeedbackBus.showError("El micrófono es necesario para participar como invitado.")
+    val ownJoinRequest = guestInvitations.firstOrNull {
+        it.initiatedBy == "viewer" && it.inviteeUserId.equals(currentUserId, ignoreCase = true)
+    }
+    val guestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val action = permissionAction
+        permissionAction = null
+        val audioGranted = grants[Manifest.permission.RECORD_AUDIO] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val cameraRequired = action?.endsWith(":camera") == true
+        val cameraGranted = !cameraRequired || grants[Manifest.permission.CAMERA] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (!audioGranted || !cameraGranted) {
+            AppFeedbackBus.showError("Concede los permisos necesarios para participar en el live.")
+            return@rememberLauncherForActivityResult
+        }
+        when {
+            action?.startsWith("accept:") == true -> {
+                val invitationId = action.substringAfter("accept:").substringBefore(":")
+                viewModel.respondToGuestInvitation(
+                    liveId,
+                    invitationId,
+                    accept = true,
+                    publishCamera = cameraRequired
+                )
+            }
+            action?.startsWith("request:") == true -> {
+                requestedCamera = cameraRequired
+                showJoinRequestDialog = false
+                viewModel.requestToJoin(liveId)
+            }
         }
     }
 
@@ -133,9 +179,42 @@ fun LiveViewerScreen(
         }
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, liveId) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> viewModel.setChannelPointsForeground(true)
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> viewModel.setChannelPointsForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        viewModel.startChannelPoints(liveId)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.stopChannelPoints()
+        }
+    }
+
     LaunchedEffect(session?.stream?.id) {
         val sessionId = session?.stream?.id ?: return@LaunchedEffect
         viewModel.startCollaborationPolling(sessionId)
+    }
+
+    LaunchedEffect(ownJoinRequest?.id, ownJoinRequest?.status, requestedCamera) {
+        val request = ownJoinRequest ?: return@LaunchedEffect
+        if (request.status != "accepted" || connectedGuestInvitationId == request.id) return@LaunchedEffect
+        viewModel.connectLiveKit(
+            liveId = liveId,
+            role = "guest",
+            publishAudio = true,
+            publishCamera = requestedCamera
+        ).onSuccess {
+            connectedGuestInvitationId = request.id
+            AppFeedbackBus.show(if (requestedCamera) "Te uniste con cámara" else "Te uniste por voz")
+        }.onFailure {
+            AppFeedbackBus.showError("La solicitud fue aceptada, pero no se pudo abrir la conexión de invitado.")
+        }
     }
 
     LaunchedEffect(
@@ -211,7 +290,10 @@ fun LiveViewerScreen(
             receiverName = stream.hostName.ifBlank { "creador" },
             liveStreamId = stream.id,
             onDismiss = { showGiftSheet = false },
-            onRecharge = { showRechargeDialog = true },
+            onRecharge = { minimumCoins ->
+                rechargeMinimumCoins = minimumCoins
+                showRechargeDialog = true
+            },
             onGiftSent = { receipt ->
                 viewModel.announceCommittedGift(receipt)
                 AppFeedbackBus.show("Regalo enviado")
@@ -222,7 +304,11 @@ fun LiveViewerScreen(
     if (showRechargeDialog) {
         GooglePlayRechargeDialog(
             accountId = viewModel.getCurrentUserId().orEmpty(),
-            onDismiss = { showRechargeDialog = false }
+            minimumCoins = rechargeMinimumCoins,
+            onDismiss = {
+                showRechargeDialog = false
+                rechargeMinimumCoins = 0
+            }
         )
     }
 
@@ -230,21 +316,52 @@ fun LiveViewerScreen(
         AlertDialog(
             onDismissRequest = { },
             title = { Text("Invitación al live") },
-            text = { Text("El creador te invita a participar por voz. Puedes aceptar o rechazar.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("El creador te invita a participar. Elige si quieres activar tu cámara o entrar solo por voz.")
+                    TextButton(onClick = {
+                        permissionAction = "accept:${pendingInvitation.id}:camera"
+                        guestPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA))
+                    }) { Text("Unirme con cámara") }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                        viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = true)
+                        viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = true, publishCamera = false)
                     } else {
-                        invitationAwaitingPermission = pendingInvitation.id
-                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        permissionAction = "accept:${pendingInvitation.id}:voice"
+                        guestPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
                     }
-                }) { Text("Aceptar") }
+                }) { Text("Solo voz") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = false)
                 }) { Text("Rechazar") }
+            }
+        )
+    }
+
+    if (showJoinRequestDialog) {
+        AlertDialog(
+            onDismissRequest = { showJoinRequestDialog = false },
+            title = { Text("Solicitar unirme") },
+            text = { Text("El anfitrión debe aprobar tu solicitud. Podrás salir o apagar cámara y micrófono después.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    permissionAction = "request:camera"
+                    guestPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA))
+                }) { Text("Con cámara") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        permissionAction = "request:voice"
+                        guestPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                    }) { Text("Solo voz") }
+                    TextButton(onClick = { showJoinRequestDialog = false }) { Text("Cancelar") }
+                }
             }
         )
     }
@@ -255,6 +372,81 @@ fun LiveViewerScreen(
         !isVideoEnabled && currentSource == conectate.com.data.model.LiveSource.SCREEN -> "PANTALLA DESACTIVADA"
         !isVideoEnabled -> "CÁMARA DESACTIVADA"
         else -> null
+    }
+
+    if (showDrawGuessDialog && collaborationCapabilities.drawGuessEnabled) {
+        LiveDrawGuessDialog(
+            liveId = liveId,
+            currentUserId = currentUserId,
+            isHost = false,
+            participantIds = emptyList(),
+            onDismiss = { showDrawGuessDialog = false }
+        )
+    }
+
+    if (showChannelPointsDialog && channelPoints.available != false) {
+        LiveChannelPointsDialog(
+            state = channelPoints,
+            isHost = false,
+            onDismiss = { showChannelPointsDialog = false },
+            onRedeem = { viewModel.redeemChannelPointReward(liveId, it) },
+            onUpdateSettings = { _, _, _, _ -> },
+            onCreateReward = { _, _, _, _, _ -> },
+            onUpdateRedemption = { _, _ -> },
+        )
+    }
+
+    val canRequestJoin =
+        collaborationCapabilities.guestsBattlesEnabled &&
+            collaborationCapabilities.sfuAvailable &&
+            stream?.allowGuestRequests == true
+    val hasViewerSecondaryActions =
+        collaborationCapabilities.drawGuessEnabled ||
+            channelPoints.available != false ||
+            canRequestJoin ||
+            moderation.canModerate
+
+    if (showViewerToolsSheet) {
+        LiveSecondaryActionsSheet(
+            title = "Más opciones",
+            onDismiss = { showViewerToolsSheet = false },
+            actions = buildList {
+                if (canRequestJoin) {
+                    val requestStatus = ownJoinRequest?.status
+                    add(
+                        LiveSecondaryAction(
+                            key = "join",
+                            label = when (requestStatus) {
+                                "pending" -> "Solicitud enviada"
+                                "accepted" -> "Participando en el live"
+                                else -> "Solicitar unirme"
+                            },
+                            description = when (requestStatus) {
+                                "pending" -> "El anfitrión todavía debe aceptar o rechazar tu solicitud."
+                                "accepted" -> "Tu participación ya fue aceptada."
+                                else -> "Pide participar por voz o con cámara; el anfitrión decide."
+                            },
+                            enabled = requestStatus !in setOf("pending", "accepted"),
+                            onClick = { showJoinRequestDialog = true },
+                        )
+                    )
+                }
+                if (collaborationCapabilities.drawGuessEnabled) {
+                    add(LiveSecondaryAction("game", "Jugar", "Abrir dibujo y adivinanza dentro del live.") { showDrawGuessDialog = true })
+                }
+                if (channelPoints.available != false) {
+                    add(
+                        LiveSecondaryAction("points", "Puntos del canal · ${channelPoints.balance}", "Consultar saldo, recompensas y canjes gratuitos.") {
+                            viewModel.refreshChannelPoints(liveId, includeRedemptions = false)
+                            showChannelPointsDialog = true
+                        }
+                    )
+                }
+                if (moderation.canModerate) {
+                    add(LiveSecondaryAction("moderation", "Moderación", "Administrar comentarios y espectadores autorizados.") { showModerationDialog = true })
+                }
+            },
+        )
     }
 
     LiveSessionScaffold(
@@ -271,6 +463,7 @@ fun LiveViewerScreen(
         },
         comments = comments,
         reactions = reactions,
+        supporters = liveSupporters,
         onSendComment = viewModel::sendComment,
         onSendReaction = viewModel::sendReaction,
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
@@ -280,6 +473,9 @@ fun LiveViewerScreen(
             conectate.com.data.model.LiveSource.SCREEN -> "Esperando pantalla del creador…"
             conectate.com.data.model.LiveSource.AUDIO -> "Escuchando al creador…"
             conectate.com.data.model.LiveSource.CAMERA -> "Conectando directo…"
+        },
+        topStatusBannerText = activeBattle?.let {
+            "BATALLA · ${it.leftScore} – ${it.rightScore}"
         },
         leadingTopBarAction = {
             IconButton(onClick = ::leaveViewer) {
@@ -317,21 +513,31 @@ fun LiveViewerScreen(
                     context.startActivity(Intent.createChooser(shareIntent, "Compartir live"))
                 }
             )
-            LiveActionChip(
-                text = "Salir",
-                onClick = ::leaveViewer
-            )
+            if (hasViewerSecondaryActions) {
+                LiveActionChip(text = "Más", onClick = { showViewerToolsSheet = true })
+            }
         },
         floatingOverlay = {
             GiftCelebrationOverlay(events = giftEvents)
+            LiveKitGuestVideoGrid(
+                videos = liveKitRemoteVideos,
+                onAttach = viewModel::attachLiveKitRenderer,
+                onDetach = viewModel::detachLiveKitRenderer,
+                maxSlots = collaborationCapabilities.maxGuests.coerceIn(1, 4),
+                showEmptySlots = stream?.allowGuestRequests == true,
+                emptySlotLabel = when (ownJoinRequest?.status) {
+                    "pending" -> "Solicitud enviada"
+                    "accepted" -> "Participando"
+                    else -> "Solicitar unirme"
+                },
+                onEmptySlotClick = {
+                    if (ownJoinRequest == null || ownJoinRequest.status in setOf("rejected", "expired", "canceled")) {
+                        showJoinRequestDialog = true
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+            )
         },
-        creatorControls = {
-            if (moderation.canModerate) {
-                LiveActionChip(
-                    text = "Moderar",
-                    onClick = { showModerationDialog = true }
-                )
-            }
-        }
+        creatorControls = {}
     )
 }

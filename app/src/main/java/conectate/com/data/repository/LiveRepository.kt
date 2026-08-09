@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -158,6 +159,8 @@ class LiveRepository @Inject constructor(
     private var hostSessionStartedElapsedMs: Long = 0L
     @Volatile
     private var lastGhostReconciliationUserId: String? = null
+    @Volatile
+    private var connectedLiveKitLiveId: String? = null
 
     // Live stats (host-side)
     private var peakViewerCount: Int = 0
@@ -211,6 +214,8 @@ class LiveRepository @Inject constructor(
 
     private val _activeBattle = MutableStateFlow<LiveBattle?>(null)
     val activeBattle: StateFlow<LiveBattle?> = _activeBattle.asStateFlow()
+    private val _liveSupporters = MutableStateFlow<List<conectate.com.data.model.LiveSupporter>>(emptyList())
+    val liveSupporters: StateFlow<List<conectate.com.data.model.LiveSupporter>> = _liveSupporters.asStateFlow()
 
     private val _moderationState = MutableStateFlow(LiveModerationState())
     val moderationState: StateFlow<LiveModerationState> = _moderationState.asStateFlow()
@@ -270,6 +275,20 @@ class LiveRepository @Inject constructor(
             } else {
                 refreshActiveStreams()
                 subscribeToLiveStreams()
+            }
+        }
+        scope.launch {
+            liveKitRoomBridge.state.collect { state ->
+                if (state == LiveKitRoomBridge.State.DISCONNECTED) {
+                    val liveId = connectedLiveKitLiveId
+                    if (!liveId.isNullOrBlank()) {
+                        connectedLiveKitLiveId = null
+                        val token = localAccessToken()
+                        if (token.isNotBlank()) {
+                            localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
+                        }
+                    }
+                }
             }
         }
     }
@@ -536,7 +555,6 @@ class LiveRepository @Inject constructor(
                 _collaborationCapabilities.value = it
             }
         }
-
     suspend fun refreshGuestInvitations(liveId: String): Result<List<LiveGuestInvitation>> =
         withContext(Dispatchers.IO) {
             if (!usesUbuntuPersistence()) return@withContext Result.success(emptyList())
@@ -560,6 +578,38 @@ class LiveRepository @Inject constructor(
             }
         }
 
+    suspend fun requestToJoinLive(liveId: String): Result<LiveGuestInvitation> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.requestToJoinLive(token, normalizedId).onSuccess { invitation ->
+                _guestInvitations.update { current ->
+                    listOf(invitation) + current.filterNot { it.id == invitation.id }
+                }
+            }
+        }
+
+    suspend fun setGuestRequestsAllowed(liveId: String, allowed: Boolean): Result<LiveStream> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.updateLiveState(
+                accessToken = token,
+                liveId = normalizedId,
+                allowGuestRequests = allowed
+            ).onSuccess { updated ->
+                _activeSession.update { current ->
+                    current?.takeIf { it.stream.id.equals(normalizedId, ignoreCase = true) }
+                        ?.copy(stream = updated)
+                        ?: current
+                }
+            }
+        }
+
     suspend fun respondToGuestInvitation(
         liveId: String,
         invitationId: String,
@@ -569,7 +619,7 @@ class LiveRepository @Inject constructor(
         if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         val normalizedId = normalizeLiveSessionId(liveId)
             ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
-        localFallbackApiClient.respondToLiveGuestInvitation(
+        return@withContext localFallbackApiClient.respondToLiveGuestInvitation(
             token,
             normalizedId,
             invitationId,
@@ -590,6 +640,28 @@ class LiveRepository @Inject constructor(
             }
         }
 
+    suspend fun refreshActiveBattle(liveId: String): Result<LiveBattle?> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.loadActiveLiveBattle(token, normalizedId).onSuccess {
+                _activeBattle.value = it
+            }
+        }
+
+    suspend fun refreshLiveSupporters(liveId: String): Result<List<conectate.com.data.model.LiveSupporter>> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.loadLiveSupporters(token, normalizedId).onSuccess {
+                _liveSupporters.value = it
+            }
+        }
+
     suspend fun endBattle(liveId: String): Result<LiveBattle> = withContext(Dispatchers.IO) {
         val battle = _activeBattle.value
             ?: return@withContext Result.failure(Exception("No hay una batalla activa"))
@@ -600,8 +672,39 @@ class LiveRepository @Inject constructor(
         }
     }
 
+    suspend fun removeLiveGuest(liveId: String, guestUserId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.removeLiveGuest(token, normalizedId, guestUserId)
+        }
+
+    suspend fun muteLiveGuest(liveId: String, guestUserId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.muteLiveGuest(token, normalizedId, guestUserId)
+        }
+
     val liveKitState: StateFlow<LiveKitRoomBridge.State>
         get() = liveKitRoomBridge.state
+
+    val liveKitRemoteVideos: StateFlow<List<LiveKitRoomBridge.RemoteVideo>>
+        get() = liveKitRoomBridge.remoteVideos
+
+    fun attachLiveKitRenderer(
+        video: LiveKitRoomBridge.RemoteVideo,
+        renderer: io.livekit.android.renderer.TextureViewRenderer
+    ): Boolean = liveKitRoomBridge.attachRenderer(video, renderer)
+
+    fun detachLiveKitRenderer(
+        video: LiveKitRoomBridge.RemoteVideo,
+        renderer: io.livekit.android.renderer.TextureViewRenderer
+    ) = liveKitRoomBridge.detachRenderer(video, renderer)
 
     suspend fun connectLiveKit(
         liveId: String,
@@ -616,17 +719,31 @@ class LiveRepository @Inject constructor(
         if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         val normalizedId = normalizeLiveSessionId(liveId)
             ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
-        localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
-            .fold(
-                onSuccess = { session ->
-                    liveKitRoomBridge.connect(session, publishAudio, publishCamera)
-                },
-                onFailure = { error -> Result.failure(error) }
+        val session = localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
+            .getOrElse { return@withContext Result.failure(it) }
+        val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera)
+        if (connected.isFailure) return@withContext connected
+        val marked = localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "connected")
+        if (marked.isFailure) {
+            liveKitRoomBridge.disconnectAwait()
+            return@withContext Result.failure(
+                marked.exceptionOrNull() ?: Exception("No se pudo confirmar el participante del live.")
             )
+        }
+        connectedLiveKitLiveId = normalizedId
+        Result.success(Unit)
     }
 
     fun disconnectLiveKit() {
+        val liveId = connectedLiveKitLiveId
+        connectedLiveKitLiveId = null
         liveKitRoomBridge.disconnect()
+        if (!liveId.isNullOrBlank()) scope.launch {
+            val token = localAccessToken()
+            if (token.isNotBlank()) {
+                localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
+            }
+        }
     }
 
     suspend fun createLiveStream(
@@ -900,6 +1017,25 @@ class LiveRepository @Inject constructor(
         livePreferences.setCameraFilter(filter)
         updateCameraFilterPerformanceForSource()
         webRTCManager?.setCameraFilter(filter)
+    }
+
+    fun switchCamera(): Boolean {
+        val session = _activeSession.value ?: return false
+        if (
+            session.role != LiveRole.HOST ||
+            _currentSource.value != LiveSource.CAMERA ||
+            !_isVideoEnabled.value ||
+            _isMediaTransitioning.value
+        ) return false
+        val manager = webRTCManager ?: return false
+        return runCatching {
+            manager.switchCamera()
+            true
+        }.getOrElse { error ->
+            android.util.Log.e("LiveRepository", "Unable to switch live camera", error)
+            _runtimeErrors.tryEmit("No se pudo cambiar de cámara. Inténtalo nuevamente.")
+            false
+        }
     }
 
     fun startCamera(micEnabledOverride: Boolean? = null): Boolean {
@@ -2463,11 +2599,21 @@ class LiveRepository @Inject constructor(
                         state == org.webrtc.PeerConnection.IceConnectionState.COMPLETED
                 }
                 if (!connected && _activeSession.value != null) {
-                    manager.refreshManagedIceServers(force = true)
-                    _runtimeErrors.tryEmit(
-                        "El directo se encontró, pero el audio o video no pudo atravesar la red. " +
-                            "Se renovó la conexión; vuelve a abrir el directo si no aparece en unos segundos."
-                    )
+                    // Updating the TURN list alone does not make an existing
+                    // PeerConnection gather new relay candidates. Perform a
+                    // real ICE restart while preserving camera/audio tracks.
+                    manager.recoverAfterNetworkChange(reason = "live-media-timeout")
+                    delay(15_000L)
+                    val recovered = manager.peerConnectionStates.value.values.any { state ->
+                        state == org.webrtc.PeerConnection.IceConnectionState.CONNECTED ||
+                            state == org.webrtc.PeerConnection.IceConnectionState.COMPLETED
+                    }
+                    if (!recovered && _activeSession.value != null) {
+                        _runtimeErrors.tryEmit(
+                            "El directo sigue activo, pero esta red bloqueó el audio o video incluso después de reconectar. " +
+                                "Prueba otra red o vuelve a entrar."
+                        )
+                    }
                 }
             } finally {
                 mediaConnectionTimeoutJob = null
@@ -2655,6 +2801,20 @@ class LiveRepository @Inject constructor(
             .onFailure { error ->
                 android.util.Log.e("LiveRepository", "Unable to reset live media cleanly", error)
             }
+        val collaborationLiveId = connectedLiveKitLiveId
+        connectedLiveKitLiveId = null
+        if (!collaborationLiveId.isNullOrBlank()) {
+            runCatching {
+                val token = localAccessToken()
+                if (token.isNotBlank()) {
+                    localFallbackApiClient.updateLiveParticipantState(
+                        token,
+                        collaborationLiveId,
+                        "disconnected"
+                    )
+                }
+            }
+        }
         runCatching { liveKitRoomBridge.disconnectAwait() }
             .onFailure { error ->
                 android.util.Log.w("LiveRepository", "Unable to close collaboration audio cleanly", error)

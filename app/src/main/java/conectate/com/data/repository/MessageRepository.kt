@@ -1,11 +1,16 @@
 package conectate.com.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.provider.OpenableColumns
 import conectate.com.BuildConfig
 import conectate.com.core.concurrency.newSafeScope
+import conectate.com.core.media.ChatMediaOfflineCache
 import conectate.com.core.messaging.MessageStatusNormalizer
+import conectate.com.core.messaging.PendingMessageSyncPolicy
+import conectate.com.data.local.prefs.MessagesPreferences
 import conectate.com.data.model.Chat
 import conectate.com.data.model.ChatParticipant
 import conectate.com.data.model.ChatWithLastMessage
@@ -137,11 +142,17 @@ class MessageRepository @Inject constructor(
     // 6. Transient ID Mapper (FCM -> UUID) allows replies to work even during race conditions
     private val transientIdMap = ConcurrentHashMap<String, String>()
     private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
+    private val offlineMediaCache = ChatMediaOfflineCache.from(
+        context = context,
+        accountIdProvider = { authService.getCurrentUserId() },
+        automaticMediaEnabled = { MessagesPreferences.isMediaAutoDownloadEnabled(context) }
+    )
     private val mediaResolver = MessageMediaResolver(
         storageService = storageService,
         authService = authService,
         supabaseConfig = supabaseConfig,
-        sessionStateStore = sessionStateStore
+        sessionStateStore = sessionStateStore,
+        offlineMediaCache = offlineMediaCache
     )
     private val reportStore = MessageReportStore(
         context = context,
@@ -1497,8 +1508,11 @@ class MessageRepository @Inject constructor(
         try {
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.success(0)
-            var token = authService.getAccessToken()
-                ?: return@withContext Result.success(0)
+            // A restored network can coincide with an expired access token. Use the
+            // normal refresh path here; otherwise queued messages remain stuck until
+            // a later unrelated session event happens to refresh the token.
+            var token = authService.ensureValidAccessToken()
+                .getOrElse { return@withContext Result.success(0) }
 
             val pendingMessages = messageDao.getPendingSendMessages()
                 .take(maxBatch.coerceAtLeast(1))
@@ -1514,7 +1528,10 @@ class MessageRepository @Inject constructor(
                     PendingSendOutcome.RETRY_LATER ->
                         messageDao.updateSyncStatus(pending.id, "sending", false, "send")
                     PendingSendOutcome.TERMINAL_FAILURE ->
-                        messageDao.updateSyncStatus(pending.id, "failed", false, "send")
+                        // Do not retry a known validation/permission failure every
+                        // time the network changes. It remains visible as failed,
+                        // but it no longer blocks or pollutes the automatic queue.
+                        messageDao.updateSyncStatus(pending.id, "failed", false, null)
                 }
             }
 
@@ -1617,9 +1634,10 @@ class MessageRepository @Inject constructor(
 
             val serverMessage = if (serverResult.isSuccess) serverResult.message else null
 
-            val syncedMessage = (serverMessage ?: pending.toDomain()).copy(
-                chat_id = pending.chat_id.trim().lowercase(),
-                status = "sent"
+            val syncedMessage = PendingMessageSyncPolicy.acknowledgedMessage(
+                serverMessage = serverMessage,
+                queuedMessage = pendingMessage,
+                chatId = pending.chat_id
             )
             messageDao.insertMessage(
                 conectate.com.data.local.entity.MessageEntity.fromDomain(
@@ -2402,6 +2420,14 @@ class MessageRepository @Inject constructor(
             }
             android.util.Log.d("MessageRepository", "🔄 Optimistic update applied to flow")
 
+            // Offline-first: once the message (and any selected media) is safely
+            // persisted, do not make the composer wait for an HTTP timeout. The
+            // connectivity observer/WorkManager will retry this same id later.
+            if (!hasValidatedNetwork()) {
+                android.util.Log.d("MessageRepository", "Message queued locally until connectivity returns")
+                return Result.success(msg)
+            }
+
             val token = authService.ensureValidAccessToken().getOrElse { error ->
                 android.util.Log.w("MessageRepository", "Message queued until the session can reconnect", error)
                 runCatching {
@@ -2424,7 +2450,7 @@ class MessageRepository @Inject constructor(
                         if (isRetryableNetworkFailure(error.message)) {
                             return Result.success(msg)
                         }
-                        messageDao.updateSyncStatus(id, "failed", false, "send")
+                        messageDao.updateSyncStatus(id, "failed", false, null)
                         return Result.failure(Exception(reason))
                     }
                 msg = msg.copy(
@@ -2552,8 +2578,9 @@ class MessageRepository @Inject constructor(
                     return Result.success(msg)
                 }
 
-                // A server-side validation or permission error remains visible for manual retry.
-                messageDao.updateSyncStatus(id, "failed", false, "send")
+                // A server-side validation or permission error remains visible, but
+                // must not be auto-retried as if it were a connectivity failure.
+                messageDao.updateSyncStatus(id, "failed", false, null)
 
                 runCatching {
                     operationGuard.audit(
@@ -2587,7 +2614,7 @@ class MessageRepository @Inject constructor(
                 return Result.success(pending)
             }
              // Update Room to FAILED status
-            runCatching { messageDao.updateSyncStatus(id, "failed", false, "send") }
+            runCatching { messageDao.updateSyncStatus(id, "failed", false, null) }
             var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
                 runCatching {
@@ -4177,7 +4204,10 @@ class MessageRepository @Inject constructor(
         }.toMap()
     }
     
-    suspend fun getPlayableUrl(path: String): Result<String> = mediaResolver.getPlayableUrl(path)
+    suspend fun getPlayableUrl(
+        path: String,
+        allowOfflineMediaCache: Boolean = true
+    ): Result<String> = mediaResolver.getPlayableUrl(path, allowOfflineMediaCache)
 
     fun getShareableUrl(path: String): Result<String> = mediaResolver.getShareableUrl(path)
 
@@ -4678,6 +4708,15 @@ class MessageRepository @Inject constructor(
             normalized.contains("socket") ||
             normalized.contains("broken pipe") ||
             normalized.contains("connection reset")
+    }
+
+    private fun hasValidatedNetwork(): Boolean {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     private fun isRetryableBackendFailure(statusCode: Int, body: String?): Boolean {

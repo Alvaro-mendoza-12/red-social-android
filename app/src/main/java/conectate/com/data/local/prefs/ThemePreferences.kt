@@ -13,7 +13,8 @@ class ThemePreferences @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
 
-    private val _isDarkMode = MutableStateFlow(prefs.getBoolean("is_dark_mode", false))
+    // Fresh installs start in dark mode; an existing explicit user choice is preserved.
+    private val _isDarkMode = MutableStateFlow(prefs.getBoolean("is_dark_mode", true))
     val isDarkMode: StateFlow<Boolean> = _isDarkMode
 
     private val _appTheme = MutableStateFlow(

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import coil.compose.rememberAsyncImagePainter
 import conectate.com.R
 import conectate.com.presentation.components.ImageCropPreset
@@ -78,7 +79,8 @@ fun RegisterScreen(
         runCatching { LocalDate.parse(birthDate) }.getOrNull()
     }
     val birthDateIsValid = parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
-    val registerBackStackEntry = remember(navController) {
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val registerBackStackEntry = remember(currentBackStackEntry) {
         navController.getBackStackEntry(Screen.Register.route)
     }
     val privacyAcceptedFromDocument by registerBackStackEntry.savedStateHandle

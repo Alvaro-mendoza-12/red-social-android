@@ -170,6 +170,14 @@ async function expectCode(action, code) {
 
 async function run() {
   assertFileBackedServiceAccount()
+  const completeCatalog = process.env.GOOGLE_PLAY_COIN_PACKAGES_JSON
+  process.env.GOOGLE_PLAY_COIN_PACKAGES_JSON = JSON.stringify(
+    Object.fromEntries(Object.entries(packages).slice(0, 7)),
+  )
+  assert.equal(_test.googlePlayConfiguration().enabled, false)
+  process.env.GOOGLE_PLAY_COIN_PACKAGES_JSON = completeCatalog
+  assert.equal(_test.googlePlayConfiguration().enabled, true)
+
   purchaseMode = { state: 0, token: 'valid' }
   const valid = await verify('novvin_coins_70', 'purchase-token-valid')
   assert.equal(valid.status, 'credited')
@@ -261,7 +269,29 @@ async function run() {
     .filter(entry => entry.table_name === 'wallet_transactions')
     .filter(entry => entry.row.transaction_type === 'google_play_refund')
   assert.equal(refundTransactions.length, 2)
-  console.log('coin purchase flow tests passed: valid, duplicate, pending, cancelled, unknown, google error, refund, refund replay, refund debt')
+
+  const catalogPool = createPool()
+  let expectedCatalogBalance = 0
+  for (const [productId, coins] of Object.entries(packages)) {
+    purchaseMode = { state: 0, token: `catalog-${coins}` }
+    const result = await _test.verifyGooglePlayPurchaseRpc(catalogPool, { sub: userId }, {
+      p_product_id: productId,
+      p_purchase_token: `purchase-token-catalog-${coins}`,
+    })
+    expectedCatalogBalance += coins
+    assert.equal(result.status, 'credited')
+    assert.equal(result.credited, true)
+    assert.equal(result.coins, coins)
+    assert.equal(result.balance_diamonds, expectedCatalogBalance)
+  }
+  const catalogPurchases = [...catalogPool.state.compat.values()]
+    .filter(entry => entry.table_name === 'billing_purchases')
+  assert.equal(catalogPurchases.length, 8)
+  assert.deepEqual(
+    Object.fromEntries(catalogPurchases.map(entry => [entry.row.product_id, entry.row.coins])),
+    packages,
+  )
+  console.log('coin purchase flow tests passed: complete/missing catalog, all 8 credits, duplicate, pending, cancelled, unknown, google error, refund, refund replay, refund debt')
 }
 
 run().catch(error => {

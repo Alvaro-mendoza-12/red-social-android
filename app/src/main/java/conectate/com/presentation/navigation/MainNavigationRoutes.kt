@@ -356,6 +356,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.CreatorAnalytics.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.analytics.CreatorAnalyticsScreen(navController = navController)
+        }
+    }
+
     composable(Screen.Novvin.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.messages.NovvinChatScreen(

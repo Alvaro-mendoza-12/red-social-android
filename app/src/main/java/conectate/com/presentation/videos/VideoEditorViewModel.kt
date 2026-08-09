@@ -2,8 +2,12 @@ package conectate.com.presentation.videos
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.net.Uri
 import android.util.Log
 import androidx.appcompat.content.res.AppCompatResources
@@ -62,6 +66,27 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val MIN_SPLIT_FRAGMENT_MS = 500L
+private const val EDITOR_EXPORT_DIRECTORY = "video-editor-exports"
+
+internal fun isDirectChildOfDirectory(directory: File, candidate: File): Boolean = runCatching {
+    candidate.canonicalFile.parentFile == directory.canonicalFile
+}.getOrDefault(false)
+
+internal fun resolveOwnedEditorExportFile(context: Context, uri: Uri?): File? {
+    if (uri == null || uri.scheme != "file") return null
+    val path = uri.path?.takeIf { it.isNotBlank() } ?: return null
+    val directory = File(context.cacheDir, EDITOR_EXPORT_DIRECTORY)
+    val candidate = File(path)
+    return candidate.takeIf {
+        it.extension.equals("mp4", ignoreCase = true) && isDirectChildOfDirectory(directory, it)
+    }
+}
+
+private fun createEditorExportFile(context: Context, prefix: String): File {
+    val directory = File(context.cacheDir, EDITOR_EXPORT_DIRECTORY)
+    check(directory.exists() || directory.mkdirs()) { "No se pudo preparar el directorio temporal" }
+    return File(directory, "${prefix}_${System.currentTimeMillis()}_${System.nanoTime()}.mp4")
+}
 
 @HiltViewModel
 class VideoEditorViewModel @Inject constructor() : ViewModel() {
@@ -150,25 +175,40 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     private fun resolveDurationMs(context: Context, uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
         return try {
-            val retriever = MediaMetadataRetriever()
             retriever.setDataSource(context, uri)
             val raw = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
             raw?.toLongOrNull()?.coerceIn(1_000L, 180_000L) ?: 30_000L
         } catch (_: Exception) {
             30_000L
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 
     fun setInitialVideo(context: Context, uri: Uri) {
+        // LaunchedEffect(videoUri) se vuelve a ejecutar al recrear la Activity
+        // (por ejemplo, al rotar). El ViewModel conserva el proyecto durante
+        // esa recreación, así que volver a construirlo aquí descartaría cortes,
+        // posición y clips ya editados. Solo inicializamos cuando realmente
+        // cambia el video de entrada.
+        val existingVideoClips = _timeline.value.tracks
+            .firstOrNull { it.type == TrackType.VIDEO }
+            ?.clips
+            .orEmpty()
+        val existingInitialUri = existingVideoClips.firstOrNull()?.uri?.toString()
+        if (!shouldInitializeEditorTimeline(existingInitialUri, existingVideoClips.isNotEmpty(), uri.toString())) {
+            return
+        }
         val profile = getOrInitProfile(context)
         val durationMs = resolveDurationMs(context, uri)
+        val initialDurationMs = durationMs.coerceAtMost(MAX_EXPORT_DURATION_MS)
         val mainTrack = EditorTrack(type = TrackType.VIDEO)
         val initialClip = EditorClip(
             id = System.currentTimeMillis(),
             uri = uri,
-            durationMs = durationMs,
+            durationMs = initialDurationMs,
             sourceDurationMs = durationMs
         )
         _timeline.value = EditorTimeline(
@@ -181,6 +221,55 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         syncTimelineWithPlayer()
         loadTimelineThumbnails(context.applicationContext, uri, durationMs, profile)
         _editorHint.value = "Modo ${profile.label}"
+    }
+
+    fun addVideoClips(context: Context, uris: List<Uri>) {
+        val candidates = uris
+            .distinctBy(Uri::toString)
+            .map { uri ->
+                val sourceDurationMs = resolveDurationMs(context, uri)
+                EditorClip(
+                    id = System.nanoTime(),
+                    uri = uri,
+                    durationMs = sourceDurationMs,
+                    sourceDurationMs = sourceDurationMs
+                )
+            }
+        if (candidates.isEmpty()) return
+
+        val current = _timeline.value
+        val updated = current.appendVideoClipsWithinLimit(candidates, MAX_EXPORT_DURATION_MS)
+        if (updated == current) {
+            _editorHint.value = "El proyecto ya ocupa los 45 segundos. Recorta o elimina un clip para añadir otro."
+            return
+        }
+
+        _timeline.value = updated
+        _selectedClipId.value = updated.tracks
+            .firstOrNull { it.type == TrackType.VIDEO }
+            ?.clips
+            ?.lastOrNull()
+            ?.id
+        if (!syncTimelineWithPlayer()) {
+            _timeline.value = current
+            _selectedClipId.value = current.tracks
+                .firstOrNull { it.type == TrackType.VIDEO }
+                ?.clips
+                ?.lastOrNull()
+                ?.id
+            syncTimelineWithPlayer()
+            _editorHint.value = "No se pudieron añadir esos clips a la vista previa."
+            return
+        }
+
+        val previousCount = current.tracks.firstOrNull { it.type == TrackType.VIDEO }?.clips?.size ?: 0
+        val currentCount = updated.tracks.firstOrNull { it.type == TrackType.VIDEO }?.clips?.size ?: 0
+        _editorHint.value = if (updated.durationMs() >= MAX_EXPORT_DURATION_MS) {
+            "Proyecto completo: 45 segundos"
+        } else {
+            val added = (currentCount - previousCount).coerceAtLeast(0)
+            "$added clip${if (added == 1) "" else "s"} añadido${if (added == 1) "" else "s"}"
+        }
     }
 
     private fun loadTimelineThumbnails(
@@ -216,7 +305,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                     frames += TimelineThumbnail(timeMs = timeMs, bitmap = scaled)
                 }
                 if (requestId == thumbnailRequestId) {
-                    _timelineThumbnails.value = frames
+                    replaceTimelineThumbnails(frames)
                 } else {
                     frames.forEach { frame ->
                         if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
@@ -232,7 +321,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                     if (!frame.bitmap.isRecycled) frame.bitmap.recycle()
                 }
                 if (requestId == thumbnailRequestId) {
-                    _timelineThumbnails.value = emptyList()
+                    replaceTimelineThumbnails(emptyList())
                 }
             } finally {
                 runCatching { retriever.release() }
@@ -241,6 +330,13 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 }
             }
         }
+    }
+
+    private fun replaceTimelineThumbnails(frames: List<TimelineThumbnail>) {
+        // No se recicla inmediatamente la lista anterior: Compose puede estar
+        // terminando de dibujarla durante este cambio de estado. Al quedar sin
+        // referencias, Android recupera esos pocos bitmaps acotados (máx. 10).
+        _timelineThumbnails.value = frames
     }
 
     private fun syncTimelineWithPlayer(): Boolean {
@@ -366,6 +462,10 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             newClipId = System.currentTimeMillis() + (0..1000).random()
         )
         if (updated != current) {
+            if (updated.durationMs() > MAX_EXPORT_DURATION_MS) {
+                _editorHint.value = "El proyecto no puede superar los 45 segundos."
+                return
+            }
             _timeline.value = updated
             if (!syncTimelineWithPlayer()) {
                 _timeline.value = current
@@ -385,7 +485,13 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         )
         if (updated != current) {
             _timeline.value = updated
-            syncTimelineWithPlayer()
+            if (!syncTimelineWithPlayer()) {
+                _timeline.value = current
+                syncTimelineWithPlayer()
+                _editorHint.value = "No se pudo reconstruir la vista previa después del corte."
+            }
+        } else {
+            _editorHint.value = "Divide al menos a 0.5 s de cada borde del fragmento."
         }
     }
 
@@ -426,7 +532,20 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val sourceDuration = clip.sourceDurationMs
             .takeIf { it > 0L }
             ?: resolveDurationMs(context, clip.uri ?: return)
-        val safeRange = sanitizeTrimRange(sourceDuration, trimStartMs, trimEndMs)
+        val otherVideoDurationMs = _timeline.value.tracks
+            .firstOrNull { it.type == TrackType.VIDEO }
+            ?.clips
+            .orEmpty()
+            .filterNot { it.id == clipId }
+            .sumOf { it.durationMs }
+        val maximumClipDurationMs = (MAX_EXPORT_DURATION_MS - otherVideoDurationMs)
+            .coerceAtLeast(1_000L)
+        val safeRange = sanitizeTrimRange(
+            sourceDurationMs = sourceDuration,
+            requestedStartMs = trimStartMs,
+            requestedEndMs = trimEndMs,
+            maximumClipDurationMs = maximumClipDurationMs
+        )
         _timeline.value = _timeline.value.updateClip(clipId) {
             it.copy(
                 startOffsetMs = safeRange.first,
@@ -526,20 +645,42 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 var successUri: Uri? = null
                 var lastError: Throwable? = null
 
-                for ((index, config) in attempts.withIndex()) {
+                // Un recorte simple desde el inicio no necesita decodificar ni
+                // volver a codificar. Copiar las pistas conserva la calidad y
+                // evita encoders de fabricante que producen video negro. Si el
+                // contenedor no admite el remux, Transformer sigue siendo el
+                // fallback autoritativo.
+                timeline.singleLosslessTrimClipOrNull()
+                    ?.takeIf { clip -> isLosslessRemuxSourceCompatible(context, clip) }
+                    ?.let { clip ->
                     try {
-                        if (index > 0) {
-                            _editorHint.value = "Reintentando con un formato compatible."
-                            _exportStage.value = EditorExportStage.OPTIMIZING
-                        }
                         successUri = withTimeout(EXPORT_TIMEOUT_MS) {
-                            runExportAttempt(context, timeline, profile, config)
+                            remuxLosslessTrim(context, clip)
                         }
-                        break
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
                         lastError = error
+                        Log.w("VideoEditorExport", "Lossless trim unavailable; using Transformer", error)
+                    }
+                }
+
+                if (successUri == null) {
+                    for ((index, config) in attempts.withIndex()) {
+                        try {
+                            if (index > 0) {
+                                _editorHint.value = "Reintentando con un formato compatible."
+                                _exportStage.value = EditorExportStage.OPTIMIZING
+                            }
+                            successUri = withTimeout(EXPORT_TIMEOUT_MS) {
+                                runExportAttempt(context, timeline, profile, config)
+                            }
+                            break
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            lastError = error
+                        }
                     }
                 }
 
@@ -562,14 +703,192 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun remuxLosslessTrim(context: Context, clip: EditorClip): Uri {
+        val sourceUri = clip.uri ?: throw IllegalArgumentException("El clip no tiene archivo")
+        val outputFile = createEditorExportFile(context, "trim")
+        val extractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        var muxerStarted = false
+        var muxerStopped = false
+
+        try {
+            extractor.setDataSource(context, sourceUri, null)
+            val selectedTracks = linkedMapOf<Int, Int>()
+            val selectedFormats = mutableListOf<MediaFormat>()
+            var hasVideoTrack = false
+            for (trackIndex in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(trackIndex)
+                val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
+                if (mime.startsWith("video/")) hasVideoTrack = true
+                selectedFormats += format
+            }
+            check(hasVideoTrack) { "El archivo no contiene una pista de video" }
+
+            val activeMuxer = MediaMuxer(
+                outputFile.absolutePath,
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            ).also { muxer = it }
+            readSourceRotation(context, sourceUri).takeIf { it != 0 }?.let(activeMuxer::setOrientationHint)
+
+            for (trackIndex in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(trackIndex)
+                val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
+                selectedTracks[trackIndex] = activeMuxer.addTrack(format)
+                extractor.selectTrack(trackIndex)
+            }
+
+            activeMuxer.start()
+            muxerStarted = true
+            val startUs = clip.startOffsetMs.coerceAtLeast(0L) * 1_000L
+            val endUs = (clip.startOffsetMs + clip.durationMs).coerceAtLeast(1L) * 1_000L
+            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+
+            val requestedBufferSize = selectedFormats.maxOfOrNull { format ->
+                if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    runCatching { format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE) }.getOrDefault(0)
+                } else {
+                    0
+                }
+            } ?: 0
+            val sampleBuffer = ByteBuffer.allocateDirect(
+                requestedBufferSize.coerceIn(MIN_REMUX_BUFFER_BYTES, MAX_REMUX_BUFFER_BYTES)
+            )
+            val bufferInfo = MediaCodec.BufferInfo()
+            var videoSamples = 0
+            var writtenSamples = 0
+
+            while (true) {
+                val sampleTimeUs = extractor.sampleTime
+                if (sampleTimeUs < 0L || sampleTimeUs > endUs) break
+                if (sampleTimeUs < startUs) {
+                    if (!extractor.advance()) break
+                    continue
+                }
+                val sourceTrack = extractor.sampleTrackIndex
+                val destinationTrack = selectedTracks[sourceTrack]
+                if (destinationTrack == null) {
+                    if (!extractor.advance()) break
+                    continue
+                }
+                sampleBuffer.clear()
+                val sampleSize = extractor.readSampleData(sampleBuffer, 0)
+                if (sampleSize < 0) break
+                check(sampleSize <= sampleBuffer.capacity()) { "Muestra multimedia demasiado grande" }
+                val codecFlags = if (
+                    extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                ) {
+                    MediaCodec.BUFFER_FLAG_KEY_FRAME
+                } else {
+                    0
+                }
+                bufferInfo.set(
+                    0,
+                    sampleSize,
+                    (sampleTimeUs - startUs).coerceAtLeast(0L),
+                    codecFlags
+                )
+                activeMuxer.writeSampleData(destinationTrack, sampleBuffer, bufferInfo)
+                val sourceMime = extractor.getTrackFormat(sourceTrack)
+                    .getString(MediaFormat.KEY_MIME)
+                    .orEmpty()
+                if (sourceMime.startsWith("video/")) videoSamples += 1
+                writtenSamples += 1
+                if (writtenSamples % 24 == 0) {
+                    _exportProgress.value = ((sampleTimeUs - startUs).toFloat() /
+                        (endUs - startUs).coerceAtLeast(1L)).coerceIn(0f, 0.98f)
+                }
+                if (!extractor.advance()) break
+            }
+
+            check(videoSamples > 0) { "El recorte no contiene cuadros de video" }
+            activeMuxer.stop()
+            muxerStopped = true
+            activeMuxer.release()
+            muxer = null
+            validateRemuxedVideo(outputFile)
+            return Uri.fromFile(outputFile)
+        } catch (error: Throwable) {
+            runCatching { outputFile.delete() }
+            throw error
+        } finally {
+            runCatching { extractor.release() }
+            if (muxerStarted && !muxerStopped) runCatching { muxer?.stop() }
+            runCatching { muxer?.release() }
+        }
+    }
+
+    private fun isLosslessRemuxSourceCompatible(context: Context, clip: EditorClip): Boolean {
+        val sourceUri = clip.uri ?: return false
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, sourceUri)
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull()
+                ?: return false
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull()
+                ?: return false
+            if (width <= 0 || height <= 0) return false
+            val fps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                ?.toFloatOrNull()
+                ?: 30f
+            if (!fps.isFinite() || fps <= 0f) return false
+            evaluateVideoPreparation(
+                durationMs = clip.durationMs,
+                width = width,
+                height = height,
+                fps = fps,
+                fileSizeBytes = 1L
+            ).reason == VideoPreparationReason.READY
+        } catch (_: Throwable) {
+            false
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun readSourceRotation(context: Context, uri: Uri): Int {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                ?.toIntOrNull()
+                ?.let { ((it % 360) + 360) % 360 }
+                ?: 0
+        } catch (_: Throwable) {
+            0
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun validateRemuxedVideo(file: File) {
+        check(file.exists() && file.length() > 0L) { "Archivo de video vacío" }
+        val validator = MediaExtractor()
+        try {
+            validator.setDataSource(file.absolutePath)
+            val hasVideo = (0 until validator.trackCount).any { trackIndex ->
+                validator.getTrackFormat(trackIndex)
+                    .getString(MediaFormat.KEY_MIME)
+                    .orEmpty()
+                    .startsWith("video/")
+            }
+            check(hasVideo) { "La exportación perdió la pista de video" }
+        } finally {
+            runCatching { validator.release() }
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private suspend fun runExportAttempt(
         context: Context,
         timeline: EditorTimeline,
         profile: VideoPerformanceProfile,
         config: ExportConfig
     ): Uri {
-        val outputFile = File(context.cacheDir, "pro_edited_${config.name}_${System.currentTimeMillis()}.mp4")
-        if (outputFile.exists()) outputFile.delete()
+        val outputFile = createEditorExportFile(context, "edited_${config.name}")
 
         val sequences = mutableListOf<EditedMediaItemSequence>()
         timeline.tracks.filter { it.type == TrackType.VIDEO }.forEach { track ->
@@ -726,8 +1045,14 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             android.util.Log.e("VideoEditorExport", "Export attempt failed", error)
             throw error
         }
-        if (failure != null) throw failure!!
-        if (!outputFile.exists() || outputFile.length() <= 0L) throw IllegalStateException("Archivo inválido")
+        failure?.let { error ->
+            runCatching { outputFile.delete() }
+            throw error
+        }
+        if (!outputFile.exists() || outputFile.length() <= 0L) {
+            runCatching { outputFile.delete() }
+            throw IllegalStateException("Archivo inválido")
+        }
         return Uri.fromFile(outputFile)
     }
 
@@ -795,6 +1120,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private companion object {
         const val MAX_EXPORT_DURATION_MS = 45_000L
         const val EXPORT_TIMEOUT_MS = 4 * 60 * 1_000L
+        const val MIN_REMUX_BUFFER_BYTES = 2 * 1024 * 1024
+        const val MAX_REMUX_BUFFER_BYTES = 16 * 1024 * 1024
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -1062,6 +1389,34 @@ internal fun EditorTimeline.durationMs(): Long {
         ?: 0L
 }
 
+internal fun shouldInitializeEditorTimeline(
+    existingInitialUri: String?,
+    hasVideoProject: Boolean,
+    requestedUri: String
+): Boolean = !hasVideoProject || existingInitialUri != requestedUri
+
+internal fun EditorTimeline.singleLosslessTrimClipOrNull(): EditorClip? {
+    val populatedTracks = tracks.filter { it.clips.isNotEmpty() }
+    if (populatedTracks.any { it.type != TrackType.VIDEO }) return null
+    val clips = populatedTracks.flatMap { it.clips }
+    if (clips.size != 1) return null
+    return clips.single().takeIf { it.uri != null && it.isLosslessTrimConfiguration() }
+}
+
+internal fun EditorClip.isLosslessTrimConfiguration(): Boolean {
+    return type == ClipType.VIDEO &&
+        startMs == 0L &&
+        startOffsetMs == 0L &&
+        durationMs in 1_000L..MAX_VIDEO_UPLOAD_DURATION_MS &&
+        abs(speed - 1f) <= 0.01f &&
+        abs(originalAudioVolume - 1f) <= 0.01f &&
+        abs(brightness) <= 0.01f &&
+        abs(contrast - 1f) <= 0.01f &&
+        abs(saturation - 1f) <= 0.01f &&
+        filterType == FilterType.NONE &&
+        aspectRatio == AspectRatio.ORIGINAL
+}
+
 internal fun EditorTimeline.reflowVideoTracks(): EditorTimeline {
     return copy(
         tracks = tracks.map { track ->
@@ -1131,13 +1486,74 @@ internal fun EditorTimeline.splitClipAt(
 internal fun sanitizeTrimRange(
     sourceDurationMs: Long,
     requestedStartMs: Long,
-    requestedEndMs: Long
+    requestedEndMs: Long,
+    maximumClipDurationMs: Long = MAX_VIDEO_UPLOAD_DURATION_MS
 ): LongRange {
     val duration = sourceDurationMs.coerceAtLeast(1_000L)
     val minimumClipDuration = minOf(1_000L, duration)
+    val maximumClipDuration = maximumClipDurationMs.coerceIn(minimumClipDuration, duration)
     val start = requestedStartMs.coerceIn(0L, duration - minimumClipDuration)
-    val end = requestedEndMs.coerceIn(start + minimumClipDuration, duration)
+    val end = requestedEndMs.coerceIn(
+        start + minimumClipDuration,
+        (start + maximumClipDuration).coerceAtMost(duration)
+    )
     return start..end
+}
+
+internal fun EditorTimeline.appendVideoClipsWithinLimit(
+    candidates: List<EditorClip>,
+    maximumDurationMs: Long = MAX_VIDEO_UPLOAD_DURATION_MS
+): EditorTimeline {
+    if (candidates.isEmpty()) return this
+    val safeLimit = maximumDurationMs.coerceAtLeast(1_000L)
+    var remainingMs = (safeLimit - durationMs()).coerceAtLeast(0L)
+    if (remainingMs < 1_000L) return this
+
+    val accepted = buildList {
+        candidates.forEach { candidate ->
+            if (remainingMs < 1_000L) return@forEach
+            val sourceDuration = candidate.sourceDurationMs
+                .takeIf { it > 0L }
+                ?: candidate.durationMs
+            val acceptedDuration = minOf(candidate.durationMs, sourceDuration, remainingMs)
+            if (acceptedDuration >= 1_000L) {
+                add(
+                    candidate.copy(
+                        type = ClipType.VIDEO,
+                        durationMs = acceptedDuration,
+                        sourceDurationMs = sourceDuration.coerceAtLeast(acceptedDuration),
+                        startOffsetMs = candidate.startOffsetMs.coerceAtLeast(0L)
+                    )
+                )
+                remainingMs -= acceptedDuration
+            }
+        }
+    }
+    if (accepted.isEmpty()) return this
+
+    val updatedTracks = tracks.toMutableList()
+    val videoTrackIndex = updatedTracks.indexOfFirst { it.type == TrackType.VIDEO }
+    if (videoTrackIndex >= 0) {
+        val videoTrack = updatedTracks[videoTrackIndex]
+        updatedTracks[videoTrackIndex] = videoTrack.copy(clips = videoTrack.clips + accepted)
+    } else {
+        updatedTracks.add(0, EditorTrack(type = TrackType.VIDEO, clips = accepted))
+    }
+    return copy(tracks = updatedTracks).reflowVideoTracks()
+}
+
+internal fun moveTrimRange(
+    sourceDurationMs: Long,
+    selectionDurationMs: Long,
+    requestedStartMs: Long
+): LongRange {
+    val sourceDuration = sourceDurationMs.coerceAtLeast(1_000L)
+    val selectionDuration = selectionDurationMs.coerceIn(
+        1_000L,
+        minOf(MAX_VIDEO_UPLOAD_DURATION_MS, sourceDuration)
+    )
+    val start = requestedStartMs.coerceIn(0L, sourceDuration - selectionDuration)
+    return start..(start + selectionDuration)
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

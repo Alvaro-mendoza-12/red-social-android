@@ -6,7 +6,10 @@ import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.BillingCapabilities
 import conectate.com.data.model.CreatorProgramDashboard
+import conectate.com.data.model.CreatorPayoutSummary
+import conectate.com.data.payout.CreatorPayoutApiException
 import conectate.com.data.repository.CreatorProgramRepository
+import conectate.com.data.repository.CreatorPayoutRepository
 import conectate.com.data.repository.WalletRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
@@ -21,7 +24,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class WalletViewModel @Inject constructor(
     private val walletRepository: WalletRepository,
-    private val creatorProgramRepository: CreatorProgramRepository
+    private val creatorProgramRepository: CreatorProgramRepository,
+    private val creatorPayoutRepository: CreatorPayoutRepository,
 ) : ViewModel() {
     val coinBalance = walletRepository.coinBalance
     val availableGifts = walletRepository.availableGifts
@@ -61,12 +65,22 @@ class WalletViewModel @Inject constructor(
     private val _earningsError = MutableStateFlow<String?>(null)
     val earningsError: StateFlow<String?> = _earningsError.asStateFlow()
 
+    private val _payoutSummary = MutableStateFlow<CreatorPayoutSummary?>(null)
+    val payoutSummary: StateFlow<CreatorPayoutSummary?> = _payoutSummary.asStateFlow()
+
+    private val _payoutLoading = MutableStateFlow(false)
+    val payoutLoading: StateFlow<Boolean> = _payoutLoading.asStateFlow()
+
+    private val _payoutMessage = MutableStateFlow<String?>(null)
+    val payoutMessage: StateFlow<String?> = _payoutMessage.asStateFlow()
+
     private val _historyLoadingMore = MutableStateFlow(false)
     val historyLoadingMore: StateFlow<Boolean> = _historyLoadingMore.asStateFlow()
 
     init {
         refresh()
         refreshEarnings()
+        refreshPayouts()
     }
 
     fun refresh() {
@@ -195,6 +209,83 @@ class WalletViewModel @Inject constructor(
                         ?: "No se pudo actualizar el estado de ganancias."
                 }
             _earningsLoading.value = false
+        }
+    }
+
+    fun refreshPayouts() {
+        if (_payoutLoading.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _payoutLoading.value = true
+            creatorPayoutRepository.summary()
+                .onSuccess { _payoutSummary.value = it }
+                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
+            _payoutLoading.value = false
+        }
+    }
+
+    fun configurePayoutAccount(email: String, currency: String) {
+        if (_payoutLoading.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _payoutLoading.value = true
+            creatorPayoutRepository.updateAccount(email, currency)
+                .onSuccess {
+                    _payoutMessage.value = "Cuenta PayPal registrada. Un administrador debe verificarla antes del primer retiro."
+                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
+                }
+                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
+            _payoutLoading.value = false
+        }
+    }
+
+    fun requestCreatorPayout(amountMinor: Long) {
+        if (_payoutLoading.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _payoutLoading.value = true
+            creatorPayoutRepository.request(amountMinor)
+                .onSuccess { response ->
+                    _payoutMessage.value = if (response.duplicate) {
+                        "La solicitud ya existía y no se duplicó."
+                    } else {
+                        "Solicitud registrada. Queda pendiente de aprobación manual."
+                    }
+                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
+                }
+                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
+            _payoutLoading.value = false
+        }
+    }
+
+    fun cancelCreatorPayout(requestId: String) {
+        if (_payoutLoading.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _payoutLoading.value = true
+            creatorPayoutRepository.cancel(requestId)
+                .onSuccess {
+                    _payoutMessage.value = "Solicitud cancelada; el saldo reservado volvió a estar disponible."
+                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
+                }
+                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
+            _payoutLoading.value = false
+        }
+    }
+
+    fun clearPayoutMessage() {
+        _payoutMessage.value = null
+    }
+
+    private fun payoutErrorMessage(error: Throwable): String {
+        val code = (error as? CreatorPayoutApiException)?.code ?: error.message.orEmpty()
+        return when (code) {
+            "CREATOR_PAYOUTS_DISABLED" -> "Los retiros todavía están desactivados durante las pruebas de seguridad."
+            "PAYOUT_PROVIDER_NOT_CONFIGURED" -> "PayPal Sandbox aún no está configurado en el servidor."
+            "CREATOR_NOT_VERIFIED" -> "Solo los creadores verificados pueden solicitar retiros."
+            "PAYOUT_ACCOUNT_NOT_VERIFIED" -> "La cuenta PayPal todavía no fue verificada por un administrador."
+            "PAYOUT_MINIMUM_NOT_REACHED" -> "El monto no alcanza el mínimo de retiro configurado."
+            "PAYOUT_INSUFFICIENT_BALANCE" -> "No hay suficiente ganancia disponible para ese retiro."
+            "PAYOUT_EMAIL_INVALID" -> "Ingresa un correo PayPal válido."
+            "PAYOUT_ACCOUNT_ALREADY_IN_USE" -> "Esta cuenta PayPal ya está asociada a otro creador."
+            "PAYOUT_IDEMPOTENCY_CONFLICT" -> "La solicitud no pudo repetirse porque sus datos cambiaron."
+            else -> "No se pudo completar la operación de retiro. Inténtalo nuevamente."
         }
     }
 

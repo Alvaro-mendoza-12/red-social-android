@@ -85,6 +85,7 @@ fun CoinsAndPaymentsScreen(
     var showLimits by remember { mutableStateOf(false) }
     var selectedReceipt by remember { mutableStateOf<WalletTransaction?>(null) }
     var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
     var catalogLoading by remember(capabilities.enabled) { mutableStateOf(capabilities.enabled) }
     val spending = remember(transactions) { calculateWalletSpend(transactions) }
 
@@ -97,11 +98,15 @@ fun CoinsAndPaymentsScreen(
                 playProducts = it
                 catalogLoading = false
             },
+            onCatalogIssues = { catalogIssues = it },
             onPurchased = viewModel::verifyGooglePlayPurchase,
             onPending = {
                 viewModel.showBillingMessage(
                     "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
                 )
+            },
+            onCanceled = {
+                viewModel.showBillingMessage("Compra cancelada. No se realizó ningún cobro.")
             },
             onError = {
                 catalogLoading = false
@@ -185,9 +190,11 @@ fun CoinsAndPaymentsScreen(
                     key = { "package-${it.productId}" }
                 ) { coinProduct ->
                     val playProduct = playProducts.firstOrNull { it.productId == coinProduct.productId }
+                    val issue = catalogIssues.firstOrNull { it.productId == coinProduct.productId }
                     CoinPackageCard(
                         coins = coinProduct.coins,
                         price = playProduct?.formattedPrice,
+                        availability = issue?.userFacingDescription(),
                         enabled = playProduct != null && !verifying,
                         onClick = {
                             val host = activity
@@ -501,7 +508,13 @@ private fun UnavailablePurchasesCard(
 }
 
 @Composable
-private fun CoinPackageCard(coins: Int, price: String?, enabled: Boolean, onClick: () -> Unit) {
+private fun CoinPackageCard(
+    coins: Int,
+    price: String?,
+    availability: String? = null,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
@@ -512,7 +525,7 @@ private fun CoinPackageCard(coins: Int, price: String?, enabled: Boolean, onClic
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(horizontalAlignment = Alignment.Start) {
                 Text("${formatCoins(coins)} monedas", fontWeight = FontWeight.Black)
-                Text("Producto consumible", style = MaterialTheme.typography.labelSmall)
+                Text(availability ?: "Producto consumible", style = MaterialTheme.typography.labelSmall)
             }
             Text(price ?: "No disponible", fontWeight = FontWeight.Black)
         }

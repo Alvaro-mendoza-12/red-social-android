@@ -1,6 +1,7 @@
 package conectate.com
 
 import android.content.Intent
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,6 +30,10 @@ import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(conectate.com.data.local.prefs.AppLocalePreferences.wrap(newBase))
+    }
 
     private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
     private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingSharePayload?>(null)

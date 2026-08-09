@@ -35,6 +35,11 @@ const {
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
 const { processPendingLiveFollowerNotifications } = require('./live-follower-notifications')
+const { startLiveDrawGuessReconciler } = require('./live-draw-guess-routes')
+const {
+  processApprovedCreatorPayouts,
+  reconcileCreatorPayouts,
+} = require('./creator-payout-routes')
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
@@ -2408,7 +2413,10 @@ let communityEventReminderTimer
 let birthdayNotificationTimer
 let googlePlayRefundTimer
 let liveFollowerNotificationTimer
+let liveDrawGuessReconciler
 let googlePlayRefundRunning = false
+let creatorPayoutTimer
+let creatorPayoutRunning = false
 
 ensureAuthMetadataColumns()
   .then(() => ensureLocalStorageTables(pool))
@@ -2419,6 +2427,7 @@ ensureAuthMetadataColumns()
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
+    liveDrawGuessReconciler = startLiveDrawGuessReconciler({ pool })
     const runScheduledMessages = () => {
       void processDueScheduledMessageJobs(pool).catch((error) => {
         console.error('[scheduled-messages] worker failed', {
@@ -2500,6 +2509,21 @@ ensureAuthMetadataColumns()
       refundIntervalMinutes * 60_000,
     )
     googlePlayRefundTimer.unref?.()
+    const runCreatorPayouts = () => {
+      if (creatorPayoutRunning) return
+      creatorPayoutRunning = true
+      void processApprovedCreatorPayouts(pool)
+        .then(() => reconcileCreatorPayouts(pool))
+        .catch((error) => {
+          console.error('[creator-payouts] worker failed', {
+            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
+          })
+        })
+        .finally(() => { creatorPayoutRunning = false })
+    }
+    runCreatorPayouts()
+    creatorPayoutTimer = setInterval(runCreatorPayouts, 60_000)
+    creatorPayoutTimer.unref?.()
   })
   .catch((error) => {
     console.error('[api] failed to initialize local data tables', error)
@@ -2514,6 +2538,8 @@ async function shutdown(signal) {
   if (birthdayNotificationTimer) clearInterval(birthdayNotificationTimer)
   if (googlePlayRefundTimer) clearInterval(googlePlayRefundTimer)
   if (liveFollowerNotificationTimer) clearInterval(liveFollowerNotificationTimer)
+  if (creatorPayoutTimer) clearInterval(creatorPayoutTimer)
+  liveDrawGuessReconciler?.stop()
   if (!server) {
     await pool.end()
     process.exit(0)

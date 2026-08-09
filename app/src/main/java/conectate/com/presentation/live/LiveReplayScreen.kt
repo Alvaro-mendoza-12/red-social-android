@@ -56,6 +56,7 @@ import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
 
 @OptIn(ExperimentalMaterial3Api::class)
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 fun LiveReplayScreen(
     navController: NavController,
@@ -160,6 +161,7 @@ private fun ReplayContent(
     }
 }
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 private fun ReplayPlayer(
     player: ExoPlayer,

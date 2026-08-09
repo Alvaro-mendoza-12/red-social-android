@@ -4,12 +4,17 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.LiveRepository
+import conectate.com.data.repository.LiveChannelPointsRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.LiveRole
 import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.model.GiftReceipt
+import conectate.com.data.model.LivePointRedemption
+import conectate.com.data.model.LivePointReward
+import conectate.com.data.model.LivePointsSettings
+import conectate.com.data.points.LiveChannelPointsApiException
 import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,9 +39,22 @@ private data class LiveConnectionRequest(
     val role: LiveRole
 )
 
+data class LiveChannelPointsUiState(
+    val available: Boolean? = null,
+    val sessionActive: Boolean = false,
+    val foreground: Boolean = true,
+    val balance: Int = 0,
+    val settings: LivePointsSettings? = null,
+    val rewards: List<LivePointReward> = emptyList(),
+    val redemptions: List<LivePointRedemption> = emptyList(),
+    val busy: Boolean = false,
+    val message: String? = null,
+)
+
 @HiltViewModel
 class LiveSessionViewModel @Inject constructor(
     private val liveRepository: LiveRepository,
+    private val liveChannelPointsRepository: LiveChannelPointsRepository,
     private val authService: AuthService,
     private val userRepository: UserRepository
 ) : ViewModel() {
@@ -51,6 +69,7 @@ class LiveSessionViewModel @Inject constructor(
     val collaborationCapabilities = liveRepository.collaborationCapabilities
     val guestInvitations = liveRepository.guestInvitations
     val activeBattle = liveRepository.activeBattle
+    val liveSupporters = liveRepository.liveSupporters
     val moderationState = liveRepository.moderationState
     val isMicEnabled = liveRepository.isMicEnabled
     val isMediaReady = liveRepository.isMediaReady
@@ -64,6 +83,10 @@ class LiveSessionViewModel @Inject constructor(
     val localVideoTrack = liveRepository.localVideoTrack
     val remoteVideoTracks = liveRepository.remoteVideoTracks
     val liveKitState: StateFlow<LiveKitRoomBridge.State> = liveRepository.liveKitState
+    val liveKitRemoteVideos = liveRepository.liveKitRemoteVideos
+
+    private val _channelPoints = MutableStateFlow(LiveChannelPointsUiState())
+    val channelPoints: StateFlow<LiveChannelPointsUiState> = _channelPoints.asStateFlow()
 
     private val _isFollowingHost = MutableStateFlow<Boolean?>(null)
     val isFollowingHost: StateFlow<Boolean?> = _isFollowingHost.asStateFlow()
@@ -77,6 +100,8 @@ class LiveSessionViewModel @Inject constructor(
     private val _connectionRequest = MutableStateFlow<LiveConnectionRequest?>(null)
     private var collaborationPollingJob: Job? = null
     private var collaborationPollingLiveId: String? = null
+    private var channelPointsJob: Job? = null
+    private var channelPointsLiveId: String? = null
 
     init {
         viewModelScope.launch {
@@ -88,6 +113,159 @@ class LiveSessionViewModel @Inject constructor(
 
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
 
+    fun startChannelPoints(liveId: String) {
+        val normalizedId = normalizeLiveSessionId(liveId) ?: return
+        if (channelPointsJob?.isActive == true && channelPointsLiveId == normalizedId) return
+        channelPointsJob?.cancel()
+        channelPointsLiveId = normalizedId
+        channelPointsJob = viewModelScope.launch(Dispatchers.IO) {
+            refreshChannelPointsInternal(normalizedId, includeRedemptions = false)
+            val session = liveChannelPointsRepository.startSession(normalizedId).getOrElse { error ->
+                handleChannelPointsError(error)
+                return@launch
+            }
+            _channelPoints.value = _channelPoints.value.copy(
+                available = true,
+                sessionActive = true,
+                message = "Gana ${session.pointsPerInterval} puntos cada ${session.intervalSeconds / 60} min mientras miras.",
+            )
+            while (true) {
+                delay(30_000L)
+                val foreground = _channelPoints.value.foreground
+                liveChannelPointsRepository.heartbeat(
+                    liveId = normalizedId,
+                    sessionToken = session.sessionToken,
+                    visible = foreground,
+                    foreground = foreground,
+                ).onSuccess { heartbeat ->
+                    val nextBalance = heartbeat.balance ?: _channelPoints.value.balance
+                    _channelPoints.value = _channelPoints.value.copy(
+                        balance = nextBalance,
+                        message = when {
+                            heartbeat.awardedPoints > 0 -> "+${heartbeat.awardedPoints} puntos por mirar"
+                            heartbeat.dailyCapReached -> "Alcanzaste el límite diario de puntos"
+                            else -> _channelPoints.value.message
+                        },
+                    )
+                }.onFailure(::handleChannelPointsError)
+            }
+        }
+    }
+
+    fun setChannelPointsForeground(foreground: Boolean) {
+        _channelPoints.value = _channelPoints.value.copy(foreground = foreground)
+    }
+
+    fun stopChannelPoints() {
+        channelPointsJob?.cancel()
+        channelPointsJob = null
+        channelPointsLiveId = null
+        _channelPoints.value = _channelPoints.value.copy(sessionActive = false)
+    }
+
+    fun refreshChannelPoints(liveId: String, includeRedemptions: Boolean = true) {
+        val normalizedId = normalizeLiveSessionId(liveId) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            refreshChannelPointsInternal(normalizedId, includeRedemptions)
+        }
+    }
+
+    private suspend fun refreshChannelPointsInternal(liveId: String, includeRedemptions: Boolean) {
+        _channelPoints.value = _channelPoints.value.copy(busy = true)
+        val balance = liveChannelPointsRepository.balance(liveId)
+        if (balance.isFailure) {
+            handleChannelPointsError(balance.exceptionOrNull())
+            _channelPoints.value = _channelPoints.value.copy(busy = false)
+            return
+        }
+        val rewards = liveChannelPointsRepository.rewards(liveId)
+        if (rewards.isFailure) {
+            handleChannelPointsError(rewards.exceptionOrNull())
+            _channelPoints.value = _channelPoints.value.copy(busy = false)
+            return
+        }
+        val redemptions = if (includeRedemptions) {
+            liveChannelPointsRepository.redemptions(liveId).getOrElse { emptyListResponse() }.redemptions
+        } else {
+            _channelPoints.value.redemptions
+        }
+        val response = balance.getOrThrow()
+        _channelPoints.value = _channelPoints.value.copy(
+            available = true,
+            balance = response.balance.balance,
+            settings = response.settings,
+            rewards = rewards.getOrThrow().rewards,
+            redemptions = redemptions,
+            busy = false,
+        )
+    }
+
+    private fun emptyListResponse() = conectate.com.data.model.LivePointRedemptionsResponse()
+
+    fun redeemChannelPointReward(liveId: String, rewardId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _channelPoints.value = _channelPoints.value.copy(busy = true)
+            liveChannelPointsRepository.redeem(liveId, rewardId)
+                .onSuccess { response ->
+                    _channelPoints.value = _channelPoints.value.copy(
+                        balance = response.balance ?: _channelPoints.value.balance,
+                        busy = false,
+                        message = "Recompensa solicitada al creador",
+                    )
+                    refreshChannelPointsInternal(liveId, includeRedemptions = false)
+                }
+                .onFailure { error ->
+                    handleChannelPointsError(error)
+                    _channelPoints.value = _channelPoints.value.copy(busy = false)
+                }
+        }
+    }
+
+    fun updateChannelPointSettings(liveId: String, enabled: Boolean, interval: Int, points: Int, cap: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _channelPoints.value = _channelPoints.value.copy(busy = true)
+            liveChannelPointsRepository.updateSettings(liveId, enabled, interval, points, cap)
+                .onSuccess {
+                    _channelPoints.value = _channelPoints.value.copy(settings = it.settings, busy = false, message = "Puntos actualizados")
+                }
+                .onFailure { handleChannelPointsError(it); _channelPoints.value = _channelPoints.value.copy(busy = false) }
+        }
+    }
+
+    fun createChannelPointReward(liveId: String, title: String, description: String, cost: Int, stock: Int?, cooldown: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _channelPoints.value = _channelPoints.value.copy(busy = true)
+            liveChannelPointsRepository.createReward(liveId, title, description, cost, stock, cooldown)
+                .onSuccess { refreshChannelPointsInternal(liveId, includeRedemptions = true) }
+                .onFailure { handleChannelPointsError(it); _channelPoints.value = _channelPoints.value.copy(busy = false) }
+        }
+    }
+
+    fun decideChannelPointRedemption(liveId: String, redemptionId: String, status: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveChannelPointsRepository.updateRedemption(liveId, redemptionId, status)
+                .onSuccess { refreshChannelPointsInternal(liveId, includeRedemptions = true) }
+                .onFailure(::handleChannelPointsError)
+        }
+    }
+
+    private fun handleChannelPointsError(error: Throwable?) {
+        val code = (error as? LiveChannelPointsApiException)?.code ?: error?.message.orEmpty()
+        if (code == "LIVE_CHANNEL_POINTS_DISABLED" || code == "LIVE_POINTS_DISABLED_FOR_LIVE") {
+            _channelPoints.value = _channelPoints.value.copy(available = false, sessionActive = false, message = null)
+            return
+        }
+        _channelPoints.value = _channelPoints.value.copy(
+            message = when (code) {
+                "LIVE_POINT_BALANCE_INSUFFICIENT" -> "No tienes puntos suficientes"
+                "LIVE_POINT_REWARD_COOLDOWN" -> "Esta recompensa todavía está en espera"
+                "LIVE_POINT_REWARD_UNAVAILABLE" -> "La recompensa ya no está disponible"
+                "LIVE_POINTS_NOT_CONFIGURED" -> "Los puntos aún no están configurados en el servidor"
+                else -> "No se pudieron actualizar los puntos del canal"
+            },
+        )
+    }
+
     fun startCollaborationPolling(liveId: String) {
         val normalizedId = normalizeLiveSessionId(liveId) ?: return
         if (collaborationPollingJob?.isActive == true && collaborationPollingLiveId == normalizedId) return
@@ -97,6 +275,8 @@ class LiveSessionViewModel @Inject constructor(
             liveRepository.getLiveCollaborationCapabilities()
             while (true) {
                 liveRepository.refreshGuestInvitations(normalizedId)
+                liveRepository.refreshActiveBattle(normalizedId)
+                liveRepository.refreshLiveSupporters(normalizedId)
                 delay(4_000L)
             }
         }
@@ -109,16 +289,36 @@ class LiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun respondToGuestInvitation(liveId: String, invitationId: String, accept: Boolean) {
+    fun requestToJoin(liveId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.requestToJoinLive(liveId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la solicitud para unirte.") }
+        }
+    }
+
+    fun setGuestRequestsAllowed(liveId: String, allowed: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.setGuestRequestsAllowed(liveId, allowed)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo actualizar el permiso de invitados.") }
+        }
+    }
+
+    fun respondToGuestInvitation(
+        liveId: String,
+        invitationId: String,
+        accept: Boolean,
+        publishCamera: Boolean = false
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             liveRepository.respondToGuestInvitation(liveId, invitationId, accept)
-                .onSuccess {
-                    if (accept) {
+                .onSuccess { invitation ->
+                    val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+                    if (accept && invitation.inviteeUserId.equals(currentUserId, ignoreCase = true)) {
                         liveRepository.connectLiveKit(
                             liveId = liveId,
                             role = "guest",
                             publishAudio = true,
-                            publishCamera = false
+                            publishCamera = publishCamera
                         ).onFailure { error ->
                             _uiError.value = error.toUserFacingMessage("La invitación se aceptó, pero no se pudo abrir el audio del invitado.")
                         }
@@ -139,6 +339,20 @@ class LiveSessionViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             liveRepository.endBattle(liveId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo finalizar la batalla.") }
+        }
+    }
+
+    fun removeGuest(liveId: String, guestUserId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.removeLiveGuest(liveId, guestUserId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo retirar al invitado.") }
+        }
+    }
+
+    fun muteGuest(liveId: String, guestUserId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.muteLiveGuest(liveId, guestUserId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo silenciar al invitado.") }
         }
     }
 
@@ -258,6 +472,16 @@ class LiveSessionViewModel @Inject constructor(
         liveRepository.disconnectLiveKit()
     }
 
+    fun attachLiveKitRenderer(
+        video: LiveKitRoomBridge.RemoteVideo,
+        renderer: io.livekit.android.renderer.TextureViewRenderer
+    ): Boolean = liveRepository.attachLiveKitRenderer(video, renderer)
+
+    fun detachLiveKitRenderer(
+        video: LiveKitRoomBridge.RemoteVideo,
+        renderer: io.livekit.android.renderer.TextureViewRenderer
+    ) = liveRepository.detachLiveKitRenderer(video, renderer)
+
     suspend fun endLiveAndAwait(): Result<Unit> = liveRepository.endLive()
 
     fun toggleMic(enabled: Boolean) {
@@ -295,6 +519,8 @@ class LiveSessionViewModel @Inject constructor(
     fun setCameraFilter(filter: LiveCameraFilter) {
         liveRepository.setCameraFilter(filter)
     }
+
+    fun switchCamera(): Boolean = liveRepository.switchCamera()
 
     fun startScreenShare(intent: Intent): Boolean {
         return liveRepository.startScreenShare(intent)

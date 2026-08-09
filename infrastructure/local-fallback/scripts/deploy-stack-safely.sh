@@ -57,6 +57,41 @@ echo "==> Verificando base de datos antes de actualizar"
 docker compose up -d db
 wait_service db 120
 
+echo "==> Aplicando migraciones versionadas antes de actualizar servicios"
+docker compose exec -T db psql -U conectate -d conectate_fallback -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE IF NOT EXISTS fallback_schema_migrations (
+  filename TEXT PRIMARY KEY,
+  checksum_sha256 TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+SQL
+for migration in db/migrations/*.sql; do
+  [ -f "$migration" ] || continue
+  filename="$(basename "$migration")"
+  checksum="$(sha256sum "$migration" | awk '{print $1}')"
+  recorded_checksum="$(docker compose exec -T db psql -U conectate -d conectate_fallback -Atc \
+    "SELECT checksum_sha256 FROM fallback_schema_migrations WHERE filename = '$filename'")"
+  if [ -n "$recorded_checksum" ]; then
+    if [ "$recorded_checksum" != "$checksum" ]; then
+      echo "ERROR: checksum de migracion ya aplicada no coincide: $filename" >&2
+      exit 1
+    fi
+    echo "MIGRATION_ALREADY_APPLIED=$filename"
+    continue
+  fi
+  echo "MIGRATION_APPLYING=$filename"
+  docker compose exec -T db psql -U conectate -d conectate_fallback \
+    -v ON_ERROR_STOP=1 -1 < "$migration"
+  docker compose exec -T db psql -U conectate -d conectate_fallback \
+    -v ON_ERROR_STOP=1 \
+    -v migration_filename="$filename" \
+    -v migration_checksum="$checksum" <<'SQL'
+INSERT INTO fallback_schema_migrations(filename, checksum_sha256)
+VALUES (:'migration_filename', :'migration_checksum');
+SQL
+  echo "MIGRATION_APPLIED=$filename"
+done
+
 for service in ai-chatbot realtime-gateway api signaling edge; do
   echo "==> Actualizando $service"
   docker compose up -d --no-deps --force-recreate "$service"

@@ -66,6 +66,11 @@ function buildData(notification, extraData = {}) {
     if (serialized !== null) data[key] = serialized
   }
 
+  // Account targeting must always come from the persisted, authenticated
+  // notification. Never allow caller-supplied extra data to redirect a push
+  // to a different signed-in account on a multi-account device.
+  data.recipient_id = stringValue(notification.recipient_id) || ''
+
   const contextId = data.call_context_id || data.context_id || targetId
   if (targetType === 'group' || data.is_group === 'true') {
     data.group_id ||= contextId
@@ -159,6 +164,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
 }
 
 module.exports = {
+  buildData,
   pushNotificationsStatus,
   sendPushForNotification,
 }

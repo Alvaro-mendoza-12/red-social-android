@@ -6,8 +6,6 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import conectate.com.data.local.prefs.MessagesPreferences
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -76,23 +74,23 @@ internal fun giftSoundPlan(profile: GiftSoundProfile): GiftSoundPlan = when (pro
     GiftSoundProfile.PRISM_LAUNCH -> GiftSoundPlan(1_120, 170f, 920f, 3, 3.2f, 8f, 0.05f, 0.14f)
     GiftSoundProfile.GUARDIAN_GALLOP -> GiftSoundPlan(1_180, 145f, 480f, 3, 7.2f, 5f, 0.06f, 0.14f)
     GiftSoundProfile.PHOENIX_RISE -> GiftSoundPlan(1_260, 230f, 1_120f, 3, 2.4f, 10f, 0.05f, 0.15f)
-    GiftSoundProfile.STAR_TRAIN -> GiftSoundPlan(1_340, 105f, 410f, 3, 5.4f, 6f, 0.07f, 0.15f)
-    GiftSoundProfile.CELESTIAL_DRAGON -> GiftSoundPlan(1_420, 92f, 620f, 4, 1.6f, 8f, 0.07f, 0.15f)
-    GiftSoundProfile.FLOATING_ISLAND -> GiftSoundPlan(1_480, 160f, 560f, 4, 0.8f, 8f, 0.03f, 0.15f)
-    GiftSoundProfile.CELESTIAL_WORLD -> GiftSoundPlan(1_540, 125f, 680f, 4, 1.1f, 9f, 0.04f, 0.16f)
-    GiftSoundProfile.LIGHT_OPERA -> GiftSoundPlan(1_620, 220f, 920f, 4, 2.1f, 11f, 0.02f, 0.16f)
-    GiftSoundProfile.AURORA_PALACE -> GiftSoundPlan(1_700, 180f, 980f, 4, 1.8f, 12f, 0.03f, 0.16f)
-    GiftSoundProfile.TIME_KINGDOM -> GiftSoundPlan(1_780, 150f, 760f, 5, 4.2f, 10f, 0.04f, 0.16f)
-    GiftSoundProfile.GALACTIC_ASCENT -> GiftSoundPlan(1_900, 105f, 1_180f, 5, 2.6f, 14f, 0.05f, 0.17f)
-    GiftSoundProfile.AURORA_GENESIS -> GiftSoundPlan(2_100, 72f, 1_320f, 5, 1.4f, 16f, 0.06f, 0.17f)
+    GiftSoundProfile.STAR_TRAIN -> GiftSoundPlan(2_000, 105f, 410f, 3, 5.4f, 6f, 0.07f, 0.15f)
+    GiftSoundProfile.CELESTIAL_DRAGON -> GiftSoundPlan(2_600, 92f, 620f, 4, 1.6f, 8f, 0.07f, 0.15f)
+    GiftSoundProfile.FLOATING_ISLAND -> GiftSoundPlan(2_717, 160f, 560f, 4, 0.8f, 8f, 0.03f, 0.15f)
+    GiftSoundProfile.CELESTIAL_WORLD -> GiftSoundPlan(2_892, 125f, 680f, 4, 1.1f, 9f, 0.04f, 0.16f)
+    GiftSoundProfile.LIGHT_OPERA -> GiftSoundPlan(3_126, 220f, 920f, 4, 2.1f, 11f, 0.02f, 0.16f)
+    GiftSoundProfile.AURORA_PALACE -> GiftSoundPlan(3_360, 180f, 980f, 4, 1.8f, 12f, 0.03f, 0.16f)
+    GiftSoundProfile.TIME_KINGDOM -> GiftSoundPlan(3_712, 150f, 760f, 5, 4.2f, 10f, 0.04f, 0.16f)
+    GiftSoundProfile.GALACTIC_ASCENT -> GiftSoundPlan(4_180, 105f, 1_180f, 5, 2.6f, 14f, 0.05f, 0.17f)
+    GiftSoundProfile.AURORA_GENESIS -> GiftSoundPlan(4_800, 72f, 1_320f, 5, 1.4f, 16f, 0.06f, 0.17f)
 }
 
 internal object GiftSoundEngine {
     private const val SAMPLE_RATE = 24_000
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val pcmCache = ConcurrentHashMap<GiftSoundProfile, ShortArray>()
-    private val activePlayers = ConcurrentHashMap.newKeySet<AudioTrack>()
-    private val stopGeneration = AtomicInteger(0)
+    private val pcmCache = java.util.concurrent.ConcurrentHashMap<GiftSoundProfile, ShortArray>()
+    private val audioLock = Any()
+    private val playbackGate = GiftSoundPlaybackGate<AudioTrack>()
 
     fun playConfirmed(context: Context, profile: GiftSoundProfile) {
         if (!MessagesPreferences.areSocialSoundsEnabled(context)) return
@@ -100,7 +98,7 @@ internal object GiftSoundEngine {
         if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) <= 0) return
 
-        val generation = stopGeneration.get()
+        val generation = playbackGate.currentGeneration()
         scope.launch {
             val plan = giftSoundPlan(profile)
             val samples = pcmCache.getOrPut(profile) {
@@ -126,32 +124,96 @@ internal object GiftSoundEngine {
                     .build()
             }.getOrNull() ?: return@launch
 
+            var startResult = PlayerStart.NOT_REGISTERED
             try {
-                if (player.state != AudioTrack.STATE_INITIALIZED) return@launch
-                if (generation != stopGeneration.get()) return@launch
-                activePlayers += player
-                val written = player.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                if (written <= 0) return@launch
-                if (generation != stopGeneration.get()) return@launch
-                player.setVolume(plan.volume)
-                player.play()
+                startResult = startPlayer(player, samples, plan, generation)
+                if (startResult != PlayerStart.STARTED) return@launch
                 delay(plan.durationMs.toLong() + 80L)
             } finally {
-                activePlayers -= player
-                runCatching { if (player.playState == AudioTrack.PLAYSTATE_PLAYING) player.stop() }
-                runCatching { player.release() }
+                synchronized(audioLock) {
+                    val shouldRelease = when (startResult) {
+                        PlayerStart.NOT_REGISTERED -> true
+                        else -> playbackGate.unregister(player)
+                    }
+                    if (shouldRelease) releasePlayerLocked(player)
+                }
             }
         }
     }
 
     /** Detiene audio al salir o mandar el directo a segundo plano. */
     fun stopAll() {
-        stopGeneration.incrementAndGet()
-        activePlayers.toList().forEach { player ->
-            activePlayers -= player
-            runCatching { if (player.playState == AudioTrack.PLAYSTATE_PLAYING) player.stop() }
-            runCatching { player.release() }
+        synchronized(audioLock) {
+            playbackGate.invalidateAndDrain().forEach(::releasePlayerLocked)
         }
+    }
+
+    /**
+     * AudioTrack no es seguro frente a una liberación concurrente en todos los OEM.
+     * Por eso write/play/release comparten un único candado y toda excepción del
+     * framework se degrada a una celebración silenciosa, nunca a un crash.
+     */
+    private fun startPlayer(
+        player: AudioTrack,
+        samples: ShortArray,
+        plan: GiftSoundPlan,
+        generation: Int
+    ): PlayerStart = synchronized(audioLock) {
+        if (!playbackGate.tryRegister(generation, player)) return@synchronized PlayerStart.NOT_REGISTERED
+
+        val started = runCatching {
+            if (player.state != AudioTrack.STATE_INITIALIZED) return@runCatching false
+            val written = player.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+            if (written <= 0) return@runCatching false
+            player.setVolume(plan.volume)
+            player.play()
+            true
+        }.getOrDefault(false)
+
+        if (started) PlayerStart.STARTED else PlayerStart.REGISTERED_NOT_STARTED
+    }
+
+    /** Se invoca solamente dentro de [audioLock]; repetirlo es seguro. */
+    private fun releasePlayerLocked(player: AudioTrack) {
+        runCatching { if (player.playState == AudioTrack.PLAYSTATE_PLAYING) player.stop() }
+        runCatching { player.release() }
+    }
+
+    private enum class PlayerStart {
+        NOT_REGISTERED,
+        REGISTERED_NOT_STARTED,
+        STARTED
+    }
+}
+
+/**
+ * Control puro y comprobable del ciclo de vida de audio. Una parada invalida
+ * todos los inicios que estaban en curso y cada reproductor se puede liberar
+ * más de una vez sin volver a quedar activo.
+ */
+internal class GiftSoundPlaybackGate<T : Any> {
+    private var generation = 0
+    private val active = LinkedHashSet<T>()
+
+    @Synchronized
+    fun currentGeneration(): Int = generation
+
+    @Synchronized
+    fun tryRegister(expectedGeneration: Int, player: T): Boolean {
+        if (expectedGeneration != generation) return false
+        active += player
+        return true
+    }
+
+    @Synchronized
+    fun unregister(player: T): Boolean = active.remove(player)
+
+    @Synchronized
+    fun invalidateAndDrain(): List<T> {
+        generation += 1
+        val drained = active.toList()
+        active.clear()
+        return drained
     }
 }
 

@@ -692,7 +692,7 @@ class ChatViewModel @Inject constructor(
         if (!ensureNotBlockedForSending()) return
         val text = forcedContent ?: _messageText.value
         if (chatId == null) return
-        if (text.isBlank() || _isSending.value) return
+        if (text.isBlank()) return
 
         viewModelScope.launch {
             _isSending.value = true
@@ -1887,7 +1887,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    suspend fun getPlayableUrl(path: String): String? = messageRepository.getPlayableUrl(path).getOrNull()
+    suspend fun getPlayableUrl(
+        path: String,
+        allowOfflineMediaCache: Boolean = true
+    ): String? = messageRepository.getPlayableUrl(path, allowOfflineMediaCache).getOrNull()
 
     suspend fun consumeViewOnceMessage(message: Message): String? {
         val mediaPath = message.media_url ?: return null

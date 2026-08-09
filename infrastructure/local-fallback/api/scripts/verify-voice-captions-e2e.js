@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
 const { Pool } = require('pg')
-const { io } = require('../../../../Conectate-web/node_modules/socket.io-client')
+const { io } = require('socket.io-client')
 
 const databaseUrl = process.env.DATABASE_URL
 const baseUrl = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')

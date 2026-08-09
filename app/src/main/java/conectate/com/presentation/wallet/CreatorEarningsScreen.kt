@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,11 +44,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.data.model.CreatorEarningActivity
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,11 +64,30 @@ fun CreatorEarningsScreen(
     val dashboard by viewModel.creatorDashboard.collectAsStateWithLifecycle()
     val loading by viewModel.earningsLoading.collectAsStateWithLifecycle()
     val error by viewModel.earningsError.collectAsStateWithLifecycle()
+    val payoutSummary by viewModel.payoutSummary.collectAsStateWithLifecycle()
+    val payoutLoading by viewModel.payoutLoading.collectAsStateWithLifecycle()
+    val payoutMessage by viewModel.payoutMessage.collectAsStateWithLifecycle()
     val payout = dashboard.payoutAccount
     val summary = dashboard.earnings
-    val currency = payout?.currency?.takeIf { it.length == 3 } ?: "PEN"
-    val payoutVerified = payout?.status?.lowercase(Locale.ROOT) in setOf("verified", "active")
+    val currency = payoutSummary?.currency?.takeIf { it.length == 3 }
+        ?: payout?.currency?.takeIf { it.length == 3 }
+        ?: "USD"
+    val payoutVerified = payoutSummary?.account?.status.equals("VERIFIED", ignoreCase = true)
     var showWithdrawalInfo by remember { mutableStateOf(false) }
+    var showAccountDialog by remember { mutableStateOf(false) }
+    var showRequestDialog by remember { mutableStateOf(false) }
+    var payoutEmail by remember { mutableStateOf("") }
+    var payoutAmount by remember { mutableStateOf("") }
+
+    val serverBalances = payoutSummary?.balances
+    val availableLabel = serverBalances?.let { formatMinorMoney(it.availableMinor, currency) }
+        ?: formatMoney(summary.availableCredits, currency)
+    val pendingLabel = serverBalances?.let { formatMinorMoney(it.pendingMinor, currency) }
+        ?: formatMoney(summary.pendingCredits, currency)
+    val heldLabel = serverBalances?.let { formatMinorMoney(it.heldMinor, currency) }
+        ?: formatMoney(summary.heldCredits, currency)
+    val paidLabel = serverBalances?.let { formatMinorMoney(it.paidMinor, currency) }
+        ?: formatMoney(summary.paidCredits, currency)
 
     Scaffold(
         topBar = {
@@ -75,7 +99,13 @@ fun CreatorEarningsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::refreshEarnings, enabled = !loading) {
+                    IconButton(
+                        onClick = {
+                            viewModel.refreshEarnings()
+                            viewModel.refreshPayouts()
+                        },
+                        enabled = !loading && !payoutLoading,
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
                     }
                 }
@@ -108,17 +138,36 @@ fun CreatorEarningsScreen(
                             Column(Modifier.weight(1f)) {
                                 Text("Ganancia disponible", style = MaterialTheme.typography.labelLarge)
                                 Text(
-                                    formatMoney(summary.availableCredits, currency),
+                                    availableLabel,
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.Black
                                 )
                             }
                         }
                         OutlinedButton(
-                            onClick = { showWithdrawalInfo = true },
-                            modifier = Modifier.fillMaxWidth()
+                            onClick = {
+                                when {
+                                    payoutSummary?.configured != true -> showWithdrawalInfo = true
+                                    payoutSummary?.creatorVerified != true -> showWithdrawalInfo = true
+                                    payoutSummary?.account == null -> showAccountDialog = true
+                                    !payoutVerified -> showWithdrawalInfo = true
+                                    payoutSummary?.enabled != true -> showWithdrawalInfo = true
+                                    else -> showRequestDialog = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !payoutLoading,
                         ) {
-                            Text(if (payoutVerified) "Retiro no conectado" else "Ver requisitos de retiro")
+                            Text(
+                                when {
+                                    payoutSummary?.configured != true -> "PayPal Sandbox pendiente"
+                                    payoutSummary?.creatorVerified != true -> "Verificación requerida"
+                                    payoutSummary?.account == null -> "Registrar cuenta PayPal"
+                                    !payoutVerified -> "Cuenta en verificación"
+                                    payoutSummary?.enabled != true -> "Retiros en prueba"
+                                    else -> "Solicitar retiro"
+                                }
+                            )
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -126,12 +175,12 @@ fun CreatorEarningsScreen(
                         ) {
                             EarningsMetric(
                                 label = "Pendiente",
-                                value = formatMoney(summary.pendingCredits, currency),
+                                value = pendingLabel,
                                 modifier = Modifier.weight(1f)
                             )
                             EarningsMetric(
                                 label = "En revisión",
-                                value = formatMoney(summary.heldCredits, currency),
+                                value = heldLabel,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -141,12 +190,13 @@ fun CreatorEarningsScreen(
                         ) {
                             EarningsMetric(
                                 label = "Reservado",
-                                value = formatMoney(summary.reservedCredits, currency),
+                                value = serverBalances?.recoveryDebtMinor?.let { formatMinorMoney(it, currency) }
+                                    ?: formatMoney(summary.reservedCredits, currency),
                                 modifier = Modifier.weight(1f)
                             )
                             EarningsMetric(
                                 label = "Pagado",
-                                value = formatMoney(summary.paidCredits, currency),
+                                value = paidLabel,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -216,12 +266,46 @@ fun CreatorEarningsScreen(
 
             item {
                 PayoutAccountCard(
-                    provider = payout?.provider,
-                    status = payout?.status,
-                    reference = payout?.externalAccountId,
+                    provider = payoutSummary?.account?.provider ?: payout?.provider,
+                    status = payoutSummary?.account?.status ?: payout?.status,
+                    reference = payoutSummary?.account?.emailMasked ?: payout?.externalAccountId,
                     currency = currency,
-                    onOpenInfo = { showWithdrawalInfo = true }
+                    onOpenInfo = {
+                        if (payoutSummary?.configured == true && payoutSummary?.account == null) {
+                            showAccountDialog = true
+                        } else {
+                            showWithdrawalInfo = true
+                        }
+                    }
                 )
+            }
+
+            payoutSummary?.requests?.take(10)?.let { requests ->
+                if (requests.isNotEmpty()) {
+                    item {
+                        Text("Solicitudes de retiro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    }
+                    items(requests, key = { it.id }) { request ->
+                        Card(shape = RoundedCornerShape(16.dp)) {
+                            ListItem(
+                                headlineContent = {
+                                    Text(formatMinorMoney(request.amountMinor, request.currency), fontWeight = FontWeight.Bold)
+                                },
+                                supportingContent = {
+                                    Text("${readablePayoutStatus(request.status)}${request.createdAt?.take(10)?.let { " · $it" }.orEmpty()}")
+                                },
+                                trailingContent = {
+                                    if (request.status.equals("PENDING", ignoreCase = true)) {
+                                        TextButton(
+                                            onClick = { viewModel.cancelCreatorPayout(request.id) },
+                                            enabled = !payoutLoading,
+                                        ) { Text("Cancelar") }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
             }
 
             item {
@@ -247,21 +331,112 @@ fun CreatorEarningsScreen(
         AlertDialog(
             onDismissRequest = { showWithdrawalInfo = false },
             icon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
-            title = { Text(if (payoutVerified) "Retiro pendiente de conexión" else "Verifica tu cuenta de retiro") },
+            title = { Text("Estado de retiros") },
             text = {
                 Text(
-                    if (payoutVerified) {
-                        "Tu cuenta está verificada, pero esta instalación todavía no tiene conectado el proveedor de retiros. " +
-                            "El botón no enviará dinero hasta disponer de un endpoint firmado, conciliación y verificación de identidad."
-                    } else {
-                        "La cuenta de retiro se registra y verifica en el portal seguro del proveedor. Novvin no pedirá PAN, CVV ni credenciales bancarias dentro de esta pantalla."
+                    when {
+                        payoutSummary?.configured != true ->
+                            "PayPal Sandbox aún no tiene todas las credenciales, el webhook firmado y la tasa comercial configurados en el servidor. No se enviará dinero con una configuración incompleta."
+                        payoutSummary?.creatorVerified != true ->
+                            "Solo los creadores verificados pueden retirar ganancias originadas en regalos comprados con dinero real."
+                        payoutSummary?.account == null ->
+                            "Registra el correo verificado de tu cuenta PayPal. Novvin nunca pedirá tu contraseña, PAN ni CVV."
+                        !payoutVerified ->
+                            "La cuenta ${payoutSummary?.account?.emailMasked.orEmpty()} espera verificación manual del administrador."
+                        payoutSummary?.enabled != true ->
+                            "La arquitectura Sandbox está preparada, pero los retiros permanecen desactivados hasta completar las pruebas externas de PayPal."
+                        else ->
+                            "Tu cuenta está lista. Cada solicitud requiere aprobación manual y se concilia con PayPal antes de marcarse como pagada."
                     }
                 )
             },
             confirmButton = { TextButton(onClick = { showWithdrawalInfo = false }) { Text("Entendido") } }
         )
     }
+
+    if (showAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccountDialog = false },
+            title = { Text("Cuenta PayPal del creador") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Usa el correo verificado de PayPal. La app lo envía cifrado al backend y solo muestra una referencia enmascarada.")
+                    OutlinedTextField(
+                        value = payoutEmail,
+                        onValueChange = { payoutEmail = it.take(254) },
+                        label = { Text("Correo PayPal") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Moneda de liquidación: $currency", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.configurePayoutAccount(payoutEmail, currency)
+                        showAccountDialog = false
+                    },
+                    enabled = payoutEmail.contains('@') && !payoutLoading,
+                ) { Text("Registrar") }
+            },
+            dismissButton = { TextButton(onClick = { showAccountDialog = false }) { Text("Cancelar") } },
+        )
+    }
+
+    if (showRequestDialog) {
+        val requestedMinor = payoutAmount.toBigDecimalOrNull()
+            ?.movePointRight(2)
+            ?.setScale(0, RoundingMode.DOWN)
+            ?.longValueExactOrNull()
+            ?: 0L
+        AlertDialog(
+            onDismissRequest = { showRequestDialog = false },
+            title = { Text("Solicitar retiro") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Disponible: $availableLabel")
+                    Text("Mínimo: ${formatMinorMoney(payoutSummary?.minimumMinor ?: 0, currency)}")
+                    OutlinedTextField(
+                        value = payoutAmount,
+                        onValueChange = { payoutAmount = it.filter { character -> character.isDigit() || character == '.' }.take(16) },
+                        label = { Text("Monto en $currency") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("La solicitud quedará pendiente de aprobación manual; Android nunca ordena el pago directamente.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.requestCreatorPayout(requestedMinor)
+                        showRequestDialog = false
+                    },
+                    enabled = requestedMinor >= (payoutSummary?.minimumMinor ?: Long.MAX_VALUE) &&
+                        requestedMinor <= (payoutSummary?.balances?.availableMinor ?: 0) &&
+                        !payoutLoading,
+                ) { Text("Solicitar") }
+            },
+            dismissButton = { TextButton(onClick = { showRequestDialog = false }) { Text("Cancelar") } },
+        )
+    }
+
+    payoutMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearPayoutMessage,
+            title = { Text("Retiros") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearPayoutMessage) { Text("Entendido") } },
+        )
+    }
 }
+
+private fun BigDecimal.longValueExactOrNull(): Long? = runCatching { longValueExact() }.getOrNull()
+
+private fun formatMinorMoney(amountMinor: Long, currency: String): String =
+    formatMoney(BigDecimal.valueOf(amountMinor, 2), currency)
 
 @Composable
 private fun EarningsMetric(label: String, value: String, modifier: Modifier = Modifier) {

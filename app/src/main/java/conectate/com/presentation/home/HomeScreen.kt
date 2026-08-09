@@ -330,6 +330,10 @@ fun HomeScreen(
                 conectate.com.presentation.wallet.CreatorEarningsScreen(navController = navController)
             }
 
+            composable(Screen.CreatorAnalytics.route) {
+                conectate.com.presentation.analytics.CreatorAnalyticsScreen(navController = navController)
+            }
+
             composable(Screen.AccountSettings.route) {
                 conectate.com.presentation.profile.EditProfileScreen(navController = navController)
             }
@@ -344,6 +348,22 @@ fun HomeScreen(
 
             composable(Screen.CustomizeApp.route) {
                 conectate.com.presentation.settings.CustomizeAppScreen(navController = navController)
+            }
+
+            composable(Screen.LanguageSettings.route) {
+                conectate.com.presentation.settings.LanguageSettingsScreen(navController = navController)
+            }
+
+            composable(Screen.HelpSettings.route) {
+                conectate.com.presentation.legal.HelpCenterScreen(navController = navController)
+            }
+
+            composable(Screen.PrivacyPolicy.route) {
+                conectate.com.presentation.legal.PrivacyPolicyScreen(navController = navController)
+            }
+
+            composable(Screen.TermsAndConditions.route) {
+                conectate.com.presentation.legal.TermsAndConditionsScreen(navController = navController)
             }
 
             composable(Screen.AdminPanel.route) {

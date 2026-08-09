@@ -122,6 +122,19 @@ class GiftAnimationTierTest {
     }
 
     @Test
+    fun qualityBudgetReducesCostButKeepsTheGiftScene() {
+        val original = giftSceneSpec(GiftMotionProfile.GENESIS)
+        val medium = giftSceneForQuality(original, GiftRenderQuality.MEDIUM)
+        val low = giftSceneForQuality(original, GiftRenderQuality.LOW)
+
+        assertEquals(original.effect, medium.effect)
+        assertEquals(original.sound, low.sound)
+        assertTrue(medium.particleCount < original.particleCount)
+        assertTrue(low.particleCount < medium.particleCount)
+        assertTrue(low.fullScreen)
+    }
+
+    @Test
     fun reducedMotionUsesAStableCenteredFallback() {
         GiftMotionProfile.entries.forEach { profile ->
             assertEquals(
@@ -142,6 +155,24 @@ class GiftAnimationTierTest {
         assertEquals(0, first.first().toInt())
         assertTrue(first.any { it.toInt() != 0 })
         assertTrue(kotlin.math.abs(first.last().toInt()) < 1_000)
+    }
+
+    @Test
+    fun soundPlaybackGateInvalidatesInFlightStartsAndDrainsOnce() {
+        val gate = GiftSoundPlaybackGate<Any>()
+        val first = Any()
+        val second = Any()
+        val initialGeneration = gate.currentGeneration()
+
+        assertTrue(gate.tryRegister(initialGeneration, first))
+        assertEquals(listOf(first), gate.invalidateAndDrain())
+        assertFalse(gate.tryRegister(initialGeneration, second))
+
+        val nextGeneration = gate.currentGeneration()
+        assertTrue(gate.tryRegister(nextGeneration, second))
+        assertTrue(gate.unregister(second))
+        assertFalse(gate.unregister(second))
+        assertEquals(emptyList<Any>(), gate.invalidateAndDrain())
     }
 
     private fun event(index: Int) = LiveGiftEvent(

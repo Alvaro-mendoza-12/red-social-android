@@ -7,6 +7,7 @@ import conectate.com.data.model.SocializationCapabilities
 import conectate.com.data.model.SocializationPreferenceKey
 import conectate.com.data.model.SocializationPreferencePatch
 import conectate.com.data.model.SocializationPreferencesResponse
+import conectate.com.data.model.SocializationCardsResponse
 import conectate.com.data.model.UpdateSocializationPreferencesRequest
 import conectate.com.data.socialization.SocializationApiClient
 import conectate.com.data.supabase.AuthService
@@ -50,6 +51,14 @@ class SocializationRepository @Inject constructor(
                 preferences = SocializationPreferencePatch.forKey(key, enabled),
             ),
         ).onSuccess(::cacheConfirmed)
+    }
+
+    suspend fun loadCards(
+        surface: String,
+        placement: String = "after_12",
+        limit: Int = 4,
+    ): Result<SocializationCardsResponse> = withToken { token ->
+        apiClient.cards(token, surface, placement, limit)
     }
 
     fun loadCachedPreferences(): SocializationPreferencesResponse? {

@@ -63,6 +63,7 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
     object CoinsAndPayments : Screen("coins_and_payments")
     object CreatorEarnings : Screen("creator_earnings")
+    object CreatorAnalytics : Screen("creator_analytics")
     object SettingsCategory : Screen("settings_category/{category}") {
         fun createRoute(category: String) = "settings_category/${android.net.Uri.encode(category)}"
     }
@@ -77,6 +78,7 @@ sealed class Screen(val route: String) {
     object LanguageSettings : Screen("language_settings")
     object ThemeSettings : Screen("theme_settings")
     object HelpSettings : Screen("help_settings")
+    object TermsAndConditions : Screen("terms_and_conditions")
     object AboutSettings : Screen("about_settings")
     object ChangePassword : Screen("change_password")
     object PrivacyPolicy : Screen("privacy_policy")

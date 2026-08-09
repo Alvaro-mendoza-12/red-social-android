@@ -108,6 +108,37 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.Locale
 
+private fun NavController.openRecommendedVideo(videoId: String) {
+    when (
+        attemptRecommendedVideoNavigation(
+            videoId = videoId,
+            routeFor = { id -> Screen.VideoDiscovery.createRoute(id) },
+            navigate = { route ->
+                navigate(route) { launchSingleTop = true }
+            }
+        )
+    ) {
+        RecommendedVideoNavigationResult.Navigated -> Unit
+        RecommendedVideoNavigationResult.InvalidVideoId -> {
+            android.widget.Toast.makeText(
+                context,
+                "Este video ya no está disponible.",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+        is RecommendedVideoNavigationResult.Failed -> {
+            // Do not include the route or the id in logs: the fallback must not
+            // disclose recommendation metadata if navigation rejects it.
+            android.util.Log.w("SocialScreen", "No se pudo abrir un video recomendado")
+            android.widget.Toast.makeText(
+                context,
+                "No se pudo abrir el video. Inténtalo nuevamente.",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+}
+
 private fun formatRemainingTime(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
@@ -143,11 +174,13 @@ fun SocialScreen(
     val posts by viewModel.posts.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
     val recommendedVideos by viewModel.recommendedVideos.collectAsState()
+    val socializationCards by viewModel.socializationCards.collectAsState()
     val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val showLiveCarousel by viewModel.showLiveCarousel.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val authoritativeHasMore by viewModel.authoritativeHasMore.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val moments by momentViewModel.moments.collectAsState()
@@ -174,6 +207,7 @@ fun SocialScreen(
     val pullRefreshState = rememberPullRefreshState(isRefreshing, { 
         viewModel.loadPosts()
         viewModel.refreshLives()
+        viewModel.loadSocializationCards()
         momentViewModel.refreshMoments()
         challengeViewModel.refreshChallengeData()
     })
@@ -300,9 +334,6 @@ fun SocialScreen(
                 // Forzar refresco si estamos en la pestaña de Retos al volver a la app
                 if (pagerState.currentPage == 2) {
                     challengeViewModel.loadActiveChallenge()
-                } else if (pagerState.currentPage == 0) {
-                    viewModel.loadPosts()
-                    coroutineScope.launch { socialListState.scrollToItem(0) }
                 }
             }
         }
@@ -1741,7 +1772,7 @@ fun SocialScreen(
                                             RecommendedVideosRail(
                                                 videos = recommendedVideos,
                                                 onOpenVideo = { videoId ->
-                                                    navController.navigate(Screen.VideoPlayer.createRoute(videoId))
+                                                    navController.openRecommendedVideo(videoId)
                                                 }
                                             )
                                         }
@@ -1787,7 +1818,7 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedPeople.isNotEmpty() &&
-                                            index == minOf(4, posts.lastIndex)
+                                            index == minOf(2, posts.lastIndex)
                                         ) {
                                             item(key = "recommended-people") {
                                                 RecommendedPeopleRail(
@@ -1803,16 +1834,81 @@ fun SocialScreen(
                                         }
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
+                                            socializationCards.isNotEmpty() &&
+                                            index == minOf(8, posts.lastIndex)
+                                        ) {
+                                            item(key = "socialization-cards") {
+                                                SocializationCardsRail(
+                                                    cards = socializationCards,
+                                                    onOpen = { card ->
+                                                        when (card.action.type) {
+                                                            "OPEN_PROFILE" -> navController.navigate(Screen.UserProfile.createRoute(card.action.targetId))
+                                                            "OPEN_COMMUNITY" -> navController.navigate(Screen.CommunityDetail.createRoute(card.action.targetId))
+                                                            "OPEN_LIVE" -> navController.navigate(Screen.LiveViewer.createRoute(card.action.targetId))
+                                                        }
+                                                    },
+                                                    onDismiss = { viewModel.dismissSocializationCard(it.id) },
+                                                )
+                                            }
+                                        }
+                                        if (
+                                            feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedVideos.isNotEmpty() &&
-                                            index == minOf(9, posts.lastIndex)
+                                            index == minOf(5, posts.lastIndex)
                                         ) {
                                             item(key = "recommended-videos") {
                                                 RecommendedVideosRail(
                                                     videos = recommendedVideos,
                                                     onOpenVideo = { videoId ->
-                                                        navController.navigate(Screen.VideoPlayer.createRoute(videoId))
+                                                        navController.openRecommendedVideo(videoId)
                                                     }
                                                 )
+                                            }
+                                        }
+                                        if (
+                                            feedMode == SocialFeedMode.DISCOVER &&
+                                            recommendedPeople.size > 6 &&
+                                            index == minOf(11, posts.lastIndex)
+                                        ) {
+                                            item(key = "recommended-people-more") {
+                                                RecommendedPeopleRail(
+                                                    users = recommendedPeople.drop(6),
+                                                    onOpenProfile = { userId ->
+                                                        if (userId != viewModel.currentUserId) {
+                                                            navController.navigate(Screen.UserProfile.createRoute(userId))
+                                                        }
+                                                    },
+                                                    onFollow = viewModel::followRecommendedUser
+                                                )
+                                            }
+                                        }
+                                        if (
+                                            feedMode == SocialFeedMode.DISCOVER &&
+                                            recommendedVideos.size > 6 &&
+                                            index == minOf(16, posts.lastIndex)
+                                        ) {
+                                            item(key = "recommended-videos-more") {
+                                                RecommendedVideosRail(
+                                                    videos = recommendedVideos.drop(6),
+                                                    onOpenVideo = { videoId ->
+                                                        navController.openRecommendedVideo(videoId)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (feedMode == SocialFeedMode.DISCOVER && authoritativeHasMore) {
+                                        item(key = "authoritative-feed-next-page") {
+                                            LaunchedEffect(posts.size, authoritativeHasMore) {
+                                                if (authoritativeHasMore) viewModel.loadMorePosts()
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 16.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
                                             }
                                         }
                                     }
@@ -2066,6 +2162,85 @@ private fun RecommendedPeopleRail(
                                 Text("Seguir", maxLines = 1)
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SocializationCardsRail(
+    cards: List<conectate.com.data.model.SocializationCard>,
+    onOpen: (conectate.com.data.model.SocializationCard) -> Unit,
+    onDismiss: (conectate.com.data.model.SocializationCard) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Text("Socializa con seguridad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text(
+                "Opciones públicas que aceptaste ver; nunca crean contacto automáticamente.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(cards, key = { it.id }) { card ->
+                Card(
+                    onClick = { onOpen(card) },
+                    modifier = Modifier.widthIn(min = 180.dp, max = 240.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Box(
+                                modifier = Modifier.size(52.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (!card.imageUrl.isNullOrBlank()) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(UbuntuMedia.resolveUrl(card.imageUrl) ?: card.imageUrl),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = if (card.type == "live") Icons.Default.PlayCircle else Icons.Default.People,
+                                        contentDescription = null,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (card.dismissible) {
+                                IconButton(onClick = { onDismiss(card) }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Close, contentDescription = "Ocultar recomendación")
+                                }
+                            }
+                        }
+                        Text(card.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        card.subtitle?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        Text(
+                            when (card.type) {
+                                "person" -> "Ver perfil"
+                                "community" -> "Ver comunidad"
+                                "live" -> "Entrar al directo"
+                                else -> "Abrir"
+                            },
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
                     }
                 }
             }

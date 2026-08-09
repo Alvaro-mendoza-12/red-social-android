@@ -500,7 +500,8 @@ private fun OfflineVideoRow(
     }
 }
 
-@OptIn(UnstableApi::class, ExperimentalFoundationApi::class)
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun OfflineSwipeFeed(
     videos: List<OfflineVideoEntry>,

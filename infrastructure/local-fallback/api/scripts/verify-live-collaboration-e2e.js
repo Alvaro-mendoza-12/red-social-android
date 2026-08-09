@@ -76,9 +76,11 @@ async function run() {
     const activated = await jsonRequest(`/v1/data/live/${liveId}/state`, {
       token: host.token,
       method: 'PATCH',
-      body: JSON.stringify({ isActive: true }),
+      body: JSON.stringify({ isActive: true, allowGuestRequests: true }),
     })
-    if (!activated.response.ok) throw new Error(`Live activation failed with HTTP ${activated.response.status}`)
+    if (!activated.response.ok || activated.body?.stream?.allow_guest_requests !== true) {
+      throw new Error(`Live activation or guest-request toggle failed with HTTP ${activated.response.status}`)
+    }
 
     const viewerSfu = await jsonRequest(`/v1/data/live/${liveId}/sfu-token`, {
       token: guest.token,
@@ -90,18 +92,22 @@ async function run() {
     }
 
     const invitationNonce = crypto.randomUUID()
-    const invited = await jsonRequest(`/v1/data/live/${liveId}/guests/invitations`, {
-      token: host.token,
+    const invited = await jsonRequest(`/v1/data/live/${liveId}/guests/requests`, {
+      token: guest.token,
       method: 'POST',
-      body: JSON.stringify({ inviteeUserId: guest.id, requestNonce: invitationNonce }),
+      body: JSON.stringify({ requestNonce: invitationNonce }),
     })
-    if (![200, 201].includes(invited.response.status) || !invited.body?.invitation?.id) {
-      throw new Error(`Guest invitation failed with HTTP ${invited.response.status}`)
+    if (
+      ![200, 201].includes(invited.response.status) ||
+      !invited.body?.invitation?.id ||
+      invited.body?.invitation?.initiated_by !== 'viewer'
+    ) {
+      throw new Error(`Viewer guest request failed with HTTP ${invited.response.status}`)
     }
     const invitationId = String(invited.body.invitation.id)
 
     const accepted = await jsonRequest(`/v1/data/live/${liveId}/guests/invitations/${invitationId}`, {
-      token: guest.token,
+      token: host.token,
       method: 'PATCH',
       body: JSON.stringify({ status: 'accepted' }),
     })
@@ -156,6 +162,8 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
+      guestRequestsEnabled: true,
+      viewerRequestCreated: true,
       invitation: 'accepted',
       hostSfuSession: true,
       guestSfuSession: true,

@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -352,7 +354,16 @@ fun FullScreenImageDialog(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            // El diálogo usa edge-to-edge; sin reservar ambos lados el
+                            // contenido de publicaciones puede quedar debajo del recorte
+                            // de pantalla o fuera del viewport en landscape. El inset debe
+                            // ir antes de fillMaxWidth: de lo contrario el ancho ya queda
+                            // fijado y el padding horizontal se agrega por fuera del viewport.
+                            .windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                            )
                             .fillMaxWidth()
+                            .clipToBounds()
                             .offset(y = -reliableBottomPadding)
                             .padding(bottom = reliableBottomPadding)
                     ) {

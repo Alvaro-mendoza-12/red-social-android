@@ -12,12 +12,17 @@ import conectate.com.data.model.UpdateAlgorithmDataPermissionsRequest
 import conectate.com.data.model.UpdateAlgorithmFeedMixRequest
 import conectate.com.data.model.UpdateAlgorithmPreferencesRequest
 import conectate.com.data.model.UpdateAlgorithmProfileRequest
+import conectate.com.data.recommendations.AuthoritativeRecommendationDecodeResult
+import conectate.com.data.recommendations.AuthoritativeRecommendationPageJson
+import conectate.com.data.recommendations.AuthoritativeRecommendationSurface
+import conectate.com.data.recommendations.OpaqueRecommendationCursor
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -62,6 +67,28 @@ class AlgorithmApiClient @Inject constructor(
             ?.let { "/v1/data/algorithm/profiles/${encodePath(it)}/config" }
             ?: "/v1/data/algorithm/config"
         return get(suffix, accessToken) { body -> decodeEnvelope(body, "config") }
+    }
+
+    /**
+     * Loads one server-ranked page without ever interpreting its opaque cursor
+     * or changing the order selected by the backend.
+     */
+    suspend fun recommendations(
+        accessToken: String,
+        surface: AuthoritativeRecommendationSurface,
+        profileId: String,
+        cursor: OpaqueRecommendationCursor? = null,
+        limit: Int = 20,
+    ): Result<AuthoritativeRecommendationDecodeResult> = request(accessToken) { baseUrl ->
+        supabaseConfig.httpClient.get("$baseUrl/v1/data/recommendations") {
+            algorithmHeaders(accessToken)
+            parameter("surface", surface.wireValue)
+            parameter("profileId", profileId.trim())
+            parameter("limit", limit.coerceIn(1, MAX_RECOMMENDATION_PAGE_SIZE))
+            cursor?.let { parameter("cursor", it.asRequestValue()) }
+        }
+    }.mapCatching { body ->
+        AuthoritativeRecommendationPageJson.decode(body, surface)
     }
 
     suspend fun createProfile(
@@ -253,6 +280,10 @@ class AlgorithmApiClient @Inject constructor(
     }
 
     private fun encodePath(value: String): String = java.net.URLEncoder.encode(value.trim(), Charsets.UTF_8.name())
+
+    private companion object {
+        const val MAX_RECOMMENDATION_PAGE_SIZE = 60
+    }
 }
 
 @kotlinx.serialization.Serializable

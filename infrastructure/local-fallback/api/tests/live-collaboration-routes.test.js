@@ -3,7 +3,9 @@ const jwt = require('jsonwebtoken')
 const {
   ensureLiveTables,
   issueLiveSfuToken,
+  liveSupporterRanking,
   liveSfuConfiguration,
+  liveSupporterLevel,
 } = require('../src/live-routes')
 const fs = require('fs')
 
@@ -18,11 +20,70 @@ async function testCollaborationSchema() {
   await ensureLiveTables(pool)
   const schema = statements.join('\n')
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_guest_invitations/)
+  assert.match(schema, /initiated_by TEXT NOT NULL DEFAULT 'host'/)
+  assert.match(schema, /allow_guest_requests BOOLEAN NOT NULL DEFAULT FALSE/)
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_participants/)
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_battles/)
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_battle_events/)
   assert.match(schema, /UNIQUE INDEX IF NOT EXISTS idx_fallback_live_active_battle/)
   assert.match(schema, /UNIQUE \(battle_id, event_id\)/)
+}
+
+function testSupporterLevelsAreMonotonic() {
+  assert.deepStrictEqual(liveSupporterLevel(0), { level: 1, badge: 'Brisa' })
+  assert.strictEqual(liveSupporterLevel(100).level, 2)
+  assert.strictEqual(liveSupporterLevel(50_000).badge, 'Galaxia')
+  assert.strictEqual(liveSupporterLevel(150_000).level, 8)
+}
+
+function testSupporterRankingUsesCommittedGiftAmount() {
+  const liveId = '11111111-1111-4111-8111-111111111111'
+  const otherLiveId = '99999999-9999-4999-8999-999999999999'
+  const ranking = liveSupporterRanking([
+    {
+      status: 'committed',
+      live_stream_id: liveId,
+      sender_id: 'USER-A',
+      sender_name: 'Ana',
+      sender_avatar_url: 'https://cdn.example.test/a.png',
+      amount_diamonds: 90,
+    },
+    {
+      status: 'committed',
+      live_stream_id: liveId,
+      sender_id: 'user-b',
+      sender_name: 'Bruno',
+      price_diamonds: 40,
+    },
+    {
+      status: 'committed',
+      live_stream_id: otherLiveId,
+      sender_id: 'user-a',
+      sender_name: 'Ana',
+      amount_diamonds: 20,
+    },
+    {
+      status: 'committed',
+      live_stream_id: liveId,
+      sender_id: 'user-c',
+      sender_name: 'Cata',
+      amount_diamonds: 500,
+      refunded_at: '2026-08-08T00:00:00Z',
+    },
+    {
+      status: 'pending',
+      live_stream_id: liveId,
+      sender_id: 'user-d',
+      amount_diamonds: 999,
+    },
+  ], liveId)
+
+  assert.deepStrictEqual(ranking.map((item) => item.user_id), ['user-a', 'user-b'])
+  assert.strictEqual(ranking[0].coins_in_live, 90)
+  assert.strictEqual(ranking[0].lifetime_coins, 110)
+  assert.strictEqual(ranking[0].rank, 1)
+  assert.strictEqual(ranking[0].avatar_url, 'https://cdn.example.test/a.png')
+  assert.strictEqual(ranking[1].coins_in_live, 40)
 }
 
 async function testSfuTokenIsScopedAndShortLived() {
@@ -77,6 +138,8 @@ Promise.resolve()
   .then(testSfuTokenIsScopedAndShortLived)
   .then(testSfuConfigurationDefaultsDisabled)
   .then(testIdentityMembershipUsesSetApi)
+  .then(testSupporterLevelsAreMonotonic)
+  .then(testSupporterRankingUsesCommittedGiftAmount)
   .then(() => console.log('live collaboration route tests passed'))
   .catch((error) => {
     console.error(error)

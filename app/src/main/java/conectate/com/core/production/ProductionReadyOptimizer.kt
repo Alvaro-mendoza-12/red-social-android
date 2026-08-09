@@ -46,7 +46,16 @@ class ProductionReadyOptimizer(private val context: Context) {
     }
 
     private fun trimTransientCaches() {
-        runCatching { context.cacheDir.listFiles()?.forEach { file -> file.takeIf { it.isFile }?.delete() } }
+        // Nunca borres la raíz completa de cacheDir: allí pueden coexistir un
+        // export de video todavía en subida, un audio pendiente o una lectura
+        // de Media3. Solo los productores que opten por este directorio
+        // exclusivo pueden ser desalojados por presión de memoria.
+        runCatching {
+            context.cacheDir
+                .resolve("novvin-transient")
+                .listFiles()
+                ?.forEach { file -> file.takeIf { it.isFile }?.delete() }
+        }
     }
 
     private fun captureStatus(): ProductionStatus {

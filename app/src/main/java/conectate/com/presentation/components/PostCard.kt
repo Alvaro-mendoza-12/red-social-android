@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
@@ -138,24 +139,39 @@ fun PostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
                             text = reactionPreview(post.reactionCounts, reactionTotal),
                             color = Color.White,
-                            modifier = Modifier.clickable {
-                                fullScreenImageIndex = null
-                                onReactionSummaryClick()
-                            }
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    fullScreenImageIndex = null
+                                    onReactionSummaryClick()
+                                },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(Modifier.weight(1f))
                         Text(
                             "${post.commentCount} comentarios",
                             color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.clickable {
-                                fullScreenImageIndex = null
-                                onCommentClick()
-                            }
+                            modifier = Modifier
+                                // El diálogo de medios puede tener un ancho efectivo menor
+                                // que el de la publicación en landscape. Acotar esta etiqueta
+                                // evita que salga por el borde derecho en equipos anchos.
+                                // Además reservamos un margen interno: algunos fabricantes
+                                // reportan cero inset lateral aunque el contenido se recorta
+                                // visualmente en el borde de la ventana.
+                                .padding(end = 24.dp)
+                                .widthIn(max = 220.dp)
+                                .clickable {
+                                    fullScreenImageIndex = null
+                                    onCommentClick()
+                                },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

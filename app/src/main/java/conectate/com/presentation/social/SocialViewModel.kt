@@ -11,6 +11,8 @@ import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PostMutationEvent
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.repository.AlgorithmRepository
+import conectate.com.data.recommendations.OpaqueRecommendationCursor
 import conectate.com.data.local.prefs.FeedPreferences
 import conectate.com.data.local.prefs.SocialFeedMode
 import conectate.com.data.localfallback.SavedLibraryResponse
@@ -19,7 +21,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -35,6 +37,8 @@ class SocialViewModel @Inject constructor(
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
+    private val socializationRepository: conectate.com.data.repository.SocializationRepository,
+    private val algorithmRepository: AlgorithmRepository,
     appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
     // challengeRepository removed (moved to ChallengeViewModel)
     private val friendRepository: conectate.com.data.repository.FriendRepository,
@@ -95,6 +99,8 @@ class SocialViewModel @Inject constructor(
     val recommendedPeople: StateFlow<List<conectate.com.data.model.User>> = _recommendedPeople.asStateFlow()
     private val _recommendedVideos = MutableStateFlow<List<conectate.com.data.model.Video>>(emptyList())
     val recommendedVideos: StateFlow<List<conectate.com.data.model.Video>> = _recommendedVideos.asStateFlow()
+    private val _socializationCards = MutableStateFlow<List<conectate.com.data.model.SocializationCard>>(emptyList())
+    val socializationCards: StateFlow<List<conectate.com.data.model.SocializationCard>> = _socializationCards.asStateFlow()
     private val _reactionUsers = MutableStateFlow<List<PostReactionUser>>(emptyList())
     val reactionUsers: StateFlow<List<PostReactionUser>> = _reactionUsers.asStateFlow()
     private val _reactionsLoading = MutableStateFlow(false)
@@ -110,6 +116,14 @@ class SocialViewModel @Inject constructor(
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
+    private var authoritativeCursor: OpaqueRecommendationCursor? = null
+    private var authoritativeFeedActive = false
+    private var authoritativePageRequestInFlight = false
+    private val authoritativeExplanations = mutableMapOf<String, List<String>>()
+    private var authoritativeRankingVersion: String? = null
+    private var authoritativeExplanationsEnabled = false
+    private val _authoritativeHasMore = MutableStateFlow(false)
+    val authoritativeHasMore: StateFlow<Boolean> = _authoritativeHasMore.asStateFlow()
 
     // Challenge flows removed
 
@@ -127,16 +141,46 @@ class SocialViewModel @Inject constructor(
         loadFriends()
         loadRecommendedPeople()
         loadRecommendedVideos()
+        loadSocializationCards()
+    }
+
+    fun loadSocializationCards() {
+        viewModelScope.launch {
+            socializationRepository.loadCards(surface = "social", placement = "after_12", limit = 4)
+                .onSuccess { response ->
+                    _socializationCards.value = if (
+                        response.enabled &&
+                        response.safeguards.consentRequired &&
+                        response.safeguards.serverFiltered &&
+                        !response.safeguards.automaticContact
+                    ) response.items
+                        .filter { it.action.type in setOf("OPEN_PROFILE", "OPEN_COMMUNITY", "OPEN_LIVE") }
+                        .distinctBy { it.id }
+                    else emptyList()
+                }
+                .onFailure { error ->
+                    val expectedDisabled = (error as? conectate.com.data.socialization.SocializationApiException)
+                        ?.code in setOf("SOCIALIZATION_DISABLED", "SOCIALIZATION_CARDS_DISABLED")
+                    if (!expectedDisabled) android.util.Log.w("SocialViewModel", "Socialization cards unavailable")
+                    _socializationCards.value = emptyList()
+                }
+        }
+    }
+
+    fun dismissSocializationCard(cardId: String) {
+        _socializationCards.value = _socializationCards.value.filterNot { it.id == cardId }
     }
 
     private fun loadRecommendedVideos() {
         viewModelScope.launch {
-            runCatching { videoRepository.getVideos(offset = 0, limit = 12, random = true).first() }
+            // The flow can emit the disk cache first. Use its final emission so
+            // recommendations also reflect the configured backend catalog.
+            runCatching { videoRepository.getVideos(offset = 0, limit = 24, random = true).last() }
                 .onSuccess { videos ->
                     _recommendedVideos.value = videos
                         .filter { it.isPublic && it.id.isNotBlank() && it.videoUrl.isNotBlank() }
                         .distinctBy { it.id }
-                        .take(10)
+                        .take(18)
                 }
         }
     }
@@ -145,7 +189,13 @@ class SocialViewModel @Inject constructor(
         viewModelScope.launch {
             val currentId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
             if (currentId.isBlank()) return@launch
-            userRepository.getUsersByFollowerThreshold(0)
+            val primary = userRepository.getUsersByFollowerThreshold(0)
+            val result = if (primary.getOrNull().isNullOrEmpty()) {
+                userRepository.getAllUsers(limit = 80)
+            } else {
+                primary
+            }
+            result
                 .onSuccess { candidates ->
                     val candidateIds = candidates.map { it.id }.filter { it.isNotBlank() }
                     val followedIds = userRepository.getFollowedUserIds(candidateIds).getOrDefault(emptySet())
@@ -157,7 +207,7 @@ class SocialViewModel @Inject constructor(
                         .filterNot { friendIds.contains(it.id.trim().lowercase()) }
                         .distinctBy { it.id.trim().lowercase() }
                         .sortedWith(compareByDescending<conectate.com.data.model.User> { it.is_verified }.thenByDescending { it.followers_count ?: 0 })
-                        .take(12)
+                        .take(24)
                 }
         }
     }
@@ -178,7 +228,7 @@ class SocialViewModel @Inject constructor(
             val userId = authService.getCurrentUserId() ?: return@launch
             userRepository.getUserById(userId).onSuccess {
                 _currentUser.value = it
-                if (_posts.value.isNotEmpty()) {
+                if (_posts.value.isNotEmpty() && !authoritativeFeedActive) {
                     _posts.value = rankPosts(_posts.value)
                 }
             }
@@ -191,20 +241,40 @@ class SocialViewModel @Inject constructor(
             friendRepository.getFriends(userId).onSuccess {
                 _friends.value = it
                 loadRecommendedPeople()
-                if (_posts.value.isNotEmpty()) {
+                if (_posts.value.isNotEmpty() && !authoritativeFeedActive) {
                     _posts.value = rankPosts(_posts.value)
                 }
             }
         }
     }
 
-    fun loadPosts() {
+    fun loadPosts() = loadPosts(forceLegacy = false)
+
+    private fun loadPosts(forceLegacy: Boolean) {
         postsJob?.cancel()
         postsJob = viewModelScope.launch {
             val startedAt = System.currentTimeMillis()
             _isRefreshing.value = true
             try {
                 val selectedMode = feedMode.value
+                resetAuthoritativeFeedState()
+                if (!forceLegacy && selectedMode == SocialFeedMode.DISCOVER) {
+                    val authoritativePage = algorithmRepository
+                        .loadSocialRecommendationPage(cursor = null, limit = 60)
+                        .getOrNull()
+                    if (authoritativePage != null) {
+                        authoritativeFeedActive = true
+                        authoritativeCursor = authoritativePage.nextCursor
+                        _authoritativeHasMore.value = authoritativePage.hasMore
+                        authoritativeRankingVersion = authoritativePage.rankingVersion
+                        authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
+                        authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
+                        val visiblePosts = applyFeedControls(authoritativePage.items)
+                        _posts.value = visiblePosts
+                        recordFeedLoaded(startedAt, visiblePosts.size, "authoritative")
+                        return@launch
+                    }
+                }
                 postRepository.getGlobalPosts(
                     limit = 60,
                     mode = selectedMode.apiValue
@@ -216,22 +286,7 @@ class SocialViewModel @Inject constructor(
                         visiblePosts.sortedByDescending { it.createdAt }
                     }
                     _posts.value = ranked
-                    _isRefreshing.value = false
-                    appMetrics.incrementCounter(
-                        metric = "feed_load_success",
-                        attributes = mapOf(
-                            "count" to ranked.size.toString(),
-                            "mode" to selectedMode.apiValue
-                        )
-                    )
-                    appMetrics.recordLatency(
-                        metric = "feed_load",
-                        durationMs = System.currentTimeMillis() - startedAt,
-                        attributes = mapOf(
-                            "count" to ranked.size.toString(),
-                            "mode" to selectedMode.apiValue
-                        )
-                    )
+                    recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Error loading posts", e)
@@ -240,6 +295,52 @@ class SocialViewModel @Inject constructor(
                 _isRefreshing.value = false
             }
         }
+    }
+
+    fun loadMorePosts() {
+        val cursor = authoritativeCursor ?: return
+        if (!authoritativeFeedActive || !_authoritativeHasMore.value || authoritativePageRequestInFlight) return
+        authoritativePageRequestInFlight = true
+        viewModelScope.launch {
+            try {
+                val page = algorithmRepository.loadSocialRecommendationPage(cursor = cursor, limit = 60)
+                    .getOrElse {
+                        // Never mix a failed authoritative continuation with a
+                        // differently ranked legacy page. Replace the feed with
+                        // one coherent legacy feed instead.
+                        loadPosts(forceLegacy = true)
+                        return@launch
+                    }
+                authoritativeCursor = page.nextCursor
+                _authoritativeHasMore.value = page.hasMore
+                authoritativeExplanations.putAll(page.explanationsByCandidateId)
+                // Concatenation preserves the server page and item sequence.
+                _posts.value = _posts.value + applyFeedControls(page.items)
+            } finally {
+                authoritativePageRequestInFlight = false
+            }
+        }
+    }
+
+    private fun resetAuthoritativeFeedState() {
+        authoritativeFeedActive = false
+        authoritativeCursor = null
+        authoritativePageRequestInFlight = false
+        authoritativeExplanations.clear()
+        authoritativeRankingVersion = null
+        authoritativeExplanationsEnabled = false
+        _authoritativeHasMore.value = false
+    }
+
+    private fun recordFeedLoaded(startedAt: Long, count: Int, mode: String) {
+        _isRefreshing.value = false
+        val attributes = mapOf("count" to count.toString(), "mode" to mode)
+        appMetrics.incrementCounter(metric = "feed_load_success", attributes = attributes)
+        appMetrics.recordLatency(
+            metric = "feed_load",
+            durationMs = System.currentTimeMillis() - startedAt,
+            attributes = attributes,
+        )
     }
 
     fun refreshLives() {
@@ -296,13 +397,27 @@ class SocialViewModel @Inject constructor(
         loadPosts()
     }
 
-    fun explainPost(post: Post): List<String> = feedRankingEngine.explainPost(
-        post = post,
-        currentUserId = authService.getCurrentUserId(),
-        friendIds = _friends.value.map { it.id }.toSet(),
-        signalSnapshot = feedSignalTracker.snapshot(),
-        interestTerms = profileInterestTerms()
-    )
+    fun explainPost(post: Post): List<String> {
+        if (authoritativeFeedActive) {
+            return authoritativeExplanations[post.id]
+                ?: if (authoritativeExplanationsEnabled) {
+                    listOf("Mi algoritmo seleccionó este contenido en el servidor.")
+                } else {
+                    listOf(
+                        "Mi algoritmo ordenó este contenido en el servidor" +
+                            authoritativeRankingVersion?.let { " ($it)" }.orEmpty() +
+                            "; las explicaciones detalladas están desactivadas.",
+                    )
+                }
+        }
+        return feedRankingEngine.explainPost(
+            post = post,
+            currentUserId = authService.getCurrentUserId(),
+            friendIds = _friends.value.map { it.id }.toSet(),
+            signalSnapshot = feedSignalTracker.snapshot(),
+            interestTerms = profileInterestTerms(),
+        )
+    }
 
     fun hideCreator(post: Post) {
         feedPreferences.muteCreator(post.userId)

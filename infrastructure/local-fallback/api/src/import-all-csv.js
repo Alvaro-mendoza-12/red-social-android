@@ -2,6 +2,11 @@ const fs = require('fs')
 const path = require('path')
 const { parse } = require('csv-parse/sync')
 const { Pool } = require('pg')
+const { algorithmFeatureFlags, ensureAlgorithmTables } = require('./algorithm-routes')
+const {
+  BACKFILL_FLAG,
+  backfillTrustedPublicContentClassifications,
+} = require('./algorithm-content-ingestion')
 
 const databaseUrl = process.env.DATABASE_URL
 const importsDir = process.argv[2] || '/imports'
@@ -265,10 +270,23 @@ async function main() {
     }
   }
 
+  let algorithmClassifications = {
+    skipped: 'USER_ALGORITHM_CLASSIFICATION_BACKFILL_DISABLED',
+    classified: 0,
+    excluded: 0,
+    failed: 0,
+  }
+  const algorithmFlags = algorithmFeatureFlags()
+  if (algorithmFlags.core && algorithmFlags.classification && /^(1|true|yes|on)$/i.test(String(process.env[BACKFILL_FLAG] || '').trim())) {
+    await ensureAlgorithmTables(pool)
+    algorithmClassifications = await backfillTrustedPublicContentClassifications(pool)
+  }
+
   const totals = {
     files: results.length,
     rows: results.reduce((sum, result) => sum + result.records, 0),
     fallbackProfiles,
+    algorithmClassifications,
     tables: results,
   }
 

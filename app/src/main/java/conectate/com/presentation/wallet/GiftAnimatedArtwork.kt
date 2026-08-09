@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -14,6 +15,7 @@ import conectate.com.R
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.model.visualKey
 import kotlin.math.floor
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -26,7 +28,14 @@ internal data class GiftSpriteSheetSpec(
     val rows: Int = 2,
     val frameCount: Int = 8,
     val cycles: Float,
-    val firstRow: Int = 0
+    val firstRow: Int = 0,
+    val interpolationSteps: Int = 4,
+)
+
+internal data class GiftSpriteBlend(
+    val currentFrame: Int,
+    val nextFrame: Int,
+    val nextAlpha: Float,
 )
 
 internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when (visualKey) {
@@ -52,19 +61,23 @@ internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when
     "aurora-genesis" -> groupedSprite(R.drawable.gift_anim_group_5_sheet, row = 3, cycles = 1.05f)
     "solar-hummingbird" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_solar_hummingbird_sheet,
-        cycles = 5.5f
+        cycles = 5.5f,
+        interpolationSteps = 4,
     )
     "forest-guardian" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_forest_guardian_sheet,
-        cycles = 2.25f
+        cycles = 2.25f,
+        interpolationSteps = 4,
     )
     "cosmic-whale" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_cosmic_whale_sheet,
-        cycles = 2f
+        cycles = 2f,
+        interpolationSteps = 8,
     )
     "celestial-dragon" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_celestial_dragon_sheet,
-        cycles = 1.75f
+        cycles = 1.75f,
+        interpolationSteps = 8,
     )
     else -> null
 }
@@ -78,7 +91,14 @@ private fun groupedSprite(
     rows = 4,
     frameCount = 4,
     cycles = cycles,
-    firstRow = row
+    firstRow = row,
+    interpolationSteps = when (drawableRes) {
+        R.drawable.gift_anim_group_1_sheet -> 2
+        R.drawable.gift_anim_group_2_sheet,
+        R.drawable.gift_anim_group_3_sheet -> 4
+        R.drawable.gift_anim_group_4_sheet -> 8
+        else -> 16
+    },
 )
 
 internal fun giftSpriteFrame(
@@ -91,6 +111,46 @@ internal fun giftSpriteFrame(
     return floor(normalized * spec.frameCount * spec.cycles)
         .toInt()
         .mod(spec.frameCount)
+}
+
+/**
+ * Interpola dos posturas distintas. El atlas sigue siendo compacto, pero el
+ * cambio deja de ser un salto de 4/8 imágenes y pasa a una línea de tiempo
+ * continua; los estados efectivos se pueden reducir sin cambiar la identidad.
+ */
+internal fun giftSpriteBlend(
+    progress: Float,
+    animationsEnabled: Boolean,
+    spec: GiftSpriteSheetSpec,
+): GiftSpriteBlend {
+    if (!animationsEnabled || spec.frameCount <= 1) return GiftSpriteBlend(0, 0, 0f)
+    val position = progress.coerceIn(0f, 0.999_999f) * spec.frameCount * spec.cycles
+    val base = floor(position).toInt()
+    val current = base.mod(spec.frameCount)
+    val next = (current + 1).mod(spec.frameCount)
+    val fraction = position - floor(position)
+    val smoothAlpha = fraction * fraction * (3f - 2f * fraction)
+    return GiftSpriteBlend(current, next, smoothAlpha.coerceIn(0f, 1f))
+}
+
+internal fun giftEffectiveTimelineStates(spec: GiftSpriteSheetSpec): Int =
+    spec.frameCount * spec.interpolationSteps.coerceAtLeast(1)
+
+/** Ajusta una pose dentro del lienzo sin deformar artes rectangulares. */
+internal fun fitGiftSpriteFrame(source: IntSize, destination: IntSize): Pair<IntOffset, IntSize> {
+    if (source.width <= 0 || source.height <= 0 || destination.width <= 0 || destination.height <= 0) {
+        return IntOffset.Zero to IntSize.Zero
+    }
+    val scale = min(
+        destination.width.toFloat() / source.width.toFloat(),
+        destination.height.toFloat() / source.height.toFloat()
+    )
+    val width = (source.width * scale).roundToInt().coerceIn(1, destination.width)
+    val height = (source.height * scale).roundToInt().coerceIn(1, destination.height)
+    return IntOffset(
+        x = (destination.width - width) / 2,
+        y = (destination.height - height) / 2
+    ) to IntSize(width, height)
 }
 
 @Composable
@@ -107,25 +167,50 @@ internal fun GiftAnimatedArtwork(
         return
     }
 
-    val spriteSheet = ImageBitmap.imageResource(spec.drawableRes)
-    val frame = giftSpriteFrame(progress, animationsEnabled, spec)
+    // El progreso recompone esta escena en cada frame. Conservar la hoja evita
+    // una nueva decodificación RGBA por frame en equipos con poca memoria.
+    val resources = LocalContext.current.resources
+    val spriteSheet = remember(resources, spec.drawableRes) {
+        ImageBitmap.imageResource(resources, spec.drawableRes)
+    }
+    val blend = giftSpriteBlend(progress, animationsEnabled, spec)
     val frameWidth = remember(spriteSheet.width, spec.columns) {
         spriteSheet.width / spec.columns.coerceAtLeast(1)
     }
     val frameHeight = remember(spriteSheet.height, spec.rows) {
         spriteSheet.height / spec.rows.coerceAtLeast(1)
     }
-    val sourceColumn = frame % spec.columns
-    val sourceRow = spec.firstRow + (frame / spec.columns)
+    fun sourceOffset(frame: Int) = IntOffset(
+        x = (frame % spec.columns) * frameWidth,
+        y = (spec.firstRow + frame / spec.columns) * frameHeight,
+    )
 
     Canvas(modifier = modifier) {
+        val destination = IntSize(size.width.roundToInt(), size.height.roundToInt())
+        val (destinationOffset, destinationSize) = fitGiftSpriteFrame(
+            source = IntSize(frameWidth, frameHeight),
+            destination = destination
+        )
+        if (destinationSize == IntSize.Zero) return@Canvas
         drawImage(
             image = spriteSheet,
-            srcOffset = IntOffset(sourceColumn * frameWidth, sourceRow * frameHeight),
+            srcOffset = sourceOffset(blend.currentFrame),
             srcSize = IntSize(frameWidth, frameHeight),
-            dstOffset = IntOffset.Zero,
-            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-            filterQuality = FilterQuality.High
+            dstOffset = destinationOffset,
+            dstSize = destinationSize,
+            alpha = 1f - blend.nextAlpha,
+            filterQuality = FilterQuality.High,
         )
+        if (blend.nextFrame != blend.currentFrame && blend.nextAlpha > 0f) {
+            drawImage(
+                image = spriteSheet,
+                srcOffset = sourceOffset(blend.nextFrame),
+                srcSize = IntSize(frameWidth, frameHeight),
+                dstOffset = destinationOffset,
+                dstSize = destinationSize,
+                alpha = blend.nextAlpha,
+                filterQuality = FilterQuality.High,
+            )
+        }
     }
 }

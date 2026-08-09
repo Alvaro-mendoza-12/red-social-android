@@ -337,6 +337,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     body = liveBody,
                     liveId = liveId,
                     hostId = data["host_id"] ?: data["hostId"] ?: senderId,
+                    hostAvatar = data["sender_avatar"]
+                        ?: data["senderAvatar"]
+                        ?: data["actor_avatar_url"]
+                        ?: data["host_avatar_url"],
                     notificationAccountTarget = effectiveAccountTarget,
                     accountLabel = targetAccountLabel
                 )
@@ -711,6 +715,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         body: String,
         liveId: String,
         hostId: String?,
+        hostAvatar: String?,
         notificationAccountTarget: NotificationAccountTarget?,
         accountLabel: String?
     ) {
@@ -751,10 +756,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val childNotification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(getAvatarBitmap(hostAvatar) ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setSubText(accountLabel?.let { "Cuenta: $it" } ?: getString(R.string.app_name))
+            .setSubText(
+                accountLabel?.let { "EN VIVO · Cuenta: $it" }
+                    ?: "EN VIVO · ${getString(R.string.app_name)}"
+            )
             .setColor(ContextCompat.getColor(this, R.color.red_primary))
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)

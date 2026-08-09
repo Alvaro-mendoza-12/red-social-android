@@ -1,8 +1,10 @@
 const assert = require('assert')
 const jwt = require('jsonwebtoken')
 const {
+  dailyAwardAmount,
   ensureLivePointsTables,
   issueSessionToken,
+  rewardCooldownRemainingSeconds,
 } = require('../src/live-points-routes')
 
 async function testPointsSchema() {
@@ -44,9 +46,33 @@ async function testSignedSessionTokenScope() {
   else process.env.LIVE_POINTS_SESSION_SECRET = previousSecret
 }
 
+function testDailyCapIsEnforced() {
+  assert.strictEqual(dailyAwardAmount({ earnedToday: 0, dailyCap: 25, pointsPerInterval: 10 }), 10)
+  assert.strictEqual(dailyAwardAmount({ earnedToday: 20, dailyCap: 25, pointsPerInterval: 10 }), 5)
+  assert.strictEqual(dailyAwardAmount({ earnedToday: 25, dailyCap: 25, pointsPerInterval: 10 }), 0)
+  assert.strictEqual(dailyAwardAmount({ earnedToday: 30, dailyCap: 25, pointsPerInterval: 10 }), 0)
+}
+
+function testRewardCooldown() {
+  const now = Date.parse('2026-08-08T12:00:00.000Z')
+  assert.strictEqual(rewardCooldownRemainingSeconds({ lastRedeemedAt: null, cooldownSeconds: 60, now }), 0)
+  assert.strictEqual(rewardCooldownRemainingSeconds({
+    lastRedeemedAt: '2026-08-08T11:59:30.000Z',
+    cooldownSeconds: 60,
+    now,
+  }), 30)
+  assert.strictEqual(rewardCooldownRemainingSeconds({
+    lastRedeemedAt: '2026-08-08T11:58:00.000Z',
+    cooldownSeconds: 60,
+    now,
+  }), 0)
+}
+
 Promise.resolve()
   .then(testPointsSchema)
   .then(testSignedSessionTokenScope)
+  .then(testDailyCapIsEnforced)
+  .then(testRewardCooldown)
   .then(() => console.log('live points route tests passed'))
   .catch((error) => {
     console.error(error)

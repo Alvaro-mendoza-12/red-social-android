@@ -11,12 +11,21 @@ const {
   registerAlgorithmRoutes,
 } = require('./algorithm-routes')
 const {
+  deleteTrustedContentClassification,
+  ingestTrustedContentClassification,
+} = require('./algorithm-content-ingestion')
+const {
   registerAuthoritativeRecommendationRoutes,
 } = require('./algorithm-recommendation-bootstrap')
 const {
   ensureSocializationTables,
   registerSocializationRoutes,
 } = require('./socialization-routes')
+const { registerSocializationCards } = require('./socialization-cards-bootstrap')
+const {
+  ensureCreatorPayoutTables,
+  registerCreatorPayoutRoutes,
+} = require('./creator-payout-routes')
 
 const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
 
@@ -5125,15 +5134,18 @@ async function ensureLocalDataTables(pool) {
   const { ensureAdminModerationTables } = require('./admin-moderation-routes')
   const { ensureLiveTables } = require('./live-routes')
   const { ensureLivePointsTables } = require('./live-points-routes')
+  const { ensureLiveDrawGuessTables } = require('./live-draw-guess-routes')
   const { ensureProximityTables } = require('./proximity-routes')
   await ensureMomentsTables(pool)
   await ensureAdminModerationTables(pool)
   await ensureLiveTables(pool)
   await ensureLivePointsTables(pool)
+  await ensureLiveDrawGuessTables(pool)
   await ensureProximityTables(pool)
   await ensureNotificationDigestTables(pool)
   await ensureAlgorithmTables(pool)
   await ensureSocializationTables(pool)
+  await ensureCreatorPayoutTables(pool)
 }
 
 function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser }) {
@@ -5142,7 +5154,11 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')
   const { registerLiveRoutes } = require('./live-routes')
   const { registerLivePointsRoutes } = require('./live-points-routes')
+  const {
+    registerLiveDrawGuessRoutes,
+  } = require('./live-draw-guess-routes')
   const { registerProximityRoutes } = require('./proximity-routes')
+  const { registerCreatorAnalyticsRoutes } = require('./creator-analytics-routes')
   const threadSummaryLimiter = createFixedWindowRateLimiter({
     limit: Math.max(2, Math.min(Number(process.env.AI_THREAD_SUMMARY_RATE_LIMIT_PER_MINUTE) || 10, 60)),
   })
@@ -5165,6 +5181,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
   })
   registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
+  registerLiveDrawGuessRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity })
   registerNotificationDigestRoutes(app, {
     pool,
@@ -5185,6 +5202,24 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     userIdentity,
   })
   registerSocializationRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerSocializationCards(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerCreatorAnalyticsRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+  })
+  registerCreatorPayoutRoutes(app, {
     pool,
     authRequired,
     getCurrentUser,
@@ -6676,7 +6711,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         ],
       )
 
-      res.status(201).json({ post: normalizeImportedRow(rows[0]) })
+      const storedPost = normalizeImportedRow(rows[0])
+      await ingestTrustedContentClassification(pool, 'post', storedPost)
+      res.status(201).json({ post: storedPost })
     } catch (error) {
       next(error)
     }
@@ -6840,7 +6877,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         content: 'Creó un remix de tu publicación.',
         extraData: { source_post_id: postId, remix_post_id: textOf(rows[0], ['id'], '') },
       })
-      res.status(201).json({ post: normalizeImportedRow(rows[0]) })
+      const storedPost = normalizeImportedRow(rows[0])
+      await ingestTrustedContentClassification(pool, 'post', storedPost)
+      res.status(201).json({ post: storedPost })
     } catch (error) {
       next(error)
     }
@@ -6937,6 +6976,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
 
       clearImportedRowCaches('posts')
       const payload = await loadPostDetailPayload(pool, user, postId)
+      await ingestTrustedContentClassification(pool, 'post', payload?.post || { ...existing.post, ...patch })
       res.json({ post: payload?.post || existing.post })
     } catch (error) {
       next(error)
@@ -6995,6 +7035,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
       }
 
+      await deleteTrustedContentClassification(pool, 'post', postId)
       clearImportedRowCaches('posts', 'post_comments', 'post_likes', 'post_reactions', 'shares')
       res.json({ ok: true })
     } catch (error) {
@@ -10740,7 +10781,9 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         ],
       )
       const profilesById = indexProfiles([...(await importedRows(pool, 'profiles', 5000)), ...(await fallbackUserProfileRows(pool, 5000))])
-      res.status(201).json({ video: enrichVideo(normalizeImportedRow(rows[0]), profilesById, new Map(), new Set()) })
+      const storedVideo = normalizeImportedRow(rows[0])
+      await ingestTrustedContentClassification(pool, 'video', storedVideo)
+      res.status(201).json({ video: enrichVideo(storedVideo, profilesById, new Map(), new Set()) })
     } catch (error) {
       next(error)
     }
@@ -11046,6 +11089,7 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
         pool.query(`DELETE FROM fallback_shares WHERE content_type = 'video' AND lower(post_id) = $1`, [cleanId]),
         pool.query(`DELETE FROM fallback_video_metrics WHERE lower(video_id) = $1`, [cleanId]),
       ])
+      await deleteTrustedContentClassification(pool, 'video', cleanId)
       res.json({ ok: true, deleted: true })
     } catch (error) {
       next(error)

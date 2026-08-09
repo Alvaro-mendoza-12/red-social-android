@@ -65,7 +65,7 @@ fun GiftSelectionDialog(
     receiverName: String,
     liveStreamId: String,
     onDismiss: () -> Unit,
-    onRecharge: () -> Unit,
+    onRecharge: (minimumCoins: Int) -> Unit,
     onGiftSent: (GiftReceipt) -> Unit,
     viewModel: WalletViewModel = hiltViewModel()
 ) {
@@ -119,7 +119,7 @@ fun GiftSelectionDialog(
                 }
             }
 
-            Button(onClick = onRecharge, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Button(onClick = { onRecharge(0) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text("Recargar monedas · elegir monto")
             }
 
@@ -258,11 +258,14 @@ fun GiftSelectionDialog(
             confirmButton = {
                 Button(
                     enabled = sendingGiftId == null &&
-                        balance >= gift.priceDiamonds &&
                         gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift &&
                         (!isHighValue || (safetyCountdown == 0 && highValueAcknowledged)),
                     onClick = {
-                        viewModel.sendGift(receiverId, liveStreamId, gift, isPublic)
+                        if (balance < gift.priceDiamonds) {
+                            onRecharge((gift.priceDiamonds - balance).coerceAtLeast(1))
+                        } else {
+                            viewModel.sendGift(receiverId, liveStreamId, gift, isPublic)
+                        }
                     }
                 ) {
                     if (sendingGiftId == gift.id) {
@@ -270,7 +273,7 @@ fun GiftSelectionDialog(
                         Spacer(Modifier.size(8.dp))
                         Text("Enviando…")
                     } else {
-                        Text("Enviar regalo")
+                        Text(if (balance < gift.priceDiamonds) "Recargar para enviar" else "Enviar regalo")
                     }
                 }
             },
@@ -303,7 +306,7 @@ fun GiftSelectionDialog(
                 TextButton(onClick = viewModel::clearError) { Text("Entendido") }
             },
             dismissButton = if (message.contains("Saldo insuficiente", ignoreCase = true)) {
-                { TextButton(onClick = { viewModel.clearError(); onRecharge() }) { Text("Recargar") } }
+                { TextButton(onClick = { viewModel.clearError(); onRecharge(1) }) { Text("Recargar") } }
             } else null
         )
     }
@@ -360,9 +363,10 @@ private fun GiftPreviewDialog(gift: VirtualGift, onDismiss: () -> Unit) {
             ) {
                 GiftAnimationStage(
                     gift = gift,
-                    senderLabel = "Previsualización · no descuenta monedas",
+                    senderLabel = "",
                     runKey = "${gift.id}:$replay",
-                    preview = true
+                    preview = true,
+                    showCaption = false
                 )
             }
         },

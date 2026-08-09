@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Button
@@ -35,9 +36,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,9 +58,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.window.Dialog
 import conectate.com.R
 import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveStream
+import conectate.com.data.model.LiveSupporter
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.WebRtcVideoView
 import org.webrtc.EglBase
@@ -75,6 +80,7 @@ fun LiveSessionScaffold(
     mirrorVideo: Boolean,
     comments: List<LiveComment>,
     reactions: List<conectate.com.data.model.LiveReaction>,
+    supporters: List<LiveSupporter> = emptyList(),
     onSendComment: (String) -> Unit,
     onSendReaction: () -> Unit,
     commentingEnabled: Boolean = true,
@@ -139,6 +145,7 @@ fun LiveSessionScaffold(
                 stream = stream,
                 viewerCount = viewerCount,
                 reactionCount = reactionCount,
+                supporters = supporters,
                 leadingAction = leadingTopBarAction,
                 actions = topBarActions,
                 modifier = Modifier.fillMaxWidth()
@@ -166,6 +173,7 @@ fun LiveSessionScaffold(
         ) {
             LiveChatOverlay(
                 comments = comments,
+                supporters = supporters,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -173,8 +181,9 @@ fun LiveSessionScaffold(
         if (stream != null) {
             Column(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 12.dp, bottom = 94.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.End,
                 content = creatorControls
@@ -297,10 +306,12 @@ private fun LiveTopBar(
     stream: LiveStream?,
     viewerCount: Int,
     reactionCount: Long,
+    supporters: List<LiveSupporter>,
     modifier: Modifier = Modifier,
     leadingAction: @Composable (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit
 ) {
+    var showSupporterRanking by remember { mutableStateOf(false) }
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -414,7 +425,141 @@ private fun LiveTopBar(
                     )
                 }
             }
+            if (supporters.isNotEmpty()) {
+                Surface(
+                    onClick = { showSupporterRanking = true },
+                    color = Color(0xFF5E35B1).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEvents,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = "Top",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
             actions()
+        }
+    }
+
+    if (showSupporterRanking) {
+        SupporterRankingDialog(
+            supporters = supporters,
+            onDismiss = { showSupporterRanking = false }
+        )
+    }
+}
+
+@Composable
+private fun SupporterRankingDialog(
+    supporters: List<LiveSupporter>,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEvents,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB300)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Donadores del directo", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Clasificación calculada por el servidor con regalos confirmados.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(supporters, key = { _, item -> item.userId }) { _, supporter ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "#${supporter.rank}",
+                                    fontWeight = FontWeight.Black,
+                                    color = when (supporter.rank) {
+                                        1 -> Color(0xFFFFB300)
+                                        2 -> Color(0xFF90A4AE)
+                                        3 -> Color(0xFFB87333)
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.width(36.dp)
+                                )
+                                CircularProfileImage(
+                                    imageUrl = supporter.avatarUrl,
+                                    size = 42.dp,
+                                    showBorder = supporter.rank <= 3
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        supporter.name,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "${supporter.badge} · Nivel ${supporter.level}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    "${supporter.coinsInLive} monedas",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cerrar")
+                }
+            }
         }
     }
 }
@@ -442,6 +587,7 @@ private fun LiveTopStatusBanner(
 @Composable
 private fun LiveChatOverlay(
     comments: List<LiveComment>,
+    supporters: List<LiveSupporter>,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -458,6 +604,7 @@ private fun LiveChatOverlay(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         itemsIndexed(comments, key = { _, item -> item.id }) { index, comment ->
+            val supporter = supporters.firstOrNull { it.userId.equals(comment.userId, ignoreCase = true) }
             val normalized = if (comments.size <= 1) 1f else (index + 1) / comments.size.toFloat()
             val alpha = 0.42f + (normalized * 0.58f)
 
@@ -479,14 +626,26 @@ private fun LiveChatOverlay(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = comment.userName.ifBlank { "Usuario" },
-                            color = Color.White.copy(alpha = alpha),
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = comment.userName.ifBlank { "Usuario" },
+                                color = Color.White.copy(alpha = alpha),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            supporter?.let {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "${it.badge} · Nv.${it.level}",
+                                    color = Color(0xFFFFD166),
+                                    fontWeight = FontWeight.Black,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
                         Text(
                             text = comment.content,
                             color = Color.White.copy(alpha = alpha),
@@ -589,11 +748,13 @@ fun LiveActionChip(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     containerColor: Color = Color.Black.copy(alpha = 0.46f),
     contentColor: Color = Color.White
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.buttonColors(
@@ -602,6 +763,72 @@ fun LiveActionChip(
         )
     ) {
         Text(text, fontWeight = FontWeight.Bold)
+    }
+}
+
+data class LiveSecondaryAction(
+    val key: String,
+    val label: String,
+    val description: String,
+    val destructive: Boolean = false,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun LiveSecondaryActionsSheet(
+    title: String,
+    actions: List<LiveSecondaryAction>,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            actions.forEach { action ->
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        action.onClick()
+                    },
+                    enabled = action.enabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = action.label,
+                            fontWeight = FontWeight.Bold,
+                            color = if (action.destructive) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                        Text(
+                            text = action.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

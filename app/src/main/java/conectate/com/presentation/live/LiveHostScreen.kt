@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -103,6 +104,7 @@ fun LiveHostScreen(
     val isMediaReady by viewModel.isMediaReady.collectAsStateWithLifecycle()
     val isPaused by viewModel.isPaused.collectAsStateWithLifecycle()
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
+    val isMediaTransitioning by viewModel.isMediaTransitioning.collectAsStateWithLifecycle()
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
     val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
     val cameraFilterPerformance by viewModel.cameraFilterPerformance.collectAsStateWithLifecycle()
@@ -113,6 +115,9 @@ fun LiveHostScreen(
     val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
     val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
+    val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
+    val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
@@ -122,6 +127,9 @@ fun LiveHostScreen(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showModerationDialog by remember { mutableStateOf(false) }
     var showCollaborationDialog by remember { mutableStateOf(false) }
+    var showHostToolsSheet by remember { mutableStateOf(false) }
+    var showDrawGuessDialog by remember { mutableStateOf(false) }
+    var showChannelPointsDialog by remember { mutableStateOf(false) }
     var showMomentDialog by remember { mutableStateOf(false) }
     var momentTitle by remember { mutableStateOf("") }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
@@ -132,6 +140,12 @@ fun LiveHostScreen(
     var deniedPermissionAction by remember { mutableStateOf<HostPermissionAction?>(null) }
     var showPermissionDeniedDialog by remember { mutableStateOf(false) }
     var permissionCheckEpoch by remember { mutableStateOf(0) }
+
+    LaunchedEffect(session?.stream?.id) {
+        if (session?.stream?.id == liveId) {
+            viewModel.refreshChannelPoints(liveId, includeRedemptions = true)
+        }
+    }
 
     val projectionManager = remember(context) {
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -564,6 +578,22 @@ fun LiveHostScreen(
                     modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Permitir solicitudes", fontWeight = FontWeight.Bold)
+                            Text("Los espectadores podrán pedir unirse por voz o cámara.", color = Color.Gray)
+                        }
+                        Switch(
+                            checked = session?.stream?.allowGuestRequests == true,
+                            onCheckedChange = { viewModel.setGuestRequestsAllowed(liveId, it) },
+                            enabled = collaborationCapabilities.guestsBattlesEnabled &&
+                                collaborationCapabilities.sfuAvailable
+                        )
+                    }
                     when {
                         !collaborationCapabilities.guestsBattlesEnabled ->
                             Text("Las invitaciones están desactivadas temporalmente.")
@@ -587,7 +617,11 @@ fun LiveHostScreen(
                                         Text(viewer.name.ifBlank { "Usuario" }, fontWeight = FontWeight.Bold)
                                         Text(
                                             when (invitation?.status) {
-                                                "pending" -> "Invitación pendiente"
+                                                "pending" -> if (invitation.initiatedBy == "viewer") {
+                                                    "Solicita unirse"
+                                                } else {
+                                                    "Invitación pendiente"
+                                                }
                                                 "accepted" -> "Invitado aceptado"
                                                 "rejected" -> "Invitación rechazada"
                                                 else -> "Espectador"
@@ -596,10 +630,36 @@ fun LiveHostScreen(
                                         )
                                     }
                                     when {
-                                        activeBattle != null && activeBattle?.rightUserId.equals(viewer.userId, true) ->
-                                            TextButton(onClick = { viewModel.endBattle(liveId) }) { Text("Finalizar") }
-                                        invitation?.status == "accepted" ->
-                                            TextButton(onClick = { viewModel.startBattle(liveId, viewer.userId) }) { Text("Batalla") }
+                                        invitation?.status == "pending" && invitation.initiatedBy == "viewer" ->
+                                            Row {
+                                                TextButton(onClick = {
+                                                    viewModel.respondToGuestInvitation(liveId, invitation.id, accept = false)
+                                                }) { Text("Rechazar") }
+                                                TextButton(onClick = {
+                                                    viewModel.respondToGuestInvitation(liveId, invitation.id, accept = true)
+                                                }) { Text("Aceptar") }
+                                            }
+                                        invitation?.status == "accepted" -> Column(
+                                            horizontalAlignment = Alignment.End
+                                        ) {
+                                            if (activeBattle != null &&
+                                                activeBattle?.rightUserId.equals(viewer.userId, true)
+                                            ) {
+                                                TextButton(onClick = { viewModel.endBattle(liveId) }) {
+                                                    Text("Finalizar batalla")
+                                                }
+                                            } else if (activeBattle == null) {
+                                                TextButton(onClick = {
+                                                    viewModel.startBattle(liveId, viewer.userId)
+                                                }) { Text("Batalla") }
+                                            }
+                                            TextButton(onClick = {
+                                                viewModel.muteGuest(liveId, viewer.userId)
+                                            }) { Text("Silenciar") }
+                                            TextButton(onClick = {
+                                                viewModel.removeGuest(liveId, viewer.userId)
+                                            }) { Text("Retirar") }
+                                        }
                                         invitation?.status == "pending" -> Text("Enviada")
                                         else -> TextButton(onClick = { viewModel.inviteGuest(liveId, viewer.userId) }) { Text("Invitar") }
                                     }
@@ -668,6 +728,102 @@ fun LiveHostScreen(
     var floatingChatMinimized by remember { mutableStateOf(false) }
     var floatingChatOffset by remember { mutableStateOf(initialFloatingOffset) }
 
+    if (showDrawGuessDialog && collaborationCapabilities.drawGuessEnabled) {
+        LiveDrawGuessDialog(
+            liveId = liveId,
+            currentUserId = viewModel.getCurrentUserId().orEmpty(),
+            isHost = true,
+            participantIds = guestInvitations
+                .filter { it.status == "accepted" }
+                .map { it.inviteeUserId }
+                .filter(String::isNotBlank),
+            onDismiss = { showDrawGuessDialog = false }
+        )
+    }
+
+    if (showChannelPointsDialog && channelPoints.available != false) {
+        LiveChannelPointsDialog(
+            state = channelPoints,
+            isHost = true,
+            onDismiss = { showChannelPointsDialog = false },
+            onRedeem = {},
+            onUpdateSettings = { enabled, interval, points, cap ->
+                viewModel.updateChannelPointSettings(liveId, enabled, interval, points, cap)
+            },
+            onCreateReward = { title, description, cost, stock, cooldown ->
+                viewModel.createChannelPointReward(liveId, title, description, cost, stock, cooldown)
+            },
+            onUpdateRedemption = { redemptionId, status ->
+                viewModel.decideChannelPointRedemption(liveId, redemptionId, status)
+            },
+        )
+    }
+
+    val togglePauseAction: () -> Unit = {
+        if (isPaused) {
+            val needsProjection =
+                currentSource == LiveSource.SCREEN &&
+                    isVideoEnabled &&
+                    !viewModel.canReuseScreenShareIntent()
+            if (needsProjection) {
+                pendingResume = true
+                screenShareLauncher.launch(projectionManager.createScreenCaptureIntent())
+            } else {
+                viewModel.resumeLive()
+            }
+        } else {
+            viewModel.pauseLive()
+        }
+        Unit
+    }
+
+    if (showHostToolsSheet) {
+        LiveSecondaryActionsSheet(
+            title = "Herramientas del live",
+            onDismiss = { showHostToolsSheet = false },
+            actions = buildList {
+                add(
+                    LiveSecondaryAction(
+                        key = "pause",
+                        label = if (isPaused) "Reanudar transmisión" else "Pausar transmisión",
+                        description = if (isPaused) {
+                            "Volver a publicar audio y video."
+                        } else {
+                            "Detener temporalmente la señal sin finalizar el live."
+                        },
+                        onClick = togglePauseAction,
+                    )
+                )
+                add(LiveSecondaryAction("settings", "Configuración", "Fuente, calidad, filtros y estado del video.") { showSettingsDialog = true })
+                add(LiveSecondaryAction("moderation", "Moderación", "Chat, moderadores, silencios y expulsiones.") { showModerationDialog = true })
+                add(LiveSecondaryAction("guests", "Invitados y batallas", "Revisar solicitudes, invitar y administrar participantes.") { showCollaborationDialog = true })
+                if (collaborationCapabilities.drawGuessEnabled) {
+                    add(LiveSecondaryAction("game", "Dibujo y adivinanza", "Abrir el juego contextual dentro del live.") { showDrawGuessDialog = true })
+                }
+                if (channelPoints.available != false) {
+                    add(
+                        LiveSecondaryAction("points", "Puntos del canal", "Configurar recompensas y revisar canjes.") {
+                            viewModel.refreshChannelPoints(liveId, includeRedemptions = true)
+                            showChannelPointsDialog = true
+                        }
+                    )
+                }
+                add(LiveSecondaryAction("moment", "Marcar momento", "Guardar un instante destacado del directo.") { showMomentDialog = true })
+                add(
+                    LiveSecondaryAction(
+                        key = "floating_chat",
+                        label = if (floatingChatEnabled) "Cerrar chat flotante" else "Abrir chat flotante",
+                        description = "Mover el chat a una ventana ajustable.",
+                        onClick = {
+                            floatingChatEnabled = !floatingChatEnabled
+                            if (floatingChatEnabled) floatingChatMinimized = false
+                        },
+                    )
+                )
+            },
+        )
+    }
+
     LiveSessionScaffold(
         stream = session?.stream,
         viewerCount = viewerCount,
@@ -682,6 +838,7 @@ fun LiveHostScreen(
         },
         comments = comments,
         reactions = reactions,
+        supporters = liveSupporters,
         onSendComment = viewModel::sendComment,
         onSendReaction = viewModel::sendReaction,
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
@@ -692,10 +849,10 @@ fun LiveHostScreen(
         } else {
             "Preparando video…"
         },
-        topStatusBannerText = if (isPaused) {
-            "Live pausado. Los espectadores no ven tu transmisión."
-        } else {
-            null
+        topStatusBannerText = when {
+            isPaused -> "Live pausado. Los espectadores no ven tu transmisión."
+            activeBattle != null -> "BATALLA · ${activeBattle?.leftScore ?: 0} – ${activeBattle?.rightScore ?: 0}"
+            else -> null
         },
         leadingTopBarAction = {
             IconButton(onClick = { navController.popBackStack() }) {
@@ -709,6 +866,18 @@ fun LiveHostScreen(
         topBarActions = {},
         floatingOverlay = {
             GiftCelebrationOverlay(events = giftEvents)
+            LiveKitGuestVideoGrid(
+                videos = liveKitRemoteVideos,
+                onAttach = viewModel::attachLiveKitRenderer,
+                onDetach = viewModel::detachLiveKitRenderer,
+                maxSlots = collaborationCapabilities.maxGuests.coerceIn(1, 4),
+                showEmptySlots = session?.stream?.allowGuestRequests == true,
+                emptySlotLabel = if (guestInvitations.any {
+                        it.status == "pending" && it.initiatedBy == "viewer"
+                    }) "Solicitud pendiente" else "Invitar",
+                onEmptySlotClick = { showCollaborationDialog = true },
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+            )
             if (floatingChatEnabled) {
                 LiveFloatingChatWindow(
                     comments = comments,
@@ -726,49 +895,27 @@ fun LiveHostScreen(
         },
         creatorControls = {
             LiveActionChip(
-                text = if (isPaused) "Reanudar" else "Pausar",
-                onClick = {
-                    if (isPaused) {
-                        val needsProjection =
-                            currentSource == LiveSource.SCREEN &&
-                                isVideoEnabled &&
-                                !viewModel.canReuseScreenShareIntent()
-                        if (needsProjection) {
-                            pendingResume = true
-                            screenShareLauncher.launch(projectionManager.createScreenCaptureIntent())
-                        } else {
-                            viewModel.resumeLive()
-                        }
-                    } else {
-                        viewModel.pauseLive()
-                    }
+                text = if (micEnabled) "Micrófono" else "Micrófono apagado",
+                onClick = { viewModel.toggleMic(!micEnabled) },
+                enabled = !endingLive,
+            )
+            if (currentSource == LiveSource.CAMERA) {
+                LiveActionChip(
+                    text = if (isVideoEnabled) "Cámara" else "Cámara apagada",
+                    onClick = {
+                        if (isVideoEnabled) viewModel.stopVideo() else viewModel.startCamera()
+                    },
+                    enabled = !isMediaTransitioning && !endingLive,
+                )
+                if (isVideoEnabled) {
+                    LiveActionChip(
+                        text = "Cambiar cámara",
+                        onClick = { viewModel.switchCamera() },
+                        enabled = !isMediaTransitioning && !endingLive,
+                    )
                 }
-            )
-            LiveActionChip(
-                text = "Configuración",
-                onClick = { showSettingsDialog = true }
-            )
-            LiveActionChip(
-                text = "Moderación",
-                onClick = { showModerationDialog = true }
-            )
-            LiveActionChip(
-                text = "Invitados y batallas",
-                onClick = { showCollaborationDialog = true }
-            )
-            LiveActionChip(
-                text = "Marcar momento",
-                onClick = { showMomentDialog = true }
-            )
-            LiveActionChip(
-                text = if (floatingChatEnabled) "Cerrar chat" else "Chat flotante",
-                onClick = {
-                    floatingChatEnabled = !floatingChatEnabled
-                    if (floatingChatEnabled) {
-                        floatingChatMinimized = false
-                    }
-                }
-            )
+            }
+            LiveActionChip(text = "Herramientas", onClick = { showHostToolsSheet = true })
             LiveActionChip(
                 text = "Finalizar live",
                 onClick = { showEndDialog = true },

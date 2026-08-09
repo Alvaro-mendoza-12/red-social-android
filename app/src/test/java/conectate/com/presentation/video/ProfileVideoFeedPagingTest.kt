@@ -27,4 +27,19 @@ class ProfileVideoFeedPagingTest {
     fun invalidInputsAreSanitizedBeforeTheyReachTheRepository() {
         assertEquals(PageRequest(offset = 0, limit = 1), ProfileVideoFeedPaging.initialPage(-2, pageSize = 0))
     }
+
+    @Test
+    fun residentWindowKeepsOnlyThreePagesAroundNavigationDirection() {
+        val items = (0 until 96).toList()
+
+        val movingForward = ProfileVideoFeedPaging.boundedWindow(items, pageSize = 24, dropFromStart = true)
+        assertEquals((24 until 96).toList(), movingForward.items)
+        assertEquals(24, movingForward.removedFromStart)
+        assertEquals(0, movingForward.removedFromEnd)
+
+        val movingBackward = ProfileVideoFeedPaging.boundedWindow(items, pageSize = 24, dropFromStart = false)
+        assertEquals((0 until 72).toList(), movingBackward.items)
+        assertEquals(0, movingBackward.removedFromStart)
+        assertEquals(24, movingBackward.removedFromEnd)
+    }
 }

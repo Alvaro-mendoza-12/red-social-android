@@ -73,6 +73,23 @@ internal data class GiftSceneSpec(
     val fullScreen: Boolean
 )
 
+internal enum class GiftRenderQuality { HIGH, MEDIUM, LOW }
+
+internal fun giftSceneForQuality(
+    spec: GiftSceneSpec,
+    quality: GiftRenderQuality,
+): GiftSceneSpec = when (quality) {
+    GiftRenderQuality.HIGH -> spec
+    GiftRenderQuality.MEDIUM -> spec.copy(
+        particleCount = (spec.particleCount * 0.65f).toInt().coerceAtLeast(6),
+        layerCount = spec.layerCount.coerceAtMost(3),
+    )
+    GiftRenderQuality.LOW -> spec.copy(
+        particleCount = (spec.particleCount * 0.35f).toInt().coerceAtLeast(4),
+        layerCount = spec.layerCount.coerceAtMost(2),
+    )
+}
+
 /** Traslaciones normalizadas: +/-1 desplaza el centro medio ancho/alto. */
 internal data class GiftMotionTransform(
     val scale: Float,

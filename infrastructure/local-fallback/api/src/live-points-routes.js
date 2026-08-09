@@ -27,6 +27,21 @@ function intBetween(value, min, max, fallback = min) {
   return Math.min(max, Math.max(min, parsed))
 }
 
+function dailyAwardAmount({ earnedToday, dailyCap, pointsPerInterval }) {
+  const earned = Math.max(0, Number(earnedToday || 0))
+  const cap = Math.max(0, Number(dailyCap || 0))
+  const interval = Math.max(0, Number(pointsPerInterval || 0))
+  return Math.max(0, Math.min(interval, cap - earned))
+}
+
+function rewardCooldownRemainingSeconds({ lastRedeemedAt, cooldownSeconds, now = Date.now() }) {
+  const cooldown = Math.max(0, Number(cooldownSeconds || 0))
+  if (!lastRedeemedAt || cooldown <= 0) return 0
+  const last = new Date(lastRedeemedAt).getTime()
+  if (!Number.isFinite(last)) return 0
+  return Math.max(0, Math.ceil((last + cooldown * 1000 - Number(now)) / 1000))
+}
+
 function pointsEnabled() {
   return /^(1|true|yes|on)$/i.test(String(process.env[POINTS_FLAG] || '').trim())
 }
@@ -331,13 +346,35 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
       }
       const intervalId = String(Number(session.last_rewarded_interval) + 1)
       const idempotencyKey = `${session.session_nonce}:${intervalId}`
+      const dailyResult = await client.query(
+        `SELECT COALESCE(SUM(points), 0)::bigint AS earned_today
+         FROM fallback_channel_points_earnings
+         WHERE live_id = $1::uuid AND lower(viewer_id) = lower($2)
+           AND occurred_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`,
+        [liveId, access.identity.displayUserId],
+      )
+      const awardedPoints = dailyAwardAmount({
+        earnedToday: dailyResult.rows[0]?.earned_today,
+        dailyCap: settings.daily_cap,
+        pointsPerInterval: settings.points_per_interval,
+      })
+      if (awardedPoints <= 0) {
+        await client.query(
+          `UPDATE fallback_channel_point_sessions
+           SET last_rewarded_interval = $2, updated_at = NOW()
+           WHERE id = $1::uuid`,
+          [session.id, Number(intervalId)],
+        )
+        await client.query('COMMIT')
+        return res.json({ awardedPoints: 0, balance: null, eligible: false, dailyCapReached: true, serverTime: Date.now() })
+      }
       const earning = await client.query(
         `INSERT INTO fallback_channel_points_earnings(
            live_id, viewer_id, event_type, interval_id, points, idempotency_key
          ) VALUES ($1::uuid, $2, 'watch_interval', $3, $4, $5)
          ON CONFLICT (live_id, viewer_id, event_type, interval_id) DO NOTHING
          RETURNING id::text`,
-        [liveId, access.identity.displayUserId, intervalId, Number(settings.points_per_interval), idempotencyKey],
+        [liveId, access.identity.displayUserId, intervalId, awardedPoints, idempotencyKey],
       )
       if (!earning.rows[0]) {
         await client.query('COMMIT')
@@ -352,7 +389,7 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
                        earned_total = fallback_channel_points_balances.earned_total + EXCLUDED.earned_total,
                        updated_at = NOW()
          RETURNING balance`,
-        [liveId, access.live.host_user_id, access.identity.displayUserId, Number(settings.points_per_interval)],
+        [liveId, access.live.host_user_id, access.identity.displayUserId, awardedPoints],
       )
       await client.query(
         `UPDATE fallback_channel_point_sessions
@@ -362,7 +399,7 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
       )
       await client.query('COMMIT')
       res.json({
-        awardedPoints: Number(settings.points_per_interval),
+        awardedPoints,
         balance: Number(balanceResult.rows[0]?.balance || 0),
         eligible: true,
         serverTime: Date.now(),
@@ -372,6 +409,50 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
       next(error)
     } finally {
       client?.release()
+    }
+  })
+
+  app.patch('/v1/data/live/:liveId/points/settings', authRequired, async (req, res, next) => {
+    try {
+      if (!requirePointsFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const access = await liveForUser(pool, liveId, user, userIdentity)
+      if (access.error) return res.status(404).json({ error: access.error })
+      if (!access.isHost) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      const current = await pointSettings(pool, liveId, access.live.host_user_id)
+      const enabled = req.body?.enabled === undefined ? Boolean(current.enabled) : req.body.enabled === true
+      const intervalSeconds = intBetween(
+        req.body?.intervalSeconds ?? req.body?.interval_seconds,
+        60,
+        3600,
+        Number(current.interval_seconds),
+      )
+      const pointsPerInterval = intBetween(
+        req.body?.pointsPerInterval ?? req.body?.points_per_interval,
+        1,
+        1000,
+        Number(current.points_per_interval),
+      )
+      const dailyCap = intBetween(
+        req.body?.dailyCap ?? req.body?.daily_cap,
+        1,
+        100000,
+        Number(current.daily_cap),
+      )
+      const { rows } = await pool.query(
+        `UPDATE fallback_live_point_settings
+         SET enabled = $2, interval_seconds = $3, points_per_interval = $4,
+             daily_cap = $5, updated_at = NOW()
+         WHERE live_id = $1::uuid
+         RETURNING live_id::text, creator_id, enabled, interval_seconds, points_per_interval, daily_cap`,
+        [liveId, enabled, intervalSeconds, pointsPerInterval, dailyCap],
+      )
+      res.json({ settings: rows[0] })
+    } catch (error) {
+      next(error)
     }
   })
 
@@ -505,6 +586,23 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
       if (!reward || !reward.active || (reward.stock !== null && Number(reward.stock) <= 0)) {
         await client.query('ROLLBACK')
         return res.status(409).json({ error: 'LIVE_POINT_REWARD_UNAVAILABLE' })
+      }
+      const cooldownResult = await client.query(
+        `SELECT created_at
+         FROM fallback_channel_point_redemptions
+         WHERE live_id = $1::uuid AND reward_id = $2::uuid
+           AND lower(viewer_id) = lower($3)
+           AND status NOT IN ('rejected', 'canceled')
+         ORDER BY created_at DESC LIMIT 1`,
+        [liveId, rewardId, access.identity.displayUserId],
+      )
+      const cooldownRemainingSeconds = rewardCooldownRemainingSeconds({
+        lastRedeemedAt: cooldownResult.rows[0]?.created_at,
+        cooldownSeconds: reward.cooldown_seconds,
+      })
+      if (cooldownRemainingSeconds > 0) {
+        await client.query('ROLLBACK')
+        return res.status(429).json({ error: 'LIVE_POINT_REWARD_COOLDOWN', cooldownRemainingSeconds })
       }
       const balanceResult = await client.query(
         `SELECT balance FROM fallback_channel_points_balances
@@ -646,8 +744,10 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
 }
 
 module.exports = {
+  dailyAwardAmount,
   ensureLivePointsTables,
   issueSessionToken,
+  rewardCooldownRemainingSeconds,
   pointsEnabled,
   registerLivePointsRoutes,
 }

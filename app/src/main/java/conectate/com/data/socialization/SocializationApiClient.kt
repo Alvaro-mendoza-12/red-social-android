@@ -4,12 +4,14 @@ import conectate.com.BuildConfig
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.data.model.SocializationCapabilities
 import conectate.com.data.model.SocializationPreferencesResponse
+import conectate.com.data.model.SocializationCardsResponse
 import conectate.com.data.model.UpdateSocializationPreferencesRequest
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.put
+import io.ktor.client.request.parameter
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -56,6 +58,20 @@ class SocializationApiClient @Inject constructor(
             setBody(request)
         }
     }.mapCatching { body -> decodeEnvelope(body, "preferences") }
+
+    suspend fun cards(
+        accessToken: String,
+        surface: String,
+        placement: String,
+        limit: Int,
+    ): Result<SocializationCardsResponse> = request(accessToken) { baseUrl ->
+        supabaseConfig.httpClient.get("$baseUrl/v1/data/socialization/cards") {
+            socializationHeaders(accessToken)
+            parameter("surface", surface)
+            parameter("placement", placement)
+            parameter("limit", limit.coerceIn(1, 4))
+        }
+    }.mapCatching { body -> decodeEnvelope(body, "cards") }
 
     private suspend inline fun <reified T> get(
         path: String,

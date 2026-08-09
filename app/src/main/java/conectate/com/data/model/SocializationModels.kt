@@ -117,3 +117,40 @@ data class UpdateSocializationPreferencesRequest(
     val expectedVersion: Long,
     val preferences: SocializationPreferencePatch,
 )
+
+@Serializable
+data class SocializationCardsResponse(
+    val version: Int = 1,
+    val enabled: Boolean = false,
+    val surface: String = "social",
+    val placement: String = "after_0",
+    val nextCursor: String? = null,
+    val items: List<SocializationCard> = emptyList(),
+    val safeguards: SocializationCardSafeguards = SocializationCardSafeguards(),
+)
+
+@Serializable
+data class SocializationCard(
+    val id: String,
+    val type: String,
+    val title: String,
+    val subtitle: String? = null,
+    val imageUrl: String? = null,
+    val expiresAt: String? = null,
+    val reasonCode: String,
+    val action: SocializationCardAction,
+    val dismissible: Boolean = true,
+)
+
+@Serializable
+data class SocializationCardAction(
+    val type: String,
+    val targetId: String,
+)
+
+@Serializable
+data class SocializationCardSafeguards(
+    val consentRequired: Boolean = true,
+    val serverFiltered: Boolean = true,
+    val automaticContact: Boolean = false,
+)

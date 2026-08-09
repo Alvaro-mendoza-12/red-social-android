@@ -62,7 +62,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -218,6 +220,7 @@ fun VideoFeedScreen(
     val profileVideos by viewModel.profileVideos.collectAsState()
     val socialHighlights by viewModel.socialHighlights.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
+    val socializationCards by viewModel.socializationCards.collectAsState()
     val activeStreams by viewModel.activeStreams.collectAsState()
     val showLiveRecommendations by viewModel.showLiveRecommendations.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
@@ -300,14 +303,16 @@ fun VideoFeedScreen(
         selectedTab,
         showLiveRecommendations,
         socialHighlights,
-        recommendedPeople
+        recommendedPeople,
+        socializationCards,
     ) {
         mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
             includeLives = !isProfileFeed && showLiveRecommendations && !isSearchMode && selectedTab == 0,
             socialPosts = if (!isProfileFeed && !isSearchMode && selectedTab == 0) socialHighlights else emptyList(),
-            recommendedPeople = if (!isProfileFeed && !isSearchMode && selectedTab == 0) recommendedPeople else emptyList()
+            recommendedPeople = if (!isProfileFeed && !isSearchMode && selectedTab == 0) recommendedPeople else emptyList(),
+            socializationCards = if (!isProfileFeed && !isSearchMode && selectedTab == 0) socializationCards else emptyList(),
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
@@ -332,9 +337,9 @@ fun VideoFeedScreen(
     }
 
     LaunchedEffect(profilePrependCount, feedEntries.size) {
-        if (profilePrependCount <= 0 || feedEntries.isEmpty()) return@LaunchedEffect
+        if (profilePrependCount == 0 || feedEntries.isEmpty()) return@LaunchedEffect
         pagerState.scrollToPage(
-            (pagerState.currentPage + profilePrependCount).coerceAtMost(feedEntries.lastIndex)
+            (pagerState.currentPage + profilePrependCount).coerceIn(0, feedEntries.lastIndex)
         )
         viewModel.consumeProfilePrepend()
     }
@@ -413,6 +418,31 @@ fun VideoFeedScreen(
     val settledVideo = (feedEntries.getOrNull(pagerState.settledPage) as? VideoFeedVideoEntry)?.video
     val settledVideoId = settledVideo?.id
     val settledVideoIndex = currentVideos.indexOfFirst { it.id == settledVideoId }
+
+    // Keep profile feeds fluid without holding extra players/decoders. Only the
+    // first bytes of the immediate neighbours are cached, with a smaller budget
+    // on modest devices; the visible video remains the sole ExoPlayer instance.
+    LaunchedEffect(isProfileFeed, isConnected, settledVideoIndex, currentVideos) {
+        if (!isProfileFeed || !isConnected || settledVideoIndex !in currentVideos.indices) {
+            return@LaunchedEffect
+        }
+        val byteBudget = when (performanceProfile.tier) {
+            conectate.com.util.VideoDeviceTier.LOW -> 512L * 1024L
+            conectate.com.util.VideoDeviceTier.BALANCED -> 1L * 1024L * 1024L
+            conectate.com.util.VideoDeviceTier.HIGH -> 2L * 1024L * 1024L
+        }
+        val neighbourUrls = listOf(settledVideoIndex + 1, settledVideoIndex - 1)
+            .filter { it in currentVideos.indices }
+            .mapNotNull { index -> currentVideos[index].videoUrl.takeIf(String::isNotBlank) }
+            .distinct()
+        withContext(Dispatchers.IO) {
+            neighbourUrls.forEach { url ->
+                runCatching {
+                    conectate.com.util.VideoCache.preloadStart(context.applicationContext, url, byteBudget)
+                }
+            }
+        }
+    }
 
     // Only reset playbackRequested when navigating to a *different* video (non-null -> non-null).
     // If the user manually paused (playbackRequested = false), we must NOT reset it to true
@@ -825,6 +855,22 @@ fun VideoFeedScreen(
                         }
                     )
                 }
+                val recommendationReasons = settledVideo?.let(viewModel::explainVideo).orEmpty()
+                if (recommendationReasons.isNotEmpty()) {
+                    Divider()
+                    Text(
+                        "Por qué este video",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    recommendationReasons.forEach { reason ->
+                        Text(
+                            text = "• $reason",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -1003,6 +1049,19 @@ fun VideoFeedScreen(
                                 users = entry.users,
                                 onOpenProfile = onNavigateToProfile,
                                 onFollow = viewModel::followRecommendedUser
+                            )
+                        }
+                        is VideoFeedSocializationEntry -> {
+                            VideoSocializationRecommendationPage(
+                                cards = entry.cards,
+                                onOpen = { card ->
+                                    when (card.action.type) {
+                                        "OPEN_PROFILE" -> onNavigateToProfile(card.action.targetId)
+                                        "OPEN_COMMUNITY" -> navController.navigate(Screen.CommunityDetail.createRoute(card.action.targetId))
+                                        "OPEN_LIVE" -> onNavigateToLiveViewer(card.action.targetId)
+                                    }
+                                },
+                                onDismiss = { viewModel.dismissSocializationCard(it.id) },
                             )
                         }
                         null -> Unit
@@ -1826,18 +1885,26 @@ private data class VideoFeedPeopleEntry(
     override val stableKey: String = "people:${users.joinToString(",") { it.id }}"
 }
 
+private data class VideoFeedSocializationEntry(
+    val cards: List<conectate.com.data.model.SocializationCard>,
+) : VideoFeedEntry {
+    override val stableKey: String = "socialize:${cards.joinToString(",") { it.id }}"
+}
+
 private fun mixedVideoFeed(
     videos: List<Video>,
     streams: List<conectate.com.data.model.LiveStream>,
     includeLives: Boolean,
     socialPosts: List<Post> = emptyList(),
-    recommendedPeople: List<conectate.com.data.model.User> = emptyList()
+    recommendedPeople: List<conectate.com.data.model.User> = emptyList(),
+    socializationCards: List<conectate.com.data.model.SocializationCard> = emptyList(),
 ): List<VideoFeedEntry> {
     if (videos.isEmpty()) {
         val liveEntries = if (includeLives) streams.take(6).map(::VideoFeedLiveEntry) else emptyList()
         val socialEntry = socialPosts.takeIf { it.isNotEmpty() }?.let(::VideoFeedSocialEntry)
         val peopleEntry = recommendedPeople.takeIf { it.isNotEmpty() }?.let(::VideoFeedPeopleEntry)
-        return liveEntries + listOfNotNull(socialEntry, peopleEntry)
+        val socializationEntry = socializationCards.takeIf { it.isNotEmpty() }?.let(::VideoFeedSocializationEntry)
+        return liveEntries + listOfNotNull(socialEntry, peopleEntry, socializationEntry)
     }
 
     val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 10) + 2)
@@ -1845,6 +1912,7 @@ private fun mixedVideoFeed(
     var liveIndex = 0
     var socialInserted = false
     var peopleInserted = false
+    var socializationInserted = false
     videos.forEachIndexed { index, video ->
         result += VideoFeedVideoEntry(video)
         val videoCount = index + 1
@@ -1865,12 +1933,19 @@ private fun mixedVideoFeed(
             result += VideoFeedPeopleEntry(recommendedPeople.take(10))
             peopleInserted = true
         }
+        if (!socializationInserted && socializationCards.isNotEmpty() && videoCount == 12) {
+            result += VideoFeedSocializationEntry(socializationCards.take(4))
+            socializationInserted = true
+        }
     }
     if (!peopleInserted && recommendedPeople.isNotEmpty()) {
         result += VideoFeedPeopleEntry(recommendedPeople.take(10))
     }
     if (!socialInserted && socialPosts.isNotEmpty()) {
         result += VideoFeedSocialEntry(socialPosts.take(8))
+    }
+    if (!socializationInserted && socializationCards.isNotEmpty()) {
+        result += VideoFeedSocializationEntry(socializationCards.take(4))
     }
     return result
 }
@@ -2061,6 +2136,73 @@ private fun VideoPeopleRecommendationPage(
                             Button(onClick = { onFollow(user) }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Seguir")
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoSocializationRecommendationPage(
+    cards: List<conectate.com.data.model.SocializationCard>,
+    onOpen: (conectate.com.data.model.SocializationCard) -> Unit,
+    onDismiss: (conectate.com.data.model.SocializationCard) -> Unit,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0B1220)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Text("Socializa con seguridad", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                Text("Opciones públicas que autorizaste; nunca te conectan automáticamente.", color = Color.White.copy(alpha = 0.72f))
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                lazyItems(cards, key = { it.id }) { card ->
+                    Card(
+                        onClick = { onOpen(card) },
+                        modifier = Modifier.width(190.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF17243A)),
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Box(
+                                    modifier = Modifier.size(68.dp).clip(CircleShape).background(Color(0xFF283B5A)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    val image = UbuntuMedia.resolveUrl(card.imageUrl) ?: card.imageUrl
+                                    if (!image.isNullOrBlank()) {
+                                        AsyncImage(model = image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    } else {
+                                        Icon(Icons.Default.People, contentDescription = null, tint = Color.White)
+                                    }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                if (card.dismissible) {
+                                    IconButton(onClick = { onDismiss(card) }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Ocultar recomendación", tint = Color.White)
+                                    }
+                                }
+                            }
+                            Text(card.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            card.subtitle?.let { Text(it, color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall, maxLines = 2) }
+                            Text(
+                                when (card.type) {
+                                    "person" -> "Ver perfil"
+                                    "community" -> "Ver comunidad"
+                                    "live" -> "Entrar al directo"
+                                    else -> "Abrir"
+                                },
+                                color = Color(0xFF6FD6FF),
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }
