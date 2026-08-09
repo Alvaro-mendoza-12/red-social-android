@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,8 +42,17 @@ sealed class BottomNavItem(
     object Messages : BottomNavItem(Screen.Messages.route, "Mensajes", Icons.Default.Message)
     object Videos : BottomNavItem(Screen.Videos.route, "Videos", Icons.Default.VideoLibrary)
     object Social : BottomNavItem(Screen.Social.route, "Social", Icons.Default.Public)
+    object Games : BottomNavItem(Screen.Games.route, "Juegos", Icons.Default.SportsEsports)
     object Profile : BottomNavItem(Screen.Profile.route, "Perfil", Icons.Default.Person)
 }
+
+internal fun novvinBottomNavItems(): List<BottomNavItem> = listOf(
+    BottomNavItem.Messages,
+    BottomNavItem.Videos,
+    BottomNavItem.Social,
+    BottomNavItem.Games,
+    BottomNavItem.Profile,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,12 +71,7 @@ fun HomeScreen(
         homeViewModel.refreshShellUserData()
     }
 
-    val items = listOf(
-        BottomNavItem.Messages,
-        BottomNavItem.Videos,
-        BottomNavItem.Social,
-        BottomNavItem.Profile
-    )
+    val items = novvinBottomNavItems()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val isVideoFeed = currentDestination?.hierarchy?.any { it.route == Screen.Videos.route } == true
@@ -76,7 +81,10 @@ fun HomeScreen(
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+                tonalElevation = 8.dp,
+                // Material3 conserva el inset inferior del sistema. No se fija un máximo:
+                // en navegación de tres botones la barra puede crecer sin recortar controles.
+                modifier = Modifier.heightIn(min = 64.dp),
             ) {
                 items.forEach { item ->
                     NavigationBarItem(
@@ -115,8 +123,12 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        label = { Text(item.title) },
-                        selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
+                        label = { Text(item.title, fontSize = 10.sp, maxLines = 1) },
+                        selected = currentDestination?.hierarchy?.any { destination ->
+                            destination.route == item.route || (
+                                item is BottomNavItem.Games && destination.route?.startsWith("games_") == true
+                            )
+                        } == true,
                         onClick = {
                             navController.navigate(item.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -257,6 +269,51 @@ fun HomeScreen(
                     navController = navController,
                     mainNavController = mainNavController,
                     category = backStackEntry.arguments?.getString("category").orEmpty(),
+                )
+            }
+
+            composable(Screen.Games.route) {
+                conectate.com.presentation.gaming.GamesHomeScreen(
+                    onOpenProfile = { navController.navigate(Screen.GamingProfile.route) { launchSingleTop = true } },
+                    onOpenAddGame = { navController.navigate(Screen.AddGame.route) { launchSingleTop = true } },
+                    onOpenPlayer = { playerId -> navController.navigate(Screen.PlayerDetail.createRoute(playerId)) },
+                    onMatchFound = { sessionId -> navController.navigate(Screen.MatchFound.createRoute(sessionId)) { launchSingleTop = true } },
+                )
+            }
+
+            composable(Screen.GamingProfile.route) {
+                conectate.com.presentation.gaming.GamingProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onAddGame = { navController.navigate(Screen.AddGame.route) { launchSingleTop = true } },
+                )
+            }
+
+            composable(Screen.AddGame.route) {
+                conectate.com.presentation.gaming.AddGameScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Screen.PlayerDetail.route,
+                arguments = listOf(androidx.navigation.navArgument("playerId") { type = androidx.navigation.NavType.StringType }),
+            ) { entry ->
+                conectate.com.presentation.gaming.PlayerDetailScreen(
+                    playerId = entry.arguments?.getString("playerId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onMessage = { userId -> mainNavController.navigate(Screen.Chat.createRoute(userId)) },
+                )
+            }
+
+            composable(
+                route = Screen.MatchFound.route,
+                arguments = listOf(androidx.navigation.navArgument("sessionId") { type = androidx.navigation.NavType.StringType }),
+            ) { entry ->
+                conectate.com.presentation.gaming.MatchFoundScreen(
+                    sessionId = entry.arguments?.getString("sessionId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onMessage = { userId -> mainNavController.navigate(Screen.Chat.createRoute(userId)) },
                 )
             }
 

@@ -22,6 +22,15 @@ sealed class Screen(val route: String) {
     }
     
     object Social : Screen("social")
+    object Games : Screen("games")
+    object GamingProfile : Screen("games_profile")
+    object AddGame : Screen("games_add")
+    object PlayerDetail : Screen("games_player/{playerId}") {
+        fun createRoute(playerId: String) = "games_player/${android.net.Uri.encode(playerId)}"
+    }
+    object MatchFound : Screen("games_match/{sessionId}") {
+        fun createRoute(sessionId: String) = "games_match/${android.net.Uri.encode(sessionId)}"
+    }
     object Messages : Screen("messages")
     object Novvin : Screen("novvin")
     object Chat : Screen("chat/{userId}?initialMessage={initialMessage}&focusMessageId={focusMessageId}") {
