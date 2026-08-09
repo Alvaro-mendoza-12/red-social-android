@@ -85,9 +85,10 @@ async function ensureDynamicPlayMatchCatalogTables(pool) {
     CREATE TABLE IF NOT EXISTS fallback_playmatch_catalog_sync_runs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(), provider TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'RUNNING', requested_by TEXT,
       cursor_before TEXT, cursor_after TEXT, fetched_count INTEGER NOT NULL DEFAULT 0, inserted_count INTEGER NOT NULL DEFAULT 0,
-      updated_count INTEGER NOT NULL DEFAULT 0, skipped_count INTEGER NOT NULL DEFAULT 0, error_code TEXT,
+      updated_count INTEGER NOT NULL DEFAULT 0, skipped_count INTEGER NOT NULL DEFAULT 0, pages_count INTEGER NOT NULL DEFAULT 0, error_code TEXT,
       started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ
     )`)
+  await pool.query(`ALTER TABLE fallback_playmatch_catalog_sync_runs ADD COLUMN IF NOT EXISTS pages_count INTEGER NOT NULL DEFAULT 0`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_playmatch_catalog_provider_state (
       provider TEXT PRIMARY KEY, next_cursor TEXT, last_success_at TIMESTAMPTZ, last_error_code TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

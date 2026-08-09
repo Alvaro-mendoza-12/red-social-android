@@ -18,6 +18,7 @@ chmod +x \
   "$ROOT_DIR/scripts/backup-ubuntu-primary.sh" \
   "$ROOT_DIR/scripts/verify-backup.sh" \
   "$ROOT_DIR/scripts/health-watchdog.sh" \
+  "$ROOT_DIR/scripts/run-playmatch-catalog-sync.sh" \
   "$ROOT_DIR/scripts/restore-drill.sh"
 mkdir -p "$BACKUP_ROOT"
 
@@ -134,16 +135,49 @@ Unit=conectate-restore-drill.service
 WantedBy=timers.target
 EOF
 
+cat > "$tmp_dir/conectate-playmatch-catalog-sync.service" <<EOF
+[Unit]
+Description=Incremental PlayMatch game catalog synchronization
+After=conectate-stack.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=$RUN_USER
+Group=$RUN_GROUP
+WorkingDirectory=$ROOT_DIR
+Environment=PLAYMATCH_CATALOG_PROVIDER=wikidata
+Environment=PLAYMATCH_CATALOG_PAGE_SIZE=100
+Environment=PLAYMATCH_CATALOG_MAX_PAGES=3
+ExecStart=$ROOT_DIR/scripts/run-playmatch-catalog-sync.sh
+Nice=10
+TimeoutStartSec=1300
+EOF
+
+cat > "$tmp_dir/conectate-playmatch-catalog-sync.timer" <<'EOF'
+[Unit]
+Description=Daily incremental PlayMatch catalog synchronization
+
+[Timer]
+OnCalendar=*-*-* 04:50:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=conectate-playmatch-catalog-sync.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 sudo install -m 0644 "$tmp_dir"/*.service "$tmp_dir"/*.timer "$SYSTEMD_DIR/"
 sudo systemctl daemon-reload
-sudo systemctl enable --now conectate-stack.service conectate-backup.timer conectate-health.timer conectate-restore-drill.timer
+sudo systemctl enable --now conectate-stack.service conectate-backup.timer conectate-health.timer conectate-restore-drill.timer conectate-playmatch-catalog-sync.timer
 
 echo "==> Ejecutando primera copia verificada"
 sudo systemctl start conectate-backup.service
 sudo systemctl start conectate-health.service
 
-systemctl --no-pager --full status conectate-stack.service conectate-backup.timer conectate-health.timer || true
-systemctl list-timers --all --no-pager | grep -E 'conectate-(backup|health)' || true
+systemctl --no-pager --full status conectate-stack.service conectate-backup.timer conectate-health.timer conectate-playmatch-catalog-sync.timer || true
+systemctl list-timers --all --no-pager | grep -E 'conectate-(backup|health|playmatch)' || true
 "$ROOT_DIR/scripts/verify-backup.sh" "$BACKUP_ROOT/latest"
 "$ROOT_DIR/scripts/restore-drill.sh" "$BACKUP_ROOT/latest"
 

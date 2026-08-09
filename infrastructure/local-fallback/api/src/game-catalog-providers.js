@@ -99,7 +99,19 @@ async function fetchJson(url, { timeoutMs = 55_000, userAgent, fetchImpl = fetch
       return await response.json()
     } catch (error) {
       lastError = error
-      const retriable = error?.name === 'AbortError' || error?.statusCode === 429 || error?.statusCode >= 500
+      const transportCode = String(error?.cause?.code || error?.code || '').toUpperCase()
+      const retriableTransportCodes = new Set([
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'EAI_AGAIN',
+        'UND_ERR_CONNECT_TIMEOUT',
+        'UND_ERR_HEADERS_TIMEOUT',
+        'UND_ERR_SOCKET',
+      ])
+      const retriable = error?.name === 'AbortError'
+        || error?.statusCode === 429
+        || error?.statusCode >= 500
+        || retriableTransportCodes.has(transportCode)
       if (!retriable || attempt >= attempts) throw error
       await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
     } finally {

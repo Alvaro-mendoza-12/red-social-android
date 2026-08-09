@@ -139,6 +139,7 @@ async function synchronizeGameCatalog(pool, options = {}) {
   let inserted = 0
   let updated = 0
   let skipped = 0
+  let pages = 0
   try {
     const run = await client.query(
       `INSERT INTO fallback_playmatch_catalog_sync_runs(provider, requested_by, cursor_before)
@@ -148,6 +149,7 @@ async function synchronizeGameCatalog(pool, options = {}) {
     runId = run.rows[0].id
     for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
       const page = await provider.fetchPage(cursor, pageSize)
+      pages += 1
       fetched += page.items.length
       await client.query('BEGIN')
       try {
@@ -174,19 +176,19 @@ async function synchronizeGameCatalog(pool, options = {}) {
     await client.query(
       `UPDATE fallback_playmatch_catalog_sync_runs
           SET status='COMPLETED',cursor_after=$2,fetched_count=$3,inserted_count=$4,
-              updated_count=$5,skipped_count=$6,completed_at=NOW()
+              updated_count=$5,skipped_count=$6,pages_count=$7,completed_at=NOW()
         WHERE id=$1`,
-      [runId, cursor, fetched, inserted, updated, skipped],
+      [runId, cursor, fetched, inserted, updated, skipped, pages],
     )
-    return { runId, provider: provider.name, cursor, fetched, inserted, updated, skipped }
+    return { runId, provider: provider.name, cursor, pages, fetched, inserted, updated, skipped }
   } catch (error) {
     if (runId) {
       await client.query(
         `UPDATE fallback_playmatch_catalog_sync_runs
             SET status='FAILED',error_code=$2,completed_at=NOW(),fetched_count=$3,
-                inserted_count=$4,updated_count=$5,skipped_count=$6
+                inserted_count=$4,updated_count=$5,skipped_count=$6,pages_count=$7
           WHERE id=$1`,
-        [runId, text(error?.message || 'CATALOG_SYNC_FAILED', 120), fetched, inserted, updated, skipped],
+        [runId, text(error?.message || 'CATALOG_SYNC_FAILED', 120), fetched, inserted, updated, skipped, pages],
       ).catch(() => {})
     }
     throw error

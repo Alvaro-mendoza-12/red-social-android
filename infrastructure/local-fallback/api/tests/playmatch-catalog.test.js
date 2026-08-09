@@ -135,6 +135,8 @@ async function main() {
     'fallback_playmatch_game_roles', 'fallback_playmatch_catalog_sync_runs',
   ]) assert(migration.includes(required), `migración dinámica omite ${required}`)
   assert(/ON DELETE RESTRICT/i.test(fs.readFileSync(path.resolve(__dirname, '../../db/migrations/012_playmatch_games_v1.sql'), 'utf8')), 'los juegos usados no deben borrarse en cascada')
+  const metricsMigration = fs.readFileSync(path.resolve(__dirname, '../../db/migrations/014_playmatch_catalog_sync_metrics.sql'), 'utf8')
+  assert(metricsMigration.includes('pages_count'), 'las métricas deben registrar páginas procesadas')
 
   console.log('playmatch catalog tests passed')
 }
