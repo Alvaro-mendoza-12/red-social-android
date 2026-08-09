@@ -364,7 +364,9 @@ fun FullScreenImageDialog(
                             )
                             .fillMaxWidth()
                             .clipToBounds()
-                            .offset(y = -reliableBottomPadding)
+                            // El bloque debe quedar inmediatamente encima de la barra
+                            // del sistema. Antes se trasladaba hacia arriba y además
+                            // reservaba el mismo inset, duplicando la separación.
                             .padding(bottom = reliableBottomPadding)
                     ) {
                         bottomOverlay(pagerState.currentPage)

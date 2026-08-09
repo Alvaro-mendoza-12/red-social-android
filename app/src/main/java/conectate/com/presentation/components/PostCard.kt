@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -85,14 +86,85 @@ fun PostCard(
     }
 
     fullScreenImageIndex?.let { initialIndex ->
-        PostMediaDetailDialog(
-            post = post,
-            imageUrls = images,
+        FullScreenImageDialog(
+            mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, "image") },
             initialIndex = initialIndex,
-            reactionSummary = reactionPreview(post.reactionCounts, reactionTotal),
-            onUserClick = onUserClick,
-            onReactionSummaryClick = onReactionSummaryClick,
-            onCommentClick = onCommentClick,
+            bottomOverlay = { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProfileImage(
+                            imageUrl = post.userProfileImage.orEmpty(),
+                            size = 38.dp,
+                            isVerified = post.isVerified,
+                            fallbackName = post.userName,
+                            modifier = Modifier.clickable {
+                                fullScreenImageIndex = null
+                                onUserClick(post.userId)
+                            }
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(post.userName, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(
+                                DateUtils.formatRelativeDate(post.createdAt),
+                                color = Color.White.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        if (images.size > 1) {
+                            Text(
+                                "${page + 1} / ${images.size}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    if (post.content.isNotBlank()) {
+                        Text(
+                            post.content,
+                            color = Color.White,
+                            modifier = Modifier.padding(top = 10.dp),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = reactionPreview(post.reactionCounts, reactionTotal),
+                            color = Color.White,
+                            modifier = Modifier.weight(1f).clickable {
+                                fullScreenImageIndex = null
+                                onReactionSummaryClick()
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${post.commentCount} comentarios",
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.clickable {
+                                fullScreenImageIndex = null
+                                onCommentClick()
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            },
             onDismiss = { fullScreenImageIndex = null }
         )
     }

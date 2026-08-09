@@ -70,7 +70,10 @@ fun GamesHomeScreen(
     }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(PlayMatchColors.Background),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PlayMatchColors.Background)
+            .statusBarsPadding(),
         contentPadding = PaddingValues(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(PlayMatchDimensions.SectionGap),
     ) {
@@ -204,7 +207,11 @@ fun GamingProfileScreen(
     }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(PlayMatchColors.Surface).imePadding(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PlayMatchColors.Surface)
+            .statusBarsPadding()
+            .imePadding(),
         contentPadding = PaddingValues(PlayMatchDimensions.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(PlayMatchDimensions.SectionGap),
     ) {
@@ -334,7 +341,11 @@ fun AddGameScreen(
     val roleOptions = remember(selected) { PlayMatchUiPolicy.roleOptions(selected) }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(PlayMatchColors.Surface).imePadding(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PlayMatchColors.Surface)
+            .statusBarsPadding()
+            .imePadding(),
         contentPadding = PaddingValues(PlayMatchDimensions.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(PlayMatchDimensions.SectionGap),
     ) {
@@ -450,7 +461,10 @@ fun PlayerDetailScreen(
     val player = state.playerDetail
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(PlayMatchColors.Surface),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PlayMatchColors.Surface)
+            .statusBarsPadding(),
         contentPadding = PaddingValues(PlayMatchDimensions.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(PlayMatchDimensions.SectionGap),
     ) {
@@ -513,7 +527,10 @@ fun MatchFoundScreen(
     val player = match?.player
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(PlayMatchColors.Surface),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PlayMatchColors.Surface)
+            .statusBarsPadding(),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
