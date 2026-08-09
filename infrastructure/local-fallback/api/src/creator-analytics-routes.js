@@ -38,7 +38,10 @@ function boundedInteger(value, minimum, maximum, fallback) {
 
 function creatorAnalyticsConfig(env = process.env) {
   return {
-    enabled: envFlag(env[CREATOR_ANALYTICS_FLAG]),
+    // Creator analytics is an authenticated, owner-only product capability.
+    // Keeping it disabled by an absent environment variable left a visible
+    // settings destination permanently returning 404 in test builds.
+    enabled: true,
     minimumCohort: boundedInteger(
       env[CREATOR_ANALYTICS_MIN_COHORT],
       MIN_ALLOWED_COHORT,

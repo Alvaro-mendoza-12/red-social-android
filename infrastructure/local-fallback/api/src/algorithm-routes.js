@@ -6,12 +6,6 @@ const { createFixedWindowRateLimiter, stableKey } = require('./request-security'
 // can never submit a ranking score or classify an arbitrary piece of content.
 
 const ALGORITHM_FLAGS = Object.freeze({
-  core: 'USER_ALGORITHM_ENABLED',
-  classification: 'USER_ALGORITHM_CLASSIFICATION_ENABLED',
-  preferences: 'USER_ALGORITHM_PREFERENCES_ENABLED',
-  feedMix: 'USER_ALGORITHM_FEED_MIX_ENABLED',
-  dataPermissions: 'USER_ALGORITHM_DATA_PERMISSIONS_ENABLED',
-  explanations: 'ALGORITHM_EXPLANATIONS_ENABLED',
   socialDiscovery: 'SOCIAL_DISCOVERY_ENABLED',
   socialRooms: 'SOCIAL_ROOMS_ENABLED',
 })
@@ -69,12 +63,16 @@ function envFlag(name) {
 
 function algorithmFeatureFlags() {
   return {
-    core: envFlag(ALGORITHM_FLAGS.core),
-    classification: envFlag(ALGORITHM_FLAGS.classification),
-    preferences: envFlag(ALGORITHM_FLAGS.preferences),
-    feedMix: envFlag(ALGORITHM_FLAGS.feedMix),
-    dataPermissions: envFlag(ALGORITHM_FLAGS.dataPermissions),
-    explanations: envFlag(ALGORITHM_FLAGS.explanations),
+    // These are product capabilities, not rollout switches. Mi algoritmo is
+    // authenticated, owner-scoped and backed by tables ensured at startup, so
+    // advertising a visible screen while an environment flag returns 404 is
+    // both misleading and functionally broken.
+    core: true,
+    classification: true,
+    preferences: true,
+    feedMix: true,
+    dataPermissions: true,
+    explanations: true,
     socialDiscovery: envFlag(ALGORITHM_FLAGS.socialDiscovery),
     socialRooms: envFlag(ALGORITHM_FLAGS.socialRooms),
   }

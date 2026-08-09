@@ -33,26 +33,30 @@ function withFlags(values, callback) {
   }
 }
 
-function testFlagsFailClosed() {
+function testAlgorithmControlsAreAlwaysAvailable() {
   withFlags({}, () => {
     const flags = algorithmFeatureFlags()
-    assert.equal(flags.core, false)
-    assert.equal(flags.preferences, false)
-    assert.equal(flags.feedMix, false)
-    assert.equal(flags.dataPermissions, false)
+    assert.equal(flags.core, true)
+    assert.equal(flags.classification, true)
+    assert.equal(flags.preferences, true)
+    assert.equal(flags.feedMix, true)
+    assert.equal(flags.dataPermissions, true)
+    assert.equal(flags.explanations, true)
+    assert.equal(flags.socialDiscovery, false)
+    assert.equal(flags.socialRooms, false)
   })
   withFlags({
-    USER_ALGORITHM_ENABLED: 'true',
-    USER_ALGORITHM_PREFERENCES_ENABLED: 'yes',
-    USER_ALGORITHM_FEED_MIX_ENABLED: '1',
-    USER_ALGORITHM_DATA_PERMISSIONS_ENABLED: 'on',
+    SOCIAL_DISCOVERY_ENABLED: 'true',
+    SOCIAL_ROOMS_ENABLED: 'true',
   }, () => {
     const flags = algorithmFeatureFlags()
     assert.equal(flags.core, true)
     assert.equal(flags.preferences, true)
     assert.equal(flags.feedMix, true)
     assert.equal(flags.dataPermissions, true)
-    assert.equal(flags.classification, false)
+    assert.equal(flags.classification, true)
+    assert.equal(flags.socialDiscovery, true)
+    assert.equal(flags.socialRooms, true)
   })
 }
 
@@ -62,9 +66,14 @@ function testCapabilitiesNeverAdvertisePartialRollout() {
     SOCIAL_ROOMS_ENABLED: 'true',
   }, () => {
     const response = algorithmCapabilitiesResponse()
-    assert.equal(response.enabled, false)
-    assert.equal(response.capabilities.socialDiscovery, false)
-    assert.equal(response.capabilities.socialRooms, false)
+    assert.equal(response.enabled, true)
+    assert.equal(response.capabilities.classification, true)
+    assert.equal(response.capabilities.preferences, true)
+    assert.equal(response.capabilities.feedMix, true)
+    assert.equal(response.capabilities.dataPermissions, true)
+    assert.equal(response.capabilities.explanations, true)
+    assert.equal(response.capabilities.socialDiscovery, true)
+    assert.equal(response.capabilities.socialRooms, true)
   })
 }
 
@@ -172,24 +181,23 @@ function testTrustedClassificationValidation() {
   }).error, 'CLASSIFICATION_TOPICS_INVALID')
 }
 
-async function testTrustedClassificationRequiresCoreFlag() {
-  const previousCore = process.env.USER_ALGORITHM_ENABLED
-  const previousClassification = process.env.USER_ALGORITHM_CLASSIFICATION_ENABLED
-  try {
-    delete process.env.USER_ALGORITHM_ENABLED
-    process.env.USER_ALGORITHM_CLASSIFICATION_ENABLED = 'true'
-    const result = await upsertTrustedContentClassification({
-      query: async () => {
-        throw new Error('classification write must remain disabled when core is off')
-      },
-    }, {})
-    assert.deepEqual(result, { error: 'USER_ALGORITHM_CLASSIFICATION_DISABLED' })
-  } finally {
-    if (previousCore === undefined) delete process.env.USER_ALGORITHM_ENABLED
-    else process.env.USER_ALGORITHM_ENABLED = previousCore
-    if (previousClassification === undefined) delete process.env.USER_ALGORITHM_CLASSIFICATION_ENABLED
-    else process.env.USER_ALGORITHM_CLASSIFICATION_ENABLED = previousClassification
-  }
+async function testTrustedClassificationIsAvailableWithoutRolloutFlags() {
+  let queries = 0
+  const classificationId = '44444444-4444-4444-8444-444444444444'
+  const result = await upsertTrustedContentClassification({
+    query: async () => {
+      queries += 1
+      return { rows: [{ id: classificationId }] }
+    },
+  }, {
+    contentKind: 'video',
+    contentId: 'video-123',
+    creatorId: 'creator-123',
+    safetyState: 'allowed',
+    topics: [{ topicKey: 'juegos', confidence: 0.95 }],
+  })
+  assert.deepEqual(result, { id: classificationId })
+  assert.equal(queries, 2)
 }
 
 async function testFallbackSchema() {
@@ -258,10 +266,10 @@ function testMigrationContract() {
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/)
   assert.match(migration, /FROM PUBLIC, anon, authenticated/)
   assert.doesNotMatch(migration, /GRANT SELECT, INSERT, UPDATE, DELETE[\s\S]*?TO authenticated/)
-  assert.match(config, /USER_ALGORITHM_ENABLED=false/)
-  assert.match(config, /USER_ALGORITHM_PREFERENCES_ENABLED=false/)
-  assert.match(config, /USER_ALGORITHM_FEED_MIX_ENABLED=false/)
-  assert.match(config, /USER_ALGORITHM_DATA_PERMISSIONS_ENABLED=false/)
+  assert.doesNotMatch(config, /USER_ALGORITHM_ENABLED=/)
+  assert.doesNotMatch(config, /USER_ALGORITHM_PREFERENCES_ENABLED=/)
+  assert.doesNotMatch(config, /USER_ALGORITHM_FEED_MIX_ENABLED=/)
+  assert.doesNotMatch(config, /USER_ALGORITHM_DATA_PERMISSIONS_ENABLED=/)
   assert.match(config, /ALGORITHM_RECOMMENDATION_CURSOR_SECRET=/)
   assert.match(fallbackMigration, /CREATE TABLE IF NOT EXISTS fallback_user_algorithm_profiles/)
   assert.match(fallbackMigration, /CREATE TABLE IF NOT EXISTS fallback_user_algorithm_preferences/)
@@ -270,7 +278,7 @@ function testMigrationContract() {
 }
 
 Promise.resolve()
-  .then(testFlagsFailClosed)
+  .then(testAlgorithmControlsAreAlwaysAvailable)
   .then(testCapabilitiesNeverAdvertisePartialRollout)
   .then(testProfileCreateRejectsInvalidNameWithoutThrowing)
   .then(testExplicitDimensionsRemainSeparate)
@@ -278,7 +286,7 @@ Promise.resolve()
   .then(testDataPermissionsAreAllowlisted)
   .then(testTemporaryPreferenceValidation)
   .then(testTrustedClassificationValidation)
-  .then(testTrustedClassificationRequiresCoreFlag)
+  .then(testTrustedClassificationIsAvailableWithoutRolloutFlags)
   .then(testFallbackSchema)
   .then(testRouteRegistration)
   .then(testDefaultProfileSwitchInvalidatesThePreviousProfileVersion)

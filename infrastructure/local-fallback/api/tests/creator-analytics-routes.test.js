@@ -93,16 +93,16 @@ async function invoke(route, { contentId = VIDEO_ID, query = {} } = {}) {
   return { ...response.state, forwarded }
 }
 
-function testFeatureFlagFailsClosedAndCohortIsBounded() {
+function testAnalyticsIsAvailableAndCohortIsBounded() {
   withEnvironment({}, () => {
     assert.deepEqual(creatorAnalyticsConfig(), {
-      enabled: false,
+      enabled: true,
       minimumCohort: 10,
       hashSecret: '',
     })
   })
   withEnvironment({
-    [CREATOR_ANALYTICS_FLAG]: 'true',
+    [CREATOR_ANALYTICS_FLAG]: 'false',
     [CREATOR_ANALYTICS_MIN_COHORT]: '1',
     [CREATOR_ANALYTICS_HASH_SECRET]: SECRET,
   }, () => {
@@ -435,7 +435,7 @@ function testMigrationIsIdempotentAndPrivacyPreserving() {
 }
 
 Promise.resolve()
-  .then(testFeatureFlagFailsClosedAndCohortIsBounded)
+  .then(testAnalyticsIsAvailableAndCohortIsBounded)
   .then(testEventValidationAndPseudonymization)
   .then(testIngestionIsOwnerDerivedAndIdempotent)
   .then(testVideoPrivacyAndMetricContract)
