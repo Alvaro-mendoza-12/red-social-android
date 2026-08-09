@@ -53,9 +53,11 @@ function safePhotos(value) {
   return cleanArray(value, 4, 1000).filter((url) => /^https:\/\//i.test(url))
 }
 
-function testerIds() {
+function testerSubjects() {
   return new Set(
-    String(process.env.PLAYMATCH_TESTER_IDS || '')
+    [process.env.PLAYMATCH_TESTER_IDS, process.env.PLAYMATCH_TESTER_EMAILS]
+      .filter(Boolean)
+      .join(',')
       .split(',')
       .map(normalizeId)
       .filter(Boolean),
@@ -64,8 +66,15 @@ function testerIds() {
 
 function playMatchEnabledFor(identity) {
   if (booleanEnv('PLAYMATCH_GAMES_ENABLED', false)) return true
-  const allowed = testerIds()
-  return (identity?.values || []).some((id) => allowed.has(normalizeId(id)))
+  const allowed = testerSubjects()
+  const subjects = [
+    ...(identity?.values || []),
+    identity?.email,
+    identity?.localUserId,
+    identity?.preferredUserId,
+    identity?.displayUserId,
+  ].map(normalizeId).filter(Boolean)
+  return subjects.some((subject) => allowed.has(subject))
 }
 
 function cursorSecret() {

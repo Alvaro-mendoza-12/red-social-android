@@ -33,6 +33,7 @@ import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.profile.ProfileScreen
 import conectate.com.presentation.videos.VideosScreen
 import conectate.com.presentation.video.VideoFeedScreen
+import conectate.com.presentation.gaming.PlayMatchColors
 
 sealed class BottomNavItem(
     val route: String,
@@ -75,12 +76,15 @@ fun HomeScreen(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val isVideoFeed = currentDestination?.hierarchy?.any { it.route == Screen.Videos.route } == true
+    val isPlayMatch = currentDestination?.hierarchy?.any { destination ->
+        destination.route == Screen.Games.route || destination.route?.startsWith("games_") == true
+    } == true
     val unreadBadge by homeViewModel.totalUnreadConversations.collectAsState()
 
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = if (isPlayMatch) PlayMatchColors.Surface else MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp,
                 // Material3 conserva el inset inferior del sistema. No se fija un máximo:
                 // en navegación de tres botones la barra puede crecer sin recortar controles.
@@ -129,6 +133,19 @@ fun HomeScreen(
                                 item is BottomNavItem.Games && destination.route?.startsWith("games_") == true
                             )
                         } == true,
+                        colors = if (isPlayMatch) NavigationBarItemDefaults.colors(
+                            selectedIconColor = PlayMatchColors.Accent,
+                            selectedTextColor = PlayMatchColors.Accent,
+                            indicatorColor = PlayMatchColors.Card,
+                            unselectedIconColor = PlayMatchColors.SecondaryText,
+                            unselectedTextColor = PlayMatchColors.SecondaryText,
+                        ) else NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        ),
                         onClick = {
                             navController.navigate(item.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -138,13 +155,6 @@ fun HomeScreen(
                                 restoreState = true
                             }
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
                     )
                 }
             }

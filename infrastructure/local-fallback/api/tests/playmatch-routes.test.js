@@ -35,6 +35,10 @@ async function main() {
     assert.equal(playMatchEnabledFor({ values: ['USER-A'] }), true)
     assert.equal(playMatchEnabledFor({ values: ['outsider'] }), false)
   })
+  withEnv({ PLAYMATCH_GAMES_ENABLED: 'false', PLAYMATCH_TESTER_IDS: '', PLAYMATCH_TESTER_EMAILS: 'tester@novvin.app' }, () => {
+    assert.equal(playMatchEnabledFor({ values: ['local-id'], email: 'TESTER@NOVVIN.APP' }), true)
+    assert.equal(playMatchEnabledFor({ values: ['local-id'], email: 'other@novvin.app' }), false)
+  })
   withEnv({ PLAYMATCH_GAMES_ENABLED: 'true', PLAYMATCH_TESTER_IDS: '' }, () => {
     assert.equal(playMatchEnabledFor({ values: ['any-user'] }), true)
   })
