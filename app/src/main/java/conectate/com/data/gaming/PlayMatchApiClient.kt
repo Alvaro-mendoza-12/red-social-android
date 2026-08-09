@@ -32,6 +32,22 @@ class PlayMatchApiClient @Inject constructor(
             parameter("limit", 100)
         }
     }.decode<PlayMatchCatalogResponse>()
+    suspend fun popularGames(token: String, limit: Int = 12) = execute(token) { base ->
+        supabaseConfig.httpClient.get("$base/v1/data/playmatch/games/popular") {
+            playMatchHeaders(token)
+            parameter("limit", limit.coerceIn(1, 20))
+        }
+    }.decode<PlayMatchCatalogResponse>()
+    suspend fun searchGames(token: String, query: String, cursor: String? = null, limit: Int = 30) = execute(token) { base ->
+        supabaseConfig.httpClient.get("$base/v1/data/playmatch/games/search") {
+            playMatchHeaders(token)
+            parameter("q", query.trim().take(100))
+            parameter("limit", limit.coerceIn(1, 50))
+            cursor?.takeIf(String::isNotBlank)?.let { parameter("cursor", it) }
+        }
+    }.decode<PlayMatchCatalogPageResponse>()
+    suspend fun gameConfiguration(token: String, gameId: String) =
+        get<PlayMatchGameConfigurationResponse>(token, "/v1/data/playmatch/games/${encodePath(gameId)}/config")
     suspend fun profile(token: String) = get<PlayMatchProfileResponse>(token, "/v1/data/playmatch/profile")
     suspend fun updateProfile(token: String, body: UpdatePlayMatchProfileRequest) = execute(token) { base ->
         supabaseConfig.httpClient.patch("$base/v1/data/playmatch/profile") { playMatchHeaders(token); contentType(ContentType.Application.Json); setBody(body) }
@@ -124,4 +140,3 @@ class PlayMatchApiException(
     val statusCode: Int,
     val currentVersion: Long? = null,
 ) : IllegalStateException(code)
-

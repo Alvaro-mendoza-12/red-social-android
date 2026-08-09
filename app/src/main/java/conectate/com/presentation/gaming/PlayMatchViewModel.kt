@@ -21,6 +21,14 @@ data class PlayMatchUiState(
     val isWorking: Boolean = false,
     val capabilities: PlayMatchCapabilities = PlayMatchCapabilities(),
     val catalog: List<PlayMatchGameCatalogItem> = emptyList(),
+    val catalogResults: List<PlayMatchGameCatalogItem> = emptyList(),
+    val catalogQuery: String = "",
+    val catalogNextCursor: String? = null,
+    val isCatalogLoading: Boolean = false,
+    val isCatalogLoadingMore: Boolean = false,
+    val isCatalogSelectionLoading: Boolean = false,
+    val catalogError: String? = null,
+    val selectedCatalogGame: PlayMatchGameCatalogItem? = null,
     val profile: PlayMatchProfile? = null,
     val preferences: PlayMatchPreferences? = null,
     val players: List<PlayMatchProfile> = emptyList(),
@@ -47,6 +55,8 @@ class PlayMatchViewModel @Inject constructor(
     val state: StateFlow<PlayMatchUiState> = _state.asStateFlow()
     private var pollingJob: Job? = null
     private var inboxJob: Job? = null
+    private var catalogSearchJob: Job? = null
+    private var catalogRequestGeneration: Long = 0
 
     init { refreshHome() }
 
@@ -60,7 +70,7 @@ class PlayMatchViewModel @Inject constructor(
                         _state.update { it.copy(isLoading = false) }
                         return@fold
                     }
-                    val catalog = repository.catalog().getOrElse { emptyListResponse(it) }
+                    val catalog = repository.popularGames().getOrElse { emptyListResponse(it) }
                     val profile = repository.profile().getOrElse { profileFailure(it) }
                     val players = repository.players().getOrElse { playersFailure(it) }
                     val connections = repository.connections().getOrElse { PlayMatchConnectionsResponse() }
@@ -116,7 +126,7 @@ class PlayMatchViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false, capabilities = capabilities) }
                 return@launch
             }
-            val catalog = repository.catalog().getOrElse { return@launch fail(it) }
+            val catalog = repository.popularGames().getOrElse { return@launch fail(it) }
             repository.profile().fold(
                 onSuccess = { response -> _state.update { it.copy(isLoading = false, capabilities = capabilities, catalog = catalog.items, profile = response.profile, preferences = response.preferences) } },
                 onFailure = { fail(it) },
@@ -135,6 +145,97 @@ class PlayMatchViewModel @Inject constructor(
     fun savePreferences(request: SavePlayMatchPreferencesRequest) = work("Filtros guardados.", request = { repository.savePreferences(request) }, onSuccess = { response ->
         _state.update { it.copy(preferences = response.preferences) }
     })
+
+    fun prepareCatalogSearch() {
+        if (_state.value.catalogResults.isNotEmpty() || _state.value.isCatalogLoading) return
+        updateCatalogQuery("")
+    }
+
+    fun updateCatalogQuery(query: String) {
+        val normalized = query.take(100)
+        catalogSearchJob?.cancel()
+        val generation = ++catalogRequestGeneration
+        _state.update {
+            it.copy(
+                catalogQuery = normalized,
+                catalogResults = emptyList(),
+                catalogNextCursor = null,
+                selectedCatalogGame = null,
+                catalogError = null,
+                isCatalogLoading = true,
+                isCatalogLoadingMore = false,
+                isCatalogSelectionLoading = false,
+            )
+        }
+        catalogSearchJob = viewModelScope.launch {
+            delay(if (normalized.isBlank()) 0 else 350)
+            repository.searchGames(normalized).fold(
+                onSuccess = { response ->
+                    if (generation != catalogRequestGeneration) return@fold
+                    _state.update { current -> current.copy(
+                        isCatalogLoading = false,
+                        catalogResults = response.items,
+                        catalogNextCursor = response.nextCursor,
+                        catalogError = null,
+                    ) }
+                },
+                onFailure = { error ->
+                    if (generation != catalogRequestGeneration) return@fold
+                    _state.update { it.copy(isCatalogLoading = false, catalogError = PlayMatchUiPolicy.safeError(error)) }
+                },
+            )
+        }
+    }
+
+    fun retryCatalogSearch() {
+        val query = _state.value.catalogQuery
+        catalogSearchJob?.cancel()
+        val generation = ++catalogRequestGeneration
+        _state.update { it.copy(isCatalogLoading = true, catalogError = null) }
+        catalogSearchJob = viewModelScope.launch {
+            repository.searchGames(query, force = true).fold(
+                onSuccess = { response ->
+                    if (generation == catalogRequestGeneration) _state.update { it.copy(
+                        isCatalogLoading = false,
+                        catalogResults = response.items,
+                        catalogNextCursor = response.nextCursor,
+                    ) }
+                },
+                onFailure = { error -> if (generation == catalogRequestGeneration) _state.update { it.copy(isCatalogLoading = false, catalogError = PlayMatchUiPolicy.safeError(error)) } },
+            )
+        }
+    }
+
+    fun loadMoreCatalog() {
+        val cursor = _state.value.catalogNextCursor ?: return
+        if (_state.value.isCatalogLoading || _state.value.isCatalogLoadingMore) return
+        val generation = catalogRequestGeneration
+        val query = _state.value.catalogQuery
+        _state.update { it.copy(isCatalogLoadingMore = true, catalogError = null) }
+        viewModelScope.launch {
+            repository.searchGames(query, cursor).fold(
+                onSuccess = { response ->
+                    if (generation != catalogRequestGeneration) return@fold
+                    _state.update { current -> current.copy(
+                        isCatalogLoadingMore = false,
+                        catalogResults = (current.catalogResults + response.items).distinctBy { it.id },
+                        catalogNextCursor = response.nextCursor,
+                    ) }
+                },
+                onFailure = { error -> if (generation == catalogRequestGeneration) _state.update { it.copy(isCatalogLoadingMore = false, catalogError = PlayMatchUiPolicy.safeError(error)) } },
+            )
+        }
+    }
+
+    fun selectCatalogGame(game: PlayMatchGameCatalogItem) {
+        _state.update { it.copy(selectedCatalogGame = game, catalogError = null, isCatalogSelectionLoading = true) }
+        viewModelScope.launch {
+            repository.gameConfiguration(game.id).fold(
+                onSuccess = { response -> _state.update { it.copy(selectedCatalogGame = response.game, isCatalogSelectionLoading = false) } },
+                onFailure = { error -> _state.update { it.copy(isCatalogSelectionLoading = false, catalogError = PlayMatchUiPolicy.safeError(error)) } },
+            )
+        }
+    }
 
     fun saveGame(request: SavePlayMatchGameRequest, onDone: () -> Unit) = work("Juego guardado.", request = { repository.saveGame(request) }, onSuccess = { response ->
         _state.update { current -> current.copy(profile = current.profile?.let { profile -> profile.copy(games = profile.games.filterNot { it.id == response.game.id } + response.game) }) }
@@ -298,6 +399,7 @@ class PlayMatchViewModel @Inject constructor(
     override fun onCleared() {
         pollingJob?.cancel()
         inboxJob?.cancel()
+        catalogSearchJob?.cancel()
         super.onCleared()
     }
 }

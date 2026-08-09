@@ -4,6 +4,7 @@ import conectate.com.data.gaming.PlayMatchApiClient
 import conectate.com.data.model.*
 import conectate.com.data.supabase.AuthService
 import java.util.UUID
+import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -12,8 +13,28 @@ class PlayMatchRepository @Inject constructor(
     private val authService: AuthService,
     private val api: PlayMatchApiClient,
 ) {
+    private data class CachedCatalogPage(val savedAt: Long, val response: PlayMatchCatalogPageResponse)
+    private val catalogCache = object : LinkedHashMap<String, CachedCatalogPage>(24, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedCatalogPage>?): Boolean = size > 24
+    }
+    private val catalogCacheTtlMs = 5 * 60_000L
+
     suspend fun capabilities() = withToken(api::capabilities)
     suspend fun catalog(query: String = "") = withToken { api.catalog(it, query) }
+    suspend fun popularGames() = withToken { api.popularGames(it) }
+    suspend fun searchGames(query: String, cursor: String? = null, force: Boolean = false): Result<PlayMatchCatalogPageResponse> {
+        val key = "${query.trim().lowercase()}|${cursor.orEmpty()}"
+        synchronized(catalogCache) {
+            val cached = catalogCache[key]
+            if (!force && cached != null && System.currentTimeMillis() - cached.savedAt < catalogCacheTtlMs) {
+                return Result.success(cached.response)
+            }
+        }
+        val result = withToken { api.searchGames(it, query, cursor) }
+        result.onSuccess { response -> synchronized(catalogCache) { catalogCache[key] = CachedCatalogPage(System.currentTimeMillis(), response) } }
+        return result
+    }
+    suspend fun gameConfiguration(gameId: String) = withToken { api.gameConfiguration(it, gameId) }
     suspend fun profile() = withToken(api::profile)
     suspend fun updateProfile(body: UpdatePlayMatchProfileRequest) = withToken { api.updateProfile(it, body) }
     suspend fun saveGame(body: SavePlayMatchGameRequest) = withToken { api.saveGame(it, body) }

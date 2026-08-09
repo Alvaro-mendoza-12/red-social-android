@@ -1,6 +1,7 @@
 package conectate.com.presentation.gaming
 
 import conectate.com.data.gaming.PlayMatchApiException
+import conectate.com.data.model.PlayMatchGameCatalogItem
 
 object PlayMatchUiPolicy {
     fun gameGridColumns(widthDp: Int, fontScale: Float = 1f): Int = when {
@@ -10,6 +11,26 @@ object PlayMatchUiPolicy {
         widthDp >= 360 -> 2
         else -> 1
     }
+
+    fun rankOptions(game: PlayMatchGameCatalogItem?, platform: String): List<Pair<String, String>> {
+        val schema = game?.rankSchemas.orEmpty().firstOrNull {
+            it.platform.isNullOrBlank() || it.platform.equals(platform, ignoreCase = true)
+        }
+        return schema?.ranks?.map { it.key to it.displayName }
+            ?: game?.ranks.orEmpty().map { it to it }
+    }
+
+    fun roleOptions(game: PlayMatchGameCatalogItem?): List<Pair<String, String>> =
+        game?.roleDefinitions.orEmpty().map { it.key to it.displayName }
+            .ifEmpty { game?.roles.orEmpty().map { it to it } }
+
+    fun showsOfficialRank(game: PlayMatchGameCatalogItem?): Boolean =
+        game?.rankedSupported == true && (
+            game.rankSchemas.any { it.ranks.isNotEmpty() } || game.ranks.isNotEmpty()
+        )
+
+    fun showsPlayMatchLevel(game: PlayMatchGameCatalogItem?): Boolean =
+        game != null && !showsOfficialRank(game)
 
     fun safeError(error: Throwable): String = when ((error as? PlayMatchApiException)?.code) {
         "PLAYMATCH_DISABLED" -> "Juegos todavía no está habilitado para esta cuenta de prueba."

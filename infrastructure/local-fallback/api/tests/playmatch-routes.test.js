@@ -113,6 +113,9 @@ async function main() {
   for (const route of [
     'GET /v1/data/playmatch/capabilities',
     'GET /v1/data/playmatch/catalog',
+    'GET /v1/data/playmatch/games/search',
+    'GET /v1/data/playmatch/games/popular',
+    'GET /v1/data/playmatch/games/:gameId/config',
     'GET /v1/data/playmatch/profile',
     'POST /v1/data/playmatch/matchmaking/sessions',
     'POST /v1/data/playmatch/matches/:matchId/decision',

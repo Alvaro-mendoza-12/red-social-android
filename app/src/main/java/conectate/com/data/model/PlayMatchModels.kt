@@ -17,13 +17,75 @@ data class PlayMatchCapabilities(
 @Serializable
 data class PlayMatchGameCatalogItem(
     val id: String,
+    val externalProviderId: String? = null,
     val name: String,
+    val slug: String = "",
+    val shortName: String = "",
     val description: String = "",
     val imageUrl: String? = null,
+    val coverUrl: String? = null,
+    val logoUrl: String? = null,
+    val iconUrl: String? = null,
     val platforms: List<String> = emptyList(),
+    val genres: List<String> = emptyList(),
     val ranks: List<String> = emptyList(),
     val roles: List<String> = emptyList(),
+    val onlineSupported: Boolean = false,
+    val multiplayerSupported: Boolean = true,
+    val competitive: Boolean = false,
+    val rankedSupported: Boolean = false,
+    val rolesSupported: Boolean = false,
     val crossPlay: Boolean = false,
+    val active: Boolean = true,
+    val releaseDate: String? = null,
+    val provider: String = "manual",
+    val supportLevel: String = "CATALOG_SUPPORTED",
+    val gameUserIdLabel: String = "ID del juego",
+    val sourceUrl: String? = null,
+    val coverLicense: String? = null,
+    val coverAttribution: String? = null,
+    val coverSourceUrl: String? = null,
+    val userCount: Int = 0,
+    val activeSearchCount: Int = 0,
+    val rankSchemas: List<PlayMatchRankSchema> = emptyList(),
+    val roleDefinitions: List<PlayMatchRoleDefinition> = emptyList(),
+)
+
+@Serializable
+data class PlayMatchRankSchema(
+    val id: String,
+    val key: String,
+    val displayName: String,
+    val version: String,
+    val season: String? = null,
+    val regionCode: String? = null,
+    val platform: String? = null,
+    val pointsLabel: String? = null,
+    val officialSourceUrl: String? = null,
+    val ranks: List<PlayMatchRankDefinition> = emptyList(),
+)
+
+@Serializable
+data class PlayMatchRankDefinition(
+    val id: String,
+    val key: String,
+    val tier: String = "",
+    val division: String = "",
+    val displayName: String,
+    val order: Int,
+    val iconUrl: String? = null,
+    val minRating: Int? = null,
+    val maxRating: Int? = null,
+)
+
+@Serializable
+data class PlayMatchRoleDefinition(
+    val id: String,
+    val key: String,
+    val displayName: String,
+    val description: String = "",
+    val iconUrl: String? = null,
+    val officialSourceUrl: String? = null,
 )
 
 @Serializable
@@ -100,6 +162,12 @@ data class PlayMatchPreferences(
 )
 
 @Serializable data class PlayMatchCatalogResponse(val items: List<PlayMatchGameCatalogItem> = emptyList())
+@Serializable data class PlayMatchCatalogPageResponse(
+    val items: List<PlayMatchGameCatalogItem> = emptyList(),
+    val nextCursor: String? = null,
+    val query: String = "",
+)
+@Serializable data class PlayMatchGameConfigurationResponse(val game: PlayMatchGameCatalogItem)
 @Serializable data class PlayMatchProfileResponse(val profile: PlayMatchProfile, val preferences: PlayMatchPreferences? = null)
 @Serializable data class PlayMatchPlayersResponse(
     val items: List<PlayMatchProfile> = emptyList(),

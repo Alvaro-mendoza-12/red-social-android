@@ -1,4 +1,11 @@
 const crypto = require('crypto')
+const {
+  ensureDynamicPlayMatchCatalogTables,
+  loadGameConfiguration,
+  mapCatalogRow,
+  registerPlayMatchCatalogRoutes,
+  searchCatalog,
+} = require('./playmatch-catalog')
 
 const PLAY_STYLES = new Set(['casual', 'competitive', 'mixed'])
 const VISIBILITIES = new Set(['private', 'connections', 'public'])
@@ -239,6 +246,7 @@ async function ensurePlayMatchTables(pool) {
       PRIMARY KEY (match_id, user_id)
     )
   `)
+  await ensureDynamicPlayMatchCatalogTables(pool)
 }
 
 async function findUserByAlias(db, rawId) {
@@ -306,16 +314,7 @@ async function ensureGamingProfile(db, userId) {
 }
 
 function mapCatalog(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description || '',
-    imageUrl: row.image_url || null,
-    platforms: Array.isArray(row.platforms) ? row.platforms : [],
-    ranks: Array.isArray(row.ranks) ? row.ranks : [],
-    roles: Array.isArray(row.roles) ? row.roles : [],
-    crossPlay: Boolean(row.cross_play),
-  }
+  return mapCatalogRow(row)
 }
 
 function mapGame(row, includePrivate = false) {
@@ -359,8 +358,12 @@ async function loadBundle(db, userId) {
   if (!profile) return null
   const [{ rows: games }, { rows: availability }, { rows: preferences }] = await Promise.all([
     db.query(
-      `SELECT ug.*, gc.name AS game_name, gc.image_url AS game_image_url,
-              gc.cross_play, gc.ranks, gc.roles, gc.platforms
+      `SELECT ug.*, gc.name AS game_name, COALESCE(gc.icon_url,gc.logo_url,gc.cover_url,gc.image_url) AS game_image_url,
+              gc.cross_play, gc.ranks, gc.roles, gc.platforms,
+              COALESCE((SELECT r.order_index FROM fallback_playmatch_game_ranks r
+                JOIN fallback_playmatch_game_rank_schemas s ON s.id=r.schema_id
+                WHERE s.game_id=ug.game_id AND s.active=TRUE AND r.active=TRUE
+                  AND lower(r.rank_key)=lower(ug.rank_key) ORDER BY s.updated_at DESC LIMIT 1),-1) AS rank_order
          FROM fallback_user_games ug
          JOIN fallback_game_catalog gc ON gc.id = ug.game_id
         WHERE ug.user_id = $1 AND gc.active = TRUE
@@ -389,8 +392,13 @@ async function loadBundles(db, userIds) {
       [ids],
     ),
     db.query(
-      `SELECT ug.*, gc.name AS game_name, gc.image_url AS game_image_url,
-              gc.cross_play, gc.ranks, gc.roles, gc.platforms
+      `SELECT ug.*, gc.name AS game_name, COALESCE(gc.icon_url,gc.logo_url,gc.cover_url,gc.image_url) AS game_image_url,
+              gc.cross_play, gc.ranks, gc.roles, gc.platforms, gc.support_level,
+              gc.ranked_supported, gc.roles_supported,
+              COALESCE((SELECT r.order_index FROM fallback_playmatch_game_ranks r
+                JOIN fallback_playmatch_game_rank_schemas s ON s.id=r.schema_id
+                WHERE s.game_id=ug.game_id AND s.active=TRUE AND r.active=TRUE
+                  AND lower(r.rank_key)=lower(ug.rank_key) ORDER BY s.updated_at DESC LIMIT 1),-1) AS rank_order
          FROM fallback_user_games ug
          JOIN fallback_game_catalog gc ON gc.id = ug.game_id
         WHERE ug.user_id = ANY($1::uuid[]) AND gc.active = TRUE
@@ -530,8 +538,8 @@ function computeCompatibility(viewer, candidate, criteria = {}) {
     const other = candidateGames.find((entry) => normalizeId(entry.game_id || entry.gameId) === normalizeId(game.game_id || game.gameId))
     if (!game.rank_key || !other?.rank_key) return false
     const ranks = Array.isArray(game.ranks) ? game.ranks.map(normalizeId) : []
-    const left = ranks.indexOf(normalizeId(game.rank_key))
-    const right = ranks.indexOf(normalizeId(other.rank_key))
+    const left = Number(game.rank_order) >= 0 ? Number(game.rank_order) : ranks.indexOf(normalizeId(game.rank_key))
+    const right = Number(other.rank_order) >= 0 ? Number(other.rank_order) : ranks.indexOf(normalizeId(other.rank_key))
     return left >= 0 && right >= 0
       ? Math.abs(left - right) <= rankTolerance
       : normalizeId(game.rank_key) === normalizeId(other.rank_key)
@@ -619,8 +627,12 @@ async function candidateBundles(db, viewer, filters = {}) {
   const ids = rows.map((row) => row.user_id)
   const [{ rows: games }, { rows: availability }, { rows: preferences }] = await Promise.all([
     db.query(
-      `SELECT ug.*, gc.name AS game_name, gc.image_url AS game_image_url, gc.cross_play,
-              gc.ranks, gc.roles, gc.platforms
+      `SELECT ug.*, gc.name AS game_name, COALESCE(gc.icon_url,gc.logo_url,gc.cover_url,gc.image_url) AS game_image_url, gc.cross_play,
+              gc.ranks, gc.roles, gc.platforms,
+              COALESCE((SELECT r.order_index FROM fallback_playmatch_game_ranks r
+                JOIN fallback_playmatch_game_rank_schemas s ON s.id=r.schema_id
+                WHERE s.game_id=ug.game_id AND s.active=TRUE AND r.active=TRUE
+                  AND lower(r.rank_key)=lower(ug.rank_key) ORDER BY s.updated_at DESC LIMIT 1),-1) AS rank_order
          FROM fallback_user_games ug JOIN fallback_game_catalog gc ON gc.id = ug.game_id
         WHERE ug.user_id = ANY($1::uuid[]) AND gc.active = TRUE`,
       [ids],
@@ -776,17 +788,22 @@ function registerPlayMatchRoutes(app, {
       const ctx = await context(req, res)
       if (!ctx) return
       const query = cleanText(req.query.q, 100).toLowerCase()
-      const limit = Math.max(1, Math.min(Number(req.query.limit) || 30, 100))
-      const { rows } = await pool.query(
-        `SELECT * FROM fallback_game_catalog
-          WHERE active = TRUE AND ($1 = '' OR lower(name) LIKE '%' || $1 || '%')
-          ORDER BY sort_order, name LIMIT $2`,
-        [query, limit],
-      )
-      res.json({ items: rows.map(mapCatalog) })
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 30, 50))
+      const page = await searchCatalog(pool, { query, limit, offset: 0 })
+      res.json({ items: page.items })
     } catch (error) {
       next(error)
     }
+  })
+
+  registerPlayMatchCatalogRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+    publicContext: context,
+    encodeCursor,
+    decodeCursor,
   })
 
   app.get('/v1/data/playmatch/profile', authRequired, async (req, res, next) => {
@@ -883,9 +900,12 @@ function registerPlayMatchRoutes(app, {
       const platform = cleanText(req.body?.platform, 40)
       const visibility = normalizeId(req.body?.visibility || 'connections')
       if (!gameId || !platform || !VISIBILITIES.has(visibility)) return res.status(400).json({ error: 'INVALID_GAME' })
-      const catalog = await pool.query(`SELECT * FROM fallback_game_catalog WHERE id = $1 AND active = TRUE LIMIT 1`, [gameId])
+      const gameConfiguration = await loadGameConfiguration(pool, gameId)
+      if (!gameConfiguration || !gameConfiguration.active || gameConfiguration.supportLevel === 'UNSUPPORTED') {
+        return res.status(404).json({ error: 'GAME_NOT_FOUND' })
+      }
+      const catalog = await pool.query(`SELECT * FROM fallback_game_catalog WHERE id = $1 LIMIT 1`, [gameId])
       const game = catalog.rows[0]
-      if (!game) return res.status(404).json({ error: 'GAME_NOT_FOUND' })
       if (!(game.platforms || []).map(normalizeId).includes(normalizeId(platform))) {
         return res.status(400).json({ error: 'PLATFORM_NOT_SUPPORTED' })
       }
@@ -895,10 +915,14 @@ function registerPlayMatchRoutes(app, {
       }
       const rank = cleanText(req.body?.rank, 60)
       const role = cleanText(req.body?.role, 60)
-      if (rank && !(game.ranks || []).map(normalizeId).includes(normalizeId(rank))) {
+      const allowedRanks = gameConfiguration.rankSchemas.flatMap((schema) => schema.ranks.map((item) => normalizeId(item.key)))
+      const legacyRanks = (game.ranks || []).map(normalizeId)
+      if (rank && !allowedRanks.includes(normalizeId(rank)) && !legacyRanks.includes(normalizeId(rank))) {
         return res.status(400).json({ error: 'RANK_NOT_SUPPORTED' })
       }
-      if (role && !(game.roles || []).map(normalizeId).includes(normalizeId(role))) {
+      const allowedRoles = gameConfiguration.roleDefinitions.map((item) => normalizeId(item.key))
+      const legacyRoles = (game.roles || []).map(normalizeId)
+      if (role && !allowedRoles.includes(normalizeId(role)) && !legacyRoles.includes(normalizeId(role))) {
         return res.status(400).json({ error: 'ROLE_NOT_SUPPORTED' })
       }
       const { rows } = await pool.query(
@@ -926,7 +950,7 @@ function registerPlayMatchRoutes(app, {
           Boolean(req.body?.isPrimary),
         ],
       )
-      const saved = { ...rows[0], game_name: game.name, game_image_url: game.image_url }
+      const saved = { ...rows[0], game_name: game.name, game_image_url: game.icon_url || game.logo_url || game.cover_url || game.image_url }
       res.status(201).json({ game: mapGame(saved, true) })
     } catch (error) {
       if (error?.code === '23505') return res.status(409).json({ error: 'GAME_ALREADY_EXISTS' })

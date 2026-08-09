@@ -163,6 +163,14 @@ PLAYMATCH_TESTER_IDS=
 PLAYMATCH_CURSOR_SECRET=
 PLAYMATCH_REQUIRE_ADULT_CONFIRMATION=true
 PLAYMATCH_PHOTOS_ENABLED=false
+PLAYMATCH_CATALOG_ADMIN_SYNC_ENABLED=false
+PLAYMATCH_CATALOG_PROVIDER=wikidata
+PLAYMATCH_CATALOG_MIN_RELEASE_YEAR=2000
+PLAYMATCH_CATALOG_USER_AGENT=NovvinPlayMatch/1.0 (catalog-sync; support@conectate.com)
+# RAWG actualmente requiere un plan comercial para Novvin. Mantener en false
+# hasta obtener y documentar autorizacion comercial; la clave vive solo en el servidor.
+PLAYMATCH_RAWG_COMMERCIAL_USE_APPROVED=false
+RAWG_API_KEY=
 
 # IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
 # 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion

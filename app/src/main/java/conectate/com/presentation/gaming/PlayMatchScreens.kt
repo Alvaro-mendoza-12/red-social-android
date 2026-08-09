@@ -21,7 +21,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -33,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import conectate.com.R
 import conectate.com.data.model.*
 import conectate.com.presentation.components.CircularProfileImage
 
@@ -293,8 +297,6 @@ fun AddGameScreen(
     viewModel: PlayMatchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
-    var selectedGameId by rememberSaveable { mutableStateOf<String?>(null) }
     var platform by rememberSaveable { mutableStateOf("") }
     var rank by rememberSaveable { mutableStateOf("") }
     var role by rememberSaveable { mutableStateOf("") }
@@ -302,9 +304,10 @@ fun AddGameScreen(
     var gameUserId by rememberSaveable { mutableStateOf("") }
     var visibility by rememberSaveable { mutableStateOf("connections") }
     var primary by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) { viewModel.loadProfile() }
-    val selected = state.catalog.firstOrNull { it.id == selectedGameId }
-    val filtered = state.catalog.filter { it.name.contains(query, true) }
+    LaunchedEffect(Unit) { viewModel.loadProfile(); viewModel.prepareCatalogSearch() }
+    val selected = state.selectedCatalogGame
+    val rankOptions = remember(selected, platform) { PlayMatchUiPolicy.rankOptions(selected, platform) }
+    val roleOptions = remember(selected) { PlayMatchUiPolicy.roleOptions(selected) }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding(),
@@ -317,37 +320,78 @@ fun AddGameScreen(
             item { StatusCard(Icons.Default.Lock, "Catálogo no habilitado", "Juegos permanece cerrado para esta cuenta.", "Volver", onBack) }
             return@LazyColumn
         }
-        item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Buscar juego") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true) }
-        item { SectionTitle("Catálogo") }
-        if (filtered.isEmpty()) item { EmptyInline("No encontramos juegos con ese nombre.") }
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = PlayMatchUiPolicy.gameGridColumns(LocalConfiguration.current.screenWidthDp, LocalDensity.current.fontScale)) {
-                filtered.forEach { game ->
-                    FilterChip(
-                        selected = selectedGameId == game.id,
-                        onClick = { selectedGameId = game.id; platform = ""; rank = ""; role = "" },
-                        label = { Text(game.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = { Icon(Icons.Default.SportsEsports, null, Modifier.size(18.dp)) },
-                        modifier = Modifier.widthIn(min = 136.dp),
-                    )
+            OutlinedTextField(
+                state.catalogQuery,
+                viewModel::updateCatalogQuery,
+                Modifier.fillMaxWidth(),
+                placeholder = { Text("Buscar en el catálogo de juegos") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (state.catalogQuery.isNotBlank()) IconButton(onClick = { viewModel.updateCatalogQuery("") }) {
+                        Icon(Icons.Default.Close, "Limpiar búsqueda")
+                    }
+                },
+                singleLine = true,
+            )
+        }
+        if (state.catalog.isNotEmpty()) {
+            item { SectionTitle("Populares") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(state.catalog.take(20), key = { "popular-add-${it.id}" }) { game ->
+                        PopularGameCard(game) {
+                            platform = ""; rank = ""; role = ""; level = ""; gameUserId = ""
+                            viewModel.selectCatalogGame(game)
+                        }
+                    }
                 }
             }
         }
         if (selected != null) {
-            item { Text("Configurar ${selected.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            item { SelectedGameHeader(selected) }
+            if (state.isCatalogSelectionLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             item { ChoiceRow("Plataforma", selected.platforms, platform) { platform = it } }
-            if (selected.ranks.isNotEmpty()) item { ChoiceRow("Rango", selected.ranks, rank) { rank = it } }
-            if (selected.roles.isNotEmpty()) item { ChoiceRow("Rol principal", selected.roles, role) { role = it } }
-            item { OutlinedTextField(gameUserId, { gameUserId = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("ID dentro del juego (opcional)") }, singleLine = true) }
-            item { OutlinedTextField(level, { level = it.take(60) }, Modifier.fillMaxWidth(), label = { Text("Nivel (opcional)") }, singleLine = true) }
+            if (PlayMatchUiPolicy.showsOfficialRank(selected) && rankOptions.isNotEmpty()) item { DefinitionChoiceRow("Rango oficial", rankOptions, rank) { rank = it } }
+            if (roleOptions.isNotEmpty()) item { DefinitionChoiceRow("Rol principal", roleOptions, role) { role = it } }
+            item { OutlinedTextField(gameUserId, { gameUserId = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("${selected.gameUserIdLabel} (opcional)") }, singleLine = true) }
+            if (PlayMatchUiPolicy.showsPlayMatchLevel(selected)) item { OutlinedTextField(level, { level = it.take(60) }, Modifier.fillMaxWidth(), label = { Text("Nivel/experiencia PlayMatch (opcional)") }, supportingText = { Text("No es un rango oficial del juego.") }, singleLine = true) }
             item { ChoiceRow("Quién puede ver tu ID", listOf("private", "connections", "public"), visibility) { visibility = it } }
             item { SettingSwitch("Juego principal", primary) { primary = it } }
             item {
                 Button(
                     onClick = { viewModel.saveGame(SavePlayMatchGameRequest(selected.id, gameUserId.trim(), platform, rank, level.trim(), role, visibility, primary), onSaved) },
-                    enabled = platform.isNotBlank() && !state.isWorking,
+                    enabled = platform.isNotBlank() && !state.isWorking && !state.isCatalogSelectionLoading,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                 ) { if (state.isWorking) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Guardar juego") }
+            }
+        }
+        item { SectionTitle(if (state.catalogQuery.isBlank()) "Explorar catálogo completo" else "Resultados") }
+        if (state.isCatalogLoading) item { CenteredProgress("Buscando juegos…") }
+        if (state.catalogError != null && !state.isCatalogLoading) item {
+            StatusCard(Icons.Default.CloudOff, "No se pudo cargar el catálogo", state.catalogError.orEmpty(), "Reintentar", viewModel::retryCatalogSearch)
+        }
+        if (!state.isCatalogLoading && state.catalogError == null && state.catalogResults.isEmpty()) {
+            item { EmptyInline("No encontramos juegos con ese nombre. Prueba otra búsqueda.") }
+        }
+        items(state.catalogResults, key = { "catalog-${it.id}" }) { game ->
+            CatalogSearchResultCard(
+                game = game,
+                selected = selected?.id == game.id,
+                onClick = {
+                    platform = ""; rank = ""; role = ""; level = ""; gameUserId = ""
+                    viewModel.selectCatalogGame(game)
+                },
+            )
+        }
+        if (state.catalogNextCursor != null) item {
+            OutlinedButton(
+                onClick = viewModel::loadMoreCatalog,
+                enabled = !state.isCatalogLoadingMore,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                if (state.isCatalogLoadingMore) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Cargar más juegos")
             }
         }
     }
@@ -518,7 +562,7 @@ fun MatchFoundScreen(
 
 @Composable private fun PopularGameCard(game: PlayMatchGameCatalogItem, onClick: () -> Unit) {
     Card(Modifier.width(142.dp).heightIn(min = 126.dp).clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.SportsEsports, null, tint = GamingEnd, modifier = Modifier.size(34.dp)); Text(game.name, fontWeight = FontWeight.Bold, maxLines = 2); Text(game.platforms.take(2).joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { GameArtwork(game, Modifier.fillMaxWidth().height(72.dp), useCover = true); Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) { Text(game.name, fontWeight = FontWeight.Bold, maxLines = 2); Text(game.platforms.take(2).joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
     }
 }
 
@@ -551,7 +595,70 @@ fun MatchFoundScreen(
 @Composable private fun ScoreBadge(score: Int) { Surface(color = GamingStart.copy(alpha = .18f), shape = RoundedCornerShape(50)) { Text("${score.coerceIn(0, 100)}%", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = GamingStart, fontWeight = FontWeight.Bold) } }
 
 @Composable private fun UserGameCard(game: PlayMatchUserGame, onDelete: (() -> Unit)? = null) {
-    Card(Modifier.fillMaxWidth()) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.SportsEsports, null, tint = GamingEnd, modifier = Modifier.size(34.dp)); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(game.gameName, fontWeight = FontWeight.Bold); Text(listOf(game.platform, game.rank, game.role).filter(String::isNotBlank).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant); if (game.gameUserIdVisible && game.gameUserId.isNotBlank()) Text("ID: ${game.gameUserId}", fontSize = 12.sp) }; onDelete?.let { IconButton(it) { Icon(Icons.Default.Delete, "Eliminar ${game.gameName}") } } } }
+    Card(Modifier.fillMaxWidth()) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { GameArtwork(game.imageUrl, "game-${game.gameId}", Modifier.size(44.dp)); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(game.gameName, fontWeight = FontWeight.Bold); Text(listOf(game.platform, game.rank, game.role).filter(String::isNotBlank).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant); if (game.gameUserIdVisible && game.gameUserId.isNotBlank()) Text("ID: ${game.gameUserId}", fontSize = 12.sp) }; onDelete?.let { IconButton(it) { Icon(Icons.Default.Delete, "Eliminar ${game.gameName}") } } } }
+}
+
+@Composable
+private fun SelectedGameHeader(game: PlayMatchGameCatalogItem) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            GameArtwork(game, Modifier.size(64.dp), useCover = false)
+            Column(Modifier.weight(1f)) {
+                Text("Configurar ${game.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (game.supportLevel == "FULLY_SUPPORTED") "Configuración especializada" else "Catálogo general PlayMatch",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GamingEnd,
+                )
+                if (game.crossPlay) Text("Compatible con cross-play", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogSearchResultCard(game: PlayMatchGameCatalogItem, selected: Boolean, onClick: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = if (selected) GamingStart.copy(alpha = .14f) else MaterialTheme.colorScheme.surfaceVariant),
+        border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, GamingStart) else null,
+    ) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            GameArtwork(game, Modifier.size(width = 72.dp, height = 84.dp), useCover = true)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(game.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(game.platforms.take(3).joinToString(" · "), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (game.supportLevel == "FULLY_SUPPORTED") "Rangos/roles configurados" else "Matching general disponible",
+                    color = GamingEnd,
+                    fontSize = 11.sp,
+                )
+            }
+            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.ChevronRight, null, tint = if (selected) GamingStart else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun GameArtwork(game: PlayMatchGameCatalogItem, modifier: Modifier, useCover: Boolean) {
+    val url = if (useCover) game.coverUrl ?: game.logoUrl ?: game.iconUrl ?: game.imageUrl else game.logoUrl ?: game.iconUrl ?: game.coverUrl ?: game.imageUrl
+    GameArtwork(url, "playmatch-${game.id}-${if (useCover) "cover" else "icon"}", modifier)
+}
+
+@Composable
+private fun GameArtwork(url: String?, cacheKey: String, modifier: Modifier) {
+    val context = LocalContext.current
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(GamingStart.copy(alpha = .24f), GamingEnd.copy(alpha = .20f)))), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Image(painterResource(R.drawable.ic_novvin), "Imagen de juego no disponible", Modifier.fillMaxSize(.55f))
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(url).memoryCacheKey(cacheKey).diskCacheKey(cacheKey).build(),
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+        }
+    }
 }
 
 @Composable private fun AvailabilityRow(slot: PlayMatchAvailability) { Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Schedule, null, tint = GamingEnd); Spacer(Modifier.width(10.dp)); Text("${dayLabel(slot.dayOfWeek)} · ${minuteLabel(slot.startMinute)}–${minuteLabel(slot.endMinute)}", Modifier.weight(1f)); Text(slot.timezone, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
@@ -560,6 +667,9 @@ fun MatchFoundScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun ChoiceRow(title: String, values: List<String>, selected: String, onSelected: (String) -> Unit) { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) { Text(title, fontWeight = FontWeight.SemiBold); if (values.isEmpty()) Text("Sin opciones para este juego", color = MaterialTheme.colorScheme.onSurfaceVariant) else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { values.forEach { value -> FilterChip(selected == value, { onSelected(value) }, { Text(humanize(value)) }) } } } }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun DefinitionChoiceRow(title: String, values: List<Pair<String, String>>, selected: String, onSelected: (String) -> Unit) { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) { Text(title, fontWeight = FontWeight.SemiBold); FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { values.forEach { (key, label) -> FilterChip(selected == key, { onSelected(key) }, { Text(label) }) } } } }
 
 @Composable private fun SettingSwitch(title: String, checked: Boolean, description: String? = null, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Medium); description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }; Switch(checked, onChecked) } }
 
