@@ -124,6 +124,8 @@ class SocialViewModel @Inject constructor(
     private var authoritativeExplanationsEnabled = false
     private val _authoritativeHasMore = MutableStateFlow(false)
     val authoritativeHasMore: StateFlow<Boolean> = _authoritativeHasMore.asStateFlow()
+    private val _algorithmActionMessage = MutableStateFlow<String?>(null)
+    val algorithmActionMessage: StateFlow<String?> = _algorithmActionMessage.asStateFlow()
 
     // Challenge flows removed
 
@@ -422,6 +424,76 @@ class SocialViewModel @Inject constructor(
     fun hideCreator(post: Post) {
         feedPreferences.muteCreator(post.userId)
         _posts.value = applyFeedControls(_posts.value)
+    }
+
+    fun excludePostFromAlgorithm(post: Post) = applyPostAlgorithmRule(
+        post = post,
+        dimension = "content",
+        subjectKey = post.id,
+        subjectLabel = "Esta publicación",
+        successMessage = "Esta publicación dejará de recomendarse.",
+    )
+
+    fun excludeCreatorFromAlgorithm(post: Post) = applyPostAlgorithmRule(
+        post = post,
+        dimension = "creator",
+        subjectKey = post.userId,
+        subjectLabel = post.userName.ifBlank { "Este creador" },
+        successMessage = "Verás menos contenido de ${post.userName.ifBlank { "este creador" }}.",
+    )
+
+    fun excludePostFormatFromAlgorithm(post: Post) {
+        val hasMedia = post.mediaUrls.isNotEmpty() || !post.mediaUrlLegacy.isNullOrBlank()
+        applyPostAlgorithmRule(
+            post = post,
+            dimension = "format",
+            subjectKey = if (hasMedia) "image-post" else "text-post",
+            subjectLabel = if (hasMedia) "Publicaciones con imagen" else "Publicaciones de texto",
+            successMessage = "Este tipo de publicación tendrá menos prioridad.",
+        )
+    }
+
+    fun excludePostTopicFromAlgorithm(post: Post, topic: String) {
+        val normalized = topic.trim().lowercase()
+        if (normalized.length < 2) {
+            _algorithmActionMessage.value = "Escribe un tema válido."
+            return
+        }
+        applyPostAlgorithmRule(
+            post = post,
+            dimension = "topic",
+            subjectKey = normalized,
+            subjectLabel = topic.trim(),
+            successMessage = "El tema ${topic.trim()} dejará de recomendarse.",
+        )
+    }
+
+    fun consumeAlgorithmActionMessage() {
+        _algorithmActionMessage.value = null
+    }
+
+    private fun applyPostAlgorithmRule(
+        post: Post,
+        dimension: String,
+        subjectKey: String,
+        subjectLabel: String,
+        successMessage: String,
+    ) {
+        viewModelScope.launch {
+            algorithmRepository.applyExplicitPreference(
+                surface = "social",
+                dimension = dimension,
+                subjectKey = subjectKey,
+                subjectLabel = subjectLabel,
+                score = -100,
+            ).onSuccess {
+                _posts.value = _posts.value.filterNot { it.id == post.id }
+                _algorithmActionMessage.value = successMessage
+            }.onFailure {
+                _algorithmActionMessage.value =
+                    "No se pudo guardar en Mi algoritmo. Revisa tu conexión e inténtalo nuevamente."
+            }
+        }
     }
 
     fun muteTopic(term: String) {

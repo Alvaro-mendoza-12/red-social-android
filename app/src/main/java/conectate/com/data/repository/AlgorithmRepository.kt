@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import conectate.com.data.algorithm.AlgorithmApiClient
+import conectate.com.data.algorithm.AlgorithmApiException
 import conectate.com.data.model.AlgorithmCapabilities
 import conectate.com.data.model.AlgorithmConfig
 import conectate.com.data.model.AlgorithmDataPermissions
@@ -33,6 +34,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import java.security.MessageDigest
@@ -55,6 +58,7 @@ class AlgorithmRepository @Inject constructor(
 ) {
     private val _cachedConfig = MutableStateFlow<AlgorithmConfig?>(null)
     val cachedConfig: StateFlow<AlgorithmConfig?> = _cachedConfig.asStateFlow()
+    private val explicitPreferenceMutex = Mutex()
 
     private val securePrefs by lazy { createSecurePrefsOrNull() }
 
@@ -206,6 +210,85 @@ class AlgorithmRepository @Inject constructor(
     ): Result<AlgorithmConfig> = withToken { token ->
         apiClient.deleteTemporaryPreference(token, profileId, preferenceId, expectedVersion)
             .flatMapConfig(token) { profileId }
+    }
+
+    /**
+     * Applies an explicit feed instruction from a content overflow menu.
+     *
+     * The write is serialized per process, revision checked by the backend and
+     * retried once after a genuine cross-device conflict. The selected profile
+     * is enabled before the rule is stored so "No me interesa" affects the next
+     * server page instead of becoming a decorative, inactive preference.
+     */
+    suspend fun applyExplicitPreference(
+        surface: String,
+        dimension: String,
+        subjectKey: String,
+        subjectLabel: String?,
+        score: Int,
+    ): Result<AlgorithmConfig> = explicitPreferenceMutex.withLock {
+        val normalizedSurface = surface.trim().lowercase()
+        val normalizedDimension = dimension.trim().lowercase()
+        val normalizedKey = subjectKey.trim().lowercase()
+        if (normalizedSurface !in setOf("video", "social") ||
+            normalizedDimension !in setOf("content", "topic", "subtopic", "creator", "format") ||
+            normalizedKey.isBlank() || normalizedKey.length > 160 || score !in -100..100
+        ) {
+            return@withLock Result.failure(IllegalArgumentException("La preferencia no es válida."))
+        }
+        withToken { token ->
+            suspend fun persist(): Result<AlgorithmConfig> {
+                val capabilities = apiClient.capabilities(token).getOrElse { return Result.failure(it) }
+                if (!capabilities.enabled || !capabilities.preferencesEnabled || !capabilities.classificationEnabled) {
+                    return Result.failure(
+                        AuthoritativeRecommendationsUnavailableException("USER_ALGORITHM_DISABLED"),
+                    )
+                }
+                var config = apiClient.config(token).getOrElse { return Result.failure(it) }
+                if (!config.profile.isEnabled) {
+                    val enabledProfile = apiClient.updateProfile(
+                        token,
+                        config.profile.id,
+                        UpdateAlgorithmProfileRequest(
+                            expectedVersion = config.profile.revision,
+                            isEnabled = true,
+                        ),
+                    ).getOrElse { return Result.failure(it) }
+                    config = apiClient.config(token, enabledProfile.id).getOrElse { return Result.failure(it) }
+                }
+                val input = AlgorithmPreferenceInput(
+                    surface = normalizedSurface,
+                    dimension = normalizedDimension,
+                    subjectKey = normalizedKey,
+                    subjectLabel = subjectLabel?.trim()?.take(120)?.takeIf(String::isNotBlank),
+                    score = score,
+                )
+                val merged = config.preferences
+                    .filterNot {
+                        it.surface == input.surface &&
+                            it.dimension == input.dimension &&
+                            it.subjectKey.equals(input.subjectKey, ignoreCase = true)
+                    }
+                    .map {
+                        AlgorithmPreferenceInput(
+                            surface = it.surface,
+                            dimension = it.dimension,
+                            subjectKey = it.subjectKey,
+                            subjectLabel = it.subjectLabel,
+                            score = it.score,
+                        )
+                    } + input
+                return apiClient.replacePreferences(
+                    token,
+                    config.profile.id,
+                    UpdateAlgorithmPreferencesRequest(config.profile.revision, merged),
+                ).flatMapConfig(token) { config.profile.id }
+            }
+
+            val first = persist()
+            val conflict = (first.exceptionOrNull() as? AlgorithmApiException)?.code == "ALGORITHM_PROFILE_CONFLICT"
+            if (conflict) persist() else first
+        }
     }
 
     private suspend fun <T> loadRecommendationPage(

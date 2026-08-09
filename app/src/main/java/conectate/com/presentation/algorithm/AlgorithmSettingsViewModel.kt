@@ -70,7 +70,7 @@ class AlgorithmSettingsViewModel @Inject constructor(
                         _state.update {
                             it.copy(
                                 isLoading = false,
-                                message = "Mi algoritmo está preparado, pero aún no está habilitado para esta fase de pruebas.",
+                                message = "El servidor no confirmó Mi algoritmo. Reintenta para cargar tus reglas.",
                             )
                         }
                         return@launch
@@ -239,7 +239,7 @@ class AlgorithmSettingsViewModel @Inject constructor(
 
     private fun safeMessage(error: Throwable): String = when ((error as? AlgorithmApiException)?.code) {
         "USER_ALGORITHM_DISABLED", "USER_ALGORITHM_CAPABILITY_DISABLED" ->
-            "Esta función aún no está habilitada para tu cuenta de pruebas."
+            "El servidor no confirmó Mi algoritmo. Reintenta para cargar tus reglas."
         "ALGORITHM_RATE_LIMITED" -> "Espera un momento antes de volver a cambiar tus reglas."
         "ALGORITHM_PROFILE_CONFLICT" -> "La configuración cambió en otro dispositivo."
         "AUTH_REQUIRED" -> "Necesitas iniciar sesión para administrar tu algoritmo."

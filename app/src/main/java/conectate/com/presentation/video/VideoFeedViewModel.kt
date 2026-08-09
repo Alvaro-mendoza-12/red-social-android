@@ -116,6 +116,7 @@ class VideoFeedViewModel @Inject constructor(
     private val shareRequestsInFlight = mutableSetOf<String>()
     private val recommendationSessionSeed = java.util.UUID.randomUUID().hashCode()
     private val focusedVideoIds = mutableSetOf<String>()
+    private val focusedVideosById = linkedMapOf<String, Video>()
 
     fun ensureVideoInFeed(videoId: String) {
         val cleanId = videoId.trim()
@@ -124,8 +125,11 @@ class VideoFeedViewModel @Inject constructor(
         viewModelScope.launch {
             videoRepository.getVideoById(cleanId)
                 .onSuccess { video ->
-                    _forYouVideos.value = (listOf(video) + _forYouVideos.value)
-                        .distinctBy { it.id }
+                    focusedVideosById[cleanId] = video
+                    _forYouVideos.value = mergeFocusedVideoPage(
+                        focusedVideos = focusedVideosById.values,
+                        loadedPage = _forYouVideos.value,
+                    )
                 }
                 .onFailure { focusedVideoIds.remove(cleanId) }
         }
@@ -147,6 +151,8 @@ class VideoFeedViewModel @Inject constructor(
     val reportedVideoIds: StateFlow<Set<String>> = _reportedVideoIds.asStateFlow()
     private val _reportActionMessage = MutableStateFlow<String?>(null)
     val reportActionMessage: StateFlow<String?> = _reportActionMessage.asStateFlow()
+    private val _algorithmActionMessage = MutableStateFlow<String?>(null)
+    val algorithmActionMessage: StateFlow<String?> = _algorithmActionMessage.asStateFlow()
     private val reportRequestsInFlight = mutableSetOf<String>()
 
     // Audio Comment State (Delegated to VoiceMessageManager)
@@ -457,7 +463,7 @@ class VideoFeedViewModel @Inject constructor(
                         authoritativeRankingVersion = page.rankingVersion
                         authoritativeExplanations.putAll(page.explanationsByCandidateId)
                         // Assignment preserves the exact server order.
-                        _forYouVideos.value = page.items
+                        _forYouVideos.value = mergeFocusedVideoPage(focusedVideosById.values, page.items)
                         isLastPage = !page.hasMore
                         _isLoading.value = false
                         loadFollowedUsers()
@@ -465,7 +471,10 @@ class VideoFeedViewModel @Inject constructor(
                     }
                 }
                 videoRepository.getVideos(offset = 0, limit = pageSize, random = true).collect { newVideos ->
-                    _forYouVideos.value = mixVideosForSession(newVideos)
+                    _forYouVideos.value = mergeFocusedVideoPage(
+                        focusedVideosById.values,
+                        mixVideosForSession(newVideos),
+                    )
                     isLastPage = newVideos.size < pageSize
                     _isLoading.value = false
                 }
@@ -499,7 +508,7 @@ class VideoFeedViewModel @Inject constructor(
                     authoritativeCursor = page.nextCursor
                     authoritativeExplanations.putAll(page.explanationsByCandidateId)
                     // Concatenation preserves page and item order from server.
-                    _forYouVideos.value = _forYouVideos.value + page.items
+                    _forYouVideos.value = (_forYouVideos.value + page.items).distinctBy { it.id }
                     isLastPage = !page.hasMore
                     loadFollowedUsers()
                     return@launch
@@ -534,6 +543,76 @@ class VideoFeedViewModel @Inject constructor(
                         "; las explicaciones detalladas están desactivadas.",
                 )
             }
+    }
+
+    fun excludeVideoFromAlgorithm(video: Video) = applyVideoAlgorithmRule(
+        video = video,
+        dimension = "content",
+        subjectKey = video.id,
+        subjectLabel = "Este video",
+        successMessage = "Este video dejará de recomendarse.",
+    )
+
+    fun excludeVideoCreatorFromAlgorithm(video: Video) = applyVideoAlgorithmRule(
+        video = video,
+        dimension = "creator",
+        subjectKey = video.userId,
+        subjectLabel = video.userName.ifBlank { "Este creador" },
+        successMessage = "Verás menos videos de ${video.userName.ifBlank { "este creador" }}.",
+    )
+
+    fun excludeVideoFormatFromAlgorithm(video: Video) = applyVideoAlgorithmRule(
+        video = video,
+        dimension = "format",
+        subjectKey = if (video.duration in 1..60) "short-video" else "video",
+        subjectLabel = if (video.duration in 1..60) "Videos cortos" else "Videos largos",
+        successMessage = "Este tipo de video tendrá menos prioridad.",
+    )
+
+    fun excludeVideoTopicFromAlgorithm(video: Video, topic: String) {
+        val normalized = topic.trim().lowercase()
+        if (normalized.length < 2) {
+            _algorithmActionMessage.value = "Elige un tema válido."
+            return
+        }
+        applyVideoAlgorithmRule(
+            video = video,
+            dimension = "topic",
+            subjectKey = normalized,
+            subjectLabel = topic.trim(),
+            successMessage = "El tema ${topic.trim()} dejará de recomendarse.",
+        )
+    }
+
+    fun consumeAlgorithmActionMessage() {
+        _algorithmActionMessage.value = null
+    }
+
+    private fun applyVideoAlgorithmRule(
+        video: Video,
+        dimension: String,
+        subjectKey: String,
+        subjectLabel: String,
+        successMessage: String,
+    ) {
+        viewModelScope.launch {
+            algorithmRepository.applyExplicitPreference(
+                surface = "video",
+                dimension = dimension,
+                subjectKey = subjectKey,
+                subjectLabel = subjectLabel,
+                score = -100,
+            ).onSuccess {
+                focusedVideoIds.remove(video.id)
+                focusedVideosById.remove(video.id)
+                _forYouVideos.value = _forYouVideos.value.filterNot { it.id == video.id }
+                _algorithmActionMessage.value = successMessage
+                loadForYouVideos()
+            }.onFailure {
+                _algorithmActionMessage.value =
+                    "No se pudo guardar en Mi algoritmo. Revisa tu conexión e inténtalo nuevamente."
+            }
+        }
     }
 
     private fun resetAuthoritativeFeedState() {

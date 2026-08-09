@@ -234,6 +234,7 @@ fun VideoFeedScreen(
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
     val reportedVideoIds by viewModel.reportedVideoIds.collectAsState()
     val reportActionMessage by viewModel.reportActionMessage.collectAsState()
+    val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsState()
     val offlineVideos by viewModel.offlineVideos.collectAsState()
     val offlineDownloadProgress by viewModel.offlineDownloadProgress.collectAsState()
     val downloadActionMessage by viewModel.downloadActionMessage.collectAsState()
@@ -263,6 +264,10 @@ fun VideoFeedScreen(
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedVideoForShare by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
     var selectedVideoForReport by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
+    var explanationVideo by remember { mutableStateOf<Video?>(null) }
+    var notInterestedVideo by remember { mutableStateOf<Video?>(null) }
+    var topicVideo by remember { mutableStateOf<Video?>(null) }
+    var videoTopicText by remember { mutableStateOf("") }
     var pendingNavigationRoute by remember { mutableStateOf<String?>(null) }
     var isSystemBusy by remember { mutableStateOf(false) } // Safety: Disable heavy bits during Nav
     val sidePanels = remember { listOf(VideoSidePanel.VIDEO, VideoSidePanel.COMMENTS, VideoSidePanel.PROFILE) }
@@ -280,6 +285,13 @@ fun VideoFeedScreen(
     }
     var showPlaybackOptions by remember { mutableStateOf(false) }
     var showCreateMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(algorithmActionMessage) {
+        algorithmActionMessage?.let { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeAlgorithmActionMessage()
+        }
+    }
 
     LaunchedEffect(isConnected, isProfileFeed) {
         if (!isProfileFeed && isConnected && forYouVideos.isEmpty() && followingVideos.isEmpty()) {
@@ -320,13 +332,13 @@ fun VideoFeedScreen(
 
     LaunchedEffect(initialVideoId, isProfileFeed) {
         if (!isProfileFeed) {
-            initialVideoId?.takeIf { it.isNotBlank() }?.let(viewModel::ensureVideoInFeed)
+            initialVideoId?.trim()?.takeIf { it.isNotBlank() }?.let(viewModel::ensureVideoInFeed)
         }
     }
 
     LaunchedEffect(initialVideoId, feedEntries, initialVideoPositionApplied) {
         if (initialVideoPositionApplied) return@LaunchedEffect
-        val targetId = initialVideoId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val targetId = initialVideoId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val targetPage = feedEntries.indexOfFirst { entry ->
             entry is VideoFeedVideoEntry && entry.video.id == targetId
         }
@@ -802,6 +814,102 @@ fun VideoFeedScreen(
         )
     }
 
+    explanationVideo?.let { selected ->
+        val reasons = viewModel.explainVideo(selected)
+        ModalBottomSheet(onDismissRequest = { explanationVideo = null }) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("¿Por qué ves este video?", style = MaterialTheme.typography.titleLarge)
+                if (reasons.isEmpty()) {
+                    Text("Este video forma parte del feed actual de Novvin.")
+                } else {
+                    reasons.forEach { Text("• $it") }
+                }
+                FilledTonalButton(
+                    onClick = {
+                        notInterestedVideo = selected
+                        explanationVideo = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("No me interesa") }
+            }
+        }
+    }
+
+    notInterestedVideo?.let { selected ->
+        ModalBottomSheet(onDismissRequest = { notInterestedVideo = null }) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("¿Qué no te interesa?", style = MaterialTheme.typography.titleLarge)
+                Text("La elección se guarda en Mi algoritmo para Videos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ListItem(
+                    headlineContent = { Text("Solo este video") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludeVideoFromAlgorithm(selected)
+                        notInterestedVideo = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este tema") },
+                    supportingContent = { Text("Elige el tema exacto") },
+                    modifier = Modifier.clickable {
+                        topicVideo = selected
+                        videoTopicText = selected.tags.firstOrNull().orEmpty()
+                        notInterestedVideo = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este creador") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludeVideoCreatorFromAlgorithm(selected)
+                        notInterestedVideo = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este tipo de video") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludeVideoFormatFromAlgorithm(selected)
+                        notInterestedVideo = null
+                    },
+                )
+                TextButton(onClick = { notInterestedVideo = null }, modifier = Modifier.align(Alignment.End)) {
+                    Text("Cancelar")
+                }
+            }
+        }
+    }
+
+    topicVideo?.let { selected ->
+        AlertDialog(
+            onDismissRequest = { topicVideo = null },
+            title = { Text("No recomendar este tema") },
+            text = {
+                OutlinedTextField(
+                    value = videoTopicText,
+                    onValueChange = { videoTopicText = it.take(60) },
+                    label = { Text("Tema") },
+                    supportingText = { Text("Se aplicará únicamente al feed de Videos.") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = videoTopicText.trim().length >= 2,
+                    onClick = {
+                        viewModel.excludeVideoTopicFromAlgorithm(selected, videoTopicText)
+                        topicVideo = null
+                        videoTopicText = ""
+                    },
+                ) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = { topicVideo = null }) { Text("Cancelar") } },
+        )
+    }
+
     if (selectedVideoForReport != null) {
         val targetVideo = selectedVideoForReport!!
         VideoReportDialog(
@@ -1019,6 +1127,8 @@ fun VideoFeedScreen(
                             onDownloadClick = { viewModel.downloadForOffline(video) },
                             onDeleteVideo = { video -> viewModel.deleteVideo(video) },
                             isAlreadyReported = reportedVideoIds.contains(video.id),
+                            onWhyThisVideo = { video -> explanationVideo = video },
+                            onNotInterested = { video -> notInterestedVideo = video },
                             onReportClick = { video ->
                                 viewModel.ensureVideoReportStatus(video.id)
                                 selectedVideoForReport = video
@@ -1406,6 +1516,8 @@ fun VideoItem(
     onDownloadClick: () -> Unit,
     onDeleteVideo: (Video) -> Unit,
     isAlreadyReported: Boolean,
+    onWhyThisVideo: (Video) -> Unit,
+    onNotInterested: (Video) -> Unit,
     onReportClick: (Video) -> Unit
 ) {
     // Live Stats Observation (Optimized: only collect when selected)
@@ -1770,6 +1882,36 @@ fun VideoItem(
                             colors = MenuDefaults.itemColors(textColor = Color.Red)
                         )
                     }
+                }
+            }
+
+            var showAlgorithmMenu by remember(video.id) { mutableStateOf(false) }
+            Box {
+                InteractionButton(
+                    icon = Icons.Default.MoreVert,
+                    text = "",
+                    onClick = { showAlgorithmMenu = true },
+                )
+                DropdownMenu(
+                    expanded = showAlgorithmMenu,
+                    onDismissRequest = { showAlgorithmMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("¿Por qué veo esto?") },
+                        onClick = {
+                            showAlgorithmMenu = false
+                            onWhyThisVideo(video)
+                        },
+                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("No me interesa") },
+                        onClick = {
+                            showAlgorithmMenu = false
+                            onNotInterested(video)
+                        },
+                        leadingIcon = { Icon(Icons.Default.ThumbDown, contentDescription = null) },
+                    )
                 }
             }
             

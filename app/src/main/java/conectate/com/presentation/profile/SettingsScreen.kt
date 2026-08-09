@@ -132,6 +132,12 @@ fun SettingsScreen(
         ) {
             SettingsSection(title = "Configuración por áreas") {
                 SettingsAreaButton(
+                    icon = Icons.Default.Settings,
+                    title = "Mi algoritmo",
+                    subtitle = "Controla temas, creadores y la mezcla de Videos y Social",
+                    onClick = { navController.navigate(Screen.SettingsCategory.createRoute("algorithm")) }
+                )
+                SettingsAreaButton(
                     icon = Icons.Default.Message,
                     title = "Mensajes y llamadas",
                     subtitle = "Chats, sonidos, lectura, llamadas y notificaciones",

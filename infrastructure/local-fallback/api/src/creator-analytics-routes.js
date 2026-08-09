@@ -247,6 +247,12 @@ function isoValue(value) {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null
 }
 
+function maxMetricRows(primary = {}, canonical = {}, keys = []) {
+  const merged = { ...primary }
+  for (const key of keys) merged[key] = Math.max(numberOf(primary[key]), numberOf(canonical[key]))
+  return merged
+}
+
 function videoReportBody({ contentId, range, minimumCohort, summary = {}, countries = [], timeline = [] }) {
   const uniqueViewers = numberOf(summary.unique_viewers)
   const cohortEligible = uniqueViewers >= minimumCohort
@@ -342,7 +348,7 @@ function liveReportBody({ contentId, range, minimumCohort, summary = {}, donors 
 
 async function loadVideoAnalytics(pool, { contentId, range, minimumCohort }) {
   const parameters = [contentId, range.from, range.to, minimumCohort]
-  const [summaryResult, countriesResult, timelineResult] = await Promise.all([
+  const [summaryResult, canonicalResult, countriesResult, timelineResult] = await Promise.all([
     pool.query(
       `/* creator_analytics:video_summary */
        SELECT
@@ -366,6 +372,29 @@ async function loadVideoAnalytics(pool, { contentId, range, minimumCohort }) {
        FROM fallback_creator_analytics_events
        WHERE content_type = 'video' AND content_id = $1::uuid
          AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz`,
+      parameters.slice(0, 3),
+    ),
+    pool.query(
+      `/* creator_analytics:video_canonical_summary */
+       SELECT
+         (SELECT COUNT(*) FROM fallback_video_views
+           WHERE lower(video_id) = lower($1)
+             AND viewed_at >= $2::timestamptz AND viewed_at < $3::timestamptz)::bigint AS views,
+         (SELECT COUNT(DISTINCT lower(user_id)) FROM fallback_video_views
+           WHERE lower(video_id) = lower($1)
+             AND viewed_at >= $2::timestamptz AND viewed_at < $3::timestamptz)::bigint AS unique_viewers,
+         (SELECT COUNT(*) FROM fallback_video_likes
+           WHERE lower(video_id) = lower($1)
+             AND created_at >= $2::timestamptz AND created_at < $3::timestamptz)::bigint AS likes,
+         (SELECT COUNT(*) FROM fallback_video_comments
+           WHERE lower(video_id) = lower($1) AND is_deleted = FALSE
+             AND created_at >= $2::timestamptz AND created_at < $3::timestamptz)::bigint AS comments,
+         (SELECT COUNT(*) FROM fallback_shares
+           WHERE content_type = 'video' AND lower(post_id) = lower($1)
+             AND created_at >= $2::timestamptz AND created_at < $3::timestamptz)::bigint AS shares,
+         (SELECT COUNT(*) FROM fallback_video_favorites
+           WHERE lower(video_id) = lower($1)
+             AND created_at >= $2::timestamptz AND created_at < $3::timestamptz)::bigint AS saves`,
       parameters.slice(0, 3),
     ),
     pool.query(
@@ -400,11 +429,16 @@ async function loadVideoAnalytics(pool, { contentId, range, minimumCohort }) {
       parameters,
     ),
   ])
+  const mergedSummary = maxMetricRows(
+    summaryResult.rows[0] || {},
+    canonicalResult.rows[0] || {},
+    ['views', 'unique_viewers', 'likes', 'comments', 'shares', 'saves'],
+  )
   return videoReportBody({
     contentId,
     range,
     minimumCohort,
-    summary: summaryResult.rows[0] || {},
+    summary: mergedSummary,
     countries: countriesResult.rows,
     timeline: timelineResult.rows,
   })
@@ -412,7 +446,7 @@ async function loadVideoAnalytics(pool, { contentId, range, minimumCohort }) {
 
 async function loadLiveAnalytics(pool, { contentId, range, minimumCohort }) {
   const parameters = [contentId, range.from, range.to, minimumCohort]
-  const [summaryResult, donorsResult, curveResult] = await Promise.all([
+  const [summaryResult, canonicalResult, donorsResult, canonicalDonorsResult, curveResult] = await Promise.all([
     pool.query(
       `/* creator_analytics:live_summary */
        SELECT
@@ -428,6 +462,44 @@ async function loadLiveAnalytics(pool, { contentId, range, minimumCohort }) {
        FROM fallback_creator_analytics_events
        WHERE content_type = 'live' AND content_id = $1::uuid
          AND occurred_at >= $2::timestamptz AND occurred_at < $3::timestamptz`,
+      parameters.slice(0, 3),
+    ),
+    pool.query(
+      `/* creator_analytics:live_canonical_summary */
+       SELECT
+         COALESCE(stream.peak_viewer_count, 0)::bigint AS peak_concurrent,
+         COALESCE(stream.total_comments, 0)::bigint AS comments,
+         COALESCE(stream.total_reactions, 0)::bigint AS likes,
+         COALESCE(participants.unique_viewers, 0)::bigint AS unique_viewers,
+         COALESCE(participants.viewer_watch_ms, 0)::bigint AS viewer_watch_ms,
+         COALESCE(gifts.gifts, 0)::bigint AS gifts,
+         COALESCE(gifts.gift_value_coins, 0)::bigint AS gift_value_coins
+       FROM fallback_live_streams stream
+       LEFT JOIN LATERAL (
+         SELECT COUNT(DISTINCT lower(user_id)) FILTER (WHERE role <> 'host')::bigint AS unique_viewers,
+                COALESCE(SUM(
+                  EXTRACT(EPOCH FROM (COALESCE(left_at, updated_at, NOW()) - COALESCE(joined_at, created_at))) * 1000
+                ) FILTER (WHERE role <> 'host' AND joined_at IS NOT NULL), 0)::bigint AS viewer_watch_ms
+           FROM fallback_live_participants
+          WHERE live_id = stream.id
+            AND COALESCE(joined_at, created_at) >= $2::timestamptz
+            AND COALESCE(joined_at, created_at) < $3::timestamptz
+       ) participants ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::bigint AS gifts,
+                COALESCE(SUM(
+                  CASE WHEN COALESCE(row->>'amount_diamonds', '') ~ '^[0-9]+$'
+                    THEN (row->>'amount_diamonds')::bigint ELSE 0 END
+                ), 0)::bigint AS gift_value_coins
+           FROM fallback_compat_rows
+          WHERE table_name = 'gift_transactions'
+            AND lower(COALESCE(row->>'live_stream_id', '')) = lower($1)
+            AND lower(COALESCE(row->>'status', '')) IN ('committed', 'completed', 'success')
+            AND created_at >= $2::timestamptz
+            AND created_at < $3::timestamptz
+       ) gifts ON TRUE
+       WHERE lower(stream.id::text) = lower($1)
+       LIMIT 1`,
       parameters.slice(0, 3),
     ),
     pool.query(
@@ -449,6 +521,30 @@ async function loadLiveAnalytics(pool, { contentId, range, minimumCohort }) {
       parameters.slice(0, 3),
     ),
     pool.query(
+      `/* creator_analytics:live_canonical_top_donors */
+       WITH donors AS (
+         SELECT lower(row->>'sender_id') AS actor_hash,
+                COUNT(*)::bigint AS gifts,
+                COALESCE(SUM(
+                  CASE WHEN COALESCE(row->>'amount_diamonds', '') ~ '^[0-9]+$'
+                    THEN (row->>'amount_diamonds')::bigint ELSE 0 END
+                ), 0)::bigint AS value_coins
+           FROM fallback_compat_rows
+          WHERE table_name = 'gift_transactions'
+            AND lower(COALESCE(row->>'live_stream_id', '')) = lower($1)
+            AND lower(COALESCE(row->>'status', '')) IN ('committed', 'completed', 'success')
+            AND COALESCE(row->>'sender_id', '') <> ''
+            AND created_at >= $2::timestamptz
+            AND created_at < $3::timestamptz
+          GROUP BY lower(row->>'sender_id')
+       )
+       SELECT actor_hash, gifts, value_coins, COUNT(*) OVER ()::bigint AS donor_cohort
+         FROM donors
+        ORDER BY value_coins DESC, gifts DESC, actor_hash ASC
+        LIMIT 10`,
+      parameters.slice(0, 3),
+    ),
+    pool.query(
       `/* creator_analytics:live_viewer_curve */
        SELECT date_trunc('minute', occurred_at) AS bucket,
               MAX(concurrent_count)::bigint AS concurrent
@@ -463,12 +559,20 @@ async function loadLiveAnalytics(pool, { contentId, range, minimumCohort }) {
       parameters,
     ),
   ])
+  const mergedSummary = maxMetricRows(
+    summaryResult.rows[0] || {},
+    canonicalResult.rows[0] || {},
+    ['peak_concurrent', 'unique_viewers', 'viewer_watch_ms', 'comments', 'likes', 'gifts', 'gift_value_coins'],
+  )
+  const eventDonors = donorsResult.rows || []
+  const canonicalDonors = canonicalDonorsResult.rows || []
+  const donors = eventDonors.length >= canonicalDonors.length ? eventDonors : canonicalDonors
   return liveReportBody({
     contentId,
     range,
     minimumCohort,
-    summary: summaryResult.rows[0] || {},
-    donors: donorsResult.rows,
+    summary: mergedSummary,
+    donors,
     curve: curveResult.rows,
   })
 }
@@ -626,6 +730,7 @@ module.exports = {
   loadVideoAnalytics,
   normalizeReportRange,
   normalizeServerEvent,
+  maxMetricRows,
   recordCreatorAnalyticsEvent,
   registerCreatorAnalyticsRoutes,
   resolveContentOwner,

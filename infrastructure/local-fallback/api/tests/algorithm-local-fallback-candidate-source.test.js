@@ -9,6 +9,7 @@ const {
   SOCIAL_CANDIDATE_SQL,
   VIDEO_CANDIDATE_SQL,
   createAlgorithmLocalFallbackCandidateSource,
+  inferredSignalsFromRows,
 } = require('../src/algorithm-local-fallback-candidate-source')
 const { createAlgorithmCandidateProvider } = require('../src/algorithm-candidate-provider')
 
@@ -91,7 +92,7 @@ function videoRow(overrides = {}) {
   }
 }
 
-function fakePool({ socialRows = [], videoRows = [], blockRows = [], missingTables = [], failRaw = false, failBlocks = false } = {}) {
+function fakePool({ socialRows = [], videoRows = [], blockRows = [], inferredRows = [], missingTables = [], failRaw = false, failBlocks = false } = {}) {
   const calls = []
   return {
     calls,
@@ -112,9 +113,25 @@ function fakePool({ socialRows = [], videoRows = [], blockRows = [], missingTabl
         if (failBlocks) throw new Error('block table unavailable')
         return { rows: blockRows }
       }
+      if (sql.includes('WITH interactions(source')) return { rows: inferredRows }
       throw new Error(`unexpected query: ${sql.slice(0, 72)}`)
     },
   }
+}
+
+function testInferredSignalsAreServerDerivedAndBounded() {
+  const signals = inferredSignalsFromRows([
+    { source: 'likes', topic_key: 'Delfines', subtopic_key: 'Mar', strength: 9 },
+    { source: 'watch_time', topic_key: 'delfines', subtopic_key: null, strength: 2 },
+    { source: 'private_messages', topic_key: 'secret', strength: 99 },
+    { source: 'likes', topic_key: 'not valid spaces', strength: 4 },
+  ])
+  assert.deepEqual(signals, {
+    sources: {
+      likes: { topic: { delfines: 1 }, subtopic: { mar: 1 } },
+      watch_time: { topic: { delfines: 0.4 } },
+    },
+  })
 }
 
 async function testSelectorsUseOnlyTheApprovedLocalFallbackBoundary() {
@@ -271,6 +288,7 @@ function testSourceStaysIsolatedFromLegacyRouteImplementations() {
 }
 
 Promise.resolve()
+  .then(testInferredSignalsAreServerDerivedAndBounded)
   .then(testSelectorsUseOnlyTheApprovedLocalFallbackBoundary)
   .then(testSocialAndVideoCandidatesArePublicAndNarrow)
   .then(testSourceScrubsUnsafeDisplayAndSignedMediaUrls)

@@ -21,7 +21,8 @@ const TOPIC_RULES = Object.freeze([
   ['travel', '', /\b(paisaje|turismo|travel|viaje|viajes)\b/i],
   ['education', '', /\b(aprende|aprender|curso|educacion|explicacion|tutorial)\b/i],
   ['art', '', /\b(arte|dibujo|ilustracion|pintura)\b/i],
-  ['animals', '', /\b(animal|gato|mascota|perro)\b/i],
+  ['delfines', 'dolphins', /\b(delfin|delfines|dolphin|dolphins)\b/i],
+  ['animals', '', /\b(animal|animales|delfin|delfines|dolphin|dolphins|gato|mascota|perro)\b/i],
   ['comedy', '', /\b(comedia|humor|meme|risa)\b/i],
 ])
 

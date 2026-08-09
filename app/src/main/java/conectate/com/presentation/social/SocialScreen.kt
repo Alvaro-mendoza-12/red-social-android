@@ -198,6 +198,7 @@ fun SocialScreen(
     val savedLibrary by viewModel.savedLibrary.collectAsState()
     val savedLibraryLoading by viewModel.savedLibraryLoading.collectAsState()
     val savedLibraryMessage by viewModel.savedLibraryMessage.collectAsState()
+    val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsState()
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
@@ -231,6 +232,7 @@ fun SocialScreen(
     var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var reactionPost by remember { mutableStateOf<Post?>(null) }
     var explanationPost by remember { mutableStateOf<Post?>(null) }
+    var notInterestedPost by remember { mutableStateOf<Post?>(null) }
     var showFeedPreferences by remember { mutableStateOf(false) }
     var topicPost by remember { mutableStateOf<Post?>(null) }
     var topicText by remember { mutableStateOf("") }
@@ -252,6 +254,13 @@ fun SocialScreen(
     var showChallengeMediaPicker by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+
+    LaunchedEffect(algorithmActionMessage) {
+        algorithmActionMessage?.let { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeAlgorithmActionMessage()
+        }
+    }
     
     // Camera Handlers
     var tempCameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -506,12 +515,12 @@ fun SocialScreen(
                 }
                 FilledTonalButton(
                     onClick = {
-                        viewModel.hideCreator(selectedPost)
+                        viewModel.excludeCreatorFromAlgorithm(selectedPost)
                         explanationPost = null
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Ver menos de ${selectedPost.userName}")
+                    Text("No recomendar este creador")
                 }
                 OutlinedButton(
                     onClick = {
@@ -536,6 +545,60 @@ fun SocialScreen(
         }
     }
 
+    notInterestedPost?.let { selectedPost ->
+        ModalBottomSheet(onDismissRequest = { notInterestedPost = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("¿Qué no te interesa?", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "La elección se guarda en Mi algoritmo y se aplica al feed de Social.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ListItem(
+                    headlineContent = { Text("Solo esta publicación") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludePostFromAlgorithm(selectedPost)
+                        notInterestedPost = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este tema") },
+                    supportingContent = { Text("Elige la palabra o tema exacto") },
+                    modifier = Modifier.clickable {
+                        topicPost = selectedPost
+                        topicText = Regex("""#[\p{L}\p{N}_-]+""")
+                            .find(selectedPost.content)?.value?.removePrefix("#").orEmpty()
+                        notInterestedPost = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este creador") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludeCreatorFromAlgorithm(selectedPost)
+                        notInterestedPost = null
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Este tipo de contenido") },
+                    supportingContent = { Text("Imagen o publicación de texto") },
+                    modifier = Modifier.clickable {
+                        viewModel.excludePostFormatFromAlgorithm(selectedPost)
+                        notInterestedPost = null
+                    },
+                )
+                TextButton(
+                    onClick = { notInterestedPost = null },
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text("Cancelar") }
+            }
+        }
+    }
+
     if (topicPost != null) {
         AlertDialog(
             onDismissRequest = { topicPost = null },
@@ -553,7 +616,7 @@ fun SocialScreen(
                 TextButton(
                     enabled = topicText.trim().length >= 2,
                     onClick = {
-                        viewModel.muteTopic(topicText)
+                        topicPost?.let { viewModel.excludePostTopicFromAlgorithm(it, topicText) }
                         topicPost = null
                         topicText = ""
                     }
@@ -1800,6 +1863,7 @@ fun SocialScreen(
                                             },
                                             onReportClick = { postToReport = post },
                                             onWhyThisPost = { explanationPost = post },
+                                            onNotInterested = { notInterestedPost = post },
                                             onSaveClick = { postToSave = post },
                                             showReportAction = true,
                                             isOwner = post.userId == viewModel.currentUserId,

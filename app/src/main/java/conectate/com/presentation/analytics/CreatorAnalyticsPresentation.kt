@@ -6,7 +6,7 @@ import conectate.com.data.model.VideoAnalyticsReport
 
 internal fun creatorAnalyticsErrorMessage(error: Throwable): String = when ((error as? CreatorAnalyticsApiException)?.code) {
     "CREATOR_ANALYTICS_DISABLED" ->
-        "Las estadísticas privadas todavía no están habilitadas para esta fase de pruebas."
+        "No se pudo iniciar el servicio de estadísticas. Actualiza e inténtalo nuevamente."
     "CREATOR_ANALYTICS_OWNER_REQUIRED" ->
         "Solo el creador puede consultar estas estadísticas."
     "CONTENT_NOT_FOUND" ->

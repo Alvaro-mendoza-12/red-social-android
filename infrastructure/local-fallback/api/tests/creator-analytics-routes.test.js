@@ -297,10 +297,13 @@ async function testQueriesEnforceCohortsAndExposeAllMetrics() {
     async query(statement, parameters) {
       const sql = String(statement)
       statements.push({ sql, parameters })
+      if (sql.includes('video_canonical_summary')) return { rows: [{ views: 7, unique_viewers: 6, likes: 2, comments: 1, shares: 1, saves: 1 }] }
       if (sql.includes('video_summary')) return { rows: [{ views: 0, unique_viewers: 0 }] }
       if (sql.includes('video_countries') || sql.includes('video_timeline')) return { rows: [] }
+      if (sql.includes('live_canonical_summary')) return { rows: [{ peak_concurrent: 9, unique_viewers: 7, comments: 4, likes: 20, gifts: 3, gift_value_coins: 210 }] }
       if (sql.includes('live_summary')) return { rows: [{ unique_viewers: 0 }] }
       if (sql.includes('live_top_donors') || sql.includes('live_viewer_curve')) return { rows: [] }
+      if (sql.includes('live_canonical_top_donors')) return { rows: [] }
       throw new Error('unexpected analytics query')
     },
   }
@@ -319,6 +322,14 @@ async function testQueriesEnforceCohortsAndExposeAllMetrics() {
   assert.match(sql, /live_gift/)
   assert.match(sql, /live_top_donors/)
   assert.match(sql, /live_viewer_curve/)
+  assert.match(sql, /video_canonical_summary/)
+  assert.match(sql, /fallback_video_views/)
+  assert.match(sql, /fallback_video_likes/)
+  assert.match(sql, /fallback_video_comments/)
+  assert.match(sql, /fallback_shares/)
+  assert.match(sql, /live_canonical_summary/)
+  assert.match(sql, /fallback_live_participants/)
+  assert.match(sql, /fallback_compat_rows/)
   assert.match(sql, /HAVING COUNT\(DISTINCT actor_hash\) >= \$4/)
   assert.match(sql, /HAVING MAX\(concurrent_count\) >= \$4/)
 }

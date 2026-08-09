@@ -17,9 +17,9 @@ class CreatorAnalyticsPresentationTest {
     private val range = CreatorAnalyticsRange("2026-08-01T00:00:00Z", "2026-08-08T00:00:00Z")
 
     @Test
-    fun disabledFeatureUsesSpecificSafeMessage() {
+    fun backendSetupFailureNeverClaimsTheFeatureIsDisabled() {
         assertEquals(
-            "Las estadísticas privadas todavía no están habilitadas para esta fase de pruebas.",
+            "No se pudo iniciar el servicio de estadísticas. Actualiza e inténtalo nuevamente.",
             creatorAnalyticsErrorMessage(CreatorAnalyticsApiException("CREATOR_ANALYTICS_DISABLED", 404)),
         )
     }

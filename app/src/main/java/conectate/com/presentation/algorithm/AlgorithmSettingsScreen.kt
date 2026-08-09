@@ -105,6 +105,7 @@ fun AlgorithmSettingsScreen(
             !state.isFeatureAvailable -> AlgorithmUnavailableContent(
                 modifier = Modifier.padding(padding),
                 hasCachedConfiguration = state.config != null,
+                onRetry = viewModel::refresh,
             )
             else -> AlgorithmContent(
                 modifier = Modifier.padding(padding),
@@ -176,7 +177,11 @@ private fun LoadingContent(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AlgorithmUnavailableContent(modifier: Modifier, hasCachedConfiguration: Boolean) {
+private fun AlgorithmUnavailableContent(
+    modifier: Modifier,
+    hasCachedConfiguration: Boolean,
+    onRetry: () -> Unit,
+) {
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -190,8 +195,8 @@ private fun AlgorithmUnavailableContent(modifier: Modifier, hasCachedConfigurati
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Tu algoritmo, bajo tu control", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        "Esta función está preparada pero desactivada durante el despliegue gradual. " +
-                            "Cuando se habilite podrás decidir temas, creadores, formatos y mezcla de cada feed.",
+                        "No se pudo confirmar el servicio de Mi algoritmo. Revisa la conexión y vuelve a intentarlo; " +
+                            "tus reglas confirmadas permanecen guardadas.",
                     )
                     Text(
                         "Nunca usa mensajes privados, ubicación precisa, fecha de nacimiento ni género.",
@@ -201,6 +206,7 @@ private fun AlgorithmUnavailableContent(modifier: Modifier, hasCachedConfigurati
                     if (hasCachedConfiguration) {
                         AssistChip(onClick = {}, label = { Text("Se conserva la última configuración confirmada") })
                     }
+                    Button(onClick = onRetry) { Text("Reintentar") }
                 }
             }
         }
@@ -385,8 +391,8 @@ private fun AlgorithmContent(
         if (!canEditPreferences || !canEditFeedMix || !canEditDataPermissions) {
             item {
                 EmptyCard(
-                    "Algunos controles se mostrarán como solo lectura hasta que se habiliten para tu grupo de pruebas. " +
-                        "Tus cambios no se guardarán localmente sin confirmación del servidor.",
+                    "El servidor no confirmó todos los controles. Actualiza la pantalla antes de editar; " +
+                        "ningún cambio se guarda únicamente en el dispositivo.",
                 )
             }
         }
@@ -395,8 +401,8 @@ private fun AlgorithmContent(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Datos y explicaciones", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Cuando el ranking autoritativo se habilite, Videos y Social mostrarán razones reales como tus reglas, personas seguidas y la composición seleccionada. " +
-                            "Nunca se inventarán explicaciones.",
+                        "Videos y Social muestran razones confirmadas por el servidor, como tus reglas, " +
+                            "personas seguidas y la composición seleccionada. Nunca se inventan explicaciones.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -607,6 +613,20 @@ private fun PreferenceEditorDialog(
                 }
                 item {
                     Text("${scoreLabel(score)} (${if (score > 0) "+" else ""}$score)", fontWeight = FontWeight.SemiBold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val presets = if (dimension == AlgorithmDimension.CREATOR) {
+                            listOf("Más" to 90, "Normal" to 30, "Menos" to -40, "Silenciar" to -100)
+                        } else {
+                            listOf("Quiero ver más" to 80, "Normal" to 30, "No quiero ver" to -100)
+                        }
+                        items(presets) { (label, value) ->
+                            FilterChip(
+                                selected = score == value,
+                                onClick = { score = value },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                     Slider(
                         value = score.toFloat(),
                         onValueChange = { score = it.toInt().coerceIn(-100, 100) },

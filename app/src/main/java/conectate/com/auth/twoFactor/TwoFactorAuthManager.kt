@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.google.zxing.BarcodeFormat
@@ -76,11 +77,31 @@ class TwoFactorAuthManager @Inject constructor(
     }
 
     private val securePrefs: SharedPreferences by lazy {
+        createSecurePreferencesWithRecovery()
+    }
+
+    private fun createSecurePreferencesWithRecovery(): SharedPreferences {
+        return runCatching { createSecurePreferences() }.getOrElse { firstError ->
+            // Android Keystore keys are intentionally not portable across device restores.
+            // A restored encrypted preference file therefore cannot be authenticated and
+            // must be recreated fail-closed instead of crashing the whole application.
+            Log.w(
+                "TwoFactorAuthManager",
+                "Encrypted 2FA preferences could not be opened; resetting the local encrypted store (${firstError.javaClass.simpleName}).",
+            )
+            context.deleteSharedPreferences(SHARED_PREFS_NAME)
+            runCatching { createSecurePreferences() }.getOrElse { recoveryError ->
+                throw IllegalStateException("No se pudo recuperar el almacenamiento cifrado de 2FA.", recoveryError)
+            }
+        }
+    }
+
+    private fun createSecurePreferences(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
 
-        EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
             SHARED_PREFS_NAME,
             masterKey,

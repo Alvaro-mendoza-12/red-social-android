@@ -30,6 +30,17 @@ const MAX_CANDIDATES = 200
 const MAX_ALIASES = 64
 const MAX_TAGS = 16
 const MAX_MEDIA = 10
+const PERMITTED_INFERENCE_SOURCES = new Set([
+  'likes',
+  'follows',
+  'searches',
+  'watch_time',
+  'scroll_velocity',
+  'profile_visits',
+  'public_interactions',
+  'community_activity',
+  'live_activity',
+])
 
 const REQUIRED_TABLES = Object.freeze({
   social: Object.freeze([
@@ -56,6 +67,16 @@ const REQUIRED_TABLES = Object.freeze({
     'fallback_algorithm_content_topics',
   ]),
 })
+
+const INFERENCE_TABLES = Object.freeze([
+  'fallback_post_reactions',
+  'fallback_video_likes',
+  'fallback_video_views',
+  'fallback_video_favorites',
+  'fallback_shares',
+  'fallback_algorithm_content_classifications',
+  'fallback_algorithm_content_topics',
+])
 
 // These two selectors intentionally contain only the fields that the current
 // public Social/Video response contracts need.  New fields must be reviewed
@@ -330,6 +351,46 @@ const BLOCK_EDGE_SQL = `
   )
   ORDER BY created_at DESC
   LIMIT $3
+`
+
+const INFERRED_TOPIC_SIGNALS_SQL = `
+  WITH interactions(source, content_kind, content_id, occurred_at) AS (
+    SELECT 'likes', 'post', lower(post_id), updated_at
+      FROM fallback_post_reactions
+     WHERE lower(user_id) = ANY($1::text[])
+    UNION ALL
+    SELECT 'likes', 'video', lower(video_id), created_at
+      FROM fallback_video_likes
+     WHERE lower(user_id) = ANY($1::text[])
+    UNION ALL
+    SELECT 'watch_time', 'video', lower(video_id), viewed_at
+      FROM fallback_video_views
+     WHERE lower(user_id) = ANY($1::text[])
+    UNION ALL
+    SELECT 'public_interactions', 'video', lower(video_id), created_at
+      FROM fallback_video_favorites
+     WHERE lower(user_id) = ANY($1::text[])
+    UNION ALL
+    SELECT 'public_interactions', lower(content_type), lower(post_id), created_at
+      FROM fallback_shares
+     WHERE lower(user_id) = ANY($1::text[])
+       AND lower(content_type) IN ('post', 'video')
+  )
+  SELECT interaction.source,
+         topic.topic_key,
+         topic.subtopic_key,
+         COUNT(*)::int AS strength
+    FROM interactions interaction
+    JOIN fallback_algorithm_content_classifications classification
+      ON classification.content_kind = interaction.content_kind
+     AND lower(classification.content_id) = interaction.content_id
+     AND classification.safety_state = 'allowed'
+    JOIN fallback_algorithm_content_topics topic
+      ON topic.classification_id = classification.id
+   WHERE interaction.occurred_at >= NOW() - INTERVAL '180 days'
+   GROUP BY interaction.source, topic.topic_key, topic.subtopic_key
+   ORDER BY strength DESC, interaction.source, topic.topic_key, topic.subtopic_key
+   LIMIT 256
 `
 
 const TABLE_AVAILABILITY_SQL = `
@@ -653,6 +714,38 @@ function emptyBatch(surface) {
   }
 }
 
+function inferredSignalsFromRows(rows) {
+  const sources = {}
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const source = safeClassificationKey(row?.source, 40)
+    const topic = safeClassificationKey(row?.topic_key, 80)
+    const subtopic = safeClassificationKey(row?.subtopic_key, 80)
+    const strength = Math.max(0, Number(row?.strength) || 0)
+    if (!source || !PERMITTED_INFERENCE_SOURCES.has(source) || !topic || strength <= 0) continue
+    const value = Math.min(1, strength / 5)
+    const sourceSignals = sources[source] || (sources[source] = {})
+    const topics = sourceSignals.topic || (sourceSignals.topic = {})
+    topics[topic] = Math.max(topics[topic] || 0, value)
+    if (subtopic) {
+      const subtopics = sourceSignals.subtopic || (sourceSignals.subtopic = {})
+      subtopics[subtopic] = Math.max(subtopics[subtopic] || 0, value)
+    }
+  }
+  return { sources }
+}
+
+async function loadInferredSignals(pool, viewerIds) {
+  if (!(await tablesAvailable(pool, INFERENCE_TABLES))) return { sources: {} }
+  try {
+    const result = await pool.query(INFERRED_TOPIC_SIGNALS_SQL, [viewerIds])
+    return inferredSignalsFromRows(result?.rows)
+  } catch {
+    // Inference is optional. A storage failure must never weaken the safety
+    // filters or make the recommendation endpoint fail open.
+    return { sources: {} }
+  }
+}
+
 async function tablesAvailable(pool, tableNames) {
   try {
     const result = await pool.query(TABLE_AVAILABILITY_SQL, [tableNames])
@@ -687,7 +780,10 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
       const limit = boundedInteger(input.maxCandidates ?? input.limit, 1, MAX_CANDIDATES, MAX_CANDIDATES)
       const timestamp = Number.isFinite(Number(input.now)) ? Number(input.now) : Number(now())
       try {
-        const result = await pool.query(rawQueryFor(surface), [viewerIds, limit])
+        const [result, inferredSignals] = await Promise.all([
+          pool.query(rawQueryFor(surface), [viewerIds, limit]),
+          loadInferredSignals(pool, viewerIds),
+        ])
         if (!Array.isArray(result?.rows)) return emptyBatch(surface)
         const candidates = result.rows
           .map((row) => rawMapperFor(surface)(row, timestamp))
@@ -696,7 +792,7 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
         return {
           snapshotId: snapshotId(surface, candidates),
           providerState: null,
-          inferredSignals: { sources: {} },
+          inferredSignals,
           candidates,
         }
       } catch {
@@ -733,10 +829,13 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
 
 module.exports = {
   BLOCK_EDGE_SQL,
+  INFERRED_TOPIC_SIGNALS_SQL,
+  INFERENCE_TABLES,
   LocalFallbackCandidateSourceError,
   REQUIRED_TABLES,
   SOCIAL_CANDIDATE_SQL,
   TABLE_AVAILABILITY_SQL,
+  inferredSignalsFromRows,
   VIDEO_CANDIDATE_SQL,
   createAlgorithmLocalFallbackCandidateSource,
   emptyBatch,

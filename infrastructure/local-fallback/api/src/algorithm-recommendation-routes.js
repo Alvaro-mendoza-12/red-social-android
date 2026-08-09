@@ -275,6 +275,11 @@ function candidateItem(candidate) {
   return { ...candidate.item }
 }
 
+function recommendationProfileMode(profile) {
+  const mode = String(profile?.mode || '').trim().toLowerCase()
+  return ['manual', 'assisted', 'automatic'].includes(mode) ? mode : 'manual'
+}
+
 function ownerFrom(user, identity) {
   const userId = normalizeId(identity?.localUserId || identity?.preferredUserId || user?.id)
   return userId ? { user, identity, userId } : null
@@ -357,6 +362,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
       }
 
       const configuration = await loadAlgorithmConfiguration(pool, profile)
+      const profileMode = recommendationProfileMode(profile)
       const loaded = validateCandidateBatch(await loadCandidates({
         owner,
         surface,
@@ -378,8 +384,13 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
         candidates: loaded.candidates,
         preferences: rankingPreferences(configuration),
         feedMix: rankingFeedMix(configuration, surface),
-        inferredSignals: loaded.inferredSignals,
-        dataPermissions: rankingDataPermissions(configuration?.dataPermissions),
+        // Manual and assisted profiles never apply an inferred signal. In
+        // assisted mode a future suggestion must first become an explicit
+        // preference; automatic mode may use only sources the user enabled.
+        inferredSignals: profileMode === 'automatic' ? loaded.inferredSignals : {},
+        dataPermissions: profileMode === 'automatic'
+          ? rankingDataPermissions(configuration?.dataPermissions)
+          : {},
         surface,
         limit: MAX_RANKED_CANDIDATES,
         now: timestamp,
@@ -412,6 +423,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
           authoritative: true,
           version: RANKING_VERSION,
           profileId: String(profile.id),
+          mode: profileMode,
           explanationsEnabled: flags.explanations === true,
         },
       }
@@ -442,5 +454,6 @@ module.exports = {
   encodeOpaqueCursor,
   rankingDataPermissions,
   rankingFeedMix,
+  recommendationProfileMode,
   registerAlgorithmRecommendationRoutes,
 }

@@ -1,6 +1,7 @@
 const assert = require('assert/strict')
 const {
   decodeOpaqueCursor,
+  recommendationProfileMode,
   registerAlgorithmRecommendationRoutes,
 } = require('../src/algorithm-recommendation-routes')
 
@@ -193,6 +194,47 @@ async function testExplanationsAreStrictlyGated() {
   assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'explanations'), false)
 }
 
+async function testLearningModesNeverOverrideExplicitControl() {
+  assert.equal(recommendationProfileMode({ mode: 'manual' }), 'manual')
+  assert.equal(recommendationProfileMode({ mode: 'assisted' }), 'assisted')
+  assert.equal(recommendationProfileMode({ mode: 'automatic' }), 'automatic')
+  assert.equal(recommendationProfileMode({ mode: 'unknown' }), 'manual')
+
+  for (const mode of ['manual', 'assisted', 'automatic']) {
+    let rankingInput = null
+    const harness = createHarness({
+      findOwnedProfile: async () => ({ id: 'profile-1', revision: 3, is_enabled: true, mode }),
+      loadCandidates: async () => ({
+        snapshotId: `snapshot-${mode}`,
+        inferredSignals: { sources: { likes: { topic: { forest: 1 } } } },
+        candidates: [candidate('forest', { topics: ['forest'] })],
+      }),
+      loadAlgorithmConfiguration: async () => ({
+        ...config(),
+        dataPermissions: { likes: true },
+        preferences: [{ surface: 'video', dimension: 'topic', subjectKey: 'forest', score: -100 }],
+      }),
+      rankAlgorithmCandidates: (input) => {
+        rankingInput = input
+        return { ranked: [] }
+      },
+    })
+    const response = await invoke(harness, { surface: 'video' })
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.body.algorithm.mode, mode)
+    if (mode === 'automatic') {
+      assert.deepEqual(rankingInput.inferredSignals.sources.likes.topic, { forest: 1 })
+      assert.equal(rankingInput.dataPermissions.use_likes, true)
+    } else {
+      assert.deepEqual(rankingInput.inferredSignals, {})
+      assert.deepEqual(rankingInput.dataPermissions, {})
+    }
+    assert.deepEqual(rankingInput.preferences, [
+      { surface: 'video', dimension: 'topic', subjectKey: 'forest', score: -100 },
+    ])
+  }
+}
+
 async function testCursorFailsClosedWhenTheProviderSnapshotChanges() {
   const harness = createHarness({
     loadCandidates: async (input) => ({
@@ -253,6 +295,7 @@ Promise.resolve()
   .then(testAuthenticatedOwnedProfileAndAuthoritativeRanking)
   .then(testOpaqueCursorBindsOwnerSurfaceProfileRevisionAndSnapshot)
   .then(testExplanationsAreStrictlyGated)
+  .then(testLearningModesNeverOverrideExplicitControl)
   .then(testCursorFailsClosedWhenTheProviderSnapshotChanges)
   .then(testProfileOwnershipAndOptInAreEnforced)
   .then(testInvalidSurfaceAndInvalidCandidateBatchFailSafely)

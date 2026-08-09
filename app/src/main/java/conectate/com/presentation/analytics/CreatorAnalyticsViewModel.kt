@@ -2,7 +2,6 @@ package conectate.com.presentation.analytics
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import conectate.com.data.analytics.CreatorAnalyticsApiException
 import conectate.com.data.model.CreatorAnalyticsContent
 import conectate.com.data.model.LiveAnalyticsReport
 import conectate.com.data.model.VideoAnalyticsReport
@@ -19,7 +18,6 @@ import kotlinx.coroutines.launch
 data class CreatorAnalyticsUiState(
     val isLoading: Boolean = true,
     val isReportLoading: Boolean = false,
-    val isUnavailable: Boolean = false,
     val items: List<CreatorAnalyticsContent> = emptyList(),
     val selected: CreatorAnalyticsContent? = null,
     val videoReport: VideoAnalyticsReport? = null,
@@ -53,11 +51,9 @@ class CreatorAnalyticsViewModel @Inject constructor(
                     supported.firstOrNull()?.let(::select)
                 },
                 onFailure = { error ->
-                    val unavailable = (error as? CreatorAnalyticsApiException)?.code == "CREATOR_ANALYTICS_DISABLED"
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            isUnavailable = unavailable,
                             error = creatorAnalyticsErrorMessage(error),
                         )
                     }

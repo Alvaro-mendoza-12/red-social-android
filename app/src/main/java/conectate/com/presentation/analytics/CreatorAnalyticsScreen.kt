@@ -89,10 +89,6 @@ fun CreatorAnalyticsScreen(
     ) { padding ->
         when {
             state.isLoading -> LoadingState(Modifier.padding(padding))
-            state.isUnavailable -> UnavailableState(
-                message = state.error.orEmpty(),
-                modifier = Modifier.padding(padding),
-            )
             state.items.isEmpty() && state.error != null -> ErrorState(
                 message = state.error.orEmpty(),
                 onRetry = viewModel::refresh,
@@ -191,21 +187,6 @@ fun CreatorAnalyticsScreen(
 private fun LoadingState(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
-    }
-}
-
-@Composable
-private fun UnavailableState(message: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(Icons.Default.Analytics, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(12.dp))
-        Text("Estadísticas no disponibles", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

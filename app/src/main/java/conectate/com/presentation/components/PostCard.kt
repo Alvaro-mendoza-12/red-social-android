@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +58,7 @@ fun PostCard(
     onPostClick: () -> Unit = {},
     onSendToFriend: () -> Unit = {},
     onWhyThisPost: () -> Unit = {},
+    onNotInterested: () -> Unit = {},
     onSaveClick: () -> Unit = {},
     onReportClick: () -> Unit = {},
     onRemixClick: (String) -> Unit = {},
@@ -85,97 +85,14 @@ fun PostCard(
     }
 
     fullScreenImageIndex?.let { initialIndex ->
-        FullScreenImageDialog(
-            mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, "image") },
+        PostMediaDetailDialog(
+            post = post,
+            imageUrls = images,
             initialIndex = initialIndex,
-            bottomOverlay = { page ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
-                            )
-                        )
-                        .padding(horizontal = 20.dp, vertical = 18.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProfileImage(
-                            imageUrl = post.userProfileImage.orEmpty(),
-                            size = 38.dp,
-                            isVerified = post.isVerified,
-                            fallbackName = post.userName,
-                            modifier = Modifier.clickable {
-                                fullScreenImageIndex = null
-                                onUserClick(post.userId)
-                            }
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(post.userName, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text(
-                                DateUtils.formatRelativeDate(post.createdAt),
-                                color = Color.White.copy(alpha = 0.72f),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                        if (images.size > 1) {
-                            Text(
-                                "${page + 1} / ${images.size}",
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        }
-                    }
-                    if (post.content.isNotBlank()) {
-                        Text(
-                            post.content,
-                            color = Color.White,
-                            modifier = Modifier.padding(top = 10.dp),
-                            maxLines = 3
-                        )
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = reactionPreview(post.reactionCounts, reactionTotal),
-                            color = Color.White,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    fullScreenImageIndex = null
-                                    onReactionSummaryClick()
-                                },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "${post.commentCount} comentarios",
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                // El diálogo de medios puede tener un ancho efectivo menor
-                                // que el de la publicación en landscape. Acotar esta etiqueta
-                                // evita que salga por el borde derecho en equipos anchos.
-                                // Además reservamos un margen interno: algunos fabricantes
-                                // reportan cero inset lateral aunque el contenido se recorta
-                                // visualmente en el borde de la ventana.
-                                .padding(end = 24.dp)
-                                .widthIn(max = 220.dp)
-                                .clickable {
-                                    fullScreenImageIndex = null
-                                    onCommentClick()
-                                },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            },
+            reactionSummary = reactionPreview(post.reactionCounts, reactionTotal),
+            onUserClick = onUserClick,
+            onReactionSummaryClick = onReactionSummaryClick,
+            onCommentClick = onCommentClick,
             onDismiss = { fullScreenImageIndex = null }
         )
     }
@@ -335,6 +252,16 @@ fun PostCard(
                                     },
                                     leadingIcon = {
                                         Icon(Icons.Default.Info, contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("No me interesa") },
+                                    onClick = {
+                                        onNotInterested()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.ThumbDown, contentDescription = null)
                                     }
                                 )
                                 DropdownMenuItem(
