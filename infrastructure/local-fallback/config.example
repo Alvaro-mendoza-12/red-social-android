@@ -154,6 +154,16 @@ SOCIALIZATION_COMMUNITY_DISCOVERY_ENABLED=false
 SOCIALIZATION_ICEBREAKERS_ENABLED=false
 SOCIALIZATION_ROOMS_ENABLED=false
 
+# PlayMatch / Juegos. El modulo permanece cerrado por defecto. Para una prueba
+# limitada, use PLAYMATCH_TESTER_IDS con IDs de usuario separados por coma y un
+# secreto de cursor generado fuera del repositorio. Nunca use ubicación precisa,
+# mensajes privados, edad o género como señales de coincidencia.
+PLAYMATCH_GAMES_ENABLED=false
+PLAYMATCH_TESTER_IDS=
+PLAYMATCH_CURSOR_SECRET=
+PLAYMATCH_REQUIRE_ADULT_CONFIRMATION=true
+PLAYMATCH_PHOTOS_ENABLED=false
+
 # IA local Novvin: perfil equilibrado para la mini PC de 4C/8T y 16 GB.
 # 5000 es solo una opcion de laboratorio; no mejora por si sola la conversacion
 # y hace el primer entrenamiento casi 10 veces mas costoso que 512.

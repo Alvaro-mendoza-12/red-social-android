@@ -26,6 +26,10 @@ const {
   ensureCreatorPayoutTables,
   registerCreatorPayoutRoutes,
 } = require('./creator-payout-routes')
+const {
+  ensurePlayMatchTables,
+  registerPlayMatchRoutes,
+} = require('./playmatch-routes')
 
 const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
 
@@ -5146,6 +5150,7 @@ async function ensureLocalDataTables(pool) {
   await ensureAlgorithmTables(pool)
   await ensureSocializationTables(pool)
   await ensureCreatorPayoutTables(pool)
+  await ensurePlayMatchTables(pool)
 }
 
 function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser }) {
@@ -5224,6 +5229,13 @@ function registerDataRoutes(app, { pool, authRequired, appealAuthRequired, delet
     authRequired,
     getCurrentUser,
     userIdentity,
+  })
+  registerPlayMatchRoutes(app, {
+    pool,
+    authRequired,
+    getCurrentUser,
+    userIdentity,
+    publishRealtimeEvent,
   })
   app.post('/v1/data/messages/translate', authRequired, async (req, res, next) => {
     try {
