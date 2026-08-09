@@ -2,6 +2,7 @@ package conectate.com.data.repository.message
 
 import android.net.Uri
 import android.os.SystemClock
+import conectate.com.core.media.ChatMediaOfflineCache
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
@@ -31,7 +32,8 @@ internal class MessageMediaResolver(
     private val storageService: StorageService,
     private val authService: AuthService,
     private val supabaseConfig: SupabaseConfig,
-    private val sessionStateStore: MessageSessionStateStore
+    private val sessionStateStore: MessageSessionStateStore,
+    private val offlineMediaCache: ChatMediaOfflineCache? = null
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -44,13 +46,22 @@ internal class MessageMediaResolver(
     private val playableUrlCacheMutex = Mutex()
     private val playableUrlTtlMs = 50L * 60L * 1000L
 
-    suspend fun getPlayableUrl(path: String): Result<String> {
-        var trimmed = path.trim()
+    suspend fun getPlayableUrl(
+        path: String,
+        allowOfflineMediaCache: Boolean = true
+    ): Result<String> {
+        val trimmed = path.trim()
+        if (trimmed.isBlank()) return Result.failure(Exception("Ruta multimedia invalida"))
+        if (allowOfflineMediaCache) {
+            offlineMediaCache?.resolveCachedUri(trimmed)?.let { return Result.success(it) }
+        }
         if (trimmed.contains("/storage/v1/object/public/")) {
-            return Result.success(UbuntuStorageUrl.rewrite(trimmed) ?: trimmed)
+            val playableUrl = UbuntuStorageUrl.rewrite(trimmed) ?: trimmed
+            if (allowOfflineMediaCache) offlineMediaCache?.cacheOpenedMedia(trimmed, playableUrl)
+            return Result.success(playableUrl)
         }
 
-        var location = resolveStorageLocation(trimmed)
+        val location = resolveStorageLocation(trimmed)
             ?: return Result.failure(Exception("Ruta multimedia invalida"))
         val accountScope = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
         val cacheKey = "$accountScope:${location.bucket}:${location.objectPath}"
@@ -71,20 +82,14 @@ internal class MessageMediaResolver(
         if (!ownsResolution) return pending.await()
 
         val result = runCatching {
-            android.util.Log.d(
-                "MessageMediaResolver",
-                "getPlayableUrl RAW: $path -> BUCKET: ${location.bucket}, PATH: ${location.objectPath}"
-            )
-
             val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
             if (signed.isSuccess) {
-                android.util.Log.d("MessageMediaResolver", "getPlayableUrl SIGNED OK")
                 val signedUrl = signed.getOrThrow()
                 UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl
             } else {
                 android.util.Log.w(
                     "MessageMediaResolver",
-                    "getPlayableUrl SIGNED FAILED: ${signed.exceptionOrNull()?.message}. Returning fallback."
+                    "No se pudo resolver una URL firmada de multimedia; se aplica el respaldo permitido."
                 )
                 if (trimmed.startsWith("http", ignoreCase = true)) {
                     UbuntuStorageUrl.rewrite(trimmed) ?: trimmed
@@ -104,6 +109,9 @@ internal class MessageMediaResolver(
                 )
             }
             playableUrlInFlight.remove(cacheKey)
+        }
+        if (allowOfflineMediaCache && result.isSuccess) {
+            offlineMediaCache?.cacheOpenedMedia(trimmed, result.getOrThrow())
         }
         pending.complete(result)
         return result
@@ -145,7 +153,7 @@ internal class MessageMediaResolver(
             return@withContext Result.failure(Exception("Este contenido ya fue visto"))
         }
 
-        val playable = getPlayableUrl(cleanMediaPath)
+        val playable = getPlayableUrl(cleanMediaPath, allowOfflineMediaCache = false)
         if (playable.isFailure) {
             return@withContext Result.failure(playable.exceptionOrNull() ?: Exception("No se pudo abrir contenido"))
         }
@@ -175,7 +183,7 @@ internal class MessageMediaResolver(
             } else if (!isMissingRpcFunction(rpcResponse.status.value, rpcBody, "secure_consume_view_once_message")) {
                 android.util.Log.w(
                     "MessageMediaResolver",
-                    "secure_consume_view_once_message failed (${rpcResponse.status.value}). Falling back to local guard. Body=$rpcBody"
+                    "El control remoto de vista única no está disponible (${rpcResponse.status.value}); se usa la protección local."
                 )
             }
         }

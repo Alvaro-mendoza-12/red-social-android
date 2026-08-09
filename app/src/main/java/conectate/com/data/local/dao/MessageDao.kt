@@ -51,7 +51,7 @@ interface MessageDao {
     }
     
     // OFFLINE SYNC QUERIES
-    @Query("SELECT * FROM messages WHERE is_synced = 0 AND pending_action = 'send'")
+    @Query("SELECT * FROM messages WHERE is_synced = 0 AND pending_action = 'send' ORDER BY created_at ASC, id ASC")
     suspend fun getPendingSendMessages(): List<MessageEntity>
     
     @Query("SELECT * FROM messages WHERE pending_action = 'delete'")

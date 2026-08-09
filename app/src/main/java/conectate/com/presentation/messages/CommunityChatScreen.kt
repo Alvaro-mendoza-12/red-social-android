@@ -514,7 +514,12 @@ fun CommunityChatScreen(
                                         duration = if (currentPlayingAudioId == msg.id) audioDurationLabel else (msg.content.ifBlank { "0:00" }),
                                         onPlayAudio = { viewModel.playAudio(it) },
                                         onLongClick = { viewModel.onMessageLongClick(msg) },
-                                        onResolveUrl = { viewModel.getPlayableUrl(it) },
+                                        onResolveUrl = { path ->
+                                            viewModel.getPlayableUrl(
+                                                path = path,
+                                                allowOfflineMediaCache = !msg.content_type.startsWith("view_once_")
+                                            )
+                                        },
                                         onClick = { clickedUrl ->
                                             if ((msg.content_type == "view_once_image" || msg.content_type == "view_once_video") && msg.media_url != null) {
                                                 scope.launch {
@@ -647,7 +652,7 @@ fun CommunityChatScreen(
                 val activeChannel = selectedChannel
                 if (activeChannel?.type == "voice") {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                        modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Row(
@@ -686,7 +691,7 @@ fun CommunityChatScreen(
                     }
                 } else if (activeChannel?.isPaused == true) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                        modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.errorContainer
                     ) {
                         Row(
@@ -756,7 +761,7 @@ fun CommunityChatScreen(
                         // --- RECORDING / REVIEW UI ---
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp).height(64.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).padding(horizontal = 8.dp)
+                            modifier = Modifier.fillMaxWidth().imePadding().padding(8.dp).height(64.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).padding(horizontal = 8.dp)
                         ) {
                             IconButton(onClick = { viewModel.cancelRecording() }) {
                                 Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
@@ -819,7 +824,7 @@ fun CommunityChatScreen(
                         // STANDARD INPUT
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp)
+                            modifier = Modifier.fillMaxWidth().imePadding().padding(8.dp)
                         ) {
                             IconButton(onClick = { showAttachmentSheet = true }) {
                                 Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
@@ -874,7 +879,7 @@ fun CommunityChatScreen(
                     }
                 } else {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+                        modifier = Modifier.fillMaxWidth().imePadding(),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         tonalElevation = 1.dp
                     ) {
@@ -890,13 +895,13 @@ fun CommunityChatScreen(
                 if (successState.community.is_public) {
                     Button(
                         onClick = { viewModel.joinCommunity() },
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp)
+                        modifier = Modifier.fillMaxWidth().imePadding().padding(16.dp)
                     ) {
                         Text("Unirse a la comunidad")
                     }
                 } else {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+                        modifier = Modifier.fillMaxWidth().imePadding(),
                         color = MaterialTheme.colorScheme.errorContainer,
                         tonalElevation = 2.dp
                     ) {
@@ -1109,7 +1114,12 @@ fun CommunityChatScreen(
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
             },
-            onResolveUrl = { viewModel.getPlayableUrl(it) }
+            onResolveUrl = { path ->
+                viewModel.getPlayableUrl(
+                    path = path,
+                    allowOfflineMediaCache = oneTimeMediaItems.isEmpty()
+                )
+            }
         )
     }
 

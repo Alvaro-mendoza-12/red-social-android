@@ -23,6 +23,10 @@ class MessagesPreferences @Inject constructor(
         private const val KEY_READ_RECEIPTS = "read_receipts_enabled"
         private const val KEY_CHAT_ACCENT = "chat_accent"
         private const val KEY_CHAT_BACKGROUND = "chat_background"
+
+        fun isMediaAutoDownloadEnabled(context: Context): Boolean = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_MEDIA_AUTO_DOWNLOAD, true)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

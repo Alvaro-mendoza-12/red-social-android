@@ -1297,7 +1297,10 @@ class CommunityChatViewModel @Inject constructor(
         return voiceMessageManager.isPreviewPlaying()
     }
 
-    suspend fun getPlayableUrl(path: String): String? = messageRepository.getPlayableUrl(path).getOrNull()
+    suspend fun getPlayableUrl(
+        path: String,
+        allowOfflineMediaCache: Boolean = true
+    ): String? = messageRepository.getPlayableUrl(path, allowOfflineMediaCache).getOrNull()
 
     suspend fun consumeViewOnceMessage(message: conectate.com.data.model.Message): String? {
         val mediaPath = message.media_url ?: return null

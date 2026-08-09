@@ -460,7 +460,12 @@ fun GroupChatScreen(
                                         duration = if (currentPlayingAudioId == msg.id) audioDurationLabel else (msg.content.ifBlank { "0:00" }),
                                         onPlayAudio = { viewModel.playAudio(it) },
                                         onLongClick = { viewModel.onMessageLongClick(msg) },
-                                        onResolveUrl = { viewModel.getPlayableUrl(it) },
+                                        onResolveUrl = { path ->
+                                            viewModel.getPlayableUrl(
+                                                path = path,
+                                                allowOfflineMediaCache = !msg.content_type.startsWith("view_once_")
+                                            )
+                                        },
                                         onClick = { clickedUrl ->
                                             if ((msg.content_type == "view_once_image" || msg.content_type == "view_once_video") && msg.media_url != null) {
                                                 scope.launch {
@@ -647,7 +652,6 @@ fun GroupChatScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .navigationBarsPadding()
                                 .imePadding()
                                 .padding(8.dp)
                                 .height(64.dp)
@@ -715,7 +719,7 @@ fun GroupChatScreen(
                         // STANDARD INPUT
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp)
+                            modifier = Modifier.fillMaxWidth().imePadding().padding(8.dp)
                         ) {
                             IconButton(onClick = { showAttachmentSheet = true }) {
                                 Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
@@ -768,7 +772,7 @@ fun GroupChatScreen(
                     }
                 } else {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+                        modifier = Modifier.fillMaxWidth().imePadding(),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         tonalElevation = 1.dp
                     ) {
@@ -781,7 +785,7 @@ fun GroupChatScreen(
                 }
             } else if (successState != null) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+                    modifier = Modifier.fillMaxWidth().imePadding(),
                     color = MaterialTheme.colorScheme.errorContainer,
                     tonalElevation = 2.dp
                 ) {
@@ -831,7 +835,12 @@ fun GroupChatScreen(
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
             },
-            onResolveUrl = { viewModel.getPlayableUrl(it) }
+            onResolveUrl = { path ->
+                viewModel.getPlayableUrl(
+                    path = path,
+                    allowOfflineMediaCache = oneTimeMediaItems.isEmpty()
+                )
+            }
         )
     }
 
