@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_game_catalog_active
   ON fallback_game_catalog(active, sort_order, lower(name));
 
 CREATE TABLE IF NOT EXISTS fallback_gaming_profiles (
-  user_id TEXT PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
   gamer_bio TEXT NOT NULL DEFAULT '',
   region_code TEXT NOT NULL DEFAULT '',
   languages TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -48,7 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_gaming_profiles_discovery
 
 CREATE TABLE IF NOT EXISTS fallback_user_games (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   game_id TEXT NOT NULL REFERENCES fallback_game_catalog(id) ON DELETE RESTRICT,
   game_user_id TEXT NOT NULL DEFAULT '',
   platform TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_user_games_search
 
 CREATE TABLE IF NOT EXISTS fallback_gaming_availability (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
   start_minute SMALLINT NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
   end_minute SMALLINT NOT NULL CHECK (end_minute BETWEEN 0 AND 1439),
@@ -82,7 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_gaming_availability_user_day
   ON fallback_gaming_availability(user_id, day_of_week, start_minute);
 
 CREATE TABLE IF NOT EXISTS fallback_gaming_preferences (
-  user_id TEXT PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
   game_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   platforms TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   rank_tolerance SMALLINT NOT NULL DEFAULT 2 CHECK (rank_tolerance BETWEEN 0 AND 10),
@@ -99,8 +99,8 @@ CREATE TABLE IF NOT EXISTS fallback_gaming_preferences (
 
 CREATE TABLE IF NOT EXISTS fallback_gaming_connection_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  requester_user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
-  recipient_user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  requester_user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  recipient_user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'PENDING'
     CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED', 'BLOCKED')),
   message TEXT NOT NULL DEFAULT '',
@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_gaming_connection_inbox
 
 CREATE TABLE IF NOT EXISTS fallback_matchmaking_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'SEARCHING'
     CHECK (status IN ('SEARCHING', 'MATCH_FOUND', 'ACCEPTED', 'SKIPPED', 'TIMEOUT', 'CANCELLED', 'ERROR')),
   criteria JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -145,8 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_fallback_matchmaking_status_expiry
 CREATE TABLE IF NOT EXISTS fallback_gaming_matches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES fallback_matchmaking_sessions(id) ON DELETE CASCADE,
-  user_a_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
-  user_b_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_a_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_b_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   score SMALLINT NOT NULL CHECK (score BETWEEN 0 AND 100),
   reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'PENDING'
@@ -171,7 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_fallback_gaming_matches_user_b
 
 CREATE TABLE IF NOT EXISTS fallback_gaming_match_decisions (
   match_id UUID NOT NULL REFERENCES fallback_gaming_matches(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
   decision TEXT NOT NULL CHECK (decision IN ('ACCEPT', 'SKIP')),
   reason TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

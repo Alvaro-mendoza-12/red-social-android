@@ -1,4 +1,6 @@
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
 
 const {
   availabilityOverlapMinutes,
@@ -134,6 +136,16 @@ async function main() {
   ]) {
     assert(ddl.includes(table), `falta asegurar tabla ${table}`)
   }
+  const incompatibleUserReference = /(?:^|\s)(?:user_id|requester_user_id|recipient_user_id|user_a_id|user_b_id)\s+TEXT[^,\n]*REFERENCES\s+fallback_users\(id\)/i
+  assert(!incompatibleUserReference.test(ddl), 'DDL runtime debe usar UUID para FK hacia fallback_users.id')
+  assert(/user_id\s+UUID\s+PRIMARY KEY REFERENCES fallback_users\(id\)/i.test(ddl))
+
+  const migration = fs.readFileSync(
+    path.resolve(__dirname, '../../db/migrations/012_playmatch_games_v1.sql'),
+    'utf8',
+  )
+  assert(!incompatibleUserReference.test(migration), 'migración debe usar UUID para FK hacia fallback_users.id')
+  assert(/requester_user_id\s+UUID\s+NOT NULL REFERENCES fallback_users\(id\)/i.test(migration))
 
   console.log('playmatch routes tests passed')
 }

@@ -120,7 +120,7 @@ async function ensurePlayMatchTables(pool) {
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_gaming_profiles (
-      user_id TEXT PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
       gamer_bio TEXT NOT NULL DEFAULT '',
       region_code TEXT NOT NULL DEFAULT '',
       languages TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -142,7 +142,7 @@ async function ensurePlayMatchTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_user_games (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       game_id TEXT NOT NULL REFERENCES fallback_game_catalog(id) ON DELETE RESTRICT,
       game_user_id TEXT NOT NULL DEFAULT '',
       platform TEXT NOT NULL,
@@ -159,7 +159,7 @@ async function ensurePlayMatchTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_gaming_availability (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       day_of_week SMALLINT NOT NULL,
       start_minute SMALLINT NOT NULL,
       end_minute SMALLINT NOT NULL,
@@ -171,7 +171,7 @@ async function ensurePlayMatchTables(pool) {
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_gaming_preferences (
-      user_id TEXT PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
       game_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
       platforms TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
       rank_tolerance SMALLINT NOT NULL DEFAULT 2,
@@ -189,8 +189,8 @@ async function ensurePlayMatchTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_gaming_connection_requests (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      requester_user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
-      recipient_user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      requester_user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      recipient_user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'PENDING',
       message TEXT NOT NULL DEFAULT '',
       idempotency_key TEXT NOT NULL,
@@ -203,7 +203,7 @@ async function ensurePlayMatchTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_matchmaking_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'SEARCHING',
       criteria JSONB NOT NULL DEFAULT '{}'::jsonb,
       current_match_id UUID,
@@ -218,8 +218,8 @@ async function ensurePlayMatchTables(pool) {
     CREATE TABLE IF NOT EXISTS fallback_gaming_matches (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       session_id UUID NOT NULL REFERENCES fallback_matchmaking_sessions(id) ON DELETE CASCADE,
-      user_a_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
-      user_b_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_a_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_b_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       score SMALLINT NOT NULL,
       reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
       status TEXT NOT NULL DEFAULT 'PENDING',
@@ -232,7 +232,7 @@ async function ensurePlayMatchTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_gaming_match_decisions (
       match_id UUID NOT NULL REFERENCES fallback_gaming_matches(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       decision TEXT NOT NULL,
       reason TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -289,8 +289,8 @@ async function acceptedConnectionSet(db, viewerUserId, candidateUserIds) {
     `SELECT CASE WHEN requester_user_id = $1 THEN recipient_user_id ELSE requester_user_id END AS other_user_id
        FROM fallback_gaming_connection_requests
       WHERE status = 'ACCEPTED'
-        AND ((requester_user_id = $1 AND recipient_user_id = ANY($2::text[]))
-          OR (recipient_user_id = $1 AND requester_user_id = ANY($2::text[])))`,
+        AND ((requester_user_id = $1 AND recipient_user_id = ANY($2::uuid[]))
+          OR (recipient_user_id = $1 AND requester_user_id = ANY($2::uuid[])))`,
     [viewerUserId, ids],
   )
   return new Set(rows.map((row) => row.other_user_id))
@@ -385,7 +385,7 @@ async function loadBundles(db, userIds) {
       `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url
          FROM fallback_gaming_profiles gp
          JOIN fallback_users u ON u.id = gp.user_id
-        WHERE gp.user_id = ANY($1::text[])`,
+        WHERE gp.user_id = ANY($1::uuid[])`,
       [ids],
     ),
     db.query(
@@ -393,12 +393,12 @@ async function loadBundles(db, userIds) {
               gc.cross_play, gc.ranks, gc.roles, gc.platforms
          FROM fallback_user_games ug
          JOIN fallback_game_catalog gc ON gc.id = ug.game_id
-        WHERE ug.user_id = ANY($1::text[]) AND gc.active = TRUE
+        WHERE ug.user_id = ANY($1::uuid[]) AND gc.active = TRUE
         ORDER BY ug.is_primary DESC, gc.sort_order, gc.name`,
       [ids],
     ),
-    db.query(`SELECT * FROM fallback_gaming_availability WHERE user_id = ANY($1::text[]) ORDER BY day_of_week,start_minute`, [ids]),
-    db.query(`SELECT * FROM fallback_gaming_preferences WHERE user_id = ANY($1::text[])`, [ids]),
+    db.query(`SELECT * FROM fallback_gaming_availability WHERE user_id = ANY($1::uuid[]) ORDER BY day_of_week,start_minute`, [ids]),
+    db.query(`SELECT * FROM fallback_gaming_preferences WHERE user_id = ANY($1::uuid[])`, [ids]),
   ])
   return new Map(profiles.map((profile) => [profile.user_id, {
     profile,
@@ -622,11 +622,11 @@ async function candidateBundles(db, viewer, filters = {}) {
       `SELECT ug.*, gc.name AS game_name, gc.image_url AS game_image_url, gc.cross_play,
               gc.ranks, gc.roles, gc.platforms
          FROM fallback_user_games ug JOIN fallback_game_catalog gc ON gc.id = ug.game_id
-        WHERE ug.user_id = ANY($1::text[]) AND gc.active = TRUE`,
+        WHERE ug.user_id = ANY($1::uuid[]) AND gc.active = TRUE`,
       [ids],
     ),
-    db.query(`SELECT * FROM fallback_gaming_availability WHERE user_id = ANY($1::text[])`, [ids]),
-    db.query(`SELECT * FROM fallback_gaming_preferences WHERE user_id = ANY($1::text[])`, [ids]),
+    db.query(`SELECT * FROM fallback_gaming_availability WHERE user_id = ANY($1::uuid[])`, [ids]),
+    db.query(`SELECT * FROM fallback_gaming_preferences WHERE user_id = ANY($1::uuid[])`, [ids]),
   ])
   return rows.map((profile) => ({
     profile,
